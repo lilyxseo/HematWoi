@@ -1,0 +1,16 @@
+node_modules
+.dist
+dist
+.pnpm-store
+pnpm-cache.tar.zst
+.env
+.DS_Store
+# Yarn zero-install
+.yarn/*
+!.yarn/cache
+!.yarn/releases
+!.yarn/patches
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+.pnp.*

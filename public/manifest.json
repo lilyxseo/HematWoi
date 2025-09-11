@@ -1,0 +1,9 @@
+{
+  "name": "CashNote",
+  "short_name": "CashNote",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "description": "CashNote PWA",
+  "icons": []
+}
