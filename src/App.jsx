@@ -17,9 +17,9 @@ import {
   addTransaction as apiAdd,
   updateTransaction as apiUpdate,
   deleteTransaction as apiDelete,
-  listCategories,
   upsertCategories,
 } from "./lib/api";
+import CategoryProvider from "./context/CategoryContext";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -59,6 +59,13 @@ export default function App() {
 
   const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
+  const [catMeta, setCatMeta] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("hematwoi:v3:catMeta")) || {};
+    } catch {
+      return {};
+    }
+  });
   const [catMap, setCatMap] = useState({}); // name -> id (cloud)
 
   const addRef = useRef(null);
@@ -81,6 +88,10 @@ export default function App() {
     localStorage.setItem("hematwoi:v3", JSON.stringify(data));
   }, [data]);
 
+  useEffect(() => {
+    localStorage.setItem("hematwoi:v3:catMeta", JSON.stringify(catMeta));
+  }, [catMeta]);
+
   // Cloud fetch when toggled on and user available
   useEffect(() => {
     if (useCloud && sessionUser) {
@@ -92,13 +103,35 @@ export default function App() {
 
   async function fetchCategoriesCloud() {
     try {
-      const rows = await listCategories();
-      const income = rows.filter((r) => r.type === "income").map((r) => r.name);
-      const expense = rows.filter((r) => r.type === "expense").map((r) => r.name);
+      const { data: rows, error } = await supabase
+        .from("categories")
+        .select("id,type,name,color,sort_order");
+      if (error) throw error;
       const map = {};
-      rows.forEach((r) => (map[r.name] = r.id));
+      const meta = {};
+      const incomeRows = [];
+      const expenseRows = [];
+      (rows || []).forEach((r) => {
+        map[r.name] = r.id;
+        meta[r.name] = {
+          color: r.color || "#64748b",
+          type: r.type,
+          sort: r.sort_order ?? 0,
+        };
+        if (r.type === "income") incomeRows.push(r);
+        else if (r.type === "expense") expenseRows.push(r);
+      });
+      incomeRows.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      expenseRows.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       setCatMap(map);
-      setData((d) => ({ ...d, cat: { income, expense } }));
+      setCatMeta(meta);
+      setData((d) => ({
+        ...d,
+        cat: {
+          income: incomeRows.map((r) => r.name),
+          expense: expenseRows.map((r) => r.name),
+        },
+      }));
     } catch (e) {
       console.error("fetch categories failed", e);
     }
@@ -201,6 +234,40 @@ export default function App() {
     }
     setShowCat(false);
   };
+
+  useEffect(() => {
+    const onSaveMeta = async (e) => {
+      const detail = e.detail || {};
+      const all = [...(detail.income || []), ...(detail.expense || [])];
+      const meta = {};
+      all.forEach((c) => {
+        meta[c.name] = { color: c.color, type: c.type, sort: c.sort };
+      });
+      setCatMeta(meta);
+      if (useCloud && sessionUser) {
+        try {
+          const { data: rows, error } = await supabase
+            .from("categories")
+            .select("id,name");
+          if (error) throw error;
+          const idMap = {};
+          (rows || []).forEach((r) => (idMap[r.name] = r.id));
+          for (const c of all) {
+            const id = idMap[c.name];
+            if (!id) continue;
+            await supabase
+              .from("categories")
+              .update({ color: c.color, sort_order: c.sort })
+              .eq("id", id);
+          }
+        } catch (err) {
+          console.error("update category meta failed", err);
+        }
+      }
+    };
+    window.addEventListener("hw:save-cat-meta", onSaveMeta);
+    return () => window.removeEventListener("hw:save-cat-meta", onSaveMeta);
+  }, [useCloud, sessionUser]);
 
   // --- Budgets ---
   const addBudget = async ({ category, month, amount }) => {
@@ -358,7 +425,7 @@ export default function App() {
   const isLoading = useCloud && data.txs.length === 0;
 
   return (
-    <>
+    <CategoryProvider catMeta={catMeta}>
       <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
       <main className="max-w-5xl mx-auto p-4 space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
@@ -428,6 +495,6 @@ export default function App() {
       >
         <ManageCategories cat={data.cat} onSave={saveCategories} />
       </Modal>
-    </>
+    </CategoryProvider>
   );
 }
