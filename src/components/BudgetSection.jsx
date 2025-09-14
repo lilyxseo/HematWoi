@@ -1,15 +1,26 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo } from "react";
 
 function toRupiah(n = 0) {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
     minimumFractionDigits: 0,
   }).format(n);
 }
 
-export default function BudgetSection({ filterMonth, budgets = [], txs = [], categories, onAdd, onRemove }) {
-  const [form, setForm] = useState({ category: '', month: filterMonth || '', amount: '' });
+export default function BudgetSection({
+  filterMonth,
+  budgets = [],
+  txs = [],
+  categories,
+  onAdd,
+  onRemove,
+}) {
+  const [form, setForm] = useState({
+    category: "",
+    month: filterMonth || "",
+    amount: "",
+  });
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -18,87 +29,121 @@ export default function BudgetSection({ filterMonth, budgets = [], txs = [], cat
   const submit = (e) => {
     e.preventDefault();
     if (!form.category || !form.month || !form.amount) return;
-    onAdd({ category: form.category, month: form.month, amount: Number(form.amount) });
-    setForm({ category: '', month: filterMonth || '', amount: '' });
+    onAdd({
+      category: form.category,
+      month: form.month,
+      amount: Number(form.amount),
+    });
+    setForm({ category: "", month: filterMonth || "", amount: "" });
   };
 
+  // Budgets untuk bulan terpilih
   const list = budgets.filter((b) => b.month === filterMonth);
 
+  // Akumulasi pengeluaran per kategori untuk bulan terpilih
   const spentByCat = useMemo(() => {
     const map = {};
     txs.forEach((t) => {
-      const m = t.date.slice(0, 7);
-      if (t.type === 'expense' && m === filterMonth) {
-        map[t.category] = (map[t.category] || 0) + t.amount;
+      // Asumsi field transaksi: { type, category, date, amount }
+      if (!t?.date || !t?.type) return;
+      const m = String(t.date).slice(0, 7);
+      if (t.type === "expense" && m === filterMonth) {
+        const key = t.category || "";
+        map[key] = (map[key] || 0) + Number(t.amount || 0);
       }
     });
     return map;
   }, [txs, filterMonth]);
 
   return (
-    <div className="card">
-      <h2 className="font-semibold mb-2">Anggaran</h2>
-      <form onSubmit={submit} className="flex flex-wrap gap-2 mb-4">
-        <select
-          name="category"
-          className="rounded-lg border px-3 py-2"
-          value={form.category}
-          onChange={handleChange}
-        >
-          <option value="">Kategori</option>
-          {(categories?.expense || []).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-        <input
-          type="month"
-          name="month"
-          className="rounded-lg border px-3 py-2"
-          value={form.month}
-          onChange={handleChange}
-        />
-        <input
-          type="number"
-          name="amount"
-          placeholder="Jumlah"
-          className="w-32 rounded-lg border px-3 py-2"
-          value={form.amount}
-          onChange={handleChange}
-        />
-        <button className="btn bg-brand border-brand text-white" type="submit">
-          Tambah
-        </button>
-      </form>
-      <ul className="space-y-2">
-        {list.map((b) => {
-          const used = spentByCat[b.category] || 0;
-          const pct = Math.min(100, Math.round((used / b.amount) * 100));
-          return (
-            <li key={b.id} className="border rounded-lg p-2">
-              <div className="flex justify-between mb-1 text-sm">
-                <span>{b.category}</span>
-                <span>
-                  {toRupiah(used)} / {toRupiah(b.amount)}
-                </span>
-              </div>
-              <div className="w-full h-2 bg-gray-200 rounded">
-                <div
-                  className="h-full bg-brand rounded"
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-              <button className="btn mt-2" onClick={() => onRemove(b.id)}>
-                Hapus
-              </button>
-            </li>
-          );
-        })}
+    <div className="space-y-4">
+      {/* Form tambah budget */}
+      <div className="card">
+        <h2 className="font-semibold mb-2">Tambah Budget</h2>
+        <form onSubmit={submit} className="grid sm:grid-cols-4 gap-3">
+          <select
+            name="category"
+            className="input"
+            value={form.category}
+            onChange={handleChange}
+          >
+            <option value="">Pilih kategori (pengeluaran)</option>
+            {(categories?.expense || []).map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="month"
+            name="month"
+            className="input"
+            value={form.month}
+            onChange={handleChange}
+          />
+
+          <input
+            type="number"
+            name="amount"
+            placeholder="Jumlah"
+            className="input"
+            value={form.amount}
+            onChange={handleChange}
+            min="0"
+            step="1000"
+          />
+
+          <button type="submit" className="btn btn-primary">
+            Tambah Budget
+          </button>
+        </form>
+      </div>
+
+      {/* Daftar budget bulan terpilih */}
+      <div className="card">
+        <h2 className="font-semibold mb-2">Daftar Budget</h2>
+
         {!list.length && (
-          <li className="text-sm text-gray-500">Belum ada anggaran bulan ini.</li>
+          <div className="text-sm text-slate-500">
+            Belum ada budget bulan ini.
+          </div>
         )}
-      </ul>
+
+        <ul className="space-y-3">
+          {list.map((b) => {
+            const used = Number(spentByCat[b.category] || 0);
+            const cap = Number(b.amount || 0);
+            const pct = cap <= 0 ? 0 : Math.min(100, Math.round((used / cap) * 100));
+
+            return (
+              <li key={b.id} className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="badge">{b.category}</span>
+                  <span>
+                    {toRupiah(used)} / {toRupiah(cap)}
+                  </span>
+                </div>
+
+                <div className="h-2 w-full rounded-full bg-slate-200">
+                  <div
+                    className="h-2 rounded-full bg-brand"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  className="btn mt-1"
+                  onClick={() => onRemove(b.id)}
+                >
+                  Hapus
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }
