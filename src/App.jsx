@@ -349,7 +349,6 @@ export default function App() {
         </Modal>
       )}
 
-      <style>{css}</style>
     </div>
   );
 }
@@ -380,7 +379,11 @@ function TopBar({ stats, useCloud, setUseCloud }) {
 }
 
 function Logo() {
-  return <span className="logo">HW</span>;
+  return (
+    <span className="inline-grid place-items-center w-7 h-7 font-extrabold text-sm rounded-lg bg-sky-500 text-white">
+      HW
+    </span>
+  );
 }
 
 function Card({ children, className = "" }) {
@@ -416,19 +419,19 @@ function AddForm({ categories, onAdd }) {
   return (
     <form onSubmit={submit} className="grid md:grid-cols-5 gap-2 items-end">
       <div>
-        <label className="lbl">Tanggal</label>
-        <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="inp" />
+        <label className="block text-xs text-slate-500 mb-1">Tanggal</label>
+        <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" />
       </div>
       <div>
-        <label className="lbl">Tipe</label>
-        <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="inp">
+        <label className="block text-xs text-slate-500 mb-1">Tipe</label>
+        <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20">
           <option value="expense">Pengeluaran</option>
           <option value="income">Pemasukan</option>
         </select>
       </div>
       <div>
-        <label className="lbl">Kategori</label>
-        <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="inp">
+        <label className="block text-xs text-slate-500 mb-1">Kategori</label>
+        <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20">
           {(form.type === "income" ? categories.income : categories.expense).map((c) => (
             <option key={c} value={c}>
               {c}
@@ -437,15 +440,18 @@ function AddForm({ categories, onAdd }) {
         </select>
       </div>
       <div>
-        <label className="lbl">Catatan</label>
-        <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="opsional" className="inp" />
+        <label className="block text-xs text-slate-500 mb-1">Catatan</label>
+        <input value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="opsional" className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" />
       </div>
       <div className="md:col-span-1 flex gap-2">
         <div className="flex-1">
-          <label className="lbl">Jumlah</label>
-          <input type="number" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="inp" />
+          <label className="block text-xs text-slate-500 mb-1">Jumlah</label>
+          <input type="number" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" />
         </div>
-        <button type="submit" className="btn primary self-end">
+        <button
+          type="submit"
+          className="inline-flex items-center gap-2 px-3 py-2 border border-sky-500 rounded-lg bg-sky-500 text-white cursor-pointer self-end"
+        >
           Tambah
         </button>
       </div>
@@ -457,16 +463,16 @@ function Filters({ months, filter, setFilter }) {
   return (
     <div className="grid gap-2">
       <div>
-        <label className="lbl">Jenis</label>
-        <select className="inp" value={filter.type} onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}>
+        <label className="block text-xs text-slate-500 mb-1">Jenis</label>
+        <select className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" value={filter.type} onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}>
           <option value="all">Semua</option>
           <option value="income">Pemasukan</option>
           <option value="expense">Pengeluaran</option>
         </select>
       </div>
       <div>
-        <label className="lbl">Bulan</label>
-        <select className="inp" value={filter.month} onChange={(e) => setFilter((f) => ({ ...f, month: e.target.value }))}>
+        <label className="block text-xs text-slate-500 mb-1">Bulan</label>
+        <select className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" value={filter.month} onChange={(e) => setFilter((f) => ({ ...f, month: e.target.value }))}>
           {months.map((m) => (
             <option key={m} value={m}>
               {m === "all" ? "Semua" : m}
@@ -475,8 +481,8 @@ function Filters({ months, filter, setFilter }) {
         </select>
       </div>
       <div>
-        <label className="lbl">Cari</label>
-        <input className="inp" placeholder="kategori / catatan" value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))} />
+        <label className="block text-xs text-slate-500 mb-1">Cari</label>
+        <input className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" placeholder="kategori / catatan" value={filter.q} onChange={(e) => setFilter((f) => ({ ...f, q: e.target.value }))} />
       </div>
     </div>
   );
@@ -505,10 +511,13 @@ function SmallStat({ label, value, note, pos = false, bold = false }) {
 function DataTools({ onExport, onImportJSON, onImportCSV, onManageCat }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button className="btn" onClick={onExport}>
+      <button
+        className="inline-flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg bg-white cursor-pointer"
+        onClick={onExport}
+      >
         Export JSON
       </button>
-      <label className="btn">
+      <label className="inline-flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg bg-white cursor-pointer">
         Import JSON
         <input
           type="file"
@@ -517,11 +526,19 @@ function DataTools({ onExport, onImportJSON, onImportCSV, onManageCat }) {
           className="hidden"
         />
       </label>
-      <label className="btn">
+      <label className="inline-flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg bg-white cursor-pointer">
         Import CSV
-        <input type="file" accept="text/csv" onChange={(e) => e.target.files?.[0] && onImportCSV(e.target.files[0])} className="hidden" />
+        <input
+          type="file"
+          accept="text/csv"
+          onChange={(e) => e.target.files?.[0] && onImportCSV(e.target.files[0])}
+          className="hidden"
+        />
       </label>
-      <button className="btn" onClick={onManageCat}>
+      <button
+        className="inline-flex items-center gap-2 px-3 py-2 border border-slate-300 rounded-lg bg-white cursor-pointer"
+        onClick={onManageCat}
+      >
         Kelola Kategori
       </button>
     </div>
@@ -558,12 +575,12 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
       <div>
         <form onSubmit={submit} className="grid grid-cols-3 gap-2 items-end">
           <div>
-            <label className="lbl">Bulan</label>
-            <input className="inp" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} placeholder="YYYY-MM" />
+            <label className="block text-xs text-slate-500 mb-1">Bulan</label>
+            <input className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} placeholder="YYYY-MM" />
           </div>
           <div>
-            <label className="lbl">Kategori</label>
-            <select className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+            <label className="block text-xs text-slate-500 mb-1">Kategori</label>
+            <select className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
               {categories.expense.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -573,10 +590,14 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className="lbl">Limit</label>
-              <input className="inp" type="number" inputMode="decimal" value={form.limit} onChange={(e) => setForm({ ...form, limit: e.target.value })} />
+              <label className="block text-xs text-slate-500 mb-1">Limit</label>
+              <input className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" type="number" inputMode="decimal" value={form.limit} onChange={(e) => setForm({ ...form, limit: e.target.value })} />
             </div>
-            <button className="btn primary self-end">Tambah</button>
+            <button
+              className="inline-flex items-center gap-2 px-3 py-2 border border-sky-500 rounded-lg bg-sky-500 text-white cursor-pointer self-end"
+            >
+              Tambah
+            </button>
           </div>
         </form>
         <p className="text-xs text-slate-500 mt-1">Contoh bulan: 2025-09</p>
@@ -601,12 +622,20 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
                       {idr.format(spent)} / {idr.format(b.limit)}
                     </div>
                   </div>
-                  <div className={`bar ${isOver ? "over" : ""}`}>
-                    <div className="fill" style={{ width: pct + "%" }} />
+                  <div
+                    className={`h-2 bg-indigo-50 rounded-full overflow-hidden border border-slate-200 mt-1 mb-1 ${isOver ? "outline outline-2 outline-red-300" : ""}`}
+                  >
+                    <div
+                      className="h-full bg-gradient-to-r from-sky-500 to-blue-300"
+                      style={{ width: pct + "%" }}
+                    />
                   </div>
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>{pct}% terpakai</span>
-                    <button className="btn xs danger" onClick={() => onRemove(b.id)}>
+                    <button
+                      className="inline-flex items-center gap-2 px-2 py-1 text-sm border border-red-500 rounded-md text-red-500 hover:bg-red-50 cursor-pointer"
+                      onClick={() => onRemove(b.id)}
+                    >
                       Hapus
                     </button>
                   </div>
@@ -645,16 +674,19 @@ function ManageCategories({ cat, onSave }) {
     <div className="grid md:grid-cols-2 gap-3">
       <div>
         <h4 className="font-semibold mb-1">Pemasukan</h4>
-        <textarea className="inp" rows={8} value={income} onChange={(e) => setIncome(e.target.value)} />
+        <textarea className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" rows={8} value={income} onChange={(e) => setIncome(e.target.value)} />
         <p className="text-xs text-slate-500 mt-1">1 baris = 1 kategori</p>
       </div>
       <div>
         <h4 className="font-semibold mb-1">Pengeluaran</h4>
-        <textarea className="inp" rows={8} value={expense} onChange={(e) => setExpense(e.target.value)} />
+        <textarea className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20" rows={8} value={expense} onChange={(e) => setExpense(e.target.value)} />
         <p className="text-xs text-slate-500 mt-1">Contoh: Makan, Transport, Tagihan…</p>
       </div>
       <div className="md:col-span-2 text-right">
-        <button className="btn primary" onClick={save}>
+        <button
+          className="inline-flex items-center gap-2 px-3 py-2 border border-sky-500 rounded-lg bg-sky-500 text-white cursor-pointer"
+          onClick={save}
+        >
           Simpan Kategori
         </button>
       </div>
@@ -667,15 +699,15 @@ function TxTable({ items, onRemove, onUpdate }) {
 
   return (
     <div className="overflow-auto">
-      <table className="tbl">
+      <table className="w-full border-separate [border-spacing:0_0.5rem]">
         <thead>
           <tr>
-            <th>Tanggal</th>
-            <th>Jenis</th>
-            <th>Kategori</th>
-            <th>Catatan</th>
-            <th className="text-right">Jumlah</th>
-            <th></th>
+            <th className="text-left text-xs text-slate-500 px-2 py-1">Tanggal</th>
+            <th className="text-left text-xs text-slate-500 px-2 py-1">Jenis</th>
+            <th className="text-left text-xs text-slate-500 px-2 py-1">Kategori</th>
+            <th className="text-left text-xs text-slate-500 px-2 py-1">Catatan</th>
+            <th className="text-right text-xs text-slate-500 px-2 py-1">Jumlah</th>
+            <th className="px-2 py-1"></th>
           </tr>
         </thead>
         <tbody>
@@ -706,28 +738,85 @@ function Row({ t, onRemove, onUpdate }) {
 
   return (
     <tr>
-      <td>{edit ? <input type="date" className="inp" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /> : t.date}</td>
-      <td>
+      <td className="bg-white border-y border-slate-200 p-2 first:rounded-l-lg first:border-l">
         {edit ? (
-          <select className="inp" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+          <input
+            type="date"
+            className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20"
+            value={form.date}
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+          />
+        ) : (
+          t.date
+        )}
+      </td>
+      <td className="bg-white border-y border-slate-200 p-2">
+        {edit ? (
+          <select
+            className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20"
+            value={form.type}
+            onChange={(e) => setForm({ ...form, type: e.target.value })}
+          >
             <option value="income">Pemasukan</option>
             <option value="expense">Pengeluaran</option>
           </select>
         ) : (
-          <span className={t.type === "income" ? "badge pos" : "badge neg"}>{t.type === "income" ? "In" : "Out"}</span>
+          <span
+            className={`inline-block px-2 py-0.5 rounded-full text-xs border ${
+              t.type === "income"
+                ? "bg-green-50 text-green-600 border-green-300"
+                : "bg-pink-50 text-pink-600 border-pink-300"
+            }`}
+          >
+            {t.type === "income" ? "In" : "Out"}
+          </span>
         )}
       </td>
-      <td>{edit ? <input className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /> : t.category}</td>
-      <td>{edit ? <input className="inp" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /> : (t.note || "—")}</td>
-      <td className="text-right">{edit ? <input type="number" className="inp" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /> : idr.format(t.amount)}</td>
-      <td className="text-right">
+      <td className="bg-white border-y border-slate-200 p-2">
+        {edit ? (
+          <input
+            className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20"
+            value={form.category}
+            onChange={(e) => setForm({ ...form, category: e.target.value })}
+          />
+        ) : (
+          t.category
+        )}
+      </td>
+      <td className="bg-white border-y border-slate-200 p-2">
+        {edit ? (
+          <input
+            className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20"
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+          />
+        ) : (
+          t.note || "—"
+        )}
+      </td>
+      <td className="bg-white border-y border-slate-200 p-2 text-right">
+        {edit ? (
+          <input
+            type="number"
+            className="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 focus:ring-4 focus:ring-blue-600/20"
+            value={form.amount}
+            onChange={(e) => setForm({ ...form, amount: e.target.value })}
+          />
+        ) : (
+          idr.format(t.amount)
+        )}
+      </td>
+      <td className="bg-white border-y border-slate-200 p-2 text-right last:rounded-r-lg last:border-r">
         {edit ? (
           <div className="flex gap-1 justify-end">
-            <button className="btn xs" onClick={save}>
+            <button
+              className="inline-flex items-center gap-2 px-2 py-1 text-sm border border-slate-300 rounded-md bg-white cursor-pointer"
+              onClick={save}
+            >
               Simpan
             </button>
             <button
-              className="btn xs ghost"
+              className="inline-flex items-center gap-2 px-2 py-1 text-sm border border-slate-300 rounded-md bg-transparent cursor-pointer"
               onClick={() => {
                 setEdit(false);
                 setForm(t);
@@ -738,10 +827,16 @@ function Row({ t, onRemove, onUpdate }) {
           </div>
         ) : (
           <div className="flex gap-1 justify-end">
-            <button className="btn xs" onClick={() => setEdit(true)}>
+            <button
+              className="inline-flex items-center gap-2 px-2 py-1 text-sm border border-slate-300 rounded-md bg-white cursor-pointer"
+              onClick={() => setEdit(true)}
+            >
               Edit
             </button>
-            <button className="btn xs danger" onClick={() => onRemove(t.id)}>
+            <button
+              className="inline-flex items-center gap-2 px-2 py-1 text-sm border border-red-500 rounded-md text-red-500 hover:bg-red-50 cursor-pointer"
+              onClick={() => onRemove(t.id)}
+            >
               Hapus
             </button>
           </div>
@@ -761,12 +856,15 @@ function Modal({ title, onClose, children }) {
   }, [onClose]);
 
   return (
-    <div className="modal">
-      <div className="backdrop" onClick={onClose} />
-      <div className="content">
+    <div className="fixed inset-0 grid place-items-center">
+      <div className="absolute inset-0 bg-black/25" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-[800px] bg-white border border-slate-200 rounded-xl p-4 shadow-xl">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <button className="btn xs" onClick={onClose}>
+          <button
+            className="inline-flex items-center gap-2 px-2 py-1 text-sm border border-slate-300 rounded-md bg-white cursor-pointer"
+            onClick={onClose}
+          >
             Tutup
           </button>
         </div>
@@ -784,65 +882,3 @@ function Footer() {
   );
 }
 
-// ==== CSS MINI (tanpa Tailwind/Bootstrap) =================
-/* eslint-disable no-useless-escape */
-const css = `
-:root{
-  --b:#e5e7eb; --bg:#f8fafc; --tx:#0f172a; --mut:#64748b;
-  --ok:#059669; --danger:#ef4444; --ring:#2563eb20; --brand:#3898f8;
-}
-*{box-sizing:border-box}
-body{margin:0; background:var(--bg); color:var(--tx); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial}
-.min-h-screen{min-height:100vh}
-.max-w-5xl{max-width:72rem}
-.mx-auto{margin-left:auto;margin-right:auto}
-.p-4{padding:1rem}
-.mt-4{margin-top:1rem}
-.grid{display:grid}
-.gap-2{gap:.5rem}
-.gap-3{gap:.75rem}
-.md\\:grid-cols-3{grid-template-columns:repeat(1,minmax(0,1fr))}
-@media(min-width:768px){.md\\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.md\\:col-span-3{grid-column:span 3 / span 3}}
-.bg-white{background:#fff}
-.bg-slate-50{background:#f8fafc}
-.text-slate-800{color:#0f172a}
-.text-slate-500{color:var(--mut)}
-.border{border:1px solid var(--b)}
-.rounded-xl{border-radius:12px}
-.rounded-lg{border-radius:10px}
-.shadow-sm{box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.sticky{position:sticky}
-.top-0{top:0}
-.z-10{z-index:10}
-.font-bold{font-weight:700}
-.font-semibold{font-weight:600}
-.text-xl{font-size:1.25rem}
-.text-lg{font-size:1.125rem}
-.text-base{font-size:1rem}
-.text-xs{font-size:.75rem}
-.hidden{display:none}
-.inp{width:100%; padding:.5rem .6rem; border:1px solid var(--b); border-radius:10px; outline:none; background:#fff}
-.inp:focus{border-color:#2563eb; box-shadow:0 0 0 4px var(--ring)}
-.lbl{display:block; font-size:.75rem; color:var(--mut); margin-bottom:.35rem}
-.btn{display:inline-flex; align-items:center; gap:.5rem; padding:.55rem .8rem; border:1px solid var(--b); border-radius:10px; background:#fff; cursor:pointer}
-.btn.primary{background:var(--brand); border-color:var(--brand); color:#fff}
-.btn.ghost{background:transparent}
-.btn.danger{border-color:var(--danger); color:var(--danger)}
-.btn.xs{padding:.3rem .5rem; font-size:.8rem; border-radius:8px}
-.badge{display:inline-block; padding:.15rem .45rem; border-radius:999px; font-size:.75rem; border:1px solid var(--b)}
-.badge.pos{background:#ecfdf5; color:#059669; border-color:#a7f3d0}
-.badge.neg{background:#fff1f2; color:#e11d48; border-color:#fecdd3}
-.tbl{width:100%; border-collapse:separate; border-spacing:0 .5rem}
-.tbl th{font-size:.75rem; text-align:left; color:var(--mut); padding:.25rem .5rem}
-.tbl td{background:#fff; border-top:1px solid var(--b); border-bottom:1px solid var(--b); padding:.5rem}
-.tbl tr td:first-child{border-left:1px solid var(--b); border-top-left-radius:10px; border-bottom-left-radius:10px}
-.tbl tr td:last-child{border-right:1px solid var(--b); border-top-right-radius:10px; border-bottom-right-radius:10px}
-.logo{display:inline-grid; place-items:center; width:28px; height:28px; font-weight:800; font-size:.85rem; border-radius:8px; background:var(--brand); color:#fff}
-.modal{position:fixed; inset:0; display:grid; place-items:center}
-.modal .backdrop{position:absolute; inset:0; background:rgba(0,0,0,.25)}
-.modal .content{position:relative; z-index:1; width:min(800px,92vw); background:#fff; border:1px solid var(--b); border-radius:12px; padding:1rem; box-shadow:0 10px 30px rgba(0,0,0,.15)}
-.bar{height:10px; background:#eef2ff; border-radius:999px; overflow:hidden; border:1px solid #e5e7eb; margin-top:.4rem; margin-bottom:.4rem}
-.bar .fill{height:100%; background:linear-gradient(90deg, var(--brand), #87c5ff)}
-.bar.over{outline:2px solid #fca5a5}
-`;
-/* eslint-enable no-useless-escape */
