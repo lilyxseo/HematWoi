@@ -67,6 +67,10 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!sessionUser && useCloud) setUseCloud(false);
+  }, [sessionUser, useCloud]);
+
   // Persist local
   useEffect(() => {
     localStorage.setItem("hematwoi:v3", JSON.stringify(data));
