@@ -1,4 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-/* boleh @apply di sini */
+
+/* helper opsional */
+.container { @apply mx-auto max-w-5xl px-4; }
+.card { @apply bg-white rounded-xl shadow-sm border p-4; }
+.btn { @apply inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm; }
+.badge { @apply inline-block rounded-full border px-2 py-0.5 text-xs; }
