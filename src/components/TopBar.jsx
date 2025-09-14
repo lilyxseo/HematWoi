@@ -3,10 +3,12 @@ import Logo from "./Logo";
 import SignIn from "./SignIn";
 import { supabase } from "../lib/supabase";
 
-function toRupiah(n = 0) {
-  return new Intl.NumberFormat("id-ID", {
+function formatCurrency(n = 0) {
+  const pref = window.__hw_prefs?.currency === "USD" ? "USD" : "IDR";
+  const locale = pref === "USD" ? "en-US" : "id-ID";
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "IDR",
+    currency: pref,
     minimumFractionDigits: 0,
   }).format(n);
 }
@@ -58,8 +60,16 @@ export default function TopBar({ stats, useCloud, setUseCloud }) {
           Cloud
         </label>
         <div className="font-semibold hidden sm:block">
-          Saldo: {toRupiah(stats?.balance || 0)}
+          Saldo: {formatCurrency(stats?.balance || 0)}
         </div>
+        <button
+          className="btn"
+          onClick={() =>
+            window.dispatchEvent(new CustomEvent("hw:open-settings"))
+          }
+        >
+          ⚙️
+        </button>
         {sessionUser ? (
           <>
             <span className="badge">{shortEmail(sessionUser.email)}</span>
