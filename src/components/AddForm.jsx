@@ -7,14 +7,36 @@ export default function AddForm({ categories, onAdd }) {
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
   const [amount, setAmount] = useState('');
+  const [recurring, setRecurring] = useState(false);
+  const [period, setPeriod] = useState('monthly');
 
   const catList = categories?.[type] || [];
 
   const submit = (e) => {
     e.preventDefault();
-    onAdd({ date, type, category, note, amount: Number(amount) });
+    const tx = { date, type, category, note, amount: Number(amount) };
+    onAdd(tx);
+    if (recurring) {
+      try {
+        const raw = localStorage.getItem('hematwoi:recurrings');
+        const arr = raw ? JSON.parse(raw) : [];
+        arr.push({
+          category,
+          note,
+          amount: Number(amount),
+          type,
+          period,
+          last: new Date().toISOString(),
+        });
+        localStorage.setItem('hematwoi:recurrings', JSON.stringify(arr));
+      } catch {
+        // ignore
+      }
+    }
     setNote('');
     setAmount('');
+    setRecurring(false);
+    setPeriod('monthly');
   };
 
   return (
@@ -57,6 +79,28 @@ export default function AddForm({ categories, onAdd }) {
         value={note}
         onChange={(e) => setNote(e.target.value)}
       />
+      <div className="flex items-center gap-2">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={recurring}
+            onChange={(e) => setRecurring(e.target.checked)}
+          />
+          <span className="text-sm">Recurring</span>
+        </label>
+        {recurring && (
+          <select
+            className="input w-full sm:w-auto"
+            value={period}
+            onChange={(e) => setPeriod(e.target.value)}
+          >
+            <option value="daily">Harian</option>
+            <option value="weekly">Mingguan</option>
+            <option value="monthly">Bulanan</option>
+          </select>
+        )}
+      </div>
       <div className="flex items-center gap-2">
         <input
           type="number"
