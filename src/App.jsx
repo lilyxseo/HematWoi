@@ -43,36 +43,45 @@ export default function App() {
   const [data, setData] = useState(loadInitial); // { txs, cat, budgets, ver }
   const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
   const [showCat, setShowCat] = useState(false);
+
+  // final: pakai useCloud + sessionUser
   const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [cloudAll, setCloudAll] = useState([]); // daftar semua transaksi cloud untuk daftar bulan
   const [catMap, setCatMap] = useState({}); // nama -> id kategori di Supabase
 
+  // sync user dari Supabase Auth
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSessionUser(data.session?.user || null);
+    supabase.auth.getUser().then(({ data }) => {
+      setSessionUser(data.user ?? null);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
-      setSessionUser(session?.user || null);
+    const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) => {
+      setSessionUser(session?.user ?? null);
     });
-    return () => {
-      listener.subscription.unsubscribe();
-    };
+    return () => sub.subscription.unsubscribe();
   }, []);
 
-  useEffect(() => { if (!useCloud || !sessionUser) saveData(data); }, [data, useCloud, sessionUser]);
+  // simpan ke localStorage hanya bila tidak sedang Cloud mode
+  useEffect(() => {
+    if (!useCloud || !sessionUser) saveData(data);
+  }, [data, useCloud, sessionUser]);
 
+  // ketika pindah mode / user berubah
   useEffect(() => {
     if (useCloud && sessionUser) {
       loadCategories();
+      fetchCloud(filter);
     } else {
+      // kembali ke data lokal
       setData(loadInitial());
       setCloudAll([]);
     }
   }, [useCloud, sessionUser]);
 
+  // refetch saat filter berubah di Cloud mode
   useEffect(() => {
     if (useCloud && sessionUser) fetchCloud(filter);
   }, [filter, useCloud, sessionUser]);
@@ -153,7 +162,8 @@ export default function App() {
     try {
       const { rows } = await listTransactions({ ...filt, pageSize: 1000 });
       setData((d) => ({ ...d, txs: rows }));
-      if (filt.type === 'all' && filt.month === 'all' && !filt.q) {
+      // simpan daftar penuh untuk dropdown bulan hanya kalau filter = all
+      if (filt.type === "all" && filt.month === "all" && !filt.q) {
         setCloudAll(rows);
       }
     } catch (e) {
@@ -167,8 +177,8 @@ export default function App() {
   async function loadCategories() {
     try {
       const { data: cats, error: err } = await supabase
-        .from('categories')
-        .select('id,name,type');
+        .from("categories")
+        .select("id,name,type");
       if (err) throw err;
       const cat = { income: [], expense: [] };
       const map = {};
@@ -191,7 +201,10 @@ export default function App() {
   }, [data.txs, useCloud, sessionUser, cloudAll]);
 
   const filtered = useMemo(() => {
+    // di Cloud mode: server-side filtering sudah dilakukan
     if (useCloud && sessionUser) return data.txs;
+
+    // di Local mode: filter di client
     return data.txs.filter((t) => {
       const okType = filter.type === "all" || t.type === filter.type;
       const okMonth = filter.month === "all" || (t.date || "").startsWith(filter.month);
@@ -331,11 +344,11 @@ function TopBar({ stats, useCloud, setUseCloud }) {
         <div className="flex items-center gap-2">
           <Logo />
           <h1 className="text-xl font-bold">HematWoi</h1>
-          <span className="text-xs ml-2 px-2 py-1 bg-slate-100 rounded">{useCloud ? 'Cloud' : 'Local'}</span>
+          <span className="text-xs ml-2 px-2 py-1 bg-slate-100 rounded">{useCloud ? "Cloud" : "Local"}</span>
         </div>
         <div className="flex items-center gap-4">
           <label className="text-xs flex items-center gap-1">
-            <input type="checkbox" checked={useCloud} onChange={(e)=>setUseCloud(e.target.checked)} />
+            <input type="checkbox" checked={useCloud} onChange={(e) => setUseCloud(e.target.checked)} />
             Cloud
           </label>
           <div className="text-right">
@@ -349,15 +362,11 @@ function TopBar({ stats, useCloud, setUseCloud }) {
 }
 
 function Logo() {
-  return (
-    <span className="logo">HW</span>
-  );
+  return <span className="logo">HW</span>;
 }
 
 function Card({ children, className = "" }) {
-  return (
-    <section className={`bg-white rounded-xl shadow-sm border p-4 ${className}`}>{children}</section>
-  );
+  return <section className={`bg-white rounded-xl shadow-sm border p-4 ${className}`}>{children}</section>;
 }
 
 function AddForm({ categories, onAdd }) {
@@ -401,13 +410,11 @@ function AddForm({ categories, onAdd }) {
       </div>
       <div>
         <label className="lbl">Kategori</label>
-        <select
-          value={form.category}
-          onChange={(e) => setForm({ ...form, category: e.target.value })}
-          className="inp"
-        >
+        <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="inp">
           {(form.type === "income" ? categories.income : categories.expense).map((c) => (
-            <option key={c} value={c}>{c}</option>
+            <option key={c} value={c}>
+              {c}
+            </option>
           ))}
         </select>
       </div>
@@ -420,7 +427,9 @@ function AddForm({ categories, onAdd }) {
           <label className="lbl">Jumlah</label>
           <input type="number" inputMode="decimal" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="inp" />
         </div>
-        <button type="submit" className="btn primary self-end">Tambah</button>
+        <button type="submit" className="btn primary self-end">
+          Tambah
+        </button>
       </div>
     </form>
   );
@@ -441,7 +450,9 @@ function Filters({ months, filter, setFilter }) {
         <label className="lbl">Bulan</label>
         <select className="inp" value={filter.month} onChange={(e) => setFilter((f) => ({ ...f, month: e.target.value }))}>
           {months.map((m) => (
-            <option key={m} value={m}>{m === "all" ? "Semua" : m}</option>
+            <option key={m} value={m}>
+              {m === "all" ? "Semua" : m}
+            </option>
           ))}
         </select>
       </div>
@@ -476,16 +487,25 @@ function SmallStat({ label, value, note, pos = false, bold = false }) {
 function DataTools({ onExport, onImportJSON, onImportCSV, onManageCat }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <button className="btn" onClick={onExport}>Export JSON</button>
+      <button className="btn" onClick={onExport}>
+        Export JSON
+      </button>
       <label className="btn">
         Import JSON
-        <input type="file" accept="application/json" onChange={(e) => e.target.files?.[0] && onImportJSON(e.target.files[0])} className="hidden" />
+        <input
+          type="file"
+          accept="application/json"
+          onChange={(e) => e.target.files?.[0] && onImportJSON(e.target.files[0])}
+          className="hidden"
+        />
       </label>
       <label className="btn">
         Import CSV
         <input type="file" accept="text/csv" onChange={(e) => e.target.files?.[0] && onImportCSV(e.target.files[0])} className="hidden" />
       </label>
-      <button className="btn" onClick={onManageCat}>Kelola Kategori</button>
+      <button className="btn" onClick={onManageCat}>
+        Kelola Kategori
+      </button>
     </div>
   );
 }
@@ -499,9 +519,11 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
 
   const spentByCat = useMemo(() => {
     const map = {};
-    txs.filter((t) => t.type === "expense" && t.date?.startsWith(filterMonth)).forEach((t) => {
-      map[t.category] = (map[t.category] || 0) + Number(t.amount || 0);
-    });
+    txs
+      .filter((t) => t.type === "expense" && t.date?.startsWith(filterMonth))
+      .forEach((t) => {
+        map[t.category] = (map[t.category] || 0) + Number(t.amount || 0);
+      });
     return map;
   }, [txs, filterMonth]);
 
@@ -519,18 +541,22 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
         <form onSubmit={submit} className="grid grid-cols-3 gap-2 items-end">
           <div>
             <label className="lbl">Bulan</label>
-            <input className="inp" value={form.month} onChange={(e)=>setForm({...form,month:e.target.value})} placeholder="YYYY-MM" />
+            <input className="inp" value={form.month} onChange={(e) => setForm({ ...form, month: e.target.value })} placeholder="YYYY-MM" />
           </div>
           <div>
             <label className="lbl">Kategori</label>
-            <select className="inp" value={form.category} onChange={(e)=>setForm({...form,category:e.target.value})}>
-              {categories.expense.map((c)=>(<option key={c} value={c}>{c}</option>))}
+            <select className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
+              {categories.expense.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </div>
           <div className="flex gap-2">
             <div className="flex-1">
               <label className="lbl">Limit</label>
-              <input className="inp" type="number" inputMode="decimal" value={form.limit} onChange={(e)=>setForm({...form,limit:e.target.value})} />
+              <input className="inp" type="number" inputMode="decimal" value={form.limit} onChange={(e) => setForm({ ...form, limit: e.target.value })} />
             </div>
             <button className="btn primary self-end">Tambah</button>
           </div>
@@ -550,15 +576,21 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
               return (
                 <div key={b.id} className="p-3 border rounded-lg">
                   <div className="flex justify-between text-sm">
-                    <div><b>{b.category}</b> — {b.month}</div>
-                    <div>{idr.format(spent)} / {idr.format(b.limit)}</div>
+                    <div>
+                      <b>{b.category}</b> — {b.month}
+                    </div>
+                    <div>
+                      {idr.format(spent)} / {idr.format(b.limit)}
+                    </div>
                   </div>
                   <div className={`bar ${isOver ? "over" : ""}`}>
                     <div className="fill" style={{ width: pct + "%" }} />
                   </div>
                   <div className="flex justify-between text-xs text-slate-500">
                     <span>{pct}% terpakai</span>
-                    <button className="btn xs danger" onClick={() => onRemove(b.id)}>Hapus</button>
+                    <button className="btn xs danger" onClick={() => onRemove(b.id)}>
+                      Hapus
+                    </button>
                   </div>
                 </div>
               );
@@ -586,16 +618,18 @@ function ManageCategories({ cat, onChange }) {
     <div className="grid md:grid-cols-2 gap-3">
       <div>
         <h4 className="font-semibold mb-1">Pemasukan</h4>
-        <textarea className="inp" rows={8} value={income} onChange={(e)=>setIncome(e.target.value)} />
+        <textarea className="inp" rows={8} value={income} onChange={(e) => setIncome(e.target.value)} />
         <p className="text-xs text-slate-500 mt-1">1 baris = 1 kategori</p>
       </div>
       <div>
         <h4 className="font-semibold mb-1">Pengeluaran</h4>
-        <textarea className="inp" rows={8} value={expense} onChange={(e)=>setExpense(e.target.value)} />
+        <textarea className="inp" rows={8} value={expense} onChange={(e) => setExpense(e.target.value)} />
         <p className="text-xs text-slate-500 mt-1">Contoh: Makan, Transport, Tagihan…</p>
       </div>
       <div className="md:col-span-2 text-right">
-        <button className="btn primary" onClick={save}>Simpan Kategori</button>
+        <button className="btn primary" onClick={save}>
+          Simpan Kategori
+        </button>
       </div>
     </div>
   );
@@ -645,10 +679,10 @@ function Row({ t, onRemove, onUpdate }) {
 
   return (
     <tr>
-      <td>{edit ? <input type="date" className="inp" value={form.date} onChange={(e)=>setForm({...form,date:e.target.value})} /> : t.date}</td>
+      <td>{edit ? <input type="date" className="inp" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /> : t.date}</td>
       <td>
         {edit ? (
-          <select className="inp" value={form.type} onChange={(e)=>setForm({...form,type:e.target.value})}>
+          <select className="inp" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
             <option value="income">Pemasukan</option>
             <option value="expense">Pengeluaran</option>
           </select>
@@ -656,19 +690,33 @@ function Row({ t, onRemove, onUpdate }) {
           <span className={t.type === "income" ? "badge pos" : "badge neg"}>{t.type === "income" ? "In" : "Out"}</span>
         )}
       </td>
-      <td>{edit ? <input className="inp" value={form.category} onChange={(e)=>setForm({...form,category:e.target.value})} /> : t.category}</td>
-      <td>{edit ? <input className="inp" value={form.note} onChange={(e)=>setForm({...form,note:e.target.value})} /> : (t.note || "—")}</td>
-      <td className="text-right">{edit ? <input type="number" className="inp" value={form.amount} onChange={(e)=>setForm({...form,amount:e.target.value})} /> : idr.format(t.amount)}</td>
+      <td>{edit ? <input className="inp" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /> : t.category}</td>
+      <td>{edit ? <input className="inp" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /> : (t.note || "—")}</td>
+      <td className="text-right">{edit ? <input type="number" className="inp" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /> : idr.format(t.amount)}</td>
       <td className="text-right">
         {edit ? (
           <div className="flex gap-1 justify-end">
-            <button className="btn xs" onClick={save}>Simpan</button>
-            <button className="btn xs ghost" onClick={()=>{setEdit(false); setForm(t);}}>Batal</button>
+            <button className="btn xs" onClick={save}>
+              Simpan
+            </button>
+            <button
+              className="btn xs ghost"
+              onClick={() => {
+                setEdit(false);
+                setForm(t);
+              }}
+            >
+              Batal
+            </button>
           </div>
         ) : (
           <div className="flex gap-1 justify-end">
-            <button className="btn xs" onClick={()=>setEdit(true)}>Edit</button>
-            <button className="btn xs danger" onClick={()=>onRemove(t.id)}>Hapus</button>
+            <button className="btn xs" onClick={() => setEdit(true)}>
+              Edit
+            </button>
+            <button className="btn xs danger" onClick={() => onRemove(t.id)}>
+              Hapus
+            </button>
           </div>
         )}
       </td>
@@ -678,7 +726,9 @@ function Row({ t, onRemove, onUpdate }) {
 
 function Modal({ title, onClose, children }) {
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -689,7 +739,9 @@ function Modal({ title, onClose, children }) {
       <div className="content">
         <div className="flex justify-between items-center mb-2">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <button className="btn xs" onClick={onClose}>Tutup</button>
+          <button className="btn xs" onClick={onClose}>
+            Tutup
+          </button>
         </div>
         {children}
       </div>
