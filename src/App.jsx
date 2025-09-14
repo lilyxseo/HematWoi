@@ -5,6 +5,7 @@ import {
   addTransaction as apiAdd,
   updateTransaction as apiUpdate,
   deleteTransaction as apiDelete,
+  upsertCategories,
 } from "./lib/api";
 
 // ==== UTILITAS ==========================================
@@ -327,7 +328,24 @@ export default function App() {
 
       {showCat && (
         <Modal onClose={() => setShowCat(false)} title="Kelola Kategori">
-          <ManageCategories cat={data.cat} onChange={(cat) => setData((d) => ({ ...d, cat }))} />
+          <ManageCategories
+            cat={data.cat}
+            onSave={async (next) => {
+              if (useCloud && sessionUser) {
+                const rows = await upsertCategories(next);
+                const cat = { income: [], expense: [] };
+                const map = {};
+                (rows || []).forEach((c) => {
+                  cat[c.type] = [...(cat[c.type] || []), c.name];
+                  map[c.name] = c.id;
+                });
+                setData((d) => ({ ...d, cat }));
+                setCatMap(map);
+              } else {
+                setData((d) => ({ ...d, cat: next }));
+              }
+            }}
+          />
         </Modal>
       )}
 
@@ -602,16 +620,25 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
   );
 }
 
-function ManageCategories({ cat, onChange }) {
+function ManageCategories({ cat, onSave }) {
   const [income, setIncome] = useState(cat.income.join("\n"));
   const [expense, setExpense] = useState(cat.expense.join("\n"));
 
-  const save = () => {
+  useEffect(() => {
+    setIncome(cat.income.join("\n"));
+    setExpense(cat.expense.join("\n"));
+  }, [cat]);
+
+  const save = async () => {
     const parse = (s) => Array.from(new Set(s.split(/\n+/).map((x) => x.trim()).filter(Boolean)));
     const next = { income: parse(income), expense: parse(expense) };
     if (!next.income.length || !next.expense.length) return alert("Minimal 1 kategori di masing-masing tipe");
-    onChange(next);
-    alert("Kategori tersimpan");
+    try {
+      await onSave(next);
+      alert("Kategori tersimpan");
+    } catch (e) {
+      alert("Gagal menyimpan kategori: " + e.message);
+    }
   };
 
   return (
@@ -774,8 +801,8 @@ body{margin:0; background:var(--bg); color:var(--tx); font-family: ui-sans-serif
 .grid{display:grid}
 .gap-2{gap:.5rem}
 .gap-3{gap:.75rem}
-.md\:grid-cols-3{grid-template-columns:repeat(1,minmax(0,1fr))}
-@media(min-width:768px){.md\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.md\:col-span-3{grid-column:span 3 / span 3}}
+.md\\:grid-cols-3{grid-template-columns:repeat(1,minmax(0,1fr))}
+@media(min-width:768px){.md\\:grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.md\\:col-span-3{grid-column:span 3 / span 3}}
 .bg-white{background:#fff}
 .bg-slate-50{background:#f8fafc}
 .text-slate-800{color:#0f172a}
@@ -803,7 +830,7 @@ body{margin:0; background:var(--bg); color:var(--tx); font-family: ui-sans-serif
 .btn.danger{border-color:var(--danger); color:var(--danger)}
 .btn.xs{padding:.3rem .5rem; font-size:.8rem; border-radius:8px}
 .badge{display:inline-block; padding:.15rem .45rem; border-radius:999px; font-size:.75rem; border:1px solid var(--b)}
-.badge.pos{background:#ecfdf5; color:var(--ok); border-color:#a7f3d0}
+.badge.pos{background:#ecfdf5; color:#059669; border-color:#a7f3d0}
 .badge.neg{background:#fff1f2; color:#e11d48; border-color:#fecdd3}
 .tbl{width:100%; border-collapse:separate; border-spacing:0 .5rem}
 .tbl th{font-size:.75rem; text-align:left; color:var(--mut); padding:.25rem .5rem}
