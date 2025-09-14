@@ -114,7 +114,8 @@ export default function BudgetSection({
           {list.map((b) => {
             const used = Number(spentByCat[b.category] || 0);
             const cap = Number(b.amount || 0);
-            const pct = cap <= 0 ? 0 : Math.min(100, Math.round((used / cap) * 100));
+            const pct =
+              cap <= 0 ? 0 : Math.min(100, Math.round((used / cap) * 100));
 
             return (
               <li key={b.id} className="space-y-1">
