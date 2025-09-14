@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useContext, useState } from "react";
+import { CategoryContext } from "../context/CategoryContext";
 
 function toRupiah(n = 0) {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
+  return new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
     minimumFractionDigits: 0,
   }).format(n);
 }
 
 export default function Row({ item, onRemove, onUpdate }) {
   const [edit, setEdit] = useState(false);
-  const [note, setNote] = useState(item.note || '');
+  const [note, setNote] = useState(item.note || "");
   const [amount, setAmount] = useState(item.amount);
+  const { getColor } = useContext(CategoryContext);
 
   const save = () => {
     onUpdate(item.id, { note, amount: Number(amount) });
@@ -21,7 +23,18 @@ export default function Row({ item, onRemove, onUpdate }) {
   return (
     <tr>
       <td className="p-2">
-        {item.category && <span className="badge">{item.category}</span>}
+        {item.category && (
+          <span
+            className="badge"
+            style={{
+              backgroundColor: getColor(item.category),
+              color: "white",
+              borderColor: "transparent",
+            }}
+          >
+            {item.category}
+          </span>
+        )}
       </td>
       <td className="p-2">{item.date}</td>
       <td className="p-2">
@@ -32,12 +45,12 @@ export default function Row({ item, onRemove, onUpdate }) {
             onChange={(e) => setNote(e.target.value)}
           />
         ) : (
-          item.note || '-'
+          item.note || "-"
         )}
       </td>
       <td
         className={`p-2 text-right ${
-          item.type === 'income' ? 'text-green-600' : 'text-red-600'
+          item.type === "income" ? "text-green-600" : "text-red-600"
         }`}
       >
         {edit ? (
