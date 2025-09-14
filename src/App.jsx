@@ -9,6 +9,8 @@ import BudgetSection from "./components/BudgetSection";
 import Modal from "./components/Modal";
 import ManageCategories from "./components/ManageCategories";
 import DashboardCharts from "./components/DashboardCharts";
+import ReportFilters from "./components/ReportFilters";
+import Reports from "./components/Reports";
 import Skeleton from "./components/Skeleton";
 import { Table as TableIcon } from "lucide-react";
 import { supabase } from "./lib/supabase";
@@ -57,6 +59,9 @@ function loadInitial() {
 export default function App() {
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const [reportMonth, setReportMonth] = useState(filter.month === "all" ? currentMonth : filter.month);
+  const [comparePrev, setComparePrev] = useState(false);
   const [showCat, setShowCat] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('hematwoi:v3:theme') || 'system');
   const [prefs, setPrefs] = useState(() => {
@@ -497,7 +502,6 @@ export default function App() {
     reader.readAsText(file);
   }
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
   const isLoading = useCloud && data.txs.length === 0;
 
   return (
@@ -526,6 +530,21 @@ export default function App() {
             txs={data.txs}
           />
         )}
+
+        <ReportFilters
+          month={reportMonth}
+          months={months}
+          comparePrev={comparePrev}
+          onToggleCompare={setComparePrev}
+          onChange={setReportMonth}
+        />
+        <Reports
+          month={reportMonth}
+          months={months}
+          txs={data.txs}
+          budgets={data.budgets}
+          comparePrevEnabled={comparePrev}
+        />
 
         <BudgetSection
           filterMonth={filter.month === "all" ? currentMonth : filter.month}
