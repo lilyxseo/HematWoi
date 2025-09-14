@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useToast } from "../context/ToastContext";
 
 function toRupiah(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -21,6 +22,8 @@ export default function BudgetSection({
     month: filterMonth || "",
     amount: "",
   });
+
+  const { addToast } = useToast();
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -54,6 +57,21 @@ export default function BudgetSection({
     });
     return map;
   }, [txs, filterMonth]);
+
+  useEffect(() => {
+    list.forEach((b) => {
+      const used = Number(spentByCat[b.category] || 0);
+      const cap = Number(b.amount || 0);
+      const pct = cap <= 0 ? 0 : Math.min(100, Math.round((used / cap) * 100));
+      if (pct >= 80) {
+        const key = `hw:budget-toast:${filterMonth}:${b.category}`;
+        if (!sessionStorage.getItem(key)) {
+          addToast(`Budget ${b.category} sudah ${pct}% terpakai bulan ini.`, 'warning');
+          sessionStorage.setItem(key, '1');
+        }
+      }
+    });
+  }, [list, spentByCat, filterMonth, addToast]);
 
   return (
     <div className="space-y-4">

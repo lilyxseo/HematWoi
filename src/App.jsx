@@ -22,6 +22,7 @@ import {
   upsertCategories,
 } from "./lib/api";
 import CategoryProvider from "./context/CategoryContext";
+import ToastProvider, { useToast } from "./context/ToastContext";
 
 import SettingsPanel from "./components/SettingsPanel";
 
@@ -56,7 +57,7 @@ function loadInitial() {
   }
 }
 
-export default function App() {
+function AppContent() {
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -83,7 +84,42 @@ export default function App() {
   const [catMap, setCatMap] = useState({}); // name -> id (cloud)
   window.__hw_prefs = prefs;
 
+  const { addToast } = useToast();
   const addRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('hematwoi:recurrings');
+      if (!raw) return;
+      const items = JSON.parse(raw) || [];
+      const now = new Date();
+      let changed = false;
+      items.forEach((r) => {
+        const last = r.last ? new Date(r.last) : new Date(0);
+        let due = false;
+        const diff = now - last;
+        if (r.period === 'daily') {
+          due = now.toDateString() !== last.toDateString();
+        } else if (r.period === 'weekly') {
+          due = diff >= 7 * 24 * 60 * 60 * 1000;
+        } else if (r.period === 'monthly') {
+          const n = now.getFullYear() * 12 + now.getMonth();
+          const l = last.getFullYear() * 12 + last.getMonth();
+          due = n > l;
+        }
+        if (due) {
+          addToast(`Jangan lupa catat transaksi rutin ${r.note || r.category}`, 'info');
+          r.last = now.toISOString();
+          changed = true;
+        }
+      });
+      if (changed) {
+        localStorage.setItem('hematwoi:recurrings', JSON.stringify(items));
+      }
+    } catch {
+      // ignore
+    }
+  }, [addToast]);
 
   // Supabase auth
   useEffect(() => {
@@ -602,5 +638,13 @@ export default function App() {
       />
 
     </CategoryProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   );
 }
