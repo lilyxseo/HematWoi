@@ -8,6 +8,7 @@ export default function TxTable({ items = [], onRemove, onUpdate }) {
   const start = (page - 1) * pageSize + 1;
   const end = Math.min(page * pageSize, items.length);
   const pageItems = items.slice(start - 1, end);
+  const density = window.__hw_prefs?.density || "comfortable";
 
   useEffect(() => {
     setPage(1);
@@ -17,7 +18,7 @@ export default function TxTable({ items = [], onRemove, onUpdate }) {
 
   return (
     <div className="table-wrap overflow-auto">
-      <table className="min-w-full text-sm">
+      <table className={`min-w-full text-sm ${density === "compact" ? "table-compact" : ""}`}>
         <thead className="bg-white md:sticky md:top-0">
           <tr className="text-left">
             <th className="p-2">Kategori</th>

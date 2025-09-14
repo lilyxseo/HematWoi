@@ -21,6 +21,8 @@ import {
 } from "./lib/api";
 import CategoryProvider from "./context/CategoryContext";
 
+import SettingsPanel from "./components/SettingsPanel";
+
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
 
@@ -56,6 +58,13 @@ export default function App() {
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
   const [showCat, setShowCat] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('hematwoi:v3:theme') || 'system');
+  const [prefs, setPrefs] = useState(() => {
+    const raw = localStorage.getItem('hematwoi:v3:prefs');
+    return raw ? JSON.parse(raw) : { density: 'comfortable', defaultMonth: 'current', currency: 'IDR' };
+  });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
 
   const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
@@ -67,6 +76,7 @@ export default function App() {
     }
   });
   const [catMap, setCatMap] = useState({}); // name -> id (cloud)
+  window.__hw_prefs = prefs;
 
   const addRef = useRef(null);
 
@@ -82,6 +92,72 @@ export default function App() {
   useEffect(() => {
     if (!sessionUser && useCloud) setUseCloud(false);
   }, [sessionUser, useCloud]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDark = theme === 'dark' || (theme === 'system' && sysDark);
+    root.classList.toggle('dark', isDark);
+    localStorage.setItem('hematwoi:v3:theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    localStorage.setItem('hematwoi:v3:prefs', JSON.stringify(prefs));
+    window.__hw_prefs = prefs;
+  }, [prefs]);
+
+
+
+  useEffect(() => {
+    async function loadProfile() {
+      if (!useCloud || !sessionUser) return;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('preferences')
+        .eq('id', sessionUser.id)
+        .single();
+      if (!error && data?.preferences) {
+        const p = data.preferences || {};
+        if (p.theme) setTheme(p.theme);
+        setPrefs((prev) => ({ ...prev, ...p }));
+      }
+    }
+    loadProfile();
+  }, [useCloud, sessionUser]);
+
+  useEffect(() => {
+    async function saveProfile() {
+      if (!useCloud || !sessionUser) return;
+      const preferences = { ...prefs, theme };
+      await supabase
+        .from('profiles')
+        .upsert({ id: sessionUser.id, preferences })
+        .select('id')
+        .single();
+    }
+    saveProfile();
+  }, [theme, prefs, useCloud, sessionUser]);
+
+  useEffect(() => {
+    const applied = sessionStorage.getItem('hw:applied-default-month');
+    if (applied) return;
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7);
+    const last = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      .toISOString()
+      .slice(0, 7);
+    if (prefs.defaultMonth === 'current')
+      setFilter((f) => ({ ...f, month: currentMonth }));
+    else if (prefs.defaultMonth === 'last')
+      setFilter((f) => ({ ...f, month: last }));
+    sessionStorage.setItem('hw:applied-default-month', '1');
+  }, [prefs.defaultMonth]);
+
+  useEffect(() => {
+    const open = () => setSettingsOpen(true);
+    window.addEventListener('hw:open-settings', open);
+    return () => window.removeEventListener('hw:open-settings', open);
+  }, []);
 
   // Persist local
   useEffect(() => {
@@ -495,6 +571,17 @@ export default function App() {
       >
         <ManageCategories cat={data.cat} onSave={saveCategories} />
       </Modal>
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        value={{ theme, ...prefs }}
+        onChange={(val) => {
+          const { theme: nextTheme, density, defaultMonth, currency } = val;
+          setTheme(nextTheme);
+          setPrefs({ density, defaultMonth, currency });
+        }}
+      />
+
     </CategoryProvider>
   );
 }
