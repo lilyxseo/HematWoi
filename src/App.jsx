@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "./lib/supabase"
-import { listTransactions } from "./lib/api"
+import { supabase } from "./lib/supabase";
+import {
+  listTransactions,
+  addTransaction as apiAdd,
+  updateTransaction as apiUpdate,
+  deleteTransaction as apiDelete,
+  listCategories as apiListCategories,
+  upsertCategories,
+} from "./lib/api";
+import { seedDefaultCategoriesIfEmpty } from "./lib/seed";
 
 // ==== UTILITAS ==========================================
 const idr = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" });
@@ -38,26 +46,158 @@ export default function App() {
   const [data, setData] = useState(loadInitial); // { txs, cat, budgets, ver }
   const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
   const [showCat, setShowCat] = useState(false);
+  const [useCloud, setUseCloud] = useState(false);
+  const [sessionUser, setSessionUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [cloudAll, setCloudAll] = useState([]); // daftar semua transaksi cloud untuk daftar bulan
+  const [catMap, setCatMap] = useState({}); // nama -> id kategori di Supabase
 
-  useEffect(() => { saveData(data); }, [data]);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSessionUser(data.session?.user || null);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
+      setSessionUser(session?.user || null);
+    });
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, []);
 
-  const addTx = (tx) => setData((d) => ({ ...d, txs: [{ ...tx, id: uid() }, ...d.txs] }));
-  const removeTx = (id) => setData((d) => ({ ...d, txs: d.txs.filter((t) => t.id !== id) }));
-  const updateTx = (id, patch) => setData((d) => ({ ...d, txs: d.txs.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
+  useEffect(() => {
+    if (sessionUser) {
+      seedDefaultCategoriesIfEmpty().catch((e) => console.warn("seed", e.message));
+    }
+  }, [sessionUser]);
+
+  useEffect(() => { if (!useCloud || !sessionUser) saveData(data); }, [data, useCloud, sessionUser]);
+
+  useEffect(() => {
+    if (useCloud && sessionUser) {
+      loadCategories();
+    } else {
+      setData(loadInitial());
+      setCloudAll([]);
+    }
+  }, [useCloud, sessionUser]);
+
+  useEffect(() => {
+    if (useCloud && sessionUser) fetchCloud(filter);
+  }, [filter, useCloud, sessionUser]);
+
+  const addTx = async (tx) => {
+    if (useCloud && sessionUser) {
+      setLoading(true); setError("");
+      try {
+        const saved = await apiAdd({
+          date: tx.date,
+          type: tx.type,
+          amount: tx.amount,
+          note: tx.note,
+          category_id: catMap[tx.category] || null,
+        });
+        const res = { ...saved, category: tx.category };
+        setData((d) => ({ ...d, txs: [res, ...d.txs] }));
+        setCloudAll((d) => [res, ...d]);
+      } catch (e) {
+        setError(e.message);
+        alert("Gagal menambah transaksi: " + e.message);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setData((d) => ({ ...d, txs: [{ ...tx, id: uid() }, ...d.txs] }));
+    }
+  };
+
+  const removeTx = async (id) => {
+    if (useCloud && sessionUser) {
+      setLoading(true); setError("");
+      try {
+        await apiDelete(id);
+        setData((d) => ({ ...d, txs: d.txs.filter((t) => t.id !== id) }));
+        setCloudAll((d) => d.filter((t) => t.id !== id));
+      } catch (e) {
+        setError(e.message);
+        alert("Gagal menghapus transaksi: " + e.message);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setData((d) => ({ ...d, txs: d.txs.filter((t) => t.id !== id) }));
+    }
+  };
+
+  const updateTx = async (id, patch) => {
+    if (useCloud && sessionUser) {
+      setLoading(true); setError("");
+      try {
+        const saved = await apiUpdate(id, {
+          date: patch.date,
+          type: patch.type,
+          note: patch.note,
+          amount: patch.amount,
+          category_id: patch.category ? catMap[patch.category] || null : undefined,
+        });
+        const res = { ...saved, category: patch.category ?? saved.category };
+        setData((d) => ({ ...d, txs: d.txs.map((t) => (t.id === id ? res : t)) }));
+        setCloudAll((d) => d.map((t) => (t.id === id ? res : t)));
+      } catch (e) {
+        setError(e.message);
+        alert("Gagal mengubah transaksi: " + e.message);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setData((d) => ({ ...d, txs: d.txs.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
+    }
+  };
 
   const addBudget = (b) => setData((d) => ({ ...d, budgets: [{ ...b, id: uid() }, ...d.budgets] }));
   const removeBudget = (id) => setData((d) => ({ ...d, budgets: d.budgets.filter((b) => b.id !== id) }));
 
+  async function fetchCloud(filt) {
+    setLoading(true); setError("");
+    try {
+      const { rows } = await listTransactions({ ...filt, pageSize: 1000 });
+      setData((d) => ({ ...d, txs: rows }));
+      if (filt.type === 'all' && filt.month === 'all' && !filt.q) {
+        setCloudAll(rows);
+      }
+    } catch (e) {
+      setError(e.message);
+      alert("Gagal memuat data: " + e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadCategories() {
+    try {
+      const cats = await apiListCategories();
+      const cat = { income: [], expense: [] };
+      const map = {};
+      (cats || []).forEach((c) => {
+        cat[c.type] = [...(cat[c.type] || []), c.name];
+        map[c.name] = c.id;
+      });
+      setData((d) => ({ ...d, cat }));
+      setCatMap(map);
+    } catch (e) {
+      alert("Gagal memuat kategori: " + e.message);
+    }
+  }
+
   const months = useMemo(() => {
-    const m = new Set(
-      data.txs.map((t) => t.date?.slice(0, 7)).filter(Boolean)
-    );
-    // Tambahkan bulan berjalan agar bisa set budget walau belum ada transaksi
+    const source = useCloud && sessionUser ? cloudAll : data.txs;
+    const m = new Set(source.map((t) => t.date?.slice(0, 7)).filter(Boolean));
     m.add(new Date().toISOString().slice(0, 7));
     return ["all", ...Array.from(m).sort().reverse()];
-  }, [data.txs]);
+  }, [data.txs, useCloud, sessionUser, cloudAll]);
 
   const filtered = useMemo(() => {
+    if (useCloud && sessionUser) return data.txs;
     return data.txs.filter((t) => {
       const okType = filter.type === "all" || t.type === filter.type;
       const okMonth = filter.month === "all" || (t.date || "").startsWith(filter.month);
@@ -65,7 +205,7 @@ export default function App() {
       const okQ = !q || [t.category, t.note].join(" ").toLowerCase().includes(q);
       return okType && okMonth && okQ;
     });
-  }, [data.txs, filter]);
+  }, [data.txs, filter, useCloud, sessionUser]);
 
   const stats = useMemo(() => {
     const income = filtered.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -131,7 +271,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-      <TopBar stats={stats} />
+      <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
+      {loading && <div className="max-w-5xl mx-auto p-4 text-sm">Loading…</div>}
+      {error && <div className="max-w-5xl mx-auto p-4 text-sm text-red-600">{error}</div>}
 
       <main className="max-w-5xl mx-auto p-4">
         <Card>
@@ -178,7 +320,24 @@ export default function App() {
 
       {showCat && (
         <Modal onClose={() => setShowCat(false)} title="Kelola Kategori">
-          <ManageCategories cat={data.cat} onChange={(cat) => setData((d) => ({ ...d, cat }))} />
+          <ManageCategories
+            cat={data.cat}
+            onSave={async (next) => {
+              if (useCloud && sessionUser) {
+                const rows = await upsertCategories(next);
+                const cat = { income: [], expense: [] };
+                const map = {};
+                (rows || []).forEach((c) => {
+                  cat[c.type] = [...(cat[c.type] || []), c.name];
+                  map[c.name] = c.id;
+                });
+                setData((d) => ({ ...d, cat }));
+                setCatMap(map);
+              } else {
+                setData((d) => ({ ...d, cat: next }));
+              }
+            }}
+          />
         </Modal>
       )}
 
@@ -188,18 +347,24 @@ export default function App() {
 }
 
 // ==== SUBKOMPONEN =======================================
-function TopBar({ stats }) {
+function TopBar({ stats, useCloud, setUseCloud }) {
   return (
     <header className="bg-white border-b sticky top-0 z-10">
       <div className="max-w-5xl mx-auto p-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Logo />
           <h1 className="text-xl font-bold">HematWoi</h1>
-          <span className="text-xs ml-2 px-2 py-1 bg-slate-100 rounded">HW · Local-first</span>
+          <span className="text-xs ml-2 px-2 py-1 bg-slate-100 rounded">{useCloud ? 'Cloud' : 'Local'}</span>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-slate-500">Saldo</div>
-          <div className="text-lg font-semibold">{idr.format(stats.balance)}</div>
+        <div className="flex items-center gap-4">
+          <label className="text-xs flex items-center gap-1">
+            <input type="checkbox" checked={useCloud} onChange={(e)=>setUseCloud(e.target.checked)} />
+            Cloud
+          </label>
+          <div className="text-right">
+            <div className="text-xs text-slate-500">Saldo</div>
+            <div className="text-lg font-semibold">{idr.format(stats.balance)}</div>
+          </div>
         </div>
       </div>
     </header>
@@ -231,7 +396,7 @@ function AddForm({ categories, onAdd }) {
     // Sinkronkan default kategori saat tipe berubah
     const list = form.type === "income" ? categories.income : categories.expense;
     if (!list.includes(form.category)) setForm((f) => ({ ...f, category: list[0] || "Lainnya" }));
-  }, [form.type, categories]);
+  }, [form.type, categories, form.category]);
 
   const submit = (e) => {
     e.preventDefault();
@@ -428,32 +593,43 @@ function BudgetSection({ filterMonth, budgets, txs, categories, onAdd, onRemove 
   );
 }
 
-function ManageCategories({ cat, onChange }) {
+function ManageCategories({ cat, onSave }) {
   const [income, setIncome] = useState(cat.income.join("\n"));
   const [expense, setExpense] = useState(cat.expense.join("\n"));
 
-  const save = () => {
+  useEffect(() => {
+    setIncome(cat.income.join("\n"));
+    setExpense(cat.expense.join("\n"));
+  }, [cat]);
+
+  const save = async () => {
     const parse = (s) => Array.from(new Set(s.split(/\n+/).map((x) => x.trim()).filter(Boolean)));
     const next = { income: parse(income), expense: parse(expense) };
     if (!next.income.length || !next.expense.length) return alert("Minimal 1 kategori di masing-masing tipe");
-    onChange(next);
-    alert("Kategori tersimpan");
+    try {
+      await onSave(next);
+      alert("Kategori tersimpan");
+    } catch (e) {
+      alert("Gagal menyimpan kategori: " + e.message);
+    }
   };
 
   return (
     <div className="grid md:grid-cols-2 gap-3">
       <div>
         <h4 className="font-semibold mb-1">Pemasukan</h4>
-        <textarea className="inp" rows={8} value={income} onChange={(e)=>setIncome(e.target.value)} />
+        <textarea className="inp" rows={8} value={income} onChange={(e) => setIncome(e.target.value)} />
         <p className="text-xs text-slate-500 mt-1">1 baris = 1 kategori</p>
       </div>
       <div>
         <h4 className="font-semibold mb-1">Pengeluaran</h4>
-        <textarea className="inp" rows={8} value={expense} onChange={(e)=>setExpense(e.target.value)} />
+        <textarea className="inp" rows={8} value={expense} onChange={(e) => setExpense(e.target.value)} />
         <p className="text-xs text-slate-500 mt-1">Contoh: Makan, Transport, Tagihan…</p>
       </div>
       <div className="md:col-span-2 text-right">
-        <button className="btn primary" onClick={save}>Simpan Kategori</button>
+        <button className="btn primary" onClick={save}>
+          Simpan Kategori
+        </button>
       </div>
     </div>
   );
@@ -564,6 +740,7 @@ function Footer() {
 }
 
 // ==== CSS MINI (tanpa Tailwind/Bootstrap) =================
+/* eslint-disable no-useless-escape */
 const css = `
 :root{
   --b:#e5e7eb; --bg:#f8fafc; --tx:#0f172a; --mut:#64748b;
@@ -623,3 +800,4 @@ body{margin:0; background:var(--bg); color:var(--tx); font-family: ui-sans-serif
 .bar .fill{height:100%; background:linear-gradient(90deg, var(--brand), #87c5ff)}
 .bar.over{outline:2px solid #fca5a5}
 `;
+/* eslint-enable no-useless-escape */
