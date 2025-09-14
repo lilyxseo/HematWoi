@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import TopBar from "./components/TopBar";
 import AddForm from "./components/AddForm";
 import Filters from "./components/Filters";
@@ -8,6 +8,9 @@ import TxTable from "./components/TxTable";
 import BudgetSection from "./components/BudgetSection";
 import Modal from "./components/Modal";
 import ManageCategories from "./components/ManageCategories";
+import DashboardCharts from "./components/DashboardCharts";
+import Skeleton from "./components/Skeleton";
+import { Table as TableIcon } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import {
   listTransactions,
@@ -57,6 +60,8 @@ export default function App() {
   const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [catMap, setCatMap] = useState({}); // name -> id (cloud)
+
+  const addRef = useRef(null);
 
   // Supabase auth
   useEffect(() => {
@@ -350,13 +355,16 @@ export default function App() {
   }
 
   const currentMonth = new Date().toISOString().slice(0, 7);
+  const isLoading = useCloud && data.txs.length === 0;
 
   return (
     <>
       <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
       <main className="max-w-5xl mx-auto p-4 space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <AddForm categories={data.cat} onAdd={addTx} />
+          <div ref={addRef}>
+            <AddForm categories={data.cat} onAdd={addTx} />
+          </div>
           <Filters months={months} filter={filter} setFilter={setFilter} />
           <Summary stats={stats} />
           <DataTools
@@ -367,6 +375,15 @@ export default function App() {
           />
         </div>
 
+        {isLoading ? (
+          <Skeleton className="h-28 w-full" />
+        ) : (
+          <DashboardCharts
+            month={filter.month === "all" ? currentMonth : filter.month}
+            txs={data.txs}
+          />
+        )}
+
         <BudgetSection
           filterMonth={filter.month === "all" ? currentMonth : filter.month}
           budgets={data.budgets}
@@ -376,7 +393,32 @@ export default function App() {
           onRemove={removeBudget}
         />
 
-        <TxTable items={filtered} onRemove={removeTx} onUpdate={updateTx} />
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <TableIcon className="h-4 w-4" />
+            <h2 className="text-sm font-semibold">Daftar Transaksi</h2>
+          </div>
+          {isLoading ? (
+            <Skeleton className="h-48 w-full" />
+          ) : filtered.length === 0 ? (
+            <div className="card text-center">
+              <div className="mb-2">Belum ada transaksi.</div>
+              <button
+                className="btn btn-primary"
+                onClick={() =>
+                  addRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  })
+                }
+              >
+                Tambah Transaksi
+              </button>
+            </div>
+          ) : (
+            <TxTable items={filtered} onRemove={removeTx} onUpdate={updateTx} />
+          )}
+        </div>
       </main>
 
       <Modal
