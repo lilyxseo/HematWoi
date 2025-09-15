@@ -82,7 +82,6 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
 
   useEffect(() => {
     localStorage.setItem('hw:sidebar-collapsed', collapsed ? '1' : '0');
-    document.documentElement.setAttribute('data-nav', collapsed ? 'mini' : 'full');
   }, [collapsed]);
 
   const shortEmail = (email = '') =>
@@ -97,10 +96,7 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
 
   const content = (
     <div
-      className={`relative flex flex-col h-screen overflow-hidden bg-surface-1 text-text shadow-md transition-[width] ${
-        collapsed ? 'w-16' : 'w-64'
-      }`}
-      style={{ width: collapsed ? 'var(--nav-w-mini)' : 'var(--nav-w)', height: '100dvh' }}
+      className={`flex flex-col h-full ${collapsed ? 'w-16' : 'w-64'} transition-all bg-surface-1 text-text shadow-md`}
     >
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-2">
@@ -154,7 +150,7 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
           </ul>
         )}
       </nav>
-      <div className="mt-auto p-4 border-t border-border space-y-4 bg-surface-1">
+      <div className="p-4 border-t border-border space-y-4">
         <div className="flex items-center justify-between">
           {!collapsed && <span className="text-sm">All synced</span>}
         </div>
@@ -260,7 +256,7 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
         onClick={() => setMobileOpen(false)}
       />
       <div
-        className={`${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed inset-y-0 left-0 z-[var(--nav-z)] flex`}
+        className={`${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed z-50 inset-y-0 left-0 md:static md:flex`}
       >
         {content}
       </div>
