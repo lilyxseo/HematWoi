@@ -94,35 +94,9 @@ Preferences are stored in `localStorage` under the `hw:prefs` key with the schem
   "digitFormat": "comma",
   "firstDay": 1,
   "pinLock": false,
-"incognito": false
+  "incognito": false
 }
 ```
-
-## Profile Data
-
-User profile information contains editable fields and gamification state:
-
-```json
-{
-  "name": "John Doe",
-  "bio": "Finance enthusiast",
-  "avatarUrl": "https://...",
-  "badges": [
-    { "id": "starter", "name": "Starter", "description": "First step" }
-  ],
-  "stats": {
-    "transactions": 0,
-    "savings": 0,
-    "goalsCompleted": 0,
-    "challengesCompleted": 0,
-    "dailyStreak": 0
-  }
-}
-```
-
-In **cloud mode** these fields are stored in a `profile` table on Supabase and
-leveling/badge modules are read-only. In **local mode** the data resides in the
-local repository with mock leveling and badges for offline experimentation.
 
 ## Contributing
 
