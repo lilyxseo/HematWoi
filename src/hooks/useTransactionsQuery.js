@@ -15,6 +15,7 @@ export default function useTransactionsQuery() {
   const [items, setItems] = useState([]);
   const [months, setMonths] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const filter = useMemo(() => {
     const obj = { ...defaults };
@@ -43,10 +44,12 @@ export default function useTransactionsQuery() {
   );
 
   useEffect(() => {
+    setLoading(true);
     listTransactions(filter).then(({ rows }) => {
       setItems(rows);
       const m = new Set(rows.map((r) => r.date.slice(0, 7)));
       setMonths(Array.from(m).sort().reverse());
+      setLoading(false);
     });
   }, [filter]);
 
@@ -54,5 +57,5 @@ export default function useTransactionsQuery() {
     listCategories().then(setCategories);
   }, []);
 
-  return { items, months, categories, filter, setFilter };
+  return { items, months, categories, filter, setFilter, loading };
 }

@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import formatMonth from "../lib/formatMonth";
 
 export default function FilterChips({ filter, categories = [], onRemove }) {
@@ -30,16 +31,18 @@ export default function FilterChips({ filter, categories = [], onRemove }) {
   if (!chips.length) return null;
 
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {chips.map((chip) => (
-        <button
-          key={chip.key}
-          className="rounded-full bg-surface-3 px-3 py-1 text-sm"
-          onClick={() => onRemove(chip.key)}
-        >
-          {chip.label} <span className="ml-1">×</span>
-        </button>
-      ))}
+    <div className="mt-2 overflow-x-auto">
+      <div className="flex w-max gap-2 py-1">
+        {chips.map((chip) => (
+          <button
+            key={chip.key}
+            className="flex items-center gap-1 rounded-full bg-surface-3 px-3 py-1 text-sm whitespace-nowrap"
+            onClick={() => onRemove(chip.key)}
+          >
+            {chip.label} <X className="h-3 w-3" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

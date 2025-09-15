@@ -1,6 +1,10 @@
-import { useContext, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CategoryContext } from "../context/CategoryContext";
+
+function toNumber(str = "") {
+  return Number(str.replace(/\./g, ""));
+}
 
 function toRupiah(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -13,50 +17,44 @@ function toRupiah(n = 0) {
 export default function Row({ item, onRemove, onUpdate }) {
   const [edit, setEdit] = useState(false);
   const [note, setNote] = useState(item.note || "");
-  const [amount, setAmount] = useState(item.amount);
+  const [amount, setAmount] = useState(item.amount.toString());
+  const noteRef = useRef(null);
+  const amountRef = useRef(null);
   const { getColor } = useContext(CategoryContext);
 
   const { attributes, listeners, setNodeRef } = useDraggable({ id: item.id });
 
-  const [swipe, setSwipe] = useState(0);
-  const [startX, setStartX] = useState(null);
-
-  const handlePointerDown = (e) => {
-    if (window.innerWidth >= 768) return;
-    setStartX(e.clientX);
-  };
-  const handlePointerMove = (e) => {
-    if (startX === null) return;
-    const dx = e.clientX - startX;
-    setSwipe(dx);
-  };
-  const handlePointerUp = () => {
-    if (startX === null) return;
-    const threshold = 50;
-    if (swipe < -threshold) setSwipe(-80);
-    else if (swipe > threshold) setSwipe(80);
-    else setSwipe(0);
-    setStartX(null);
-  };
-  const resetSwipe = () => setSwipe(0);
+  useEffect(() => {
+    if (edit && noteRef.current) noteRef.current.focus();
+  }, [edit]);
 
   const save = () => {
-    onUpdate(item.id, { note, amount: Number(amount) });
+    onUpdate(item.id, { note, amount: toNumber(amount) });
     setEdit(false);
   };
 
+  const cancel = () => {
+    setEdit(false);
+    setNote(item.note || "");
+    setAmount(item.amount.toString());
+  };
+
+  const handleAmountChange = (e) => {
+    const v = e.target.value.replace(/[^0-9-]/g, "");
+    setAmount(v);
+  };
+
+  const handleAmountBlur = () => {
+    setAmount(toNumber(amount).toLocaleString("id-ID"));
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") save();
+    if (e.key === "Escape") cancel();
+  };
+
   return (
-    <tr
-      className="relative"
-      style={{
-        transform: `translateX(${swipe}px)`,
-        transition: startX !== null ? "none" : "transform 0.2s",
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
-    >
+    <tr className={`even:bg-surface-1 hover:bg-surface-2 ${edit ? "bg-surface-1" : ""}`}>
       <td className="p-2">
         {item.category && (
           <span
@@ -74,88 +72,78 @@ export default function Row({ item, onRemove, onUpdate }) {
           </span>
         )}
       </td>
-      <td className="p-2">{item.date}</td>
-      <td className="p-2">
+      <td className="p-2 whitespace-nowrap">{item.date}</td>
+      <td className="p-2 max-w-[200px] truncate" title={item.note || "-"}>
         {edit ? (
           <input
-            className="w-full rounded-lg border px-2 py-1"
+            ref={noteRef}
+            className="w-full rounded-md border px-2 py-1"
             value={note}
             onChange={(e) => setNote(e.target.value)}
+            onKeyDown={handleKeyDown}
           />
         ) : (
           item.note || "-"
         )}
       </td>
+      <td className="p-2">{item.account || "-"}</td>
+      <td className="p-2">
+        {item.tags?.length
+          ? item.tags.map((tag) => (
+              <span
+                key={tag}
+                className="mr-1 rounded-full bg-surface-3 px-2 py-0.5 text-xs"
+              >
+                {tag}
+              </span>
+            ))
+          : "-"}
+      </td>
       <td
-        className={`p-2 text-right ${
+        className={`p-2 text-right tabular-nums ${
           item.type === "income" ? "text-success" : "text-danger"
         }`}
       >
         {edit ? (
-          <input
-            type="number"
-            className="w-24 rounded-lg border px-2 py-1 text-right"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
+          <div className="relative w-32">
+            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted">
+              Rp
+            </span>
+            <input
+              ref={amountRef}
+              type="text"
+              inputMode="numeric"
+              className="w-full rounded-md border pl-6 pr-2 py-1 text-right"
+              value={amount}
+              onChange={handleAmountChange}
+              onBlur={handleAmountBlur}
+              onKeyDown={handleKeyDown}
+            />
+          </div>
         ) : (
           toRupiah(item.amount)
         )}
       </td>
-      <td className="p-2 text-right hidden md:table-cell">
+      <td className="sticky right-0 bg-surface-1 p-2">
         {edit ? (
-          <div className="flex gap-1 justify-end">
-            <button className="btn btn-primary" onClick={save}>
+          <div className="flex justify-end gap-1">
+            <button className="btn btn-primary btn-sm" onClick={save}>
               Simpan
             </button>
-            <button className="btn" onClick={() => setEdit(false)}>
+            <button className="btn btn-sm" onClick={cancel}>
               Batal
             </button>
           </div>
         ) : (
-          <div className="flex gap-1 justify-end">
-            <button className="btn" onClick={() => setEdit(true)}>
+          <div className="flex justify-end gap-1">
+            <button className="btn btn-sm" onClick={() => setEdit(true)}>
               Edit
             </button>
-            <button className="btn" onClick={() => onRemove(item.id)}>
+            <button className="btn btn-sm" onClick={() => onRemove(item.id)}>
               Hapus
             </button>
           </div>
         )}
-      </td>
-      <td className="absolute inset-y-0 left-0 flex items-center pl-2 md:hidden">
-        {edit ? (
-          <button
-            className="btn"
-            onClick={() => {
-              setEdit(false);
-              resetSwipe();
-            }}
-          >
-            Batal
-          </button>
-        ) : (
-          <button
-            className="btn"
-            onClick={() => {
-              setEdit(true);
-              resetSwipe();
-            }}
-          >
-            Edit
-          </button>
-        )}
-      </td>
-      <td className="absolute inset-y-0 right-0 flex items-center pr-2 md:hidden">
-        <button
-          className="btn bg-danger text-white"
-          onClick={() => {
-            onRemove(item.id);
-            resetSwipe();
-          }}
-        >
-          Hapus
-        </button>
       </td>
     </tr>
   );
