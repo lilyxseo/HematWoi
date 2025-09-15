@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useToast } from "../context/ToastContext";
+import { Edit3, Trash2 } from "lucide-react";
 
 function toRupiah(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -22,6 +23,7 @@ export default function BudgetSection({
     month: filterMonth || "",
     amount: "",
   });
+  const [editingId, setEditingId] = useState(null);
 
   const { addToast } = useToast();
 
@@ -32,12 +34,14 @@ export default function BudgetSection({
   const submit = (e) => {
     e.preventDefault();
     if (!form.category || !form.month || !form.amount) return;
+    if (editingId) onRemove(editingId);
     onAdd({
       category: form.category,
       month: form.month,
       amount: Number(form.amount),
     });
     setForm({ category: "", month: filterMonth || "", amount: "" });
+    setEditingId(null);
   };
 
   // Budgets untuk bulan terpilih
@@ -134,6 +138,12 @@ export default function BudgetSection({
             const cap = Number(b.amount || 0);
             const pct =
               cap <= 0 ? 0 : Math.min(100, Math.round((used / cap) * 100));
+            const color =
+              pct >= 100
+                ? "bg-red-500"
+                : pct >= 80
+                ? "bg-yellow-400"
+                : "bg-brand-var";
 
             return (
               <li key={b.id} className="space-y-1">
@@ -146,18 +156,36 @@ export default function BudgetSection({
 
                 <div className="h-2 w-full rounded-full bg-slate-200">
                   <div
-                    className="h-2 rounded-full bg-brand-var"
+                    className={`h-2 rounded-full ${color}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
 
-                <button
-                  type="button"
-                  className="btn mt-1"
-                  onClick={() => onRemove(b.id)}
-                >
-                  Hapus
-                </button>
+                <div className="flex gap-1 mt-1">
+                  <button
+                    type="button"
+                    className="btn p-1"
+                    aria-label="Edit budget"
+                    onClick={() => {
+                      setForm({
+                        category: b.category,
+                        month: b.month,
+                        amount: b.amount,
+                      });
+                      setEditingId(b.id);
+                    }}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn p-1"
+                    aria-label="Hapus budget"
+                    onClick={() => onRemove(b.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </li>
             );
           })}

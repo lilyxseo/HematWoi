@@ -1,11 +1,10 @@
-import AddForm from "../components/AddForm";
 import Summary from "../components/Summary";
 import DashboardCharts from "../components/DashboardCharts";
 import Reports from "../components/Reports";
+import QuickActions from "../components/QuickActions";
+import RecentTransactions from "../components/RecentTransactions";
 
 export default function Dashboard({
-  categories,
-  onAdd,
   stats,
   monthForReport,
   txs,
@@ -13,12 +12,13 @@ export default function Dashboard({
   months = [],
 }) {
   return (
-    <main className="max-w-5xl mx-auto p-4 space-y-4">
+    <main className="max-w-5xl mx-auto p-4 space-y-6">
+      <Summary stats={stats} />
+      <QuickActions />
       <div className="grid gap-4 md:grid-cols-2">
-        <AddForm categories={categories} onAdd={onAdd} />
-        <Summary stats={stats} />
+        <DashboardCharts month={monthForReport} txs={txs} />
+        <RecentTransactions txs={txs} />
       </div>
-      <DashboardCharts month={monthForReport} txs={txs} />
       <Reports
         month={monthForReport}
         months={months}

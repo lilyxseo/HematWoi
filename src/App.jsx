@@ -72,7 +72,13 @@ function loadInitial() {
 
 function AppContent() {
   const [data, setData] = useState(loadInitial);
-  const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
+  const [filter, setFilter] = useState({
+    type: "all",
+    q: "",
+    month: "all",
+    category: "all",
+    sort: "date-desc",
+  });
   const currentMonth = new Date().toISOString().slice(0, 7);
   const [theme, setTheme] = useState(
     () => localStorage.getItem("hematwoi:v3:theme") || "system"
@@ -465,10 +471,17 @@ function AppContent() {
     return Array.from(set).sort().reverse();
   }, [data.txs]);
 
+  const allCategories = useMemo(
+    () => [...data.cat.income, ...data.cat.expense],
+    [data.cat]
+  );
+
   const filtered = useMemo(() => {
-    return data.txs.filter((t) => {
+    let res = data.txs.filter((t) => {
       if (filter.type !== "all" && t.type !== filter.type) return false;
       if (filter.month !== "all" && String(t.date).slice(0, 7) !== filter.month)
+        return false;
+      if (filter.category !== "all" && t.category !== filter.category)
         return false;
       if (filter.q) {
         const q = filter.q.toLowerCase();
@@ -478,6 +491,19 @@ function AppContent() {
       }
       return true;
     });
+
+    res.sort((a, b) => {
+      if (filter.sort === "amount-desc")
+        return Number(b.amount) - Number(a.amount);
+      if (filter.sort === "amount-asc")
+        return Number(a.amount) - Number(b.amount);
+      if (filter.sort === "date-asc")
+        return new Date(a.date) - new Date(b.date);
+      // default date-desc
+      return new Date(b.date) - new Date(a.date);
+    });
+
+    return res;
   }, [data.txs, filter]);
 
   const stats = useMemo(() => {
@@ -660,8 +686,6 @@ function AppContent() {
             path="/"
             element={
               <Dashboard
-                categories={data.cat}
-                onAdd={addTx}
                 stats={stats}
                 monthForReport={
                   filter.month === "all" ? currentMonth : filter.month
@@ -677,6 +701,7 @@ function AppContent() {
             element={
               <Transactions
                 months={months}
+                categories={allCategories}
                 filter={filter}
                 setFilter={setFilter}
                 items={filtered}
