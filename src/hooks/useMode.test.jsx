@@ -1,3 +1,5 @@
+/* eslint-env node */
+import process from 'node:process';
 import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
 

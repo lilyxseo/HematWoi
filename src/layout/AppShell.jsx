@@ -1,7 +1,6 @@
 import { NavLink, useLocation, useRoutes } from "react-router-dom";
 import { NAV_ITEMS } from "../router/nav.config";
 import { buildBreadcrumbs } from "../router/breadcrumbs";
-import { isFeatureEnabled } from "../featureFlags";
 import { ROUTES } from "../router/routes";
 import Sidebar from "./Sidebar";
 import { ModeProvider, useMode } from "../hooks/useMode";
@@ -9,9 +8,6 @@ import { ModeProvider, useMode } from "../hooks/useMode";
 function ShellContent() {
   const element = useRoutes(ROUTES);
   const location = useLocation();
-  const sidebarItems = NAV_ITEMS.filter(
-    (i) => i.inSidebar && (!i.featureFlag || isFeatureEnabled(i.featureFlag)),
-  );
   const breadcrumbs = buildBreadcrumbs(location.pathname, NAV_ITEMS);
   const { mode } = useMode();
 

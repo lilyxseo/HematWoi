@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Scissors, CalendarClock } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';
+import Card, { CardBody } from '../components/Card';
 import Segmented from '../components/ui/Segmented';
 import CurrencyInput from '../components/ui/CurrencyInput';
 import Input from '../components/ui/Input';
@@ -15,9 +17,11 @@ import Textarea from '../components/ui/Textarea';
 export default function AddTransaction() {
   const [mode, setMode] = useState(() => localStorage.getItem('add_mode') || 'expense');
   const [advanced, setAdvanced] = useState(() => localStorage.getItem('add_advanced') === 'true');
+
   useEffect(() => {
     localStorage.setItem('add_mode', mode);
   }, [mode]);
+
   useEffect(() => {
     localStorage.setItem('add_advanced', advanced ? 'true' : 'false');
   }, [advanced]);
@@ -25,18 +29,18 @@ export default function AddTransaction() {
   return (
     <Page>
       <PageHeader title="Tambah Transaksi" description="Catat pemasukan, pengeluaran dan lainnya" />
-      <Section first>
-        <div className="flex flex-col gap-4">
+      <Section first className="max-w-2xl mx-auto">
+        <div className="space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Segmented
               value={mode}
               onChange={setMode}
               options={[
-                { label: 'Expense', value: 'expense' },
-                { label: 'Income', value: 'income' },
-                { label: 'Transfer', value: 'transfer' },
-                { label: 'Split', value: 'split' },
-                { label: 'Recurring', value: 'recurring' },
+                { label: (<span className="flex items-center gap-1"><ArrowDownCircle className="h-4 w-4" />Expense</span>), value: 'expense' },
+                { label: (<span className="flex items-center gap-1"><ArrowUpCircle className="h-4 w-4" />Income</span>), value: 'income' },
+                { label: (<span className="flex items-center gap-1"><ArrowLeftRight className="h-4 w-4" />Transfer</span>), value: 'transfer' },
+                { label: (<span className="flex items-center gap-1"><Scissors className="h-4 w-4" />Split</span>), value: 'split' },
+                { label: (<span className="flex items-center gap-1"><CalendarClock className="h-4 w-4" />Recurring</span>), value: 'recurring' },
               ]}
             />
             <Segmented
@@ -63,15 +67,19 @@ function QuickForm() {
   const [note, setNote] = useState('');
 
   return (
-    <form className="space-y-3">
-      <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
-      <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
-      <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
-      <Textarea label="Catatan" value={note} onChange={(e) => setNote(e.target.value)} />
-      <div className="flex gap-2">
-        <button type="submit" className="btn btn-primary">Simpan</button>
-        <button type="button" className="btn">Batal</button>
-      </div>
+    <form>
+      <Card>
+        <CardBody className="space-y-4">
+          <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
+          <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
+          <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Textarea label="Catatan" value={note} onChange={(e) => setNote(e.target.value)} />
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="submit" className="btn btn-primary">Simpan</button>
+            <button type="button" className="btn">Batal</button>
+          </div>
+        </CardBody>
+      </Card>
     </form>
   );
 }
@@ -85,20 +93,23 @@ function AdvancedForm() {
   const [note, setNote] = useState('');
 
   return (
-    <form className="space-y-3">
-      <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Select label="Akun" value={account} onChange={(e) => setAccount(e.target.value)} options={['Cash']} />
-        <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
-      </div>
-      <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
-      <Input label="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
-      <Textarea label="Catatan" value={note} onChange={(e) => setNote(e.target.value)} />
-      <div className="flex gap-2">
-        <button type="submit" className="btn btn-primary">Simpan</button>
-        <button type="button" className="btn">Batal</button>
-      </div>
+    <form>
+      <Card>
+        <CardBody className="space-y-4">
+          <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select label="Akun" value={account} onChange={(e) => setAccount(e.target.value)} options={['Cash']} />
+            <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
+          </div>
+          <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
+          <Input label="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
+          <Textarea label="Catatan" value={note} onChange={(e) => setNote(e.target.value)} />
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="submit" className="btn btn-primary">Simpan</button>
+            <button type="button" className="btn">Batal</button>
+          </div>
+        </CardBody>
+      </Card>
     </form>
   );
 }
-

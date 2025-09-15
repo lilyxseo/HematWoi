@@ -31,7 +31,7 @@ export function ModeProvider({ children }) {
     </ModeContext.Provider>
   );
 }
-
+// eslint-disable-next-line react-refresh/only-export-components
 export function useMode() {
   const ctx = useContext(ModeContext);
   if (!ctx) throw new Error("useMode must be used within ModeProvider");
