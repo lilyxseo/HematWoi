@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
 import TopBar from "./components/TopBar";
-import Modal from "./components/Modal";
-import ManageCategories from "./components/ManageCategories";
 import SettingsPanel from "./components/SettingsPanel";
 import Dashboard from "./pages/Dashboard";
+import Transactions from "./pages/Transactions";
+import Budgets from "./pages/Budgets";
+import Categories from "./pages/Categories";
+import DataToolsPage from "./pages/DataToolsPage";
 import AddWizard from "./pages/AddWizard";
-import BottomNav from "./components/BottomNav";
-import FAB from "./components/FAB";
 import { supabase } from "./lib/supabase";
 import {
   listTransactions,
@@ -61,11 +61,17 @@ function AppContent() {
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const [showCat, setShowCat] = useState(false);
-  const [theme, setTheme] = useState(() => localStorage.getItem('hematwoi:v3:theme') || 'system');
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("hematwoi:v3:theme") || "system"
+  );
   const [prefs, setPrefs] = useState(() => {
-    const raw = localStorage.getItem('hematwoi:v3:prefs');
-    const base = { density: 'comfortable', defaultMonth: 'current', currency: 'IDR', accent: 'blue' };
+    const raw = localStorage.getItem("hematwoi:v3:prefs");
+    const base = {
+      density: "comfortable",
+      defaultMonth: "current",
+      currency: "IDR",
+      accent: "blue",
+    };
     if (!raw) return base;
     try {
       return { ...base, ...JSON.parse(raw) };
@@ -92,68 +98,6 @@ function AppContent() {
   const hideNav = location.pathname.startsWith("/add");
 
   useEffect(() => {
-    let gPressed = false;
-    const handler = (e) => {
-      const tag = e.target.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable)
-        return;
-
-      if (e.key === "n") {
-        navigate("/add");
-      } else if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        e.preventDefault();
-        document.querySelector('input[placeholder="Cari"]')?.focus();
-      } else if (gPressed && (e.key === "d" || e.key === "r")) {
-        navigate(e.key === "d" ? "/" : "/reports");
-        gPressed = false;
-      } else if (e.key === "g") {
-        gPressed = true;
-        setTimeout(() => {
-          gPressed = false;
-        }, 1000);
-      } else {
-        gPressed = false;
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [navigate]);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('hematwoi:recurrings');
-      if (!raw) return;
-      const items = JSON.parse(raw) || [];
-      const now = new Date();
-      let changed = false;
-      items.forEach((r) => {
-        const last = r.last ? new Date(r.last) : new Date(0);
-        let due = false;
-        const diff = now - last;
-        if (r.period === 'daily') {
-          due = now.toDateString() !== last.toDateString();
-        } else if (r.period === 'weekly') {
-          due = diff >= 7 * 24 * 60 * 60 * 1000;
-        } else if (r.period === 'monthly') {
-          const n = now.getFullYear() * 12 + now.getMonth();
-          const l = last.getFullYear() * 12 + last.getMonth();
-          due = n > l;
-        }
-        if (due) {
-          addToast(`Jangan lupa catat transaksi rutin ${r.note || r.category}`, 'info');
-          r.last = now.toISOString();
-          changed = true;
-        }
-      });
-      if (changed) {
-        localStorage.setItem('hematwoi:recurrings', JSON.stringify(items));
-      }
-    } catch {
-      // ignore
-    }
-  }, [addToast]);
-
-  useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setSessionUser(data.user ?? null));
     const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) => {
       setSessionUser(session?.user ?? null);
@@ -167,18 +111,19 @@ function AppContent() {
 
   useEffect(() => {
     const root = document.documentElement;
-    const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const isDark = theme === 'dark' || (theme === 'system' && sysDark);
-    root.classList.toggle('dark', isDark);
-    localStorage.setItem('hematwoi:v3:theme', theme);
+    const sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const isDark = theme === "dark" || (theme === "system" && sysDark);
+    root.classList.toggle("dark", isDark);
+    localStorage.setItem("hematwoi:v3:theme", theme);
   }, [theme]);
+
   useEffect(() => {
     const color = ACCENTS[prefs.accent] || ACCENTS.blue;
-    document.documentElement.style.setProperty('--brand', color);
+    document.documentElement.style.setProperty("--brand", color);
   }, [prefs.accent]);
 
   useEffect(() => {
-    localStorage.setItem('hematwoi:v3:prefs', JSON.stringify(prefs));
+    localStorage.setItem("hematwoi:v3:prefs", JSON.stringify(prefs));
     window.__hw_prefs = prefs;
   }, [prefs]);
 
@@ -186,9 +131,9 @@ function AppContent() {
     async function loadProfile() {
       if (!useCloud || !sessionUser) return;
       const { data, error } = await supabase
-        .from('profiles')
-        .select('preferences')
-        .eq('id', sessionUser.id)
+        .from("profiles")
+        .select("preferences")
+        .eq("id", sessionUser.id)
         .single();
       if (!error && data?.preferences) {
         const p = data.preferences || {};
@@ -204,33 +149,33 @@ function AppContent() {
       if (!useCloud || !sessionUser) return;
       const preferences = { ...prefs, theme };
       await supabase
-        .from('profiles')
+        .from("profiles")
         .upsert({ id: sessionUser.id, preferences })
-        .select('id')
+        .select("id")
         .single();
     }
     saveProfile();
   }, [theme, prefs, useCloud, sessionUser]);
 
   useEffect(() => {
-    const applied = sessionStorage.getItem('hw:applied-default-month');
+    const applied = sessionStorage.getItem("hw:applied-default-month");
     if (applied) return;
     const now = new Date();
-    const currentMonth = now.toISOString().slice(0, 7);
+    const current = now.toISOString().slice(0, 7);
     const last = new Date(now.getFullYear(), now.getMonth() - 1, 1)
       .toISOString()
       .slice(0, 7);
-    if (prefs.defaultMonth === 'current')
-      setFilter((f) => ({ ...f, month: currentMonth }));
-    else if (prefs.defaultMonth === 'last')
+    if (prefs.defaultMonth === "current")
+      setFilter((f) => ({ ...f, month: current }));
+    else if (prefs.defaultMonth === "last")
       setFilter((f) => ({ ...f, month: last }));
-    sessionStorage.setItem('hw:applied-default-month', '1');
+    sessionStorage.setItem("hw:applied-default-month", "1");
   }, [prefs.defaultMonth]);
 
   useEffect(() => {
     const open = () => setSettingsOpen(true);
-    window.addEventListener('hw:open-settings', open);
-    return () => window.removeEventListener('hw:open-settings', open);
+    window.addEventListener("hw:open-settings", open);
+    return () => window.removeEventListener("hw:open-settings", open);
   }, []);
 
   useEffect(() => {
@@ -376,42 +321,7 @@ function AppContent() {
         alert("Gagal menyimpan kategori: " + e.message);
       }
     }
-    setShowCat(false);
   };
-
-  useEffect(() => {
-    const onSaveMeta = async (e) => {
-      const detail = e.detail || {};
-      const all = [...(detail.income || []), ...(detail.expense || [])];
-      const meta = {};
-      all.forEach((c) => {
-        meta[c.name] = { color: c.color, type: c.type, sort: c.sort };
-      });
-      setCatMeta(meta);
-      if (useCloud && sessionUser) {
-        try {
-          const { data: rows, error } = await supabase
-            .from("categories")
-            .select("id,name");
-          if (error) throw error;
-          const idMap = {};
-          (rows || []).forEach((r) => (idMap[r.name] = r.id));
-          for (const c of all) {
-            const id = idMap[c.name];
-            if (!id) continue;
-            await supabase
-              .from("categories")
-              .update({ color: c.color, sort_order: c.sort })
-              .eq("id", id);
-          }
-        } catch (err) {
-          console.error("update category meta failed", err);
-        }
-      }
-    };
-    window.addEventListener("hw:save-cat-meta", onSaveMeta);
-    return () => window.removeEventListener("hw:save-cat-meta", onSaveMeta);
-  }, [useCloud, sessionUser]);
 
   const addBudget = async ({ category, month, amount }) => {
     if (!data.cat.expense.includes(category)) return;
@@ -563,71 +473,146 @@ function AppContent() {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-        <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
-        <main id="main" tabIndex="-1" className="focus:outline-none">
-          <nav className="max-w-5xl mx-auto px-4 gap-2 pb-2 text-sm hidden md:flex">
-            <Link to="/" className="btn">
-              Dashboard
-            </Link>
-            <Link to="/add" className="btn">
-              Tambah
-            </Link>
-          </nav>
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <Dashboard
-                  months={months}
-                  filter={filter}
-                  setFilter={setFilter}
-                  stats={stats}
-                  data={data}
-                  addTx={addTx}
-                  removeTx={removeTx}
-                  updateTx={updateTx}
-                  currentMonth={currentMonth}
-                  setShowCat={setShowCat}
-                  addBudget={addBudget}
-                  removeBudget={removeBudget}
-                  onExport={handleExport}
-                  onImportJSON={handleImportJSON}
-                  onImportCSV={handleImportCSV}
-                />
-              }
-            />
-            <Route
-              path="/add"
-              element={
-                <AddWizard
-                  categories={data.cat}
-                  onAdd={addTx}
-                  onCancel={() => navigate("/")}
-                />
-              }
-            />
-          </Routes>
-        </main>
-        <Modal
-          open={showCat}
-          title="Kelola Kategori"
-          onClose={() => setShowCat(false)}
-        >
-          <ManageCategories cat={data.cat} onSave={saveCategories} />
-        </Modal>
-        <SettingsPanel
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          value={{ theme, ...prefs }}
-          onChange={(val) => {
-            const { theme: nextTheme, density, defaultMonth, currency, accent } = val;
-            setTheme(nextTheme);
-            setPrefs({ density, defaultMonth, currency, accent });
-          }}
-        />
-        {!hideNav && <FAB />}
-        {!hideNav && <BottomNav />}
-      </CategoryProvider>
+      <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
+      {!hideNav && (
+        <nav className="max-w-5xl mx-auto px-4">
+          <ul className="flex gap-3 overflow-auto">
+            <li>
+              <Link
+                to="/"
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  location.pathname === "/" ? "text-brand border-b-2 border-brand" : ""
+                }`}
+              >
+                Dashboard
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/transactions"
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  location.pathname === "/transactions"
+                    ? "text-brand border-b-2 border-brand"
+                    : ""
+                }`}
+              >
+                Transaksi
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/budgets"
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  location.pathname === "/budgets" ? "text-brand border-b-2 border-brand" : ""
+                }`}
+              >
+                Anggaran
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/categories"
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  location.pathname === "/categories"
+                    ? "text-brand border-b-2 border-brand"
+                    : ""
+                }`}
+              >
+                Kategori
+              </Link>
+            </li>
+            <li>
+              <Link
+                to="/data"
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  location.pathname === "/data" ? "text-brand border-b-2 border-brand" : ""
+                }`}
+              >
+                Data
+              </Link>
+            </li>
+          </ul>
+        </nav>
+      )}
+      <main id="main" tabIndex="-1" className="focus:outline-none">
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <Dashboard
+                categories={data.cat}
+                onAdd={addTx}
+                stats={stats}
+                monthForReport={
+                  filter.month === "all" ? currentMonth : filter.month
+                }
+                txs={data.txs}
+                budgets={data.budgets}
+                months={months}
+              />
+            }
+          />
+          <Route
+            path="/transactions"
+            element={
+              <Transactions
+                months={months}
+                filter={filter}
+                setFilter={setFilter}
+                items={filtered}
+                onRemove={removeTx}
+                onUpdate={updateTx}
+              />
+            }
+          />
+          <Route
+            path="/budgets"
+            element={
+              <Budgets
+                currentMonth={currentMonth}
+                data={data}
+                onAdd={addBudget}
+                onRemove={removeBudget}
+              />
+            }
+          />
+          <Route
+            path="/categories"
+            element={<Categories cat={data.cat} onSave={saveCategories} />}
+          />
+          <Route
+            path="/data"
+            element={
+              <DataToolsPage
+                onExport={handleExport}
+                onImportJSON={handleImportJSON}
+                onImportCSV={handleImportCSV}
+              />
+            }
+          />
+          <Route
+            path="/add"
+            element={
+              <AddWizard
+                categories={data.cat}
+                onAdd={addTx}
+                onCancel={() => navigate("/")}
+              />
+            }
+          />
+        </Routes>
+      </main>
+      <SettingsPanel
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        value={{ theme, ...prefs }}
+        onChange={(val) => {
+          const { theme: nextTheme, density, defaultMonth, currency, accent } = val;
+          setTheme(nextTheme);
+          setPrefs({ density, defaultMonth, currency, accent });
+        }}
+      />
+    </CategoryProvider>
   );
 }
 
