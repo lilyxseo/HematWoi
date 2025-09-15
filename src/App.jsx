@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
+
 import TopBar from "./components/TopBar";
 import SettingsPanel from "./components/SettingsPanel";
+
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
@@ -9,6 +11,8 @@ import Categories from "./pages/Categories";
 import DataToolsPage from "./pages/DataToolsPage";
 import AddWizard from "./pages/AddWizard";
 import Subscriptions from "./pages/Subscriptions";
+import ImportWizard from "./pages/ImportWizard";
+
 import { supabase } from "./lib/supabase";
 import {
   listTransactions,
@@ -17,9 +21,11 @@ import {
   deleteTransaction as apiDelete,
   upsertCategories,
 } from "./lib/api";
+
 import CategoryProvider from "./context/CategoryContext";
-import ToastProvider, { useToast } from "./context/ToastContext";
+import ToastProvider from "./context/ToastContext";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
+
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -92,9 +98,15 @@ function AppContent() {
     }
   });
   const [catMap, setCatMap] = useState({});
+  const [rules, setRules] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("hematwoi:v3:rules")) || {};
+    } catch {
+      return {};
+    }
+  });
   window.__hw_prefs = prefs;
 
-  const { addToast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const hideNav = location.pathname.startsWith("/add");
@@ -187,6 +199,10 @@ function AppContent() {
   useEffect(() => {
     localStorage.setItem("hematwoi:v3:catMeta", JSON.stringify(catMeta));
   }, [catMeta]);
+
+  useEffect(() => {
+    localStorage.setItem("hematwoi:v3:rules", JSON.stringify(rules));
+  }, [rules]);
 
   useEffect(() => {
     if (useCloud && sessionUser) {
@@ -631,6 +647,19 @@ function AppContent() {
                 onExport={handleExport}
                 onImportJSON={handleImportJSON}
                 onImportCSV={handleImportCSV}
+              />
+            }
+          />
+          <Route
+            path="/import"
+            element={
+              <ImportWizard
+                txs={data.txs}
+                onAdd={addTx}
+                categories={data.cat}
+                rules={rules}
+                setRules={setRules}
+                onCancel={() => navigate("/data")}
               />
             }
           />

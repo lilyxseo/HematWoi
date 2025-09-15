@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import DataTools from "../components/DataTools";
+import BankImportButton from "../components/BankImportButton";
 
 export default function DataToolsPage({ onExport, onImportJSON, onImportCSV }) {
   const navigate = useNavigate();
@@ -14,6 +15,9 @@ export default function DataToolsPage({ onExport, onImportJSON, onImportCSV }) {
         onImportCSV={onImportCSV}
         onManageCat={() => navigate("/categories")}
       />
+      <div className="card p-4">
+        <BankImportButton />
+      </div>
     </main>
   );
 }
