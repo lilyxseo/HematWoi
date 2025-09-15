@@ -12,6 +12,7 @@ import DataToolsPage from "./pages/DataToolsPage";
 import AddWizard from "./pages/AddWizard";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
+import GoalsPage from "./pages/Goals";
 
 import { supabase } from "./lib/supabase";
 import {
@@ -25,6 +26,7 @@ import {
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
+import { allocateIncome } from "./lib/goals";
 
 
 const uid = () =>
@@ -53,15 +55,18 @@ const ACCENTS = {
 function loadInitial() {
   try {
     const raw = localStorage.getItem("hematwoi:v3");
-    if (!raw) return { txs: [], cat: defaultCategories, budgets: [] };
+    if (!raw)
+      return { txs: [], cat: defaultCategories, budgets: [], goals: [], envelopes: [] };
     const parsed = JSON.parse(raw);
     return {
       txs: parsed.txs || [],
       cat: parsed.cat || defaultCategories,
       budgets: parsed.budgets || [],
+      goals: parsed.goals || [],
+      envelopes: parsed.envelopes || [],
     };
   } catch {
-    return { txs: [], cat: defaultCategories, budgets: [] };
+    return { txs: [], cat: defaultCategories, budgets: [], goals: [], envelopes: [] };
   }
 }
 
@@ -103,6 +108,18 @@ function AppContent() {
       return JSON.parse(localStorage.getItem("hematwoi:v3:rules")) || {};
     } catch {
       return {};
+    }
+  });
+  const [allocRules, setAllocRules] = useState(() => {
+    try {
+      return (
+        JSON.parse(localStorage.getItem("hematwoi:v3:alloc")) || {
+          goals: {},
+          envelopes: {},
+        }
+      );
+    } catch {
+      return { goals: {}, envelopes: {} };
     }
   });
   const { addToast } = useToast();
@@ -206,6 +223,10 @@ function AppContent() {
   }, [rules]);
 
   useEffect(() => {
+    localStorage.setItem("hematwoi:v3:alloc", JSON.stringify(allocRules));
+  }, [allocRules]);
+
+  useEffect(() => {
     if (useCloud && sessionUser) {
       fetchCategoriesCloud();
       fetchTxsCloud();
@@ -282,13 +303,44 @@ function AppContent() {
           category_id: catMap[tx.category] || null,
         });
         const res = { ...saved, category: tx.category };
-        setData((d) => ({ ...d, txs: [res, ...d.txs] }));
+        setData((d) => {
+          let goals = d.goals;
+          let envelopes = d.envelopes;
+          if (tx.type === "income") {
+            const alloc = allocateIncome(tx.amount, d.goals, d.envelopes, allocRules);
+            goals = alloc.goals;
+            envelopes = alloc.envelopes;
+          }
+          return { ...d, txs: [res, ...d.txs], goals, envelopes };
+        });
       } catch (e) {
         alert("Gagal menambah transaksi: " + e.message);
       }
     } else {
-      setData((d) => ({ ...d, txs: [{ ...tx, id: uid() }, ...d.txs] }));
+      setData((d) => {
+        let goals = d.goals;
+        let envelopes = d.envelopes;
+        if (tx.type === "income") {
+          const alloc = allocateIncome(tx.amount, d.goals, d.envelopes, allocRules);
+          goals = alloc.goals;
+          envelopes = alloc.envelopes;
+        }
+        return {
+          ...d,
+          txs: [{ ...tx, id: uid() }, ...d.txs],
+          goals,
+          envelopes,
+        };
+      });
     }
+  };
+
+  const addGoal = (goal) => {
+    setData((d) => ({ ...d, goals: [...(d.goals || []), goal] }));
+  };
+
+  const addEnvelope = (env) => {
+    setData((d) => ({ ...d, envelopes: [...(d.envelopes || []), env] }));
   };
 
   const updateTx = async (id, patch) => {
@@ -559,6 +611,16 @@ function AppContent() {
             </li>
             <li>
               <Link
+                to="/goals"
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  location.pathname === "/goals" ? "text-brand border-b-2 border-brand" : ""
+                }`}
+              >
+                Goals
+              </Link>
+            </li>
+            <li>
+              <Link
                 to="/categories"
                 className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
                   location.pathname === "/categories"
@@ -631,6 +693,19 @@ function AppContent() {
                 data={data}
                 onAdd={addBudget}
                 onRemove={removeBudget}
+              />
+            }
+          />
+          <Route
+            path="/goals"
+            element={
+              <GoalsPage
+                goals={data.goals}
+                envelopes={data.envelopes}
+                rules={allocRules}
+                onAddGoal={addGoal}
+                onAddEnvelope={addEnvelope}
+                onSaveRules={setAllocRules}
               />
             }
           />
