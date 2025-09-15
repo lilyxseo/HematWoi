@@ -116,11 +116,28 @@ Design tokens for colours, spacing and typography live in `tailwind.config.cjs` 
 
 These components aim to keep spacing and typography consistent across pages.
 
+## Card System & Quote Bubble
+
+The dashboard and other pages share a flexible `Card` component with optional
+`CardHeader`, `CardBody` and `CardFooter` sections. Cards use a subtle border,
+rounded corners and responsive padding (`p-4` on mobile, `p-6` on larger
+screens). Header titles use `font-semibold` while longer content in the body can
+be truncated with `line-clamp` utilities. Footers are reserved for secondary
+actions or meta information.
+
+Key performance indicators use the `KpiCard` variant which centres the value and
+applies semantic colours (`success` for income, `danger` for expense, `brand` for
+net totals).
+
+Daily quotes render inside a `QuoteBubble` component, styled like a chat message
+with typographic opening and closing quotes. When no quote is available a short
+neutral placeholder is shown.
+
 ## Dashboard & Profile
 
-- Wallet avatar and finance mascot icons now appear on a single centred row.
+- KPI cards show income, expense and balance with semantic colours.
+- Daily quote appears as a chat-style bubble with typographic quotes.
 - Avatar level and XP controls moved from the dashboard to the new Profile page.
-- Daily quote card simplified with no category selector or repeat button.
 
 ## Settings & Preferences
 
