@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Summary from "../components/Summary";
 import DashboardCharts from "../components/DashboardCharts";
 import Reports from "../components/Reports";
@@ -20,6 +20,7 @@ import useLateMonthMode from "../hooks/useLateMonthMode";
 
 import AvatarLevel from "../components/AvatarLevel.jsx";
 import EventBus from "../lib/eventBus";
+import { useMoneyTalk } from "../context/MoneyTalkContext.jsx";
 
 
 export default function Dashboard({
@@ -55,6 +56,7 @@ export default function Dashboard({
   const wallet = useWalletStatus({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense, weeklyTrend: finance.weeklyTrend }, { sensitivity: prefs?.walletSensitivity });
   const lateMode = useLateMonthMode({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense }, prefs);
   const [walletOpen, setWalletOpen] = useState(false);
+  const { speak } = useMoneyTalk();
 
   const summary = useMemo(() => {
     const today = new Date();
@@ -125,6 +127,16 @@ export default function Dashboard({
       },
     };
   }, [txs]);
+
+  useEffect(() => {
+    if (finance.isAnyOverBudget) {
+      speak({
+        category: finance.topSpenderCategory || "Belanja",
+        amount: 0,
+        context: { isOverBudget: true },
+      });
+    }
+  }, [finance.isAnyOverBudget, finance.topSpenderCategory, speak]);
 
   return (
     <main className="max-w-5xl mx-auto p-4 space-y-6">

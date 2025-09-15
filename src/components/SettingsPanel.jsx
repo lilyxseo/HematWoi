@@ -180,6 +180,56 @@ export default function SettingsPanel({ open, onClose, value, onChange }) {
           </div>
         </div>
         <div>
+          <h3 className="font-semibold mb-2">Uang Bicara</h3>
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.moneyTalkEnabled}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, moneyTalkEnabled: e.target.checked }))
+                }
+              />
+              Aktifkan
+            </label>
+            <div>
+              <div className="text-sm mb-1">Intensitas</div>
+              <div className="flex gap-2">
+                {["jarang", "normal", "ramai"].map((val) => (
+                  <label
+                    key={val}
+                    className="flex items-center gap-1 text-sm capitalize"
+                  >
+                    <input
+                      type="radio"
+                      name="moneyTalkIntensity"
+                      value={val}
+                      checked={form.moneyTalkIntensity === val}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, moneyTalkIntensity: e.target.value }))
+                      }
+                    />
+                    {val}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label className="block text-sm">
+              <div className="mb-1">Bahasa</div>
+              <select
+                className="input"
+                value={form.moneyTalkLang}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, moneyTalkLang: e.target.value }))
+                }
+              >
+                <option value="id">Indonesia</option>
+                <option value="en">English</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div>
           <h3 className="font-semibold mb-2">Tanggal Tua Mode</h3>
           <div className="space-y-3">
             <label className="block text-sm">
