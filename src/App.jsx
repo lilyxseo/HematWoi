@@ -112,7 +112,7 @@ function AppShell({ prefs, setPrefs }) {
       return {};
     }
   });
-  const [allocRules, setAllocRules] = useState(() => {
+  const [allocRules] = useState(() => {
     try {
       return (
         JSON.parse(localStorage.getItem("hematwoi:v3:alloc")) || {
@@ -179,7 +179,7 @@ function AppShell({ prefs, setPrefs }) {
       }
     }
     loadProfile();
-  }, [useCloud, sessionUser]);
+  }, [useCloud, sessionUser, setPrefs]);
 
   useEffect(() => {
     async function saveProfile() {
@@ -376,14 +376,6 @@ function AppShell({ prefs, setPrefs }) {
     }
     if (prefs.walletSound) playChaChing();
     triggerMoneyTalk(tx);
-  };
-
-  const addGoal = (goal) => {
-    setData((d) => ({ ...d, goals: [...(d.goals || []), goal] }));
-  };
-
-  const addEnvelope = (env) => {
-    setData((d) => ({ ...d, envelopes: [...(d.envelopes || []), env] }));
   };
 
   const updateTx = async (id, patch) => {

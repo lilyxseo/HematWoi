@@ -5,6 +5,7 @@ import { createMoneyTalkLimiter } from "../lib/moneyTalkQueue";
 
 const MoneyTalkContext = createContext({ speak: () => {} });
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useMoneyTalk() {
   return useContext(MoneyTalkContext);
 }
@@ -31,10 +32,10 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
       handleDismiss();
       process();
     }, next.duration || 5000);
-  }, [current, prefs.moneyTalkIntensity, handleDismiss]);
+  }, [current, handleDismiss]);
 
   const speak = useCallback(
-    ({ category, amount, context = {} }) => {
+    ({ category, context = {} }) => {
       if (!prefs.moneyTalkEnabled) return;
       const chanceMap = { jarang: 0.3, normal: 0.7, ramai: 1 };
       if (Math.random() > (chanceMap[prefs.moneyTalkIntensity] || 0.7)) return;
