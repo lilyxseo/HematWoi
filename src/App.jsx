@@ -13,6 +13,8 @@ import AddWizard from "./pages/AddWizard";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
+import ChallengesPage from "./pages/Challenges.jsx";
+import useChallenges from "./hooks/useChallenges.js";
 
 import { supabase } from "./lib/supabase";
 import {
@@ -130,6 +132,8 @@ function AppContent() {
     }
   });
   const { addToast } = useToast();
+  const { challenges, addChallenge, updateChallenge, removeChallenge } =
+    useChallenges(data.txs);
   window.__hw_prefs = prefs;
 
   const navigate = useNavigate();
@@ -694,6 +698,7 @@ function AppContent() {
                 txs={data.txs}
                 budgets={data.budgets}
                 months={months}
+                challenges={challenges}
               />
             }
           />
@@ -732,6 +737,18 @@ function AppContent() {
                 onAddGoal={addGoal}
                 onAddEnvelope={addEnvelope}
                 onSaveRules={setAllocRules}
+              />
+            }
+          />
+          <Route
+            path="/challenges"
+            element={
+              <ChallengesPage
+                challenges={challenges}
+                onAdd={addChallenge}
+                onUpdate={updateChallenge}
+                onRemove={removeChallenge}
+                txs={data.txs}
               />
             }
           />
