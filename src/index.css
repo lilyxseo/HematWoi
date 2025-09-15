@@ -2,33 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --brand: #3898f8;
-  color-scheme: light dark;
-}
-
 .btn { @apply inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm; }
-.btn-primary { background-color: var(--brand); border-color: var(--brand); color: white; }
+.btn-primary { @apply bg-brand border-brand text-white; }
 .card { @apply bg-white rounded-xl shadow-sm border p-4; }
 .input { @apply w-full rounded-lg border px-3 py-2; }
 .badge { @apply inline-block rounded-full border px-2 py-0.5 text-xs; }
 .table-wrap { @apply overflow-auto; }
 
-/* table density */
-.table-compact td { @apply py-1; }
-
-/* dark mode surfaces */
 .dark body { @apply bg-slate-950 text-slate-100; }
 .dark .card { @apply bg-slate-900 border-slate-800; }
 .dark .input { @apply bg-slate-900 border-slate-700 text-slate-100; }
 .dark .btn { @apply border-slate-700; }
 .dark .badge { @apply border-slate-700; }
-.dark { --brand: #3898f8; }
-
-@layer utilities {
-  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
-  .z-60 { z-index: 60; }
-  .text-brand-var { color: var(--brand); }
-  .bg-brand-var { background-color: var(--brand); }
-  .border-brand-var { border-color: var(--brand); }
-}
