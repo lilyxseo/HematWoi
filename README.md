@@ -40,6 +40,17 @@ src/
   lib/           # Utilities and tests
 ```
 
+## Daftar Halaman & Rute
+
+| Title   | Path      | Protected | Section | Flag    |
+|---------|-----------|-----------|---------|---------|
+| Home    | `/`       | No        | Main    | -       |
+| Reports | `/reports`| Yes       | Main    | `reports` |
+
+![Reports page screenshot](docs/reports.png)
+
+Halaman **Reports** dapat diakses melalui tautan sidebar atau langsung ke `/reports`.
+
 ## UI Guidelines
 
 The app uses TailwindCSS with a unified colour palette:
