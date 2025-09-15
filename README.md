@@ -23,6 +23,30 @@ Supabase for persistent storage. Switch to local mode from the Settings
 page and optionally seed dummy data for quick testing. The current mode is
 stored in `localStorage` under `hw:mode` and survives page reloads.
 
+## Sync & Offline Queue
+
+All reads and writes go to Supabase when online. If a request fails due to
+network issues the operation is stored in an outbox inside IndexedDB and
+replayed automatically when connectivity returns. Operations are batched,
+retried with exponential backoff and merged with Realtime updates.
+
+To clear local caches or the outbox open the devtools console and run:
+
+```js
+localStorage.clear();
+indexedDB.deleteDatabase('hw-cache');
+indexedDB.deleteDatabase('hw-oplog');
+```
+
+During development you can simulate offline mode by toggling:
+
+```js
+window.__sync = { fakeOffline: true };
+```
+
+The sync banner at the top of the app shows current status and allows
+manually flushing the outbox via a “Sync Now” button.
+
 ## Goals UI
 
 Goal cards now calculate progress using saved vs target, display a computed ETA

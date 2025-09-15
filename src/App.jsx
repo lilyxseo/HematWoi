@@ -3,6 +3,7 @@ import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom"
 
 import TopBar from "./components/TopBar";
 import SettingsPanel from "./components/SettingsPanel";
+import SyncBanner from "./components/SyncBanner";
 
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
@@ -629,6 +630,7 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
+      <SyncBanner />
       <TopBar
         stats={stats}
         useCloud={useCloud}
