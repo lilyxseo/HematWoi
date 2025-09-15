@@ -4,7 +4,7 @@ import { Home, Plus, BarChart3, Settings } from "lucide-react";
 export default function BottomNav() {
   const base =
     "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs text-slate-600 dark:text-slate-300";
-  const active = "text-brand";
+  const active = "text-brand-var";
   return (
     <nav className="fixed bottom-0 inset-x-0 z-40 bg-white dark:bg-slate-900 border-t md:hidden pb-safe">
       <div className="flex">

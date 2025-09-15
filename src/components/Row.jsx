@@ -67,7 +67,7 @@ export default function Row({ item, onRemove, onUpdate }) {
       <td className="p-2 text-right">
         {edit ? (
           <div className="flex gap-1 justify-end">
-            <button className="btn bg-brand border-brand text-white" onClick={save}>
+            <button className="btn btn-primary" onClick={save}>
               Simpan
             </button>
             <button className="btn" onClick={() => setEdit(false)}>

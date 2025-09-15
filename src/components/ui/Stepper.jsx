@@ -7,7 +7,7 @@ export default function Stepper({ current = 0, steps = [] }) {
           <div
             key={s}
             className={`flex-1 text-center text-xs ${
-              i <= current ? "text-brand font-semibold" : "text-slate-500"
+              i <= current ? "text-brand-var font-semibold" : "text-slate-500"
             }`}
           >
             {s}
@@ -22,7 +22,7 @@ export default function Stepper({ current = 0, steps = [] }) {
         aria-valuemax={steps.length - 1}
       >
         <div
-          className="absolute left-0 top-0 h-2 bg-brand rounded-full"
+          className="absolute left-0 top-0 h-2 bg-brand-var rounded-full"
           style={{ width: `${percent}%` }}
         />
       </div>

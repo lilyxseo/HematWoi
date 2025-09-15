@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 import Modal from "./Modal";
+import ColorDot from "./ColorDot";
+
+const ACCENTS = {
+  blue: "#3898f8",
+  emerald: "#10b981",
+  violet: "#8b5cf6",
+  amber: "#f59e0b",
+};
 
 export default function SettingsPanel({ open, onClose, value, onChange }) {
   const [form, setForm] = useState(value);
@@ -60,6 +68,29 @@ export default function SettingsPanel({ open, onClose, value, onChange }) {
                       }
                     />
                     {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm mb-1">Accent Color</div>
+              <div className="flex gap-2">
+                {Object.entries(ACCENTS).map(([val, color]) => (
+                  <label
+                    key={val}
+                    className="flex items-center gap-1 text-sm capitalize"
+                  >
+                    <input
+                      type="radio"
+                      name="accent"
+                      value={val}
+                      checked={form.accent === val}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, accent: e.target.value }))
+                      }
+                    />
+                    <ColorDot color={color} />
+                    {val}
                   </label>
                 ))}
               </div>

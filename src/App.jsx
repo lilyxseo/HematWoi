@@ -35,6 +35,13 @@ const defaultCategories = {
   ],
 };
 
+const ACCENTS = {
+  blue: "#3898f8",
+  emerald: "#10b981",
+  violet: "#8b5cf6",
+  amber: "#f59e0b",
+};
+
 function loadInitial() {
   try {
     const raw = localStorage.getItem("hematwoi:v3");
@@ -58,7 +65,13 @@ function AppContent() {
   const [theme, setTheme] = useState(() => localStorage.getItem('hematwoi:v3:theme') || 'system');
   const [prefs, setPrefs] = useState(() => {
     const raw = localStorage.getItem('hematwoi:v3:prefs');
-    return raw ? JSON.parse(raw) : { density: 'comfortable', defaultMonth: 'current', currency: 'IDR' };
+    const base = { density: 'comfortable', defaultMonth: 'current', currency: 'IDR', accent: 'blue' };
+    if (!raw) return base;
+    try {
+      return { ...base, ...JSON.parse(raw) };
+    } catch {
+      return base;
+    }
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [useCloud, setUseCloud] = useState(false);
@@ -131,6 +144,10 @@ function AppContent() {
     root.classList.toggle('dark', isDark);
     localStorage.setItem('hematwoi:v3:theme', theme);
   }, [theme]);
+  useEffect(() => {
+    const color = ACCENTS[prefs.accent] || ACCENTS.blue;
+    document.documentElement.style.setProperty('--brand', color);
+  }, [prefs.accent]);
 
   useEffect(() => {
     localStorage.setItem('hematwoi:v3:prefs', JSON.stringify(prefs));
@@ -573,9 +590,9 @@ function AppContent() {
         onClose={() => setSettingsOpen(false)}
         value={{ theme, ...prefs }}
         onChange={(val) => {
-          const { theme: nextTheme, density, defaultMonth, currency } = val;
+          const { theme: nextTheme, density, defaultMonth, currency, accent } = val;
           setTheme(nextTheme);
-          setPrefs({ density, defaultMonth, currency });
+          setPrefs({ density, defaultMonth, currency, accent });
         }}
       />
       {!hideNav && <FAB />}
