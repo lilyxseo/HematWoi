@@ -4,11 +4,6 @@ import App from "./App";
 import "./styles/tokens.css";
 import "./styles/responsive.css";
 import "./index.css";
-import syncEngine from "./lib/sync/SyncEngine.js";
-
-syncEngine.flushQueue();
-window.addEventListener("online", () => syncEngine.flushQueue());
-setInterval(() => syncEngine.flushQueue(), 10000);
 
 createRoot(document.getElementById("root")).render(
   <BrowserRouter>
