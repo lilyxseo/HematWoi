@@ -11,7 +11,7 @@ export default function WalletPanel({ insights, showTips = true, onClose }) {
   const { balance, weeklyTrend, topSpenderCategory, tip } = insights;
   return (
     <div
-      className="absolute z-10 mt-2 right-0 w-64 rounded-lg bg-white shadow p-4 text-sm text-brand-text"
+      className="absolute z-10 mt-2 right-0 w-64 rounded-lg bg-white shadow p-4 text-sm text-text"
       role="dialog"
     >
       <button

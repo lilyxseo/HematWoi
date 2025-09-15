@@ -100,6 +100,15 @@ Dark mode is supported via the `dark` class on `<html>`, allowing a manual theme
 
 Class names are automatically sorted using `prettier-plugin-tailwindcss`. Run `pnpm lint` or your editor's format command to keep class order consistent.
 
+### Adding New Tokens
+
+Design tokens for colours, spacing and typography live in `tailwind.config.cjs` under `theme.extend`. To add a new token:
+
+1. Edit `tailwind.config.cjs` and add the value under the relevant key (e.g. `extend.colors` or `extend.spacing`).
+2. Document the token in `docs/design-tokens.md` for future reference.
+3. Use the new class in components with the standard Tailwind syntax, e.g. `bg-surface-2` or `text-brand-500`.
+
+
 ## Layout Components
 
 - **Breadcrumbs** – renders a path based on the current route.
