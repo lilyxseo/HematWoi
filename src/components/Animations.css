@@ -59,11 +59,21 @@
   transition: width 0.3s ease;
 }
 
+@keyframes slow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse-slow {
+  animation: slow-pulse 2s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade,
   .animate-slide,
   .animate-fab,
-  .confetti {
+  .confetti,
+  .animate-pulse-slow {
     animation: none;
   }
   [role='progressbar'] > div {

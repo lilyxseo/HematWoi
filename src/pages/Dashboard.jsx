@@ -14,6 +14,9 @@ import WalletAvatar from "../components/WalletAvatar";
 import WalletPanel from "../components/WalletPanel";
 import useFinanceSummary from "../hooks/useFinanceSummary";
 import useWalletStatus from "../hooks/useWalletStatus";
+import LateMonthMode from "../components/LateMonthMode";
+import useLateMonthMode from "../hooks/useLateMonthMode";
+
 
 import AvatarLevel from "../components/AvatarLevel.jsx";
 import EventBus from "../lib/eventBus";
@@ -50,6 +53,7 @@ export default function Dashboard({
 
   const finance = useFinanceSummary(txs, budgets);
   const wallet = useWalletStatus({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense, weeklyTrend: finance.weeklyTrend }, { sensitivity: prefs?.walletSensitivity });
+  const lateMode = useLateMonthMode({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense }, prefs);
   const [walletOpen, setWalletOpen] = useState(false);
 
   const summary = useMemo(() => {
@@ -124,6 +128,7 @@ export default function Dashboard({
 
   return (
     <main className="max-w-5xl mx-auto p-4 space-y-6">
+      <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
       <Summary stats={stats} />
             <div className="relative flex justify-end">
         <WalletAvatar

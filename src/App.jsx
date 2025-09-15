@@ -97,6 +97,9 @@ function AppContent() {
       walletSound: false,
       walletSensitivity: "default",
       walletShowTips: true,
+      lateMode: "auto",
+      lateModeDay: 24,
+      lateModeBalance: 0.4,
       };
     if (!raw) return base;
     try {
@@ -806,9 +809,9 @@ function AppContent() {
         onClose={() => setSettingsOpen(false)}
         value={{ theme, ...prefs }}
         onChange={(val) => {
-          const { theme: nextTheme, density, defaultMonth, currency, accent, walletSound = false, walletSensitivity = "default", walletShowTips = true } = val;
+          const { theme: nextTheme, density, defaultMonth, currency, accent, walletSound = false, walletSensitivity = "default", walletShowTips = true, lateMode = "auto", lateModeDay = 24, lateModeBalance = 0.4 } = val;
           setTheme(nextTheme);
-          setPrefs({ density, defaultMonth, currency, accent, walletSound, walletSensitivity, walletShowTips });
+          setPrefs({ density, defaultMonth, currency, accent, walletSound, walletSensitivity, walletShowTips, lateMode, lateModeDay, lateModeBalance });
         }}
       />
     </CategoryProvider>

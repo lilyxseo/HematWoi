@@ -179,6 +179,51 @@ export default function SettingsPanel({ open, onClose, value, onChange }) {
             </label>
           </div>
         </div>
+        <div>
+          <h3 className="font-semibold mb-2">Tanggal Tua Mode</h3>
+          <div className="space-y-3">
+            <label className="block text-sm">
+              <div className="mb-1">Mode</div>
+              <select
+                className="input"
+                value={form.lateMode}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, lateMode: e.target.value }))
+                }
+              >
+                <option value="auto">Auto</option>
+                <option value="on">Always On</option>
+                <option value="off">Disabled</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <div className="mb-1">Tanggal mulai</div>
+              <input
+                type="number"
+                min="1"
+                max="31"
+                className="input"
+                value={form.lateModeDay}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, lateModeDay: Number(e.target.value) }))
+                }
+              />
+            </label>
+            <label className="block text-sm">
+              <div className="mb-1">Saldo menipis &lt; % pengeluaran bulanan</div>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                className="input"
+                value={Math.round(form.lateModeBalance * 100)}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, lateModeBalance: Number(e.target.value) / 100 }))
+                }
+              />
+            </label>
+          </div>
+        </div>
         <div className="flex justify-end gap-2">
           <button className="btn" onClick={onClose}>
             Batal
