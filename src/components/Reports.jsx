@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import KPITiles from "./KPITiles";
 import HeatmapCalendar from "./HeatmapCalendar";
 import ExportReport from "./ExportReport";
+import SmartFinancialInsights from "./SmartFinancialInsights";
 import {
   ResponsiveContainer,
   PieChart,
@@ -220,6 +221,7 @@ export default function Reports({
           prevIncome={prevIncome}
           prevExpense={prevExpense}
         />
+        <SmartFinancialInsights txs={txs} />
         <HeatmapCalendar month={month} txs={txs} />
         <div className="grid gap-4 md:grid-cols-2">
           <div className="h-[260px] md:h-[300px]">
