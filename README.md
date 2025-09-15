@@ -16,17 +16,6 @@ Run unit tests with:
 pnpm test
 ```
 
-## Online-first Sync
-
-The app now writes to Supabase when online and queues operations when offline.
-Data is cached locally so reads still work without a connection. Pending
-operations are flushed automatically on reconnect. To reset all cached data and
-the offline queue, run the following in the browser console:
-
-```js
-import("./lib/sync/localdb.js").then((m) => m.clearAll());
-```
-
 ## Data Mode
 
 HematWoi now supports a cloud or local data mode. The default mode uses
