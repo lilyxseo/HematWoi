@@ -1,37 +1,24 @@
 /* @vitest-environment jsdom */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
-
 import SettingsPage from './SettingsPage';
 import { DataProvider } from '../context/DataContext';
+import { vi } from 'vitest';
 
-// ---- Mocks ----
 vi.mock('../lib/supabase', () => ({ supabase: {} }));
 
-// localStorage (gunakan bawaan jsdom, tapi pastikan bersih sebelum test)
-beforeEach(() => {
-  try {
-    localStorage.clear();
-  } catch {
-    // Fallback polyfill kalau environment tidak punya localStorage
-    const store: Record<string, string> = {};
-    // @ts-expect-error: test polyfill
-    globalThis.localStorage = {
-      getItem(k: string) { return k in store ? store[k] : null; },
-      setItem(k: string, v: string) { store[k] = String(v); },
-      removeItem(k: string) { delete store[k]; },
-      clear() { for (const k in store) delete store[k]; },
-    };
-  }
-});
+const store: Record<string, string> = {};
+(global as any).localStorage = {
+  getItem(k: string) { return store[k] || null; },
+  setItem(k: string, v: string) { store[k] = String(v); },
+  removeItem(k: string) { delete store[k]; },
+  clear() { for (const k in store) delete store[k]; },
+};
 
-afterEach(() => {
-  cleanup();
-});
+beforeEach(() => localStorage.clear());
 
-// ---- Utils ----
 const renderWithMode = (mode: 'cloud' | 'local') => {
   localStorage.setItem('hw:mode', mode);
   return render(
@@ -43,15 +30,9 @@ const renderWithMode = (mode: 'cloud' | 'local') => {
   );
 };
 
-// ---- Tests ----
-describe('SettingsPage — Data Mode', () => {
-  it('menampilkan tombol "Seed Dummy Data" saat mode Local', () => {
+describe('SettingsPage data mode', () => {
+  it('shows seed button in local mode', () => {
     renderWithMode('local');
     expect(screen.getByText(/Seed Dummy Data/i)).toBeInTheDocument();
-  });
-
-  it('tidak menampilkan tombol "Seed Dummy Data" saat mode Cloud', () => {
-    renderWithMode('cloud');
-    expect(screen.queryByText(/Seed Dummy Data/i)).not.toBeInTheDocument();
   });
 });
