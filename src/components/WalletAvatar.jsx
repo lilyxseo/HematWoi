@@ -65,7 +65,7 @@ export default function WalletAvatar({
       onClick={onClick}
       aria-label={aria}
       className={clsx(
-        "relative rounded-full flex items-center justify-center bg-brand-secondary text-brand-text transition-transform duration-300", 
+        "relative rounded-full flex items-center justify-center bg-brand-secondary text-text transition-transform duration-300",
         sizes[size],
         anim && "animate-bounce"
       )}

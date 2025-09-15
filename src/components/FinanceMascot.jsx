@@ -35,7 +35,7 @@ export default function FinanceMascot({ summary, budgets, onRefresh }) {
       <div className="relative max-w-xs">
         <div
           className={clsx(
-            "rounded-lg bg-brand-secondary text-brand-text px-3 py-2 shadow transition-all duration-300 transform",
+            "rounded-lg bg-brand-secondary text-text px-3 py-2 shadow transition-all duration-300 transform",
             visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
           )}
           aria-live="polite"
