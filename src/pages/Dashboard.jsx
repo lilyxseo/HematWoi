@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Summary from "../components/Summary";
 import DashboardCharts from "../components/DashboardCharts";
 import Reports from "../components/Reports";
@@ -10,6 +10,11 @@ import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import DailyQuote from "../components/DailyQuote";
 import FinanceMascot from "../components/FinanceMascot";
+import WalletAvatar from "../components/WalletAvatar";
+import WalletPanel from "../components/WalletPanel";
+import useFinanceSummary from "../hooks/useFinanceSummary";
+import useWalletStatus from "../hooks/useWalletStatus";
+
 import AvatarLevel from "../components/AvatarLevel.jsx";
 import EventBus from "../lib/eventBus";
 
@@ -21,6 +26,7 @@ export default function Dashboard({
   budgets,
   months = [],
   challenges = [],
+  prefs = {},
 }) {
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
@@ -41,6 +47,10 @@ export default function Dashboard({
   }, [txs]);
 
   const savingsTarget = stats?.savingsTarget || 1_000_000;
+
+  const finance = useFinanceSummary(txs, budgets);
+  const wallet = useWalletStatus({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense, weeklyTrend: finance.weeklyTrend }, { sensitivity: prefs?.walletSensitivity });
+  const [walletOpen, setWalletOpen] = useState(false);
 
   const summary = useMemo(() => {
     const today = new Date();
@@ -115,6 +125,29 @@ export default function Dashboard({
   return (
     <main className="max-w-5xl mx-auto p-4 space-y-6">
       <Summary stats={stats} />
+            <div className="relative flex justify-end">
+        <WalletAvatar
+          status={wallet.status}
+          trend={finance.weeklyTrend}
+          balance={finance.balance}
+          isOverBudget={finance.isAnyOverBudget}
+          soundEnabled={prefs?.walletSound}
+          onClick={() => setWalletOpen((o) => !o)}
+        />
+        {walletOpen && (
+          <WalletPanel
+            insights={{
+              balance: finance.balance,
+              weeklyTrend: finance.weeklyTrend,
+              topSpenderCategory: finance.topSpenderCategory,
+              tip: wallet.tip,
+            }}
+            showTips={prefs?.walletShowTips}
+            onClose={() => setWalletOpen(false)}
+          />
+        )}
+      </div>
+
       <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
       <DailyStreak streak={streak} />
         <AvatarLevel transactions={txs} challenges={challenges} />

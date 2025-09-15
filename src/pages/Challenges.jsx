@@ -3,7 +3,7 @@ import ChallengeList from "../components/ChallengeList.jsx";
 import ChallengeCreatorModal from "../components/ChallengeCreatorModal.jsx";
 import ChallengeDetail from "../components/ChallengeDetail.jsx";
 
-export default function ChallengesPage({ challenges, onAdd, onUpdate, onRemove, txs }) {
+export default function ChallengesPage({ challenges, onAdd, onUpdate, txs }) {
   const [tab, setTab] = useState("active");
   const [creatorOpen, setCreatorOpen] = useState(false);
   const [detail, setDetail] = useState(null);
