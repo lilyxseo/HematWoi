@@ -25,6 +25,7 @@ import {
 
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
+import UserProfileProvider from "./context/UserProfileContext.jsx";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
 
@@ -793,8 +794,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
+    <UserProfileProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </UserProfileProvider>
   );
 }

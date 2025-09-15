@@ -15,6 +15,7 @@
     "@dnd-kit/sortable": "^8.0.0",
     "@dnd-kit/utilities": "^3.2.1",
     "@supabase/supabase-js": "^2.57.4",
+    "canvas-confetti": "^1.9.3",
     "clsx": "^2.1.1",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
