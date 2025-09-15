@@ -24,6 +24,9 @@
     --danger: #ef4444;
     --info: #3b82f6;
     --ring: hsl(var(--brand-h) var(--brand-s) var(--brand-l));
+    --page-y: clamp(16px, 4vw, 28px);
+    --section-y: clamp(12px, 3vw, 24px);
+    --block-y: clamp(8px, 2vw, 16px);
   }
   [data-theme='dark'] {
     --bg: #0f172a;

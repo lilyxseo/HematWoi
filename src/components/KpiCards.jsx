@@ -15,7 +15,7 @@ export default function KpiCards({
   loading = false,
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-[var(--block-y)] sm:grid-cols-2 lg:grid-cols-3">
       <KpiCard
         label="Pemasukan"
         value={toRupiah(income)}

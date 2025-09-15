@@ -1,6 +1,8 @@
 import Filters from "../components/Filters";
 import TxTable from "../components/TxTable";
 import FAB from "../components/FAB";
+import Page from "../layout/Page";
+import Section from "../layout/Section";
 import PageHeader from "../layout/PageHeader";
 
 export default function Transactions({
@@ -13,16 +15,20 @@ export default function Transactions({
   onUpdate,
 }) {
   return (
-    <main className="max-w-5xl mx-auto p-4 space-y-4">
+    <Page>
       <PageHeader title="Transaksi" description="Kelola catatan keuangan" />
-      <Filters
-        months={months}
-        categories={categories}
-        filter={filter}
-        setFilter={setFilter}
-      />
-      <TxTable items={items} onRemove={onRemove} onUpdate={onUpdate} />
+      <Section first>
+        <Filters
+          months={months}
+          categories={categories}
+          filter={filter}
+          setFilter={setFilter}
+        />
+      </Section>
+      <Section>
+        <TxTable items={items} onRemove={onRemove} onUpdate={onUpdate} />
+      </Section>
       <FAB />
-    </main>
+    </Page>
   );
 }
