@@ -23,6 +23,12 @@ Supabase for persistent storage. Switch to local mode from the Settings
 page and optionally seed dummy data for quick testing. The current mode is
 stored in `localStorage` under `hw:mode`.
 
+## Goals UI
+
+Goal cards now calculate progress using saved vs target, display a computed ETA
+based on recent savings, and offer quick actions for editing, deleting and
+adding savings.
+
 ## Folder Structure
 
 ```

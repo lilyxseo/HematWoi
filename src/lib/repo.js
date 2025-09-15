@@ -17,6 +17,12 @@ export class CloudRepo {
     remove: async (id) => {
       await this.client.from('goals').delete().eq('id', id);
     },
+    addSaving: async (id, amount) => {
+      const { data } = await this.client.from('goals').select('saved').eq('id', id).single();
+      const saved = (data?.saved || 0) + amount;
+      await this.client.from('goals').update({ saved }).eq('id', id);
+      return saved;
+    },
   };
 }
 
@@ -47,11 +53,24 @@ export class LocalRepo {
       this.db.goals = this.db.goals.filter((g) => g.id !== id);
       this._save();
     },
+    addSaving: async (id, amount) => {
+      this.db.goals = this.db.goals.map((g) =>
+        g.id === id
+          ? {
+              ...g,
+              saved: (g.saved || 0) + amount,
+              history: [...(g.history || []), { amount, date: new Date().toISOString() }],
+            }
+          : g
+      );
+      this._save();
+      return this.db.goals.find((g) => g.id === id).saved;
+    },
   };
   seedDummy() {
     if (this.db.goals.length) return;
     this.db.goals = [
-      { id: crypto.randomUUID(), name: 'Dana Darurat', target: 1000000, allocated: 200000 },
+      { id: crypto.randomUUID(), name: 'Dana Darurat', target: 1000000, saved: 200000, history: [] },
     ];
     this._save();
   }

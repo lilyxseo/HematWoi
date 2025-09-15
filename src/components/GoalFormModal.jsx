@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react';
 import Modal from './Modal';
 
 export default function GoalFormModal({ open, onClose, onSave, initial }) {
-  const [form, setForm] = useState({ name: '', target: 0 });
+  const [form, setForm] = useState({ name: '', target: 0, saved: 0 });
   useEffect(() => {
     if (open) {
       setForm({
         name: initial?.name || '',
         target: initial?.target || 0,
-        allocated: initial?.allocated || 0,
+        saved: initial?.saved || 0,
       });
     }
   }, [open, initial]);

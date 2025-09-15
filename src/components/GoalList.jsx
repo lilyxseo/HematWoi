@@ -2,7 +2,7 @@ import { useState } from 'react';
 import GoalCard from './GoalCard';
 import GoalFormModal from './GoalFormModal';
 
-export default function GoalList({ goals, onAdd, onUpdate, onDelete }) {
+export default function GoalList({ goals, onAdd, onUpdate, onDelete, onQuickAdd }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
 
@@ -19,7 +19,7 @@ export default function GoalList({ goals, onAdd, onUpdate, onDelete }) {
     if (editing) {
       onUpdate(editing.id, data);
     } else {
-      onAdd({ ...data, id: crypto.randomUUID(), allocated: 0 });
+      onAdd({ ...data, id: crypto.randomUUID(), saved: 0, history: [] });
     }
     setOpen(false);
   };
@@ -40,9 +40,9 @@ export default function GoalList({ goals, onAdd, onUpdate, onDelete }) {
           </button>
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {goals.map((g) => (
-          <GoalCard key={g.id} goal={g} onEdit={startEdit} onDelete={onDelete} />
+          <GoalCard key={g.id} goal={g} onEdit={startEdit} onDelete={onDelete} onQuickAdd={onQuickAdd} />
         ))}
       </div>
       <GoalFormModal

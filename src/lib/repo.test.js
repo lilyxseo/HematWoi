@@ -21,5 +21,6 @@ describe('LocalRepo', () => {
     repo.seedDummy();
     const goals = await repo.goals.list();
     expect(goals.length).toBeGreaterThan(0);
+    expect(goals[0].saved).toBeDefined();
   });
 });

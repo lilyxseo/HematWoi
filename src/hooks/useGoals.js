@@ -24,5 +24,18 @@ export default function useGoals() {
     setGoals((g) => g.filter((it) => it.id !== id));
   }, [repo]);
 
-  return { goals, addGoal, updateGoal, deleteGoal };
+  const addSaving = useCallback(async (id, amount) => {
+    const saved = await repo.goals.addSaving(id, amount);
+    setGoals((g) => g.map((it) =>
+      it.id === id
+        ? {
+            ...it,
+            saved,
+            history: [...(it.history || []), { amount, date: new Date().toISOString() }],
+          }
+        : it
+    ));
+  }, [repo]);
+
+  return { goals, addGoal, updateGoal, deleteGoal, addSaving };
 }
