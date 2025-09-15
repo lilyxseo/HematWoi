@@ -1,38 +1,22 @@
-import { useEffect, useMemo } from "react";
-import Summary from "../components/Summary";
-import DashboardCharts from "../components/DashboardCharts";
-import Reports from "../components/Reports";
-import QuickActions from "../components/QuickActions";
-import RecentTransactions from "../components/RecentTransactions";
-import SmartFinancialInsights from "../components/SmartFinancialInsights";
-import DailyStreak from "../components/DailyStreak";
+import { useMemo } from "react";
+import Page from "../layout/Page";
+import PageHeader from "../layout/PageHeader";
+import Section from "../layout/Section";
+import KpiCards from "../components/KpiCards";
+import QuoteBubble from "../components/QuoteBubble";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
-import QuoteBubble from "../components/QuoteBubble";
-import PageHeader from "../layout/PageHeader";
-import useFinanceSummary from "../hooks/useFinanceSummary";
-import LateMonthMode from "../components/LateMonthMode";
-import useLateMonthMode from "../hooks/useLateMonthMode";
-import KpiCards from "../components/KpiCards";
+import QuickActions from "../components/QuickActions";
 import SectionHeader from "../components/SectionHeader";
 import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
 import TopSpendsTable from "../components/TopSpendsTable";
+import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
-
-
 import EventBus from "../lib/eventBus";
-import { useMoneyTalk } from "../context/MoneyTalkContext.jsx";
 
-
-export default function Dashboard({
-  stats,
-  monthForReport,
-  txs,
-  budgets,
-  months = [],
-  prefs = {},
-}) {
+// Each content block uses <Section> to maintain a single vertical rhythm.
+export default function Dashboard({ stats, txs }) {
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
     let count = 0;
@@ -51,66 +35,56 @@ export default function Dashboard({
     return count;
   }, [txs]);
 
+  const insights = useInsights(txs);
   const savingsTarget = stats?.savingsTarget || 1_000_000;
 
-  const finance = useFinanceSummary(txs, budgets);
-  const lateMode = useLateMonthMode({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense }, prefs);
-  const { speak } = useMoneyTalk();
-  const insights = useInsights(txs);
-  
-  
-  useEffect(() => {
-    if (finance.isAnyOverBudget) {
-      speak({
-        category: finance.topSpenderCategory || "Belanja",
-        amount: 0,
-        context: { isOverBudget: true },
-      });
-    }
-  }, [finance.isAnyOverBudget, finance.topSpenderCategory, speak]);
-
   return (
-    <main className="max-w-5xl mx-auto p-4 space-y-6">
+    <Page>
       <PageHeader title="Dashboard" description="Ringkasan keuanganmu" />
-      <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
-      <Reports
-        month={monthForReport}
-        months={months}
-        txs={txs}
-        budgets={budgets}
-        comparePrevEnabled={false}
-      />
-      <DailyStreak streak={streak} />
-      <QuoteBubble />
-      <SmartFinancialInsights txs={txs} />
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-12">
-        <div className="lg:col-span-7">
-          <SavingsProgress
-            current={stats?.balance || 0}
-            target={savingsTarget}
-          />
+      <Section first>
+        <KpiCards
+          income={stats?.income || 0}
+          expense={stats?.expense || 0}
+          net={stats?.balance || 0}
+        />
+      </Section>
+      <Section>
+        <QuoteBubble />
+      </Section>
+      <Section>
+        <div className="grid gap-[var(--block-y)] md:grid-cols-2 lg:grid-cols-12">
+          <div className="lg:col-span-7">
+            <SavingsProgress
+              current={stats?.balance || 0}
+              target={savingsTarget}
+            />
+          </div>
+          <div className="lg:col-span-5">
+            <AchievementBadges
+              stats={stats}
+              streak={streak}
+              target={savingsTarget}
+            />
+          </div>
         </div>
-        <div className="lg:col-span-5">
-          <AchievementBadges
-            stats={stats}
-            streak={streak}
-            target={savingsTarget}
-          />
+      </Section>
+      <Section>
+        <QuickActions />
+      </Section>
+      <Section>
+        <SectionHeader title="Analisis Bulanan" />
+        <div className="grid gap-[var(--block-y)] md:grid-cols-2">
+          <MonthlyTrendChart data={insights.trend} />
+          <CategoryDonut data={insights.categories} />
         </div>
-      </div>
-      <QuickActions />
-      <SectionHeader title="Analisis Bulanan" />
-      <div className="grid gap-4 md:grid-cols-2">
-        <MonthlyTrendChart data={insights.trend} />
-        <CategoryDonut data={insights.categories} />
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-      <TopSpendsTable
-        data={insights.topSpends}
-        onSelect={(t) => EventBus.emit("tx:open", t)}
-      />
-        <RecentTransactions txs={txs} />
-      </div>
-    </main>
+        <div className="grid gap-[var(--block-y)] md:grid-cols-2">
+          <TopSpendsTable
+            data={insights.topSpends}
+            onSelect={(t) => EventBus.emit("tx:open", t)}
+          />
+          <RecentTransactions txs={txs} />
+        </div>
+      </Section>
+    </Page>
   );
 }

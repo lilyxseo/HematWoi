@@ -2,7 +2,7 @@ import Breadcrumbs from "./Breadcrumbs";
 
 export default function PageHeader({ title, description, children }) {
   return (
-    <div className="mb-6">
+    <div className="mb-[var(--section-y)]">
       <Breadcrumbs />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
