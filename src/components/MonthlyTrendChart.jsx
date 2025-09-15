@@ -21,14 +21,14 @@ export default function MonthlyTrendChart({ data = [] }) {
   };
 
   return (
-    <div className="card h-[260px]">
+    <div className="card aspect-video min-h-[200px]">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="month" />
-          <YAxis />
+          <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)' }} stroke="var(--text-muted)" />
+          <YAxis tick={{ fill: 'var(--text-muted)' }} stroke="var(--text-muted)" />
           <Tooltip content={renderTooltip} />
-          <Line type="monotone" dataKey="net" stroke="#3898f8" />
+          <Line type="monotone" dataKey="net" stroke="hsl(var(--brand-h) var(--brand-s) var(--brand-l))" />
         </LineChart>
       </ResponsiveContainer>
     </div>
