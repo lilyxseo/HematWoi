@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { Routes, Route, Link, useNavigate } from "react-router-dom";
+import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
 import TopBar from "./components/TopBar";
 import Modal from "./components/Modal";
 import ManageCategories from "./components/ManageCategories";
 import SettingsPanel from "./components/SettingsPanel";
 import Dashboard from "./pages/Dashboard";
 import AddWizard from "./pages/AddWizard";
+import BottomNav from "./components/BottomNav";
+import FAB from "./components/FAB";
 import { supabase } from "./lib/supabase";
 import {
   listTransactions,
@@ -73,6 +75,8 @@ function AppContent() {
 
   const { addToast } = useToast();
   const navigate = useNavigate();
+  const location = useLocation();
+  const hideNav = location.pathname.startsWith("/add");
 
   useEffect(() => {
     try {
@@ -515,7 +519,7 @@ function AppContent() {
   return (
     <CategoryProvider catMeta={catMeta}>
       <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
-      <nav className="max-w-5xl mx-auto px-4 flex gap-2 pb-2 text-sm">
+      <nav className="max-w-5xl mx-auto px-4 gap-2 pb-2 text-sm hidden md:flex">
         <Link to="/" className="btn">
           Dashboard
         </Link>
@@ -574,6 +578,8 @@ function AppContent() {
           setPrefs({ density, defaultMonth, currency });
         }}
       />
+      {!hideNav && <FAB />}
+      {!hideNav && <BottomNav />}
     </CategoryProvider>
   );
 }
