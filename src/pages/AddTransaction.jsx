@@ -17,9 +17,11 @@ import Textarea from '../components/ui/Textarea';
 export default function AddTransaction() {
   const [mode, setMode] = useState(() => localStorage.getItem('add_mode') || 'expense');
   const [advanced, setAdvanced] = useState(() => localStorage.getItem('add_advanced') === 'true');
+
   useEffect(() => {
     localStorage.setItem('add_mode', mode);
   }, [mode]);
+
   useEffect(() => {
     localStorage.setItem('add_advanced', advanced ? 'true' : 'false');
   }, [advanced]);
@@ -111,4 +113,3 @@ function AdvancedForm() {
     </form>
   );
 }
-
