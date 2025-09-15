@@ -20,6 +20,7 @@ export default function Dashboard({
   txs,
   budgets,
   months = [],
+  challenges = [],
 }) {
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
@@ -116,7 +117,7 @@ export default function Dashboard({
       <Summary stats={stats} />
       <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
       <DailyStreak streak={streak} />
-      <AvatarLevel transactions={txs} />
+        <AvatarLevel transactions={txs} challenges={challenges} />
       <button
         type="button"
         onClick={() => EventBus.emit("xp:add", { code: "demo", amount: 10 })}
