@@ -818,7 +818,10 @@ function AppShell({ prefs, setPrefs }) {
               }
             />
             <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
+            <Route
+              path="/profile"
+              element={<ProfilePage transactions={data.txs} challenges={challenges} />}
+            />
           </Route>
         </Routes>
       </main>
