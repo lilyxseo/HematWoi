@@ -31,6 +31,7 @@ import ToastProvider, { useToast } from "./context/ToastContext";
 import UserProfileProvider from "./context/UserProfileContext.jsx";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
+import MoneyTalkProvider, { useMoneyTalk } from "./context/MoneyTalkContext.jsx";
 
 
 const uid = () =>
@@ -43,6 +44,7 @@ const defaultCategories = {
     "Transport",
     "Belanja",
     "Tagihan",
+    "Tabungan",
     "Kesehatan",
     "Hiburan",
     "Lainnya",
@@ -74,7 +76,7 @@ function loadInitial() {
   }
 }
 
-function AppContent() {
+function AppShell({ prefs, setPrefs }) {
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({
     type: "all",
@@ -87,27 +89,6 @@ function AppContent() {
   const [theme, setTheme] = useState(
     () => localStorage.getItem("hematwoi:v3:theme") || "system"
   );
-  const [prefs, setPrefs] = useState(() => {
-    const raw = localStorage.getItem("hematwoi:v3:prefs");
-    const base = {
-      density: "comfortable",
-      defaultMonth: "current",
-      currency: "IDR",
-      accent: "blue",
-      walletSound: false,
-      walletSensitivity: "default",
-      walletShowTips: true,
-      lateMode: "auto",
-      lateModeDay: 24,
-      lateModeBalance: 0.4,
-      };
-    if (!raw) return base;
-    try {
-      return { ...base, ...JSON.parse(raw) };
-    } catch {
-      return base;
-    }
-  });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
@@ -141,6 +122,7 @@ function AppContent() {
   const { addToast } = useToast();
   const { challenges, addChallenge, updateChallenge, removeChallenge } =
     useChallenges(data.txs);
+  const { speak } = useMoneyTalk();
   window.__hw_prefs = prefs;
 
   const navigate = useNavigate();
@@ -310,6 +292,42 @@ function AppContent() {
     }
   }
 
+  const triggerMoneyTalk = (tx) => {
+    const category = tx.category;
+    const amount = Number(tx.amount || 0);
+    const isSavings = (category || "").toLowerCase() === "tabungan";
+    const catTx = data.txs.filter(
+      (t) => t.category === category && t.type === tx.type
+    );
+    const amounts = catTx
+      .map((t) => Number(t.amount || 0))
+      .sort((a, b) => a - b);
+    const p75 =
+      amounts.length > 0
+        ? amounts[Math.floor(0.75 * (amounts.length - 1))]
+        : 0;
+    const isHigh = amount > p75;
+    const month = tx.date?.slice(0, 7);
+    const budget = data.budgets.find(
+      (b) => b.category === category && b.month === month
+    );
+    let spent = data.txs
+      .filter(
+        (t) =>
+          t.type === "expense" &&
+          t.category === category &&
+          t.date?.slice(0, 7) === month
+      )
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+    if (tx.type === "expense") spent += amount;
+    const isOverBudget = budget ? spent > Number(budget.amount || 0) : false;
+    speak({
+      category,
+      amount,
+      context: { isHigh, isSavings, isOverBudget },
+    });
+  };
+
   const addTx = async (tx) => {
     if (useCloud && sessionUser) {
       try {
@@ -352,6 +370,7 @@ function AppContent() {
       });
     }
     if (prefs.walletSound) playChaChing();
+    triggerMoneyTalk(tx);
   };
 
   const addGoal = (goal) => {
@@ -604,6 +623,7 @@ function AppContent() {
       }
 
       if (txs.length) {
+        txs.forEach(triggerMoneyTalk);
         setData((d) => ({ ...d, txs: [...txs, ...d.txs] }));
       }
     };
@@ -809,12 +829,73 @@ function AppContent() {
         onClose={() => setSettingsOpen(false)}
         value={{ theme, ...prefs }}
         onChange={(val) => {
-          const { theme: nextTheme, density, defaultMonth, currency, accent, walletSound = false, walletSensitivity = "default", walletShowTips = true, lateMode = "auto", lateModeDay = 24, lateModeBalance = 0.4 } = val;
+          const {
+            theme: nextTheme,
+            density,
+            defaultMonth,
+            currency,
+            accent,
+            walletSound = false,
+            walletSensitivity = "default",
+            walletShowTips = true,
+            lateMode = "auto",
+            lateModeDay = 24,
+            lateModeBalance = 0.4,
+            moneyTalkEnabled = true,
+            moneyTalkIntensity = "normal",
+            moneyTalkLang = "id",
+          } = val;
           setTheme(nextTheme);
-          setPrefs({ density, defaultMonth, currency, accent, walletSound, walletSensitivity, walletShowTips, lateMode, lateModeDay, lateModeBalance });
+          setPrefs({
+            density,
+            defaultMonth,
+            currency,
+            accent,
+            walletSound,
+            walletSensitivity,
+            walletShowTips,
+            lateMode,
+            lateModeDay,
+            lateModeBalance,
+            moneyTalkEnabled,
+            moneyTalkIntensity,
+            moneyTalkLang,
+          });
         }}
       />
     </CategoryProvider>
+  );
+}
+
+function AppContent() {
+  const [prefs, setPrefs] = useState(() => {
+    const raw = localStorage.getItem("hematwoi:v3:prefs");
+    const base = {
+      density: "comfortable",
+      defaultMonth: "current",
+      currency: "IDR",
+      accent: "blue",
+      walletSound: false,
+      walletSensitivity: "default",
+      walletShowTips: true,
+      lateMode: "auto",
+      lateModeDay: 24,
+      lateModeBalance: 0.4,
+      moneyTalkEnabled: true,
+      moneyTalkIntensity: "normal",
+      moneyTalkLang: "id",
+    };
+    if (!raw) return base;
+    try {
+      return { ...base, ...JSON.parse(raw) };
+    } catch {
+      return base;
+    }
+  });
+  return (
+    <MoneyTalkProvider prefs={prefs}>
+      <AppShell prefs={prefs} setPrefs={setPrefs} />
+    </MoneyTalkProvider>
   );
 }
 
