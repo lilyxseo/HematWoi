@@ -10,6 +10,8 @@ import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import DailyQuote from "../components/DailyQuote";
 import FinanceMascot from "../components/FinanceMascot";
+import AvatarLevel from "../components/AvatarLevel.jsx";
+import EventBus from "../lib/eventBus";
 
 
 export default function Dashboard({
@@ -114,6 +116,14 @@ export default function Dashboard({
       <Summary stats={stats} />
       <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
       <DailyStreak streak={streak} />
+      <AvatarLevel transactions={txs} />
+      <button
+        type="button"
+        onClick={() => EventBus.emit("xp:add", { code: "demo", amount: 10 })}
+        className="px-2 py-1 text-xs bg-emerald-500 text-white rounded"
+      >
+        +10 XP Demo
+      </button>
       <DailyQuote />
       <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
       <AchievementBadges stats={stats} streak={streak} target={savingsTarget} />
