@@ -27,10 +27,6 @@
     --page-y: clamp(16px, 4vw, 28px);
     --section-y: clamp(12px, 3vw, 24px);
     --block-y: clamp(8px, 2vw, 16px);
-    --nav-w: 17rem;
-    --nav-w-mini: 4rem;
-    --nav-z: 30;
-    --content-max: 80rem;
   }
   [data-theme='dark'] {
     --bg: #0f172a;
@@ -45,23 +41,7 @@
     --brand-soft: hsl(var(--brand-h) var(--brand-s) 20%);
     --brand-ring: hsl(var(--brand-h) var(--brand-s) 70%);
   }
-  body {
-    @apply bg-bg text-text transition-colors duration-300;
-    height: 100vh;
-    height: 100dvh;
-    overflow: hidden;
-  }
-  body[data-nav='full'] { --sidebar-w: var(--nav-w); }
-  body[data-nav='mini'] { --sidebar-w: var(--nav-w-mini); }
-  #main {
-    height: 100vh;
-    height: 100dvh;
-    overflow-y: auto;
-    max-width: var(--content-max);
-  }
-  @media (min-width: 768px) {
-    #main { margin-left: var(--sidebar-w); }
-  }
+  body { @apply bg-bg text-text transition-colors duration-300; }
   h1, h2, h3, h4, h5, h6 { @apply font-semibold; }
 }
 
