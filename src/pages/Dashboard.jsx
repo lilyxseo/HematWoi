@@ -75,11 +75,10 @@ export default function Dashboard({
       <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
       <Summary stats={stats} />
       <DailyStreak streak={streak} />
-      <KpiCards {...insights.kpis} />
       <QuoteBubble />
+      <SmartFinancialInsights txs={txs} />
       <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
       <AchievementBadges stats={stats} streak={streak} target={savingsTarget} />
-      <SmartFinancialInsights txs={txs} />
       <QuickActions />
       <SectionHeader title="Analisis Bulanan" />
       <div className="grid gap-4 md:grid-cols-2">

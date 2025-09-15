@@ -54,10 +54,6 @@ export default function SmartFinancialInsights({ txs = [] }) {
     return Math.round(avg);
   }, [monthlyTotals]);
 
-  const chartData = useMemo(
-    () => monthlyTotals.slice(-6).map((d) => ({ month: d.month, expense: d.total })),
-    [monthlyTotals]
-  );
 
   const weekly = useMemo(() => {
     const now = new Date();
@@ -146,28 +142,6 @@ export default function SmartFinancialInsights({ txs = [] }) {
               : "Belum ada data"
           }
         />
-      </div>
-      <div className="card h-64">
-        {chartData.length ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="month" />
-              <YAxis />
-              <Tooltip formatter={(v) => toRupiah(v)} />
-              <Line
-                type="monotone"
-                dataKey="expense"
-                stroke="#3898f8"
-                strokeWidth={2}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm">
-            Belum ada data.
-          </div>
-        )}
       </div>
     </div>
   );
