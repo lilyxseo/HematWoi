@@ -18,7 +18,7 @@ export default function Reports() {
         <div className="text-sm">No reports available.</div>
       )}
       {error && (
-        <div role="alert" className="text-red-600 text-sm">
+        <div role="alert" className="text-danger text-sm">
           {error}
         </div>
       )}

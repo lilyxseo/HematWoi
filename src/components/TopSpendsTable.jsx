@@ -40,12 +40,12 @@ export default function TopSpendsTable({ data = [], onSelect }) {
             {sorted.map((t) => (
               <tr
                 key={t.id}
-                className="cursor-pointer hover:bg-slate-50"
+                className="cursor-pointer hover:bg-surface-2"
                 onClick={() => onSelect && onSelect(t)}
               >
                 <td className="p-2">{t.note || t.category || "-"}</td>
                 <td className="p-2">{t.date}</td>
-                <td className="p-2 text-right text-red-600">
+                <td className="p-2 text-right text-danger">
                   {toRupiah(t.amount)}
                 </td>
               </tr>

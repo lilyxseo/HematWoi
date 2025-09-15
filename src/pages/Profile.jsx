@@ -16,7 +16,7 @@ export default function ProfilePage({ transactions = [], challenges = [] }) {
       <button
         type="button"
         onClick={() => EventBus.emit('xp:add', { code: 'demo', amount: 10 })}
-        className="px-2 py-1 text-xs bg-emerald-500 text-white rounded"
+        className="px-2 py-1 text-xs bg-success text-white rounded"
       >
         +10 XP Demo
       </button>

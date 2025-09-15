@@ -11,13 +11,13 @@ export default function Summary({ stats }) {
     <div className="grid gap-4 sm:grid-cols-3">
       <div className="card text-center">
         <div className="text-sm">Pemasukan</div>
-        <div className="text-lg font-semibold text-green-600">
+        <div className="text-lg font-semibold text-success">
           {toRupiah(stats?.income || 0)}
         </div>
       </div>
       <div className="card text-center">
         <div className="text-sm">Pengeluaran</div>
-        <div className="text-lg font-semibold text-red-600">
+        <div className="text-lg font-semibold text-danger">
           {toRupiah(stats?.expense || 0)}
         </div>
       </div>

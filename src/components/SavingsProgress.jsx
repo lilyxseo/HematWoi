@@ -29,7 +29,7 @@ export default function SavingsProgress({ current = 0, target = 0 }) {
     return (
       <div className="card animate-slide">
         <h2 className="font-semibold">Progress Tabungan</h2>
-        <p className="text-sm text-slate-500">Belum ada target tabungan</p>
+        <p className="text-sm text-muted">Belum ada target tabungan</p>
       </div>
     );
   }
@@ -39,20 +39,20 @@ export default function SavingsProgress({ current = 0, target = 0 }) {
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">Progress Tabungan</h2>
         {achieved && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/20 dark:text-green-400">
+          <span className="inline-flex items-center gap-1 rounded-full bg-success/20 px-2 py-0.5 text-xs font-medium text-success">
             <CheckCircle className="h-4 w-4" /> Milestone tercapai!
           </span>
         )}
       </div>
-      <div className="mb-2 text-sm text-slate-500">
+      <div className="mb-2 text-sm text-muted">
         Rp {current.toLocaleString("id-ID")} / Rp {target.toLocaleString("id-ID")}
       </div>
       <div
-        className="h-3 w-full rounded bg-slate-200 dark:bg-slate-700"
+        className="h-3 w-full rounded bg-surface-2"
         role="progressbar"
       >
         <div
-          className="h-3 rounded bg-green-500"
+          className="h-3 rounded bg-success"
           style={{ width: `${Math.min(progress, 1) * 100}%` }}
         />
       </div>

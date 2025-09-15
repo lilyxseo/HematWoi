@@ -82,7 +82,7 @@ export default function DashboardCharts({ month, txs = [] }) {
     if (!payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="rounded-lg bg-white p-2 text-xs shadow">
+      <div className="rounded-lg bg-surface-1 border border-border p-2 text-xs shadow">
         {p.name}: {toRupiah(p.value)}
       </div>
     );
@@ -91,12 +91,12 @@ export default function DashboardCharts({ month, txs = [] }) {
   const renderAreaTooltip = ({ payload, label }) => {
     if (!payload?.length) return null;
     return (
-      <div className="rounded-lg bg-white p-2 text-xs shadow">
+      <div className="rounded-lg bg-surface-1 border border-border p-2 text-xs shadow">
         <div>Hari {label}</div>
         {payload.map((p) => (
           <div
             key={p.dataKey}
-            className={p.dataKey === "income" ? "text-green-600" : "text-red-600"}
+            className={p.dataKey === "income" ? "text-success" : "text-danger"}
           >
             {p.name}: {toRupiah(p.value)}
           </div>
@@ -109,7 +109,7 @@ export default function DashboardCharts({ month, txs = [] }) {
     if (!payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="rounded-lg bg-white p-2 text-xs shadow">
+      <div className="rounded-lg bg-surface-1 border border-border p-2 text-xs shadow">
         {p.payload.name}: {toRupiah(p.value)}
       </div>
     );

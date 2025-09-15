@@ -20,8 +20,8 @@ export default function ChallengeDetail({ challenge, txs = [], onClose }) {
       </button>
       <h2 className="text-lg font-semibold">{challenge.title}</h2>
       <p className="text-sm">Status: {status}</p>
-      <div className="w-full bg-gray-200 rounded h-2">
-        <div className="bg-emerald-500 h-2 rounded" style={{ width: `${percent}%` }} />
+      <div className="w-full bg-surface-2 rounded h-2">
+        <div className="bg-success h-2 rounded" style={{ width: `${percent}%` }} />
       </div>
       <div>
         <h3 className="font-semibold">Log</h3>

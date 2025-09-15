@@ -14,11 +14,11 @@ export default function SubscriptionList({ items = [], onEdit, onDelete }) {
           <div key={s.id} className="card p-3 flex justify-between items-start">
             <div className="space-y-1">
               <div className="font-semibold">{s.name}</div>
-              <div className="text-xs text-slate-500">
+              <div className="text-xs text-muted">
                 Rp {fmt.format(s.amount)} - {s.category}
               </div>
               <div className="text-xs flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700">
+                <span className="px-2 py-0.5 rounded bg-surface-2">
                   {s.period === 'monthly' ? 'Bulanan' : 'Tahunan'}
                 </span>
                 <span>Jatuh tempo {due.toLocaleDateString('id-ID')}</span>

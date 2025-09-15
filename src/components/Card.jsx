@@ -34,7 +34,7 @@ export function CardFooter({ className = "", children }) {
   return (
     <div
       className={clsx(
-        "mt-4 border-t border-slate-200 pt-4 dark:border-slate-700",
+        "mt-4 border-t border-border pt-4",
         className
       )}
     >

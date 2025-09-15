@@ -10,7 +10,7 @@ export default function Select({ label, options = [], value, onChange, placehold
         value={value}
         onChange={onChange}
         {...props}
-        className="w-full rounded-xl border border-slate-300 bg-white dark:bg-slate-900 px-3 py-2 focus:outline-none focus:ring-2"
+        className="w-full rounded-xl border border-border bg-surface-1 px-3 py-2 text-text focus:outline-none focus:ring-2"
         style={{ '--tw-ring-color': 'var(--brand)' }}
         >
         <option value="" disabled>

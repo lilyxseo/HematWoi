@@ -32,8 +32,8 @@ export default function SignIn({ open, onClose }) {
 
   return (
     <Modal open={open} title="Masuk HematWoi" onClose={onClose}>
-      {message && <p className="text-green-600 text-sm mb-2">{message}</p>}
-      {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
+      {message && <p className="text-success text-sm mb-2">{message}</p>}
+      {error && <p className="text-danger text-sm mb-2">{error}</p>}
       <form onSubmit={handleSubmit} className="space-y-2">
         <input
           type="email"

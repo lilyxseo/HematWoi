@@ -56,13 +56,13 @@ export default function AuthPage() {
     <div className="max-w-md mx-auto p-4 space-y-4">
       <div className="flex gap-2">
         <button
-          className={`flex-1 py-2 ${tab === 'login' ? 'bg-brand text-white' : 'border'}`}
+          className={`flex-1 py-2 rounded ${tab === 'login' ? 'bg-brand text-brand-foreground' : 'border border-border bg-surface-2'}`}
           onClick={() => setTab('login')}
         >
           Login
         </button>
         <button
-          className={`flex-1 py-2 ${tab === 'register' ? 'bg-brand text-white' : 'border'}`}
+          className={`flex-1 py-2 rounded ${tab === 'register' ? 'bg-brand text-brand-foreground' : 'border border-border bg-surface-2'}`}
           onClick={() => setTab('register')}
         >
           Register
@@ -72,7 +72,7 @@ export default function AuthPage() {
         <form onSubmit={handleLogin} className="space-y-3">
           <input
             type="email"
-            className="w-full p-2 border rounded"
+            className="input"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -80,7 +80,7 @@ export default function AuthPage() {
           />
           <input
             type="password"
-            className="w-full p-2 border rounded"
+            className="input"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -98,7 +98,7 @@ export default function AuthPage() {
       {tab === 'register' && (
         <form onSubmit={handleRegister} className="space-y-3">
           <input
-            className="w-full p-2 border rounded"
+            className="input"
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -106,7 +106,7 @@ export default function AuthPage() {
           />
           <input
             type="email"
-            className="w-full p-2 border rounded"
+            className="input"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -114,7 +114,7 @@ export default function AuthPage() {
           />
           <input
             type="password"
-            className="w-full p-2 border rounded"
+            className="input"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -123,7 +123,7 @@ export default function AuthPage() {
           />
           <input
             type="password"
-            className="w-full p-2 border rounded"
+            className="input"
             placeholder="Confirm Password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
@@ -138,7 +138,7 @@ export default function AuthPage() {
           </button>
         </form>
       )}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 }

@@ -127,7 +127,7 @@ export default function BudgetSection({
         <h2 className="font-semibold mb-2">Daftar Budget</h2>
 
         {!list.length && (
-          <div className="text-sm text-slate-500">
+          <div className="text-sm text-muted">
             Belum ada budget bulan ini.
           </div>
         )}
@@ -140,9 +140,9 @@ export default function BudgetSection({
               cap <= 0 ? 0 : Math.min(100, Math.round((used / cap) * 100));
             const color =
               pct >= 100
-                ? "bg-red-500"
+                ? "bg-danger"
                 : pct >= 80
-                ? "bg-yellow-400"
+                ? "bg-warning"
                 : "bg-brand-var";
 
             return (
@@ -154,7 +154,7 @@ export default function BudgetSection({
                   </span>
                 </div>
 
-                <div className="h-2 w-full rounded-full bg-slate-200">
+                <div className="h-2 w-full rounded-full bg-surface-2">
                   <div
                     className={`h-2 rounded-full ${color}`}
                     style={{ width: `${pct}%` }}

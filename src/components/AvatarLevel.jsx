@@ -49,11 +49,11 @@ export default function AvatarLevel({ transactions, insights, challenges }) {
         aria-valuenow={progress}
         aria-valuemin={0}
         aria-valuemax={needed}
-        className="w-full bg-gray-200 rounded h-2"
+        className="w-full bg-surface-2 rounded h-2"
         title="Dapatkan XP: transaksi harian (+5), hemat mingguan \u2265 10% (+20), selesaikan challenge (+50)"
       >
         <div
-          className="bg-emerald-500 h-2 rounded"
+          className="bg-success h-2 rounded"
           style={{ width: `${percent}%` }}
         />
       </div>

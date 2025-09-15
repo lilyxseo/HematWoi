@@ -88,7 +88,7 @@ export default function Row({ item, onRemove, onUpdate }) {
       </td>
       <td
         className={`p-2 text-right ${
-          item.type === "income" ? "text-green-600" : "text-red-600"
+          item.type === "income" ? "text-success" : "text-danger"
         }`}
       >
         {edit ? (
@@ -148,7 +148,7 @@ export default function Row({ item, onRemove, onUpdate }) {
       </td>
       <td className="absolute inset-y-0 right-0 flex items-center pr-2 md:hidden">
         <button
-          className="btn bg-red-500 text-white"
+          className="btn bg-danger text-white"
           onClick={() => {
             onRemove(item.id);
             resetSwipe();

@@ -43,7 +43,7 @@ export default function TxTable({ items = [], onRemove, onUpdate }) {
       <CategoryDock />
       <div className="table-wrap overflow-auto">
         <table className={`min-w-full text-sm ${density === "compact" ? "table-compact" : ""}`}>
-          <thead className="bg-white md:sticky md:top-0">
+          <thead className="bg-surface-1 md:sticky md:top-0">
             <tr className="text-left">
               <th className="p-2">Kategori</th>
               <th className="p-2">Tanggal</th>

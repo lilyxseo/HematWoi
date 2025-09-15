@@ -41,7 +41,7 @@ export default function RecentTransactions({ txs = [] }) {
         />
       </div>
       {!filtered.length && (
-        <div className="text-sm text-slate-500">Belum ada transaksi.</div>
+        <div className="text-sm text-muted">Belum ada transaksi.</div>
       )}
       <ul className="space-y-2">
         {filtered.map((t) => (
@@ -49,7 +49,7 @@ export default function RecentTransactions({ txs = [] }) {
             <span>{t.note || t.category}</span>
             <span
               className={
-                t.type === "income" ? "text-green-600" : "text-red-600"
+                t.type === "income" ? "text-success" : "text-danger"
               }
             >
               {formatCurrency(t.amount)}

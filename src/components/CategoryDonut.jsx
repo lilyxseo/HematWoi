@@ -15,7 +15,7 @@ export default function CategoryDonut({ data = [] }) {
     if (!payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="rounded bg-white p-2 text-xs shadow">
+      <div className="rounded bg-surface-1 border border-border p-2 text-xs shadow">
         {p.name}: {toRupiah(p.value)}
       </div>
     );
@@ -36,7 +36,7 @@ export default function CategoryDonut({ data = [] }) {
           </PieChart>
         </ResponsiveContainer>
       ) : (
-        <div className="flex h-full items-center justify-center text-sm text-slate-500">
+        <div className="flex h-full items-center justify-center text-sm text-muted">
           Tidak ada data
         </div>
       )}

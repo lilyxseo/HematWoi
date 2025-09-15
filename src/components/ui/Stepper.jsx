@@ -7,7 +7,7 @@ export default function Stepper({ current = 0, steps = [] }) {
           <div
             key={s}
             className={`flex-1 text-center text-xs ${
-              i <= current ? "text-brand-var font-semibold" : "text-slate-500"
+              i <= current ? "text-brand-var font-semibold" : "text-muted"
             }`}
           >
             {s}
@@ -15,7 +15,7 @@ export default function Stepper({ current = 0, steps = [] }) {
         ))}
       </div>
       <div
-        className="relative h-2 bg-slate-200 rounded-full dark:bg-slate-700"
+        className="relative h-2 bg-surface-2 rounded-full"
         role="progressbar"
         aria-valuenow={current}
         aria-valuemin={0}

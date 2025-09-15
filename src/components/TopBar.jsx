@@ -72,7 +72,7 @@ export default function TopBar({
     <header className="relative">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only absolute left-2 top-2 z-50 bg-white text-blue-600 px-3 py-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+        className="sr-only focus:not-sr-only absolute left-2 top-2 z-50 bg-surface-1 text-brand px-3 py-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-ring"
       >
         Lewati ke konten
       </a>
