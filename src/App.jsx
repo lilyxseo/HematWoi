@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  Link,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 
 import TopBar from "./components/TopBar";
 import SettingsPanel from "./components/SettingsPanel";
@@ -37,8 +43,9 @@ import ToastProvider, { useToast } from "./context/ToastContext";
 import UserProfileProvider from "./context/UserProfileContext.jsx";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
-import MoneyTalkProvider, { useMoneyTalk } from "./context/MoneyTalkContext.jsx";
-
+import MoneyTalkProvider, {
+  useMoneyTalk,
+} from "./context/MoneyTalkContext.jsx";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -68,7 +75,13 @@ function loadInitial() {
   try {
     const raw = localStorage.getItem("hematwoi:v3");
     if (!raw)
-      return { txs: [], cat: defaultCategories, budgets: [], goals: [], envelopes: [] };
+      return {
+        txs: [],
+        cat: defaultCategories,
+        budgets: [],
+        goals: [],
+        envelopes: [],
+      };
     const parsed = JSON.parse(raw);
     return {
       txs: parsed.txs || [],
@@ -78,7 +91,13 @@ function loadInitial() {
       envelopes: parsed.envelopes || [],
     };
   } catch {
-    return { txs: [], cat: defaultCategories, budgets: [], goals: [], envelopes: [] };
+    return {
+      txs: [],
+      cat: defaultCategories,
+      budgets: [],
+      goals: [],
+      envelopes: [],
+    };
   }
 }
 
@@ -136,7 +155,9 @@ function AppShell({ prefs, setPrefs }) {
   const hideNav = location.pathname.startsWith("/add");
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setSessionUser(data.user ?? null));
+    supabase.auth
+      .getUser()
+      .then(({ data }) => setSessionUser(data.user ?? null));
     const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) => {
       setSessionUser(session?.user ?? null);
     });
@@ -309,9 +330,7 @@ function AppShell({ prefs, setPrefs }) {
       .map((t) => Number(t.amount || 0))
       .sort((a, b) => a - b);
     const p75 =
-      amounts.length > 0
-        ? amounts[Math.floor(0.75 * (amounts.length - 1))]
-        : 0;
+      amounts.length > 0 ? amounts[Math.floor(0.75 * (amounts.length - 1))] : 0;
     const isHigh = amount > p75;
     const month = tx.date?.slice(0, 7);
     const budget = data.budgets.find(
@@ -349,7 +368,12 @@ function AppShell({ prefs, setPrefs }) {
           let goals = d.goals;
           let envelopes = d.envelopes;
           if (tx.type === "income") {
-            const alloc = allocateIncome(tx.amount, d.goals, d.envelopes, allocRules);
+            const alloc = allocateIncome(
+              tx.amount,
+              d.goals,
+              d.envelopes,
+              allocRules
+            );
             goals = alloc.goals;
             envelopes = alloc.envelopes;
           }
@@ -363,7 +387,12 @@ function AppShell({ prefs, setPrefs }) {
         let goals = d.goals;
         let envelopes = d.envelopes;
         if (tx.type === "income") {
-          const alloc = allocateIncome(tx.amount, d.goals, d.envelopes, allocRules);
+          const alloc = allocateIncome(
+            tx.amount,
+            d.goals,
+            d.envelopes,
+            allocRules
+          );
           goals = alloc.goals;
           envelopes = alloc.envelopes;
         }
@@ -433,7 +462,8 @@ function AppShell({ prefs, setPrefs }) {
   const addBudget = async ({ category, month, amount }) => {
     if (!data.cat.expense.includes(category)) return;
     const m = String(month).slice(0, 7);
-    if (data.budgets.some((b) => b.category === category && b.month === m)) return;
+    if (data.budgets.some((b) => b.category === category && b.month === m))
+      return;
 
     if (useCloud && sessionUser) {
       try {
@@ -478,9 +508,7 @@ function AppShell({ prefs, setPrefs }) {
       } else if (days === 0) {
         addToast(`Langganan ${sub.name} jatuh tempo hari ini`);
         if (sub.autoDraft) {
-          const ok = window.confirm(
-            `Buat transaksi untuk ${sub.name}?`
-          );
+          const ok = window.confirm(`Buat transaksi untuk ${sub.name}?`);
           if (ok) {
             addTx({
               date: new Date().toISOString().slice(0, 10),
@@ -493,7 +521,7 @@ function AppShell({ prefs, setPrefs }) {
         }
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addTx]);
 
   const months = useMemo(() => {
@@ -645,7 +673,9 @@ function AppShell({ prefs, setPrefs }) {
               <Link
                 to="/"
                 className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/" ? "text-brand border-b-2 border-brand" : ""
+                  location.pathname === "/"
+                    ? "text-brand border-b-2 border-brand"
+                    : ""
                 }`}
               >
                 Dashboard
@@ -667,7 +697,9 @@ function AppShell({ prefs, setPrefs }) {
               <Link
                 to="/budgets"
                 className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/budgets" ? "text-brand border-b-2 border-brand" : ""
+                  location.pathname === "/budgets"
+                    ? "text-brand border-b-2 border-brand"
+                    : ""
                 }`}
               >
                 Anggaran
@@ -677,7 +709,9 @@ function AppShell({ prefs, setPrefs }) {
               <Link
                 to="/goals"
                 className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/goals" ? "text-brand border-b-2 border-brand" : ""
+                  location.pathname === "/goals"
+                    ? "text-brand border-b-2 border-brand"
+                    : ""
                 }`}
               >
                 Goals
@@ -699,7 +733,9 @@ function AppShell({ prefs, setPrefs }) {
               <Link
                 to="/data"
                 className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/data" ? "text-brand border-b-2 border-brand" : ""
+                  location.pathname === "/data"
+                    ? "text-brand border-b-2 border-brand"
+                    : ""
                 }`}
               >
                 Data
@@ -709,7 +745,9 @@ function AppShell({ prefs, setPrefs }) {
               <Link
                 to="/subscriptions"
                 className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/subscriptions" ? "text-brand border-b-2 border-brand" : ""
+                  location.pathname === "/subscriptions"
+                    ? "text-brand border-b-2 border-brand"
+                    : ""
                 }`}
               >
                 Langganan
