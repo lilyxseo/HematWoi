@@ -8,7 +8,7 @@ import { upsert, remove } from "./sync/SyncEngine";
  * Fallback ke cache jika offline.
  */
 export async function listTransactions(
-  { type, month, q, page = 1, pageSize = 20 } = {},
+  { type, month, category, sort = "date-desc", q, page = 1, pageSize = 20 } = {},
 ) {
   if (!navigator.onLine || window.__sync?.fakeOffline) {
     const rows = await dbCache.list("transactions");
@@ -20,8 +20,12 @@ export async function listTransactions(
     .select(
       "id,date,type,amount,note,category_id,categories:category_id (name)",
       { count: "exact" }
-    )
-    .order("date", { ascending: false });
+    );
+
+  const [sortField, sortDir] = sort.split("-");
+  const ascending = sortDir === "asc";
+  const field = sortField === "amount" ? "amount" : "date";
+  query = query.order(field, { ascending });
 
   if (type && type !== "all") {
     query = query.eq("type", type);
@@ -31,6 +35,9 @@ export async function listTransactions(
     const end = new Date(start);
     end.setMonth(end.getMonth() + 1);
     query = query.gte("date", start).lt("date", end.toISOString().slice(0, 10));
+  }
+  if (category && category !== "all") {
+    query = query.eq("category_id", category);
   }
   if (q && q.trim()) {
     const like = `%${q}%`;

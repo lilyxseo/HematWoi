@@ -23,6 +23,14 @@ Supabase for persistent storage. Switch to local mode from the Settings
 page and optionally seed dummy data for quick testing. The current mode is
 stored in `localStorage` under `hw:mode` and survives page reloads.
 
+## Transactions Page
+
+The transactions page now keeps filter state in the URL, allowing bookmarks or
+shared links to reproduce the same view. Users can quickly adjust type, month,
+category, sort order or search text via a compact filter bar. Active filters are
+shown as removable chips below the bar so each criterion can be cleared
+individually.
+
 ## Sync & Offline Queue
 
 All reads and writes go to Supabase when online. If a request fails due to

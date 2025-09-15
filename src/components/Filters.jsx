@@ -1,8 +1,4 @@
-function formatMonth(m) {
-  if (!m) return '';
-  const date = new Date(`${m}-01`);
-  return date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric' });
-}
+import formatMonth from "../lib/formatMonth";
 
 export default function Filters({
   months = [],
@@ -40,8 +36,8 @@ export default function Filters({
       >
         <option value="all">Semua Kategori</option>
         {categories.map((c) => (
-          <option key={c} value={c}>
-            {c}
+          <option key={c.id} value={c.id}>
+            {c.name}
           </option>
         ))}
       </select>
@@ -62,6 +58,14 @@ export default function Filters({
         value={filter.q}
         onChange={(e) => setFilter({ ...filter, q: e.target.value })}
       />
+      <button
+        className="btn"
+        onClick={() =>
+          setFilter({ type: "all", month: "all", category: "all", sort: "date-desc", q: "" })
+        }
+      >
+        Reset
+      </button>
     </div>
   );
 }
