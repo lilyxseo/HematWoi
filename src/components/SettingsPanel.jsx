@@ -131,6 +131,54 @@ export default function SettingsPanel({ open, onClose, value, onChange }) {
           </div>
         </div>
 
+
+        <div>
+          <h3 className="font-semibold mb-2">Dompet Virtual</h3>
+          <div className="space-y-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.walletSound}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, walletSound: e.target.checked }))
+                }
+              />
+              Efek suara
+            </label>
+            <div>
+              <div className="text-sm mb-1">Sensitivitas Threshold</div>
+              <div className="flex gap-2">
+                {['low', 'default', 'high'].map((val) => (
+                  <label
+                    key={val}
+                    className="flex items-center gap-1 text-sm capitalize"
+                  >
+                    <input
+                      type="radio"
+                      name="walletSensitivity"
+                      value={val}
+                      checked={form.walletSensitivity === val}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, walletSensitivity: e.target.value }))
+                      }
+                    />
+                    {val}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.walletShowTips}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, walletShowTips: e.target.checked }))
+                }
+              />
+              Tampilkan tips
+            </label>
+          </div>
+        </div>
         <div className="flex justify-end gap-2">
           <button className="btn" onClick={onClose}>
             Batal

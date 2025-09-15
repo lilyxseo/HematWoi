@@ -17,6 +17,7 @@ import ChallengesPage from "./pages/Challenges.jsx";
 import useChallenges from "./hooks/useChallenges.js";
 
 import { supabase } from "./lib/supabase";
+import { playChaChing } from "./lib/walletSound";
 import {
   listTransactions,
   addTransaction as apiAdd,
@@ -93,7 +94,10 @@ function AppContent() {
       defaultMonth: "current",
       currency: "IDR",
       accent: "blue",
-    };
+      walletSound: false,
+      walletSensitivity: "default",
+      walletShowTips: true,
+      };
     if (!raw) return base;
     try {
       return { ...base, ...JSON.parse(raw) };
@@ -344,6 +348,7 @@ function AppContent() {
         };
       });
     }
+    if (prefs.walletSound) playChaChing();
   };
 
   const addGoal = (goal) => {
@@ -699,6 +704,7 @@ function AppContent() {
                 budgets={data.budgets}
                 months={months}
                 challenges={challenges}
+                prefs={prefs}
               />
             }
           />
@@ -800,9 +806,9 @@ function AppContent() {
         onClose={() => setSettingsOpen(false)}
         value={{ theme, ...prefs }}
         onChange={(val) => {
-          const { theme: nextTheme, density, defaultMonth, currency, accent } = val;
+          const { theme: nextTheme, density, defaultMonth, currency, accent, walletSound = false, walletSensitivity = "default", walletShowTips = true } = val;
           setTheme(nextTheme);
-          setPrefs({ density, defaultMonth, currency, accent });
+          setPrefs({ density, defaultMonth, currency, accent, walletSound, walletSensitivity, walletShowTips });
         }}
       />
     </CategoryProvider>
