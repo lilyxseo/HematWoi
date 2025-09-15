@@ -4,13 +4,47 @@
 
 @layer base {
   html { @apply scroll-smooth; }
-  body { @apply bg-surface-1 text-text transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100; }
+  :root {
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-2: #f1f5f9;
+    --border: #e2e8f0;
+    --muted: #94a3b8;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --heading: #0f172a;
+    --brand-h: 211;
+    --brand-s: 92%;
+    --brand-l: 60%;
+    --brand-foreground: #ffffff;
+    --brand-soft: hsl(var(--brand-h) var(--brand-s) 90%);
+    --brand-ring: hsl(var(--brand-h) var(--brand-s) 50%);
+    --success: #22c55e;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --info: #3b82f6;
+    --ring: hsl(var(--brand-h) var(--brand-s) var(--brand-l));
+  }
+  [data-theme='dark'] {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface-2: #334155;
+    --border: #475569;
+    --muted: #94a3b8;
+    --text: #f1f5f9;
+    --text-muted: #94a3b8;
+    --heading: #f8fafc;
+    --brand-foreground: #ffffff;
+    --brand-soft: hsl(var(--brand-h) var(--brand-s) 20%);
+    --brand-ring: hsl(var(--brand-h) var(--brand-s) 70%);
+  }
+  body { @apply bg-bg text-text transition-colors duration-300; }
   h1, h2, h3, h4, h5, h6 { @apply font-semibold; }
 }
 
 @layer components {
   .card {
-    @apply bg-surface-2 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm p-4 md:p-6;
+    @apply bg-surface-2 border border-border rounded-xl shadow-sm p-4 md:p-6;
   }
 }
 

@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  Monitor,
   Cloud,
   CloudOff,
 } from 'lucide-react';
@@ -15,7 +16,57 @@ import Logo from '../components/Logo';
 import SignIn from '../components/SignIn';
 import { supabase } from '../lib/supabase';
 
-export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
+const PRESETS = [
+  { name: 'Blue', h: 211, s: 92, l: 60 },
+  { name: 'Teal', h: 174, s: 70, l: 50 },
+  { name: 'Violet', h: 262, s: 83, l: 67 },
+  { name: 'Amber', h: 38, s: 92, l: 50 },
+  { name: 'Rose', h: 347, s: 77, l: 60 },
+];
+
+function hslToHex({ h, s, l }) {
+  s /= 100;
+  l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; }
+  else if (h < 120) { r = x; g = c; }
+  else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; }
+  else if (h < 300) { r = x; b = c; }
+  else { r = c; b = x; }
+  r = Math.round((r + m) * 255);
+  g = Math.round((g + m) * 255);
+  b = Math.round((b + m) * 255);
+  return `#${[r, g, b].map((n) => n.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function hexToHsl(hex) {
+  hex = hex.replace('#', '');
+  if (hex.length === 3) hex = hex.split('').map((c) => c + c).join('');
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h, s, l = (max + min) / 2;
+  if (max === min) {
+    h = s = 0;
+  } else {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
+export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, setUseCloud }) {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('hw:sidebar-collapsed') === '1');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
@@ -45,7 +96,7 @@ export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
 
   const content = (
     <div
-      className={`flex flex-col h-full ${collapsed ? 'w-16' : 'w-64'} transition-all bg-white dark:bg-slate-900 shadow-md`}
+      className={`flex flex-col h-full ${collapsed ? 'w-16' : 'w-64'} transition-all bg-surface-1 text-text shadow-md`}
     >
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-2">
@@ -56,7 +107,7 @@ export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
           <X className="h-5 w-5" />
         </button>
       </div>
-      <hr className="border-slate-200 dark:border-slate-700" />
+      <hr className="border-border" />
       <nav className="flex-1 overflow-y-auto" role="navigation">
         <ul className="p-2 space-y-1">
           {primary.map((item) => (
@@ -64,8 +115,8 @@ export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
               <NavLink
                 to={item.path}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none ${
-                    isActive ? 'text-blue-600 border-l-4 border-blue-600' : ''
+                  `flex items-center gap-3 px-3 py-2 rounded hover:bg-surface-2 focus:outline-none ${
+                    isActive ? 'text-brand border-l-4 border-brand' : ''
                   }`
                 }
                 title={collapsed ? item.title : undefined}
@@ -84,8 +135,8 @@ export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
                 <NavLink
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none ${
-                      isActive ? 'text-blue-600 border-l-4 border-blue-600' : ''
+                    `flex items-center gap-3 px-3 py-2 rounded hover:bg-surface-2 focus:outline-none ${
+                      isActive ? 'text-brand border-l-4 border-brand' : ''
                     }`
                   }
                   title={collapsed ? item.title : undefined}
@@ -99,7 +150,7 @@ export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
           </ul>
         )}
       </nav>
-      <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-2">
+      <div className="p-4 border-t border-border space-y-4">
         <div className="flex items-center justify-between">
           {!collapsed && <span className="text-sm">All synced</span>}
         </div>
@@ -124,14 +175,54 @@ export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
             </button>
           )}
         </div>
+        <div className="space-y-2">
+          {!collapsed && <span className="text-sm">Theme</span>}
+          <div className="flex items-center gap-2">
+            <button
+              className={`p-1 rounded ${theme === 'light' ? 'ring-2 ring-brand' : ''}`}
+              onClick={() => setTheme('light')}
+              aria-label="Light mode"
+            >
+              <Sun className="h-4 w-4" />
+            </button>
+            <button
+              className={`p-1 rounded ${theme === 'dark' ? 'ring-2 ring-brand' : ''}`}
+              onClick={() => setTheme('dark')}
+              aria-label="Dark mode"
+            >
+              <Moon className="h-4 w-4" />
+            </button>
+            <button
+              className={`p-1 rounded ${theme === 'system' ? 'ring-2 ring-brand' : ''}`}
+              onClick={() => setTheme('system')}
+              aria-label="System mode"
+            >
+              <Monitor className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {!collapsed && <span className="text-sm">Brand</span>}
+          <div className="flex items-center gap-2">
+            {PRESETS.map((p) => (
+              <button
+                key={p.name}
+                className={`w-5 h-5 rounded-full border ${p.h === brand.h && p.s === brand.s && p.l === brand.l ? 'ring-2 ring-brand' : ''}`}
+                style={{ backgroundColor: `hsl(${p.h} ${p.s}% ${p.l}%)` }}
+                onClick={() => setBrand({ h: p.h, s: p.s, l: p.l })}
+                aria-label={p.name}
+              />
+            ))}
+            <input
+              type="color"
+              aria-label="Custom brand color"
+              value={hslToHex(brand)}
+              onChange={(e) => setBrand(hexToHsl(e.target.value))}
+              className="w-5 h-5 p-0 border rounded"
+            />
+          </div>
+        </div>
         <div className="flex items-center justify-between">
-          <button
-            className="p-1 rounded focus:outline-none"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
           {sessionUser ? (
             <button className="text-sm" onClick={handleLogout}>
               Logout
@@ -143,13 +234,13 @@ export default function Sidebar({ theme, setTheme, useCloud, setUseCloud }) {
           )}
         </div>
         {sessionUser && !collapsed && (
-          <div className="text-xs text-slate-600 dark:text-slate-300">
+          <div className="text-xs text-muted">
             {shortEmail(sessionUser.email)}
           </div>
         )}
       </div>
       <button
-        className="absolute top-1/2 -right-3 hidden md:flex items-center justify-center w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700"
+        className="absolute top-1/2 -right-3 hidden md:flex items-center justify-center w-6 h-6 rounded-full bg-surface-1 border border-border"
         onClick={() => setCollapsed(!collapsed)}
         aria-label="Toggle sidebar"
       >
