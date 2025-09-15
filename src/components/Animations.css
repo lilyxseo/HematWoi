@@ -1,0 +1,72 @@
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes confetti-fall {
+  from { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  to { transform: translateY(100vh) rotate(360deg); opacity: 0; }
+}
+
+@keyframes fab-pop {
+  from { transform: scale(0); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-fade {
+  animation: fade-in 0.2s ease-out both;
+}
+
+.animate-slide {
+  animation: slide-up 0.3s ease-out both;
+}
+
+.animate-fab {
+  animation: fab-pop 0.3s ease-out both;
+}
+
+.confetti {
+  position: absolute;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  background: var(--brand);
+  border-radius: 50%;
+  animation-name: confetti-fall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+}
+
+/* Modal overlay and content */
+.fixed.inset-0.z-50.flex.items-center.justify-center.bg-black\/50 {
+  animation: fade-in 0.2s ease-out both;
+}
+.fixed.inset-0.z-50.flex.items-center.justify-center.bg-black\/50 .card {
+  animation: slide-up 0.2s ease-out both;
+}
+
+/* Toasts container */
+.fixed.top-4.right-4.space-y-2.z-50 .card {
+  animation: slide-up 0.3s ease-out both;
+}
+
+[role='progressbar'] > div {
+  transition: width 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade,
+  .animate-slide,
+  .animate-fab,
+  .confetti {
+    animation: none;
+  }
+  [role='progressbar'] > div {
+    transition: none;
+  }
+}

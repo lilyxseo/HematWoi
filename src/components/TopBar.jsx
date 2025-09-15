@@ -16,6 +16,7 @@ function formatCurrency(n = 0) {
 export default function TopBar({ stats, useCloud, setUseCloud }) {
   const [sessionUser, setSessionUser] = useState(null);
   const [showSignIn, setShowSignIn] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setSessionUser(data.user ?? null));
@@ -47,8 +48,42 @@ export default function TopBar({ stats, useCloud, setUseCloud }) {
     if (useCloud) setUseCloud(false);
   };
 
+  useEffect(() => {
+    const month = new Date().toISOString().slice(0, 7);
+    if (
+      stats?.balance > 0 &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches &&
+      !sessionStorage.getItem(`hw:confetti:${month}`)
+    ) {
+      sessionStorage.setItem(`hw:confetti:${month}`, '1');
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 1200);
+    }
+  }, [stats]);
+
   return (
-    <div className="max-w-5xl mx-auto p-4 flex items-center justify-between">
+    <header className="relative">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only absolute left-2 top-2 z-50 bg-white text-blue-600 px-3 py-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
+      >
+        Lewati ke konten
+      </a>
+      {showConfetti && (
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          {Array.from({ length: 15 }).map((_, i) => (
+            <span
+              key={i}
+              className="confetti"
+              style={{
+                left: `${Math.random() * 100}%`,
+                animationDuration: `${700 + Math.random() * 500}ms`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+      <div className="max-w-5xl mx-auto p-4 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <Logo />
         <h1 className="font-bold text-lg">HematWoi</h1>
@@ -63,10 +98,11 @@ export default function TopBar({ stats, useCloud, setUseCloud }) {
           Saldo: {formatCurrency(stats?.balance || 0)}
         </div>
         <button
-          className="btn"
+          className="btn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           onClick={() =>
             window.dispatchEvent(new CustomEvent("hw:open-settings"))
           }
+          aria-label="Buka pengaturan"
         >
           ⚙️
         </button>
@@ -83,7 +119,8 @@ export default function TopBar({ stats, useCloud, setUseCloud }) {
           </button>
         )}
       </div>
-      <SignIn open={showSignIn} onClose={() => setShowSignIn(false)} />
-    </div>
+        <SignIn open={showSignIn} onClose={() => setShowSignIn(false)} />
+      </div>
+    </header>
   );
 }

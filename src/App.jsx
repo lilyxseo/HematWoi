@@ -92,6 +92,34 @@ function AppContent() {
   const hideNav = location.pathname.startsWith("/add");
 
   useEffect(() => {
+    let gPressed = false;
+    const handler = (e) => {
+      const tag = e.target.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable)
+        return;
+
+      if (e.key === "n") {
+        navigate("/add");
+      } else if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        document.querySelector('input[placeholder="Cari"]')?.focus();
+      } else if (gPressed && (e.key === "d" || e.key === "r")) {
+        navigate(e.key === "d" ? "/" : "/reports");
+        gPressed = false;
+      } else if (e.key === "g") {
+        gPressed = true;
+        setTimeout(() => {
+          gPressed = false;
+        }, 1000);
+      } else {
+        gPressed = false;
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [navigate]);
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem('hematwoi:recurrings');
       if (!raw) return;
@@ -535,69 +563,71 @@ function AppContent() {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
-      <nav className="max-w-5xl mx-auto px-4 gap-2 pb-2 text-sm hidden md:flex">
-        <Link to="/" className="btn">
-          Dashboard
-        </Link>
-        <Link to="/add" className="btn">
-          Tambah
-        </Link>
-      </nav>
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <Dashboard
-              months={months}
-              filter={filter}
-              setFilter={setFilter}
-              stats={stats}
-              data={data}
-              addTx={addTx}
-              removeTx={removeTx}
-              updateTx={updateTx}
-              currentMonth={currentMonth}
-              setShowCat={setShowCat}
-              addBudget={addBudget}
-              removeBudget={removeBudget}
-              onExport={handleExport}
-              onImportJSON={handleImportJSON}
-              onImportCSV={handleImportCSV}
+        <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
+        <main id="main" tabIndex="-1" className="focus:outline-none">
+          <nav className="max-w-5xl mx-auto px-4 gap-2 pb-2 text-sm hidden md:flex">
+            <Link to="/" className="btn">
+              Dashboard
+            </Link>
+            <Link to="/add" className="btn">
+              Tambah
+            </Link>
+          </nav>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <Dashboard
+                  months={months}
+                  filter={filter}
+                  setFilter={setFilter}
+                  stats={stats}
+                  data={data}
+                  addTx={addTx}
+                  removeTx={removeTx}
+                  updateTx={updateTx}
+                  currentMonth={currentMonth}
+                  setShowCat={setShowCat}
+                  addBudget={addBudget}
+                  removeBudget={removeBudget}
+                  onExport={handleExport}
+                  onImportJSON={handleImportJSON}
+                  onImportCSV={handleImportCSV}
+                />
+              }
             />
-          }
-        />
-        <Route
-          path="/add"
-          element={
-            <AddWizard
-              categories={data.cat}
-              onAdd={addTx}
-              onCancel={() => navigate("/")}
+            <Route
+              path="/add"
+              element={
+                <AddWizard
+                  categories={data.cat}
+                  onAdd={addTx}
+                  onCancel={() => navigate("/")}
+                />
+              }
             />
-          }
+          </Routes>
+        </main>
+        <Modal
+          open={showCat}
+          title="Kelola Kategori"
+          onClose={() => setShowCat(false)}
+        >
+          <ManageCategories cat={data.cat} onSave={saveCategories} />
+        </Modal>
+        <SettingsPanel
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          value={{ theme, ...prefs }}
+          onChange={(val) => {
+            const { theme: nextTheme, density, defaultMonth, currency, accent } = val;
+            setTheme(nextTheme);
+            setPrefs({ density, defaultMonth, currency, accent });
+          }}
         />
-      </Routes>
-      <Modal
-        open={showCat}
-        title="Kelola Kategori"
-        onClose={() => setShowCat(false)}
-      >
-        <ManageCategories cat={data.cat} onSave={saveCategories} />
-      </Modal>
-      <SettingsPanel
-        open={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-        value={{ theme, ...prefs }}
-        onChange={(val) => {
-          const { theme: nextTheme, density, defaultMonth, currency, accent } = val;
-          setTheme(nextTheme);
-          setPrefs({ density, defaultMonth, currency, accent });
-        }}
-      />
-      {!hideNav && <FAB />}
-      {!hideNav && <BottomNav />}
-    </CategoryProvider>
+        {!hideNav && <FAB />}
+        {!hideNav && <BottomNav />}
+      </CategoryProvider>
   );
 }
 
