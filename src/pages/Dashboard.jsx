@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import Summary from "../components/Summary";
 import DashboardCharts from "../components/DashboardCharts";
 import Reports from "../components/Reports";
@@ -8,16 +8,13 @@ import SmartFinancialInsights from "../components/SmartFinancialInsights";
 import DailyStreak from "../components/DailyStreak";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
-import DailyQuote from "../components/DailyQuote";
-import FinanceMascot from "../components/FinanceMascot";
-import WalletAvatar from "../components/WalletAvatar";
-import WalletPanel from "../components/WalletPanel";
+import QuoteBubble from "../components/QuoteBubble";
 import PageHeader from "../layout/PageHeader";
 import useFinanceSummary from "../hooks/useFinanceSummary";
-import useWalletStatus from "../hooks/useWalletStatus";
 import LateMonthMode from "../components/LateMonthMode";
 import useLateMonthMode from "../hooks/useLateMonthMode";
 import KpiCards from "../components/KpiCards";
+import SectionHeader from "../components/SectionHeader";
 import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
 import TopSpendsTable from "../components/TopSpendsTable";
@@ -57,81 +54,10 @@ export default function Dashboard({
   const savingsTarget = stats?.savingsTarget || 1_000_000;
 
   const finance = useFinanceSummary(txs, budgets);
-  const wallet = useWalletStatus({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense, weeklyTrend: finance.weeklyTrend }, { sensitivity: prefs?.walletSensitivity });
   const lateMode = useLateMonthMode({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense }, prefs);
-  const [walletOpen, setWalletOpen] = useState(false);
   const { speak } = useMoneyTalk();
   const insights = useInsights(txs);
 
-  const summary = useMemo(() => {
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-
-    const todayTx = txs.filter((t) => t.date === todayStr);
-    const todayExpense = todayTx
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const todayIncome = todayTx
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const categoryTotals = todayTx
-      .filter((t) => t.type === "expense")
-      .reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {});
-    const topCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
-
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
-    const weekTx = txs.filter((t) => {
-      const d = new Date(t.date);
-      return d >= startOfWeek && d <= today;
-    });
-    const weekExpense = weekTx
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const weekIncome = weekTx
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const monthTx = txs.filter((t) => {
-      const d = new Date(t.date);
-      return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-    });
-    const monthExpense = monthTx
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const monthIncome = monthTx
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const dayOfMonth = today.getDate();
-    const dailyAverageExpense = dayOfMonth ? monthExpense / dayOfMonth : 0;
-
-    const topCategoriesByDay = [];
-    for (let i = 0; i < 3; i++) {
-      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-      const dStr = d.toISOString().split("T")[0];
-      const dayTx = txs.filter((t) => t.date === dStr && t.type === "expense");
-      const totals = dayTx.reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {});
-      const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0]?.[0];
-      if (top) topCategoriesByDay.push(top);
-    }
-
-    return {
-      today: { income: todayIncome, expense: todayExpense, topCategory },
-      thisWeek: { income: weekIncome, expense: weekExpense },
-      thisMonth: {
-        income: monthIncome,
-        expense: monthExpense,
-        dailyAverageExpense,
-        topCategoriesByDay,
-      },
-    };
-  }, [txs]);
 
   useEffect(() => {
     if (finance.isAnyOverBudget) {
@@ -148,38 +74,14 @@ export default function Dashboard({
       <PageHeader title="Dashboard" description="Ringkasan keuanganmu" />
       <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
       <Summary stats={stats} />
-      <div className="flex items-center justify-center gap-4">
-        <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
-        <div className="relative">
-          <WalletAvatar
-            status={wallet.status}
-            trend={finance.weeklyTrend}
-            balance={finance.balance}
-            isOverBudget={finance.isAnyOverBudget}
-            soundEnabled={prefs?.walletSound}
-            onClick={() => setWalletOpen((o) => !o)}
-          />
-          {walletOpen && (
-            <WalletPanel
-              insights={{
-                balance: finance.balance,
-                weeklyTrend: finance.weeklyTrend,
-                topSpenderCategory: finance.topSpenderCategory,
-                tip: wallet.tip,
-              }}
-              showTips={prefs?.walletShowTips}
-              onClose={() => setWalletOpen(false)}
-            />
-          )}
-        </div>
-      </div>
       <DailyStreak streak={streak} />
-      <DailyQuote />
+      <KpiCards {...insights.kpis} />
+      <QuoteBubble />
       <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
       <AchievementBadges stats={stats} streak={streak} target={savingsTarget} />
       <SmartFinancialInsights txs={txs} />
       <QuickActions />
-      <KpiCards {...insights.kpis} />
+      <SectionHeader title="Analisis Bulanan" />
       <div className="grid gap-4 md:grid-cols-2">
         <MonthlyTrendChart data={insights.trend} />
         <CategoryDonut data={insights.categories} />
