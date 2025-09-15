@@ -89,7 +89,7 @@ export default function TopBar({ stats, useCloud, setUseCloud }) {
         <h1 className="font-bold text-lg">HematWoi</h1>
       </div>
       <div className="flex items-center gap-4">
-        <span className="badge">{useCloud ? "Cloud" : "Local"}</span>
+        <span className="badge">{useCloud ? "Cloud" : "LOCAL MODE (Dummy)"}</span>
         <label className="flex items-center gap-1 text-sm">
           <input type="checkbox" checked={useCloud} onChange={handleToggle} />
           Cloud
