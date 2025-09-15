@@ -298,7 +298,7 @@ export default function Reports({
                       <td className="p-1 w-32">
                         <div className="h-2 rounded-full bg-slate-200">
                           <div
-                            className="h-2 rounded-full bg-brand"
+                            className="h-2 rounded-full bg-brand-var"
                             style={{ width: `${Math.min(100, b.progress * 100)}%` }}
                           />
                         </div>

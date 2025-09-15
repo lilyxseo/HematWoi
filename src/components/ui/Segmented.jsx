@@ -7,7 +7,7 @@ export default function Segmented({ value, onChange, options = [] }) {
           type="button"
           className={`px-3 py-2 text-sm flex-1 ${
             value === opt.value
-              ? "bg-brand text-white"
+              ? "bg-brand-var text-white"
               : "bg-white dark:bg-slate-900"
           }`}
           onClick={() => onChange(opt.value)}
