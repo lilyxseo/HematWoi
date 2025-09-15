@@ -1,15 +1,12 @@
 import ManageCategories from "../components/ManageCategories";
-import { Page } from "../components/ui/Page";
-import { Card, CardBody } from "../components/ui/Card";
 
 export default function Categories({ cat, onSave }) {
   return (
-    <Page title="Kategori">
-      <Card>
-        <CardBody>
-          <ManageCategories cat={cat} onSave={onSave} />
-        </CardBody>
-      </Card>
-    </Page>
+    <main className="max-w-5xl mx-auto p-4 space-y-4">
+      <div className="card">
+        <h1 className="text-sm font-semibold">Kategori</h1>
+      </div>
+      <ManageCategories cat={cat} onSave={onSave} />
+    </main>
   );
 }
