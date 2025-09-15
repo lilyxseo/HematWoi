@@ -20,6 +20,7 @@ import ChallengesPage from "./pages/Challenges.jsx";
 import useChallenges from "./hooks/useChallenges.js";
 import AuthGuard from "./components/AuthGuard";
 import { DataProvider } from "./context/DataContext";
+import SyncBanner from "./components/SyncBanner.jsx";
 
 import { supabase } from "./lib/supabase";
 import { playChaChing } from "./lib/walletSound";
@@ -900,6 +901,7 @@ export default function App() {
     <UserProfileProvider>
       <ToastProvider>
         <DataProvider>
+          <SyncBanner />
           <AppContent />
         </DataProvider>
       </ToastProvider>
