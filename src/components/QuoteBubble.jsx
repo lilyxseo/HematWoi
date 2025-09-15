@@ -10,14 +10,12 @@ export default function QuoteBubble({ lang = "id" }) {
   }
 
   return (
-    <figure className="mx-auto max-w-md">
-      <blockquote className="relative bg-brand/5 border border-brand/20 text-left rounded-xl p-4 shadow-sm after:absolute after:-bottom-2 after:left-6 after:h-4 after:w-4 after:rotate-45 after:bg-inherit after:border-b after:border-r after:border-brand/20 dark:bg-slate-800 dark:border-slate-700 dark:after:border-slate-700">
+    <figure className="mx-auto w-full max-w-3xl">
+      <blockquote className="relative w-full rounded-xl border border-brand/20 bg-brand/5 p-4 text-left shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <span className="absolute -top-2 left-4 text-2xl text-brand" aria-hidden>
           “
         </span>
-        <p className="pr-2 pl-2 text-sm leading-relaxed line-clamp-3">
-          {quote.text}
-        </p>
+        <p className="px-4 text-sm leading-relaxed line-clamp-3">{quote.text}</p>
         <span className="absolute -bottom-2 right-4 text-2xl text-brand" aria-hidden>
           ”
         </span>
