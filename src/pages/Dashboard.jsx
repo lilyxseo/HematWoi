@@ -8,7 +8,9 @@ import SmartFinancialInsights from "../components/SmartFinancialInsights";
 import DailyStreak from "../components/DailyStreak";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
+import DailyQuote from "../components/DailyQuote";
 import FinanceMascot from "../components/FinanceMascot";
+
 
 export default function Dashboard({
   stats,
@@ -112,6 +114,7 @@ export default function Dashboard({
       <Summary stats={stats} />
       <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
       <DailyStreak streak={streak} />
+      <DailyQuote />
       <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
       <AchievementBadges stats={stats} streak={streak} target={savingsTarget} />
       <SmartFinancialInsights txs={txs} />
