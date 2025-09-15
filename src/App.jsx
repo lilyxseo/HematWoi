@@ -23,7 +23,7 @@ import {
 } from "./lib/api";
 
 import CategoryProvider from "./context/CategoryContext";
-import ToastProvider from "./context/ToastContext";
+import ToastProvider, { useToast } from "./context/ToastContext";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 
 
@@ -105,6 +105,7 @@ function AppContent() {
       return {};
     }
   });
+  const { addToast } = useToast();
   window.__hw_prefs = prefs;
 
   const navigate = useNavigate();
@@ -404,7 +405,8 @@ function AppContent() {
         }
       }
     });
-  }, [addToast, addTx]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addTx]);
 
   const months = useMemo(() => {
     const set = new Set(data.txs.map((t) => String(t.date).slice(0, 7)));
