@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Logo from "./Logo";
 import SignIn from "./SignIn";
 import { supabase } from "../lib/supabase";
+import { Sun, Moon } from "lucide-react";
 
 function formatCurrency(n = 0) {
   const pref = window.__hw_prefs?.currency === "USD" ? "USD" : "IDR";
@@ -13,7 +14,13 @@ function formatCurrency(n = 0) {
   }).format(n);
 }
 
-export default function TopBar({ stats, useCloud, setUseCloud }) {
+export default function TopBar({
+  stats,
+  useCloud,
+  setUseCloud,
+  theme,
+  setTheme,
+}) {
   const [sessionUser, setSessionUser] = useState(null);
   const [showSignIn, setShowSignIn] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -97,6 +104,17 @@ export default function TopBar({ stats, useCloud, setUseCloud }) {
         <div className="font-semibold hidden sm:block">
           Saldo: {formatCurrency(stats?.balance || 0)}
         </div>
+        <button
+          className="btn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label="Toggle dark mode"
+        >
+          {theme === "dark" ? (
+            <Sun className="h-5 w-5" />
+          ) : (
+            <Moon className="h-5 w-5" />
+          )}
+        </button>
         <button
           className="btn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
           onClick={() =>
