@@ -1,16 +1,25 @@
 /* @vitest-environment jsdom */
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, screen, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 import SettingsPage from './SettingsPage';
 import { DataProvider } from '../context/DataContext';
 
-const renderWithMode = (mode: 'cloud' | 'local') =>
-  render(
-    <DataProvider initialMode={mode}>
-      <SettingsPage />
-    </DataProvider>
+const renderWithMode = (mode: 'cloud' | 'local') => {
+  localStorage.setItem('hw:mode', mode);
+  return render(
+    <MemoryRouter>
+      <DataProvider initialMode={mode}>
+        <SettingsPage />
+      </DataProvider>
+    </MemoryRouter>
   );
+};
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('SettingsPage data mode', () => {
   it('shows seed button in local mode', () => {
