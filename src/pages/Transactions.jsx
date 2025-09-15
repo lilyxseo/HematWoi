@@ -1,28 +1,28 @@
 import Filters from "../components/Filters";
 import TxTable from "../components/TxTable";
 import FAB from "../components/FAB";
-import { Page } from "../components/ui/Page";
-import ResponsiveGrid from "../components/ui/ResponsiveGrid";
-import { Card, CardHeader, CardBody } from "../components/ui/Card";
+import PageHeader from "../layout/PageHeader";
 
-export default function Transactions({ months, categories, filter, setFilter, items, onRemove, onUpdate }) {
+export default function Transactions({
+  months,
+  categories,
+  filter,
+  setFilter,
+  items,
+  onRemove,
+  onUpdate,
+}) {
   return (
-    <Page title="Transaksi">
-      <ResponsiveGrid>
-        <Card>
-          <CardHeader title="Filter" />
-          <CardBody>
-            <Filters months={months} categories={categories} filter={filter} setFilter={setFilter} />
-          </CardBody>
-        </Card>
-        <Card>
-          <CardHeader title="Daftar Transaksi" />
-          <CardBody>
-            <TxTable items={items} onRemove={onRemove} onUpdate={onUpdate} />
-          </CardBody>
-        </Card>
-      </ResponsiveGrid>
+    <main className="max-w-5xl mx-auto p-4 space-y-4">
+      <PageHeader title="Transaksi" description="Kelola catatan keuangan" />
+      <Filters
+        months={months}
+        categories={categories}
+        filter={filter}
+        setFilter={setFilter}
+      />
+      <TxTable items={items} onRemove={onRemove} onUpdate={onUpdate} />
       <FAB />
-    </Page>
+    </main>
   );
 }
