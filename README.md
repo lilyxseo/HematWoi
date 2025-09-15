@@ -168,6 +168,21 @@ Preferences are stored in `localStorage` under the `hw:prefs` key with the schem
 }
 ```
 
+## Theme System Guide
+
+Colors across the app are driven by CSS custom properties with light, dark and
+system modes. Key tokens include:
+
+- `--bg`, `--surface`, `--surface-2`, `--border`
+- `--text`, `--text-muted`, `--heading`
+- `--brand-h`, `--brand-s`, `--brand-l`, `--brand-foreground`
+
+User preferences are stored in `localStorage` under `hwTheme` with structure
+`{ mode: 'light' | 'dark' | 'system', brand: { h, s, l } }`. An inline script in
+`index.html` applies these settings before React mounts to prevent a flash of the
+default theme. Sidebar controls allow switching mode and picking a brand color,
+which updates the variables globally.
+
 ## Contributing
 
 Pull requests are welcome. Please run `pnpm test` before submitting to ensure

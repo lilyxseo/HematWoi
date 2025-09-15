@@ -63,11 +63,12 @@ const defaultCategories = {
   ],
 };
 
-const ACCENTS = {
-  blue: "#3898f8",
-  emerald: "#10b981",
-  violet: "#8b5cf6",
-  amber: "#f59e0b",
+const BRAND_PRESETS = {
+  blue: { h: 211, s: 92, l: 60 },
+  teal: { h: 174, s: 70, l: 50 },
+  violet: { h: 262, s: 83, l: 67 },
+  amber: { h: 38, s: 92, l: 50 },
+  rose: { h: 347, s: 77, l: 60 },
 };
 
 function loadInitial() {
@@ -110,9 +111,24 @@ function AppShell({ prefs, setPrefs }) {
     sort: "date-desc",
   });
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("hematwoi:v3:theme") || "system"
-  );
+  const storedTheme = () => {
+    try {
+      const t = JSON.parse(localStorage.getItem('hwTheme') || '{}');
+      return t.mode || 'system';
+    } catch {
+      return 'system';
+    }
+  };
+  const storedBrand = () => {
+    try {
+      const t = JSON.parse(localStorage.getItem('hwTheme') || '{}');
+      return t.brand || BRAND_PRESETS.blue;
+    } catch {
+      return BRAND_PRESETS.blue;
+    }
+  };
+  const [theme, setTheme] = useState(storedTheme);
+  const [brand, setBrand] = useState(storedBrand);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
@@ -169,15 +185,34 @@ function AppShell({ prefs, setPrefs }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    const sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const isDark = theme === "dark" || (theme === "system" && sysDark);
-    root.classList.toggle("dark", isDark);
-    localStorage.setItem("hematwoi:v3:theme", theme);
-  }, [theme]);
+    const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const mode = theme === 'system' ? (sysDark ? 'dark' : 'light') : theme;
+    root.setAttribute('data-theme', mode);
+    localStorage.setItem('hwTheme', JSON.stringify({ mode: theme, brand }));
+  }, [theme, brand]);
 
   useEffect(() => {
-    const color = ACCENTS[prefs.accent] || ACCENTS.blue;
-    document.documentElement.style.setProperty("--brand", color);
+    const root = document.documentElement;
+    root.style.setProperty('--brand-h', brand.h);
+    root.style.setProperty('--brand-s', brand.s + '%');
+    root.style.setProperty('--brand-l', brand.l + '%');
+    root.style.setProperty(
+      '--brand-foreground',
+      brand.l > 50 ? '#000000' : '#ffffff'
+    );
+    root.style.setProperty(
+      '--brand-soft',
+      `hsl(${brand.h} ${brand.s}% ${Math.min(95, brand.l + 40)}%)`
+    );
+    root.style.setProperty(
+      '--brand-ring',
+      `hsl(${brand.h} ${brand.s}% ${Math.max(0, brand.l - 20)}%)`
+    );
+  }, [brand]);
+
+  useEffect(() => {
+    const preset = BRAND_PRESETS[prefs.accent];
+    if (preset) setBrand(preset);
   }, [prefs.accent]);
 
   useEffect(() => {
@@ -663,6 +698,8 @@ function AppShell({ prefs, setPrefs }) {
           <Sidebar
             theme={theme}
             setTheme={setTheme}
+            brand={brand}
+            setBrand={setBrand}
             useCloud={useCloud}
             setUseCloud={setUseCloud}
           />

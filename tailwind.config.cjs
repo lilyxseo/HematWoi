@@ -1,24 +1,27 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: 'class',
+  darkMode: ['class', '[data-theme="dark"]'],
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {
       colors: {
         brand: {
-          DEFAULT: '#3898f8',
-          300: '#50b6ff',
-          500: '#3898f8',
-          600: '#2584e4',
+          DEFAULT: 'hsl(var(--brand-h) var(--brand-s) var(--brand-l))',
+          foreground: 'var(--brand-foreground)',
+          soft: 'var(--brand-soft)',
+          ring: 'var(--brand-ring)'
         },
-        success: '#22c55e',
-        danger: '#ef4444',
-        surface: {
-          1: '#ffffff',
-          2: '#f1f5f9',
-        },
-        text: '#0f172a',
-        muted: '#94a3b8',
+        success: 'var(--success)',
+        warning: 'var(--warning)',
+        danger: 'var(--danger)',
+        info: 'var(--info)',
+        bg: 'var(--bg)',
+        'surface-1': 'var(--surface)',
+        'surface-2': 'var(--surface-2)',
+        border: 'var(--border)',
+        text: 'var(--text)',
+        muted: 'var(--text-muted)',
+        ring: 'var(--ring)'
       },
       fontSize: {
         h1: ['clamp(2rem,5vw,2.5rem)', { lineHeight: '1.2' }],
