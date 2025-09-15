@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
+
 import TopBar from "./components/TopBar";
 import SettingsPanel from "./components/SettingsPanel";
+
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
 import Categories from "./pages/Categories";
 import DataToolsPage from "./pages/DataToolsPage";
 import AddWizard from "./pages/AddWizard";
+import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
+
 import { supabase } from "./lib/supabase";
 import {
   listTransactions,
@@ -17,8 +21,11 @@ import {
   deleteTransaction as apiDelete,
   upsertCategories,
 } from "./lib/api";
+
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider from "./context/ToastContext";
+import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
+
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -371,6 +378,34 @@ function AppContent() {
     setData((d) => ({ ...d, budgets: d.budgets.filter((b) => b.id !== id) }));
   };
 
+  useEffect(() => {
+    const subs = loadSubscriptions();
+    const upcoming = findUpcoming(subs);
+    upcoming.forEach(({ sub, days }) => {
+      if (days === 7) {
+        addToast(`Langganan ${sub.name} jatuh tempo dalam 7 hari`);
+      } else if (days === 1) {
+        addToast(`Langganan ${sub.name} jatuh tempo besok`);
+      } else if (days === 0) {
+        addToast(`Langganan ${sub.name} jatuh tempo hari ini`);
+        if (sub.autoDraft) {
+          const ok = window.confirm(
+            `Buat transaksi untuk ${sub.name}?`
+          );
+          if (ok) {
+            addTx({
+              date: new Date().toISOString().slice(0, 10),
+              type: "expense",
+              category: sub.category,
+              amount: sub.amount,
+              note: sub.note || "",
+            });
+          }
+        }
+      }
+    });
+  }, [addToast, addTx]);
+
   const months = useMemo(() => {
     const set = new Set(data.txs.map((t) => String(t.date).slice(0, 7)));
     return Array.from(set).sort().reverse();
@@ -542,6 +577,16 @@ function AppContent() {
                 Data
               </Link>
             </li>
+            <li>
+              <Link
+                to="/subscriptions"
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                  location.pathname === "/subscriptions" ? "text-brand border-b-2 border-brand" : ""
+                }`}
+              >
+                Langganan
+              </Link>
+            </li>
           </ul>
         </nav>
       )}
@@ -590,6 +635,10 @@ function AppContent() {
           <Route
             path="/categories"
             element={<Categories cat={data.cat} onSave={saveCategories} />}
+          />
+          <Route
+            path="/subscriptions"
+            element={<Subscriptions categories={data.cat} />}
           />
           <Route
             path="/data"
