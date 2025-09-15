@@ -15,37 +15,44 @@ export default function AchievementBadges({ stats = {}, streak = 0, target = 0 }
   if (balance >= 500000) {
     badges.push({
       id: "saving",
-      icon: <Star className="w-4 h-4 text-yellow-500" />,
+      icon: <Star className="h-4 w-4 text-yellow-500" />,
       text: `Badge Hemat ${toRupiah(balance)} bulan ini 🎉`,
     });
   }
   if (target && balance >= target) {
     badges.push({
       id: "target",
-      icon: <Target className="w-4 h-4 text-green-500" />,
+      icon: <Target className="h-4 w-4 text-green-500" />,
       text: "Target tabungan tercapai 🎯",
     });
   }
   if (streak >= 3) {
     badges.push({
       id: "streak",
-      icon: <Award className="w-4 h-4 text-orange-500" />,
+      icon: <Award className="h-4 w-4 text-orange-500" />,
       text: `Streak ${streak} hari 🔥`,
     });
   }
   if (!badges.length) return null;
 
+  const visible = badges.slice(0, 4);
+  const hasMore = badges.length > 4;
+
   return (
-    <div className="card animate-slide">
-      <h2 className="font-semibold mb-2">Achievements</h2>
-      <ul className="space-y-2">
-        {badges.map((b) => (
-          <li
-            key={b.id}
-            className="flex items-center gap-2 text-sm bg-slate-50 dark:bg-slate-700 p-2 rounded"
-          >
+    <div className="card animate-slide h-full flex flex-col">
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="font-semibold">Achievements</h2>
+        {hasMore && (
+          <a href="#" className="text-xs text-brand-600 hover:underline">
+            Lihat semua
+          </a>
+        )}
+      </div>
+      <ul className="divide-y divide-slate-200 overflow-y-auto flex-1 min-h-0">
+        {visible.map((b) => (
+          <li key={b.id} className="flex items-center gap-2 py-2 text-sm">
             {b.icon}
-            <span>{b.text}</span>
+            <span className="line-clamp-1 sm:line-clamp-none">{b.text}</span>
           </li>
         ))}
       </ul>

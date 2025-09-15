@@ -25,8 +25,17 @@ export default function SavingsProgress({ current = 0, target = 0 }) {
     }
   }, [progress]);
 
+  if (!target) {
+    return (
+      <div className="card animate-slide">
+        <h2 className="font-semibold">Progress Tabungan</h2>
+        <p className="text-sm text-slate-500">Belum ada target tabungan</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="card animate-slide">
+    <div className="card animate-slide h-full">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">Progress Tabungan</h2>
         {achieved && (
