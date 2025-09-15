@@ -45,6 +45,7 @@ import { allocateIncome } from "./lib/goals";
 import MoneyTalkProvider, {
   useMoneyTalk,
 } from "./context/MoneyTalkContext.jsx";
+import { ModeProvider } from "./hooks/useMode";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -895,12 +896,14 @@ function AppContent() {
 
 export default function App() {
   return (
-    <UserProfileProvider>
-      <ToastProvider>
-        <DataProvider>
-          <AppContent />
-        </DataProvider>
-      </ToastProvider>
-    </UserProfileProvider>
+    <ModeProvider>
+      <UserProfileProvider>
+        <ToastProvider>
+          <DataProvider>
+            <AppContent />
+          </DataProvider>
+        </ToastProvider>
+      </UserProfileProvider>
+    </ModeProvider>
   );
 }
