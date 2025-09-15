@@ -1,4 +1,5 @@
 import { supabase } from "../supabase";
+import { getCurrentUserId } from "../session";
 import { oplogStore, dbCache } from "./localdb";
 
 export async function enqueueReceiptPut(file, txId) {
@@ -26,7 +27,15 @@ export async function processStoragePutBatch(slice) {
       .upload(path, new Blob([blob]), { contentType });
     if (error) throw error;
     const { data } = supabase.storage.from("receipts").getPublicUrl(path);
-    await supabase.from("transactions").upsert({ id: txId, receipt_url: data.publicUrl });
+    const userId = await getCurrentUserId();
+    const payload = {
+      id: txId,
+      receipt_url: data.publicUrl,
+      updated_at: new Date().toISOString(),
+    };
+    if (userId) payload.user_id = userId;
+    const { error: upsertError } = await supabase.from("transactions").upsert(payload);
+    if (upsertError) throw upsertError;
     const cached = await dbCache.get("transactions", txId);
     if (cached) {
       cached.receipt_url = data.publicUrl;
