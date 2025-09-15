@@ -22,7 +22,7 @@ export default function CategoryDonut({ data = [] }) {
   };
 
   return (
-    <div className="card h-[260px]">
+    <div className="card aspect-video min-h-[200px]">
       {data.length ? (
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

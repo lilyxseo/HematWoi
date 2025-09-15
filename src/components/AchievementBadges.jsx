@@ -35,20 +35,27 @@ export default function AchievementBadges({ stats = {}, streak = 0, target = 0 }
   }
   if (!badges.length) return null;
 
+  const visible = badges.slice(0, 4);
+
   return (
-    <div className="card animate-slide">
-      <h2 className="font-semibold mb-2">Achievements</h2>
-      <ul className="space-y-2">
-        {badges.map((b) => (
+    <div className="card animate-slide h-full">
+      <h2 className="mb-[var(--block-y)] font-semibold">Achievements</h2>
+      <ul className="space-y-[var(--block-y)]">
+        {visible.map((b) => (
           <li
             key={b.id}
-            className="flex items-center gap-2 text-sm bg-surface-2 p-2 rounded"
+            className="flex items-center gap-2 rounded bg-surface-2 p-2 text-sm"
           >
             {b.icon}
-            <span>{b.text}</span>
+            <span className="line-clamp-2">{b.text}</span>
           </li>
         ))}
       </ul>
+      {badges.length > visible.length && (
+        <div className="mt-[var(--block-y)] text-right text-xs">
+          <button className="underline">Lihat semua</button>
+        </div>
+      )}
     </div>
   );
 }

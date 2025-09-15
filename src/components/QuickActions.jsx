@@ -25,8 +25,8 @@ export default function QuickActions() {
 
   return (
     <div className="card">
-      <h2 className="mb-3 font-semibold">Quick Actions</h2>
-      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <h2 className="mb-[var(--block-y)] font-semibold">Quick Actions</h2>
+      <div className="grid gap-[var(--block-y)] sm:grid-cols-2 lg:grid-cols-3">
         {actions.map((action) => {
           const Icon = action.icon;
           return (

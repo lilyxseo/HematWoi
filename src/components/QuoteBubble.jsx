@@ -10,7 +10,7 @@ export default function QuoteBubble({ lang = "id" }) {
   }
 
   return (
-    <figure className="mx-auto w-full max-w-3xl">
+    <figure className="w-full">
       <blockquote className="relative w-full rounded-xl border border-brand/20 bg-brand/5 p-4 text-left shadow-sm dark:border-border dark:bg-surface-2">
         <span className="absolute -top-2 left-4 text-2xl text-brand" aria-hidden>
           “
@@ -21,7 +21,7 @@ export default function QuoteBubble({ lang = "id" }) {
         </span>
       </blockquote>
       {quote.author && (
-        <figcaption className="mt-2 text-right text-xs text-muted">
+        <figcaption className="mt-[var(--block-y)] text-right text-xs text-muted">
           — {quote.author}
         </figcaption>
       )}

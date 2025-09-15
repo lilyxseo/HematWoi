@@ -36,7 +36,7 @@ export default function SavingsProgress({ current = 0, target = 0 }) {
 
   return (
     <div className="card animate-slide h-full">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-[var(--block-y)] flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-semibold">Progress Tabungan</h2>
         {achieved && (
           <span className="inline-flex items-center gap-1 rounded-full bg-success/20 px-2 py-0.5 text-xs font-medium text-success">
@@ -44,7 +44,7 @@ export default function SavingsProgress({ current = 0, target = 0 }) {
           </span>
         )}
       </div>
-      <div className="mb-2 text-sm text-muted">
+      <div className="mb-[var(--block-y)] text-sm text-muted">
         Rp {current.toLocaleString("id-ID")} / Rp {target.toLocaleString("id-ID")}
       </div>
       <div
@@ -56,7 +56,7 @@ export default function SavingsProgress({ current = 0, target = 0 }) {
           style={{ width: `${Math.min(progress, 1) * 100}%` }}
         />
       </div>
-      <div className="mt-1 text-sm">
+      <div className="mt-[calc(var(--block-y)/2)] text-sm">
         {Math.round(Math.min(progress, 1) * 100)}% tercapai
       </div>
     </div>

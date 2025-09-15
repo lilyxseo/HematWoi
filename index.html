@@ -23,6 +23,9 @@
             root.style.setProperty('--brand-soft', `hsl(${b.h} ${b.s}% ${Math.min(95, b.l + 40)}%)`);
             root.style.setProperty('--brand-ring', `hsl(${b.h} ${b.s}% ${Math.max(0, b.l - 20)}%)`);
           }
+          const collapsed = localStorage.getItem('hw:sidebar-collapsed') === '1';
+          root.dataset.sidebarCollapsed = collapsed ? '1' : '0';
+          root.style.setProperty('--sidebar-width', collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w-expanded)');
         } catch (e) {
           console.error('theme init failed', e);
         }

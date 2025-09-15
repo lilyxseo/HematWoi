@@ -67,7 +67,9 @@ function hexToHsl(hex) {
 }
 
 export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, setUseCloud }) {
-  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('hw:sidebar-collapsed') === '1');
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem('hw:sidebar-collapsed') === '1'
+  );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [showSignIn, setShowSignIn] = useState(false);
@@ -82,6 +84,12 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
 
   useEffect(() => {
     localStorage.setItem('hw:sidebar-collapsed', collapsed ? '1' : '0');
+    const root = document.documentElement;
+    root.dataset.sidebarCollapsed = collapsed ? '1' : '0';
+    root.style.setProperty(
+      '--sidebar-width',
+      collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w-expanded)'
+    );
   }, [collapsed]);
 
   const shortEmail = (email = '') =>
@@ -96,7 +104,8 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
 
   const content = (
     <div
-      className={`flex flex-col h-full ${collapsed ? 'w-16' : 'w-64'} transition-all bg-surface-1 text-text shadow-md`}
+      className="flex h-[100dvh] flex-col overflow-hidden bg-surface-1 text-text shadow-md transition-[width]"
+      style={{ width: collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w-expanded)' }}
     >
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-2">
@@ -252,11 +261,11 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
   return (
     <>
       <div
-        className={`fixed inset-0 bg-black/40 z-40 md:hidden ${mobileOpen ? 'block' : 'hidden'}`}
+        className={`fixed inset-0 z-40 bg-black/40 md:hidden ${mobileOpen ? 'block' : 'hidden'}`}
         onClick={() => setMobileOpen(false)}
       />
       <div
-        className={`${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 fixed z-50 inset-y-0 left-0 md:static md:flex`}
+        className={`fixed inset-y-0 left-0 z-50 transform transition-transform md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {content}
       </div>

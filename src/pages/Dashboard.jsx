@@ -52,20 +52,16 @@ export default function Dashboard({ stats, txs }) {
         <QuoteBubble />
       </Section>
       <Section>
-        <div className="grid gap-[var(--block-y)] md:grid-cols-2 lg:grid-cols-12">
-          <div className="lg:col-span-7">
-            <SavingsProgress
-              current={stats?.balance || 0}
-              target={savingsTarget}
-            />
-          </div>
-          <div className="lg:col-span-5">
-            <AchievementBadges
-              stats={stats}
-              streak={streak}
-              target={savingsTarget}
-            />
-          </div>
+        <div className="grid gap-[var(--block-y)] lg:grid-cols-2">
+          <SavingsProgress
+            current={stats?.balance || 0}
+            target={savingsTarget}
+          />
+          <AchievementBadges
+            stats={stats}
+            streak={streak}
+            target={savingsTarget}
+          />
         </div>
       </Section>
       <Section>

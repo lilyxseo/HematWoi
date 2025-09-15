@@ -692,23 +692,29 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <SyncBanner />
-      <div className="flex min-h-screen">
-        {!hideNav && (
-          <Sidebar
-            theme={theme}
-            setTheme={setTheme}
-            brand={brand}
-            setBrand={setBrand}
-            useCloud={useCloud}
-            setUseCloud={setUseCloud}
-          />
-        )}
-        <main id="main" tabIndex="-1" className="flex-1 focus:outline-none">
+      {!hideNav && (
+        <Sidebar
+          theme={theme}
+          setTheme={setTheme}
+          brand={brand}
+          setBrand={setBrand}
+          useCloud={useCloud}
+          setUseCloud={setUseCloud}
+        />
+      )}
+      <div
+        className={`min-h-[100dvh] flex flex-col overflow-x-hidden ${!hideNav ? 'md:ml-[var(--sidebar-width)]' : ''}`}
+      >
+        <SyncBanner />
+        <main
+          id="main"
+          tabIndex="-1"
+          className="flex-1 overflow-y-auto focus:outline-none"
+        >
           <Routes>
-          <Route path="/auth" element={<AuthPage />} />
-          <Route element={<AuthGuard />}>
-            <Route
+            <Route path="/auth" element={<AuthPage />} />
+            <Route element={<AuthGuard />}>
+              <Route
               path="/"
               element={
                 <Dashboard
@@ -809,7 +815,7 @@ function AppShell({ prefs, setPrefs }) {
               element={<ProfilePage transactions={data.txs} challenges={challenges} />}
             />
           </Route>
-        </Routes>
+          </Routes>
         </main>
       </div>
       <SettingsPanel
