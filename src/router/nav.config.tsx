@@ -42,6 +42,12 @@ export const NAV_ITEMS: NavItem[] = [
     protected: true,
   },
   {
+    title: 'Tambah',
+    path: '/add',
+    inSidebar: false,
+    protected: true,
+  },
+  {
     title: 'Anggaran',
     path: '/budgets',
     icon: <Wallet className="h-5 w-5" />,
