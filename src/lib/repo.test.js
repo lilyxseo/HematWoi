@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { LocalRepo } from './repo';
+import { LocalRepo } from '../repo/LocalRepo';
 
 // simple in-memory localStorage polyfill
-global.localStorage = {
+globalThis.localStorage = {
   store: {},
   getItem(k) {
     return this.store[k] || null;
