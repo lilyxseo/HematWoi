@@ -14,7 +14,7 @@ import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
 import SettingsPage from "./pages/SettingsPage";
-import ProfilePage from "./pages/Profile";
+import ProfilePage from "./pages/ProfilePage";
 import AuthPage from "./pages/Auth";
 import ChallengesPage from "./pages/Challenges.jsx";
 import useChallenges from "./hooks/useChallenges.js";

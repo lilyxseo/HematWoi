@@ -2,6 +2,29 @@ export class CloudRepo {
   constructor(client) {
     this.client = client;
   }
+  profile = {
+    get: async () => {
+      const { data } = await this.client.auth.getUser();
+      const user = data?.user;
+      if (!user) return {};
+      const { data: profile } = await this.client
+        .from("profile")
+        .select("name,bio,avatarUrl")
+        .eq("id", user.id)
+        .single();
+      return { email: user.email, ...(profile || {}) };
+    },
+    update: async (data) => {
+      const { data: userData } = await this.client.auth.getUser();
+      const user = userData?.user;
+      if (!user) throw new Error("Not authenticated");
+      const { error } = await this.client
+        .from("profile")
+        .upsert({ id: user.id, ...data });
+      if (error) throw error;
+      return { ...data };
+    },
+  };
   goals = {
     list: async () => {
       const { data } = await this.client.from('goals').select('*');
@@ -33,7 +56,7 @@ export class LocalRepo {
     const raw = localStorage.getItem(LS_KEY);
     this.db = raw
       ? JSON.parse(raw)
-      : { goals: [], transactions: [], budgets: [], categories: [], subscriptions: [], challenges: [], profile: {} };
+      : { goals: [], transactions: [], budgets: [], categories: [], subscriptions: [], challenges: [], profile: { badges: [], stats: {} } };
   }
   _save() {
     localStorage.setItem(LS_KEY, JSON.stringify(this.db));
@@ -65,6 +88,14 @@ export class LocalRepo {
       );
       this._save();
       return this.db.goals.find((g) => g.id === id).saved;
+    },
+  };
+  profile = {
+    get: async () => this.db.profile,
+    update: async (data) => {
+      this.db.profile = { ...this.db.profile, ...data };
+      this._save();
+      return this.db.profile;
     },
   };
   seedDummy() {
