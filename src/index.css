@@ -24,3 +24,16 @@
 .dark .badge { @apply border-slate-700; }
 .dark .btn-primary { @apply bg-brand hover:bg-brand-hover border-brand; }
 .dark .btn-secondary { @apply bg-brand-secondary hover:bg-brand-secondary-hover border-brand-secondary; }
+
+.late-month-mode {
+  filter: grayscale(0.3) brightness(0.95);
+}
+.late-month-mode::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(0,0,0,0.1) 1px, transparent 1px);
+  background-size: 3px 3px;
+  opacity: 0.2;
+}
