@@ -93,6 +93,12 @@ Dark mode is supported via the `dark` class on `<html>`.
 
 These components aim to keep spacing and typography consistent across pages.
 
+## Dashboard & Profile
+
+- Wallet avatar and finance mascot icons now appear on a single centred row.
+- Avatar level and XP controls moved from the dashboard to the new Profile page.
+- Daily quote card simplified with no category selector or repeat button.
+
 ## Settings & Preferences
 
 The `/settings` page groups application preferences into:
