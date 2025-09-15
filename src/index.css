@@ -8,7 +8,11 @@
   h1, h2, h3, h4, h5, h6 { @apply font-semibold; }
 }
 
-@layer components {}
+@layer components {
+  .card {
+    @apply bg-surface-2 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm p-4 md:p-6;
+  }
+}
 
 @layer utilities {
   .late-month-mode {
