@@ -2,12 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Routes,
   Route,
-  Link,
   useNavigate,
   useLocation,
 } from "react-router-dom";
 
-import TopBar from "./components/TopBar";
+import Sidebar from "./layout/Sidebar";
 import SettingsPanel from "./components/SettingsPanel";
 import SyncBanner from "./components/SyncBanner";
 
@@ -659,105 +658,17 @@ function AppShell({ prefs, setPrefs }) {
   return (
     <CategoryProvider catMeta={catMeta}>
       <SyncBanner />
-      <TopBar
-        stats={stats}
-        useCloud={useCloud}
-        setUseCloud={setUseCloud}
-        theme={theme}
-        setTheme={setTheme}
-      />
-      {!hideNav && (
-        <nav aria-label="Primary" className="max-w-5xl mx-auto px-4">
-          <ul className="flex gap-3 overflow-auto">
-            <li>
-              <Link
-                to="/"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/"
-                    ? "text-brand border-b-2 border-brand"
-                    : ""
-                }`}
-              >
-                Dashboard
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/transactions"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/transactions"
-                    ? "text-brand border-b-2 border-brand"
-                    : ""
-                }`}
-              >
-                Transaksi
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/budgets"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/budgets"
-                    ? "text-brand border-b-2 border-brand"
-                    : ""
-                }`}
-              >
-                Anggaran
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/goals"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/goals"
-                    ? "text-brand border-b-2 border-brand"
-                    : ""
-                }`}
-              >
-                Goals
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/categories"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/categories"
-                    ? "text-brand border-b-2 border-brand"
-                    : ""
-                }`}
-              >
-                Kategori
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/data"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/data"
-                    ? "text-brand border-b-2 border-brand"
-                    : ""
-                }`}
-              >
-                Data
-              </Link>
-            </li>
-            <li>
-              <Link
-                to="/subscriptions"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
-                  location.pathname === "/subscriptions"
-                    ? "text-brand border-b-2 border-brand"
-                    : ""
-                }`}
-              >
-                Langganan
-              </Link>
-            </li>
-          </ul>
-        </nav>
-      )}
-      <main id="main" tabIndex="-1" className="focus:outline-none">
-        <Routes>
+      <div className="flex min-h-screen">
+        {!hideNav && (
+          <Sidebar
+            theme={theme}
+            setTheme={setTheme}
+            useCloud={useCloud}
+            setUseCloud={setUseCloud}
+          />
+        )}
+        <main id="main" tabIndex="-1" className="flex-1 focus:outline-none">
+          <Routes>
           <Route path="/auth" element={<AuthPage />} />
           <Route element={<AuthGuard />}>
             <Route
@@ -862,7 +773,8 @@ function AppShell({ prefs, setPrefs }) {
             />
           </Route>
         </Routes>
-      </main>
+        </main>
+      </div>
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
