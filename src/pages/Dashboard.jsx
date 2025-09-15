@@ -17,6 +17,11 @@ import useFinanceSummary from "../hooks/useFinanceSummary";
 import useWalletStatus from "../hooks/useWalletStatus";
 import LateMonthMode from "../components/LateMonthMode";
 import useLateMonthMode from "../hooks/useLateMonthMode";
+import KpiCards from "../components/KpiCards";
+import MonthlyTrendChart from "../components/MonthlyTrendChart";
+import CategoryDonut from "../components/CategoryDonut";
+import TopSpendsTable from "../components/TopSpendsTable";
+import useInsights from "../hooks/useInsights";
 
 
 import AvatarLevel from "../components/AvatarLevel.jsx";
@@ -58,6 +63,7 @@ export default function Dashboard({
   const lateMode = useLateMonthMode({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense }, prefs);
   const [walletOpen, setWalletOpen] = useState(false);
   const { speak } = useMoneyTalk();
+  const insights = useInsights(txs);
 
   const summary = useMemo(() => {
     const today = new Date();
@@ -182,6 +188,15 @@ export default function Dashboard({
       <AchievementBadges stats={stats} streak={streak} target={savingsTarget} />
       <SmartFinancialInsights txs={txs} />
       <QuickActions />
+      <KpiCards {...insights.kpis} />
+      <div className="grid gap-4 md:grid-cols-2">
+        <MonthlyTrendChart data={insights.trend} />
+        <CategoryDonut data={insights.categories} />
+      </div>
+      <TopSpendsTable
+        data={insights.topSpends}
+        onSelect={(t) => EventBus.emit("tx:open", t)}
+      />
       <div className="grid gap-4 md:grid-cols-2">
         <DashboardCharts month={monthForReport} txs={txs} />
         <RecentTransactions txs={txs} />
