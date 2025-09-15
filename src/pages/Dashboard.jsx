@@ -12,6 +12,7 @@ import DailyQuote from "../components/DailyQuote";
 import FinanceMascot from "../components/FinanceMascot";
 import WalletAvatar from "../components/WalletAvatar";
 import WalletPanel from "../components/WalletPanel";
+import PageHeader from "../layout/PageHeader";
 import useFinanceSummary from "../hooks/useFinanceSummary";
 import useWalletStatus from "../hooks/useWalletStatus";
 import LateMonthMode from "../components/LateMonthMode";
@@ -140,6 +141,7 @@ export default function Dashboard({
 
   return (
     <main className="max-w-5xl mx-auto p-4 space-y-6">
+      <PageHeader title="Dashboard" description="Ringkasan keuanganmu" />
       <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
       <Summary stats={stats} />
             <div className="relative flex justify-end">

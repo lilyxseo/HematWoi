@@ -1,12 +1,58 @@
-# React + Vite
+# HematWoi
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A personal finance playground built with React 19 and Vite. The project now
+includes a reusable layout system and basic accessibility helpers.
 
-Currently, two official plugins are available:
+## Getting Started
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```bash
+pnpm install
+pnpm dev
+```
 
-## Expanding the ESLint configuration
+Run unit tests with:
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+pnpm test
+```
+
+## Folder Structure
+
+```
+src/
+  layout/        # App-wide layout helpers (breadcrumbs, page headers)
+  components/    # Feature components
+  pages/         # Route pages
+  context/       # React context providers
+  lib/           # Utilities and tests
+```
+
+## UI Guidelines
+
+The app uses TailwindCSS with a unified colour palette:
+- `brand` `#3898f8`
+- `brand-hover` `#2584e4`
+- `brand-secondary` `#50b6ff`
+- `brand-secondary-hover` `#379de7`
+- `brand-text` `#13436d`
+
+Dark mode is supported via the `dark` class on `<html>`.
+
+## Layout Components
+
+- **Breadcrumbs** – renders a path based on the current route.
+- **PageHeader** – shows page title, description and optional action buttons.
+
+These components aim to keep spacing and typography consistent across pages.
+
+## Feature Toggles
+
+User preferences such as dark mode, MoneyTalk intensity and late-month mode are
+stored in `localStorage` under the `hematwoi:v3:prefs` key. They can be tweaked
+from the settings panel within the app.
+
+## Contributing
+
+Pull requests are welcome. Please run `pnpm test` before submitting to ensure
+all unit tests—including MoneyTalk queue, wallet status mapper, challenge
+evaluation and late-month mode activation—pass.
