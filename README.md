@@ -77,14 +77,28 @@ Halaman **Reports** dapat diakses melalui tautan sidebar atau langsung ke `/repo
 
 ## UI Guidelines
 
-The app uses TailwindCSS with a unified colour palette:
-- `brand` `#3898f8`
-- `brand-hover` `#2584e4`
-- `brand-secondary` `#50b6ff`
-- `brand-secondary-hover` `#379de7`
-- `brand-text` `#13436d`
+The app uses TailwindCSS with a unified design system. Core colour tokens:
 
-Dark mode is supported via the `dark` class on `<html>`.
+- `brand-300` `#50b6ff`
+- `brand-500` `#3898f8`
+- `brand-600` `#2584e4`
+- `success` `#22c55e`
+- `danger` `#ef4444`
+- `warning` `#f59e0b`
+
+Neutral tokens (used mostly in dark mode):
+
+- `neutral.background` `#0f172a`
+- `neutral.surface-1` `#1e293b`
+- `neutral.surface-2` `#334155`
+- `neutral.text` `#f1f5f9`
+- `neutral.muted` `#94a3b8`
+
+Typography uses fluid heading sizes (`h1`–`h6`) and a default body size that scales between breakpoints. Radius sizes (`DEFAULT`, `md`, `sm`) and shadows (`sm`, `md`, `lg`) are defined in `tailwind.config.cjs`.
+
+Dark mode is supported via the `dark` class on `<html>`, allowing a manual theme toggle.
+
+Class names are automatically sorted using `prettier-plugin-tailwindcss`. Run `pnpm lint` or your editor's format command to keep class order consistent.
 
 ## Layout Components
 
