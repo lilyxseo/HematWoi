@@ -13,14 +13,12 @@ module.exports = {
         },
         success: '#22c55e',
         danger: '#ef4444',
-        warning: '#f59e0b',
-        neutral: {
-          background: '#0f172a',
-          'surface-1': '#1e293b',
-          'surface-2': '#334155',
-          text: '#f1f5f9',
-          muted: '#94a3b8',
+        surface: {
+          1: '#ffffff',
+          2: '#f1f5f9',
         },
+        text: '#0f172a',
+        muted: '#94a3b8',
       },
       fontSize: {
         h1: ['clamp(2rem,5vw,2.5rem)', { lineHeight: '1.2' }],
@@ -29,6 +27,9 @@ module.exports = {
         h4: ['clamp(1.125rem,2vw,1.25rem)', { lineHeight: '1.4' }],
         h5: ['clamp(1rem,1.5vw,1.125rem)', { lineHeight: '1.4' }],
         h6: ['1rem', { lineHeight: '1.5' }],
+      },
+      spacing: {
+        18: '4.5rem',
       },
       borderRadius: {
         DEFAULT: '0.5rem',
