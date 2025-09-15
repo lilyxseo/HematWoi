@@ -18,10 +18,12 @@ pnpm test
 
 ## Data Mode
 
-HematWoi now supports a cloud or local data mode. The default mode uses
-Supabase for persistent storage. Switch to local mode from the Settings
-page and optionally seed dummy data for quick testing. The current mode is
-stored in `localStorage` under `hw:mode` and survives page reloads.
+HematWoi now runs in **Online Mode** by default using Supabase for all CRUD
+operations. A toggle in the sidebar switches to **Local Mode** where data is
+stored in `localStorage`/IndexedDB. Press the button again to return to
+Online Mode. The choice persists in `localStorage` under `hw:mode` so refreshes
+keep the selected mode. A small badge in the footer shows whether `✅ Online`
+or `📴 Local` mode is active.
 
 ## Transactions Page
 
