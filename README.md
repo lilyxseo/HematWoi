@@ -73,12 +73,37 @@ The app uses TailwindCSS with a unified colour palette:
 
 Dark mode is supported via the `dark` class on `<html>`.
 
+## Responsive Layout
+
+Global styles in `src/styles/tokens.css` and `src/styles/responsive.css` provide a fluid, container-based layout. Pages compose:
+
+```jsx
+import { Page } from "./components/ui/Page";
+import ResponsiveGrid from "./components/ui/ResponsiveGrid";
+import { Card, CardHeader, CardBody } from "./components/ui/Card";
+
+export default function Example() {
+  return (
+    <Page title="Example">
+      <ResponsiveGrid>
+        <Card>
+          <CardHeader title="Widget" />
+          <CardBody>Content</CardBody>
+        </Card>
+      </ResponsiveGrid>
+    </Page>
+  );
+}
+```
+
+Cards use fluid `clamp()` spacing and container queries so typography adapts across breakpoints. Grids rely on `repeat(auto-fit, minmax())` to prevent overflow from 360px to 1440px widths.
+
 ## Layout Components
 
 - **Breadcrumbs** – renders a path based on the current route.
 - **PageHeader** – shows page title, description and optional action buttons.
 
-These components aim to keep spacing and typography consistent across pages.
+These components aim to keep spacing and typography consistent across pages while the new Card/Grid system handles responsive content blocks.
 
 ## Settings & Preferences
 

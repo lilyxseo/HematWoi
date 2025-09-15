@@ -3,6 +3,8 @@ import Stepper from "../components/ui/Stepper";
 import ImportMappingForm from "../components/ImportMappingForm";
 import ImportPreview from "../components/ImportPreview";
 import { parseCSV, parseOFX, normalizeRows } from "../lib/statement";
+import { Page } from "../components/ui/Page";
+import { Card, CardBody } from "../components/ui/Card";
 
 export default function ImportWizard({ txs, onAdd, categories, rules, setRules, onCancel }) {
   const steps = ["Upload", "Mapping", "Preview"];
@@ -52,47 +54,51 @@ export default function ImportWizard({ txs, onAdd, categories, rules, setRules, 
   };
 
   return (
-    <main className="max-w-5xl mx-auto p-4 space-y-4">
-      <Stepper current={step} steps={steps} />
-      {step === 0 && (
-        <div className="card p-4 space-y-4">
-          <div>
-            <label className="btn cursor-pointer">
-              Pilih File
-              <input
-                type="file"
-                accept=".csv,.ofx,text/csv,application/x-ofx,application/vnd.ms-ofx"
-                className="hidden"
-                onChange={handleUpload}
-              />
-            </label>
-          </div>
-          <div className="flex justify-end">
-            <button className="btn" onClick={onCancel}>
-              Batal
-            </button>
-          </div>
-        </div>
-      )}
-      {step === 1 && (
-        <ImportMappingForm
-          headers={headers}
-          mapping={mapping}
-          setMapping={setMapping}
-          onNext={handleMappingNext}
-          onBack={() => setStep(0)}
-        />
-      )}
-      {step === 2 && (
-        <ImportPreview
-          rows={rows}
-          txs={txs}
-          categories={categories}
-          rules={rules}
-          onBack={() => setStep(1)}
-          onImport={handleImport}
-        />
-      )}
-    </main>
+    <Page title="Import">
+      <Card>
+        <CardBody>
+          <Stepper current={step} steps={steps} />
+          {step === 0 && (
+            <div className="space-y-4">
+              <div>
+                <label className="btn cursor-pointer">
+                  Pilih File
+                  <input
+                    type="file"
+                    accept=".csv,.ofx,text/csv,application/x-ofx,application/vnd.ms-ofx"
+                    className="hidden"
+                    onChange={handleUpload}
+                  />
+                </label>
+              </div>
+              <div className="flex justify-end">
+                <button className="btn" onClick={onCancel}>
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
+          {step === 1 && (
+            <ImportMappingForm
+              headers={headers}
+              mapping={mapping}
+              setMapping={setMapping}
+              onNext={handleMappingNext}
+              onBack={() => setStep(0)}
+            />
+          )}
+          {step === 2 && (
+            <ImportPreview
+              rows={rows}
+              txs={txs}
+              categories={categories}
+              rules={rules}
+              onBack={() => setStep(1)}
+              onImport={handleImport}
+            />
+          )}
+        </CardBody>
+      </Card>
+    </Page>
   );
 }

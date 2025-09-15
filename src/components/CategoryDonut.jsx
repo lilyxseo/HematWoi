@@ -15,14 +15,14 @@ export default function CategoryDonut({ data = [] }) {
     if (!payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="rounded bg-white p-2 text-xs shadow">
+      <div className="card" style={{ padding: "8px", fontSize: "var(--fs-300)" }}>
         {p.name}: {toRupiah(p.value)}
       </div>
     );
   };
 
   return (
-    <div className="card h-[260px]">
+    <div className="chart-wrap">
       {data.length ? (
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -36,7 +36,7 @@ export default function CategoryDonut({ data = [] }) {
           </PieChart>
         </ResponsiveContainer>
       ) : (
-        <div className="flex h-full items-center justify-center text-sm text-slate-500">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", fontSize: "var(--fs-400)", color: "#64748b" }}>
           Tidak ada data
         </div>
       )}

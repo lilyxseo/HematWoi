@@ -41,15 +41,15 @@ export default function TxTable({ items = [], onRemove, onUpdate }) {
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
       <CategoryDock />
-      <div className="table-wrap overflow-auto">
-        <table className={`min-w-full text-sm ${density === "compact" ? "table-compact" : ""}`}>
-          <thead className="bg-white md:sticky md:top-0">
-            <tr className="text-left">
-              <th className="p-2">Kategori</th>
-              <th className="p-2">Tanggal</th>
-              <th className="p-2">Catatan</th>
-              <th className="p-2 text-right">Jumlah</th>
-              <th className="p-2" />
+      <div className="table-wrap">
+        <table className={density === "compact" ? "table-compact" : ""}>
+          <thead>
+            <tr>
+              <th>Kategori</th>
+              <th>Tanggal</th>
+              <th>Catatan</th>
+              <th style={{ textAlign: "right" }}>Jumlah</th>
+              <th />
             </tr>
           </thead>
           <tbody>
@@ -63,11 +63,11 @@ export default function TxTable({ items = [], onRemove, onUpdate }) {
             ))}
           </tbody>
         </table>
-        <div className="mt-2 flex items-center justify-between text-sm">
+        <div style={{ marginTop: "var(--space-2)", display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "var(--fs-400)" }}>
           <div>
             Menampilkan {start}-{end} dari {items.length}
           </div>
-          <div className="flex gap-2">
+          <div style={{ display: "flex", gap: "8px" }}>
             <button
               className="btn"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
