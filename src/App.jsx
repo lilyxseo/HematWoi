@@ -35,6 +35,7 @@ import {
   updateTransaction as apiUpdate,
   deleteTransaction as apiDelete,
   upsertCategories,
+  listCategories as apiListCategories,
 } from "./lib/api";
 
 import CategoryProvider from "./context/CategoryContext";
@@ -298,26 +299,30 @@ function AppShell({ prefs, setPrefs }) {
 
   async function fetchCategoriesCloud() {
     try {
-      const { data: rows, error } = await supabase
-        .from("categories")
-        .select("id,type,name,color,sort_order");
-      if (error) throw error;
+      const rows = await apiListCategories();
       const map = {};
       const meta = {};
       const incomeRows = [];
       const expenseRows = [];
       (rows || []).forEach((r) => {
+        if (!r?.name) return;
         map[r.name] = r.id;
         meta[r.name] = {
           color: r.color || "#64748b",
           type: r.type,
-          sort: r.sort_order ?? 0,
+          sort: r.order_index ?? 0,
         };
         if (r.type === "income") incomeRows.push(r);
-        else if (r.type === "expense") expenseRows.push(r);
+        else expenseRows.push(r);
       });
-      incomeRows.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-      expenseRows.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      const sortByOrder = (a, b) => {
+        const orderA = a.order_index ?? 0;
+        const orderB = b.order_index ?? 0;
+        if (orderA !== orderB) return orderA - orderB;
+        return a.name.localeCompare(b.name);
+      };
+      incomeRows.sort(sortByOrder);
+      expenseRows.sort(sortByOrder);
       setCatMap(map);
       setCatMeta(meta);
       setData((d) => ({
@@ -343,12 +348,26 @@ function AppShell({ prefs, setPrefs }) {
 
   async function fetchBudgetsCloud() {
     try {
+      if (!sessionUser) return;
       const { data: rows, error } = await supabase
         .from("budgets")
-        .select("id,category,month,amount")
+        .select(
+          "id, month, amount_planned, carryover_enabled, notes, category_id, categories:category_id (name)"
+        )
+        .eq("user_id", sessionUser.id)
         .order("month", { ascending: false });
       if (error) throw error;
-      setData((d) => ({ ...d, budgets: rows || [] }));
+      const mapped = (rows || []).map((row) => ({
+        id: row.id,
+        category_id: row.category_id,
+        category: row.categories?.name || row.category || null,
+        month: row.month ? String(row.month).slice(0, 7) : null,
+        amount: Number(row.amount_planned ?? row.amount ?? 0),
+        amount_planned: Number(row.amount_planned ?? row.amount ?? 0),
+        carryover_enabled: row.carryover_enabled ?? false,
+        notes: row.notes ?? null,
+      }));
+      setData((d) => ({ ...d, budgets: mapped }));
     } catch (e) {
       console.error("fetch budgets failed", e);
     }
@@ -497,6 +516,8 @@ function AppShell({ prefs, setPrefs }) {
   const addBudget = async ({ category, month, amount }) => {
     if (!data.cat.expense.includes(category)) return;
     const m = String(month).slice(0, 7);
+    const categoryId = catMap[category] ?? null;
+    if (useCloud && sessionUser && !categoryId) return;
     if (data.budgets.some((b) => b.category === category && b.month === m))
       return;
 
@@ -504,18 +525,45 @@ function AppShell({ prefs, setPrefs }) {
       try {
         const { data: row, error } = await supabase
           .from("budgets")
-          .insert({ user_id: sessionUser.id, category, month: m, amount })
-          .select("id,category,month,amount")
+          .insert({
+            user_id: sessionUser.id,
+            category_id: categoryId,
+            month: `${m}-01`,
+            amount_planned: amount,
+          })
+          .select(
+            "id, month, amount_planned, carryover_enabled, notes, category_id, categories:category_id (name)"
+          )
           .single();
         if (error) throw error;
-        setData((d) => ({ ...d, budgets: [...d.budgets, row] }));
+        const mapped = {
+          id: row.id,
+          category_id: row.category_id,
+          category: row.categories?.name || category,
+          month: row.month ? String(row.month).slice(0, 7) : m,
+          amount: Number(row.amount_planned ?? amount),
+          amount_planned: Number(row.amount_planned ?? amount),
+          carryover_enabled: row.carryover_enabled ?? false,
+          notes: row.notes ?? null,
+        };
+        setData((d) => ({ ...d, budgets: [...d.budgets, mapped] }));
       } catch (e) {
         alert("Gagal menambah budget: " + e.message);
       }
     } else {
       setData((d) => ({
         ...d,
-        budgets: [...d.budgets, { id: uid(), category, month: m, amount }],
+        budgets: [
+          ...d.budgets,
+          {
+            id: uid(),
+            category,
+            category_id: categoryId,
+            month: m,
+            amount,
+            amount_planned: amount,
+          },
+        ],
       }));
     }
   };
@@ -523,7 +571,11 @@ function AppShell({ prefs, setPrefs }) {
   const removeBudget = async (id) => {
     if (useCloud && sessionUser) {
       try {
-        await supabase.from("budgets").delete().eq("id", id);
+        await supabase
+          .from("budgets")
+          .delete()
+          .eq("id", id)
+          .eq("user_id", sessionUser.id);
       } catch (e) {
         alert("Gagal menghapus budget: " + e.message);
         return;

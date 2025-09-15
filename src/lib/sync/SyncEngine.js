@@ -1,4 +1,5 @@
 import { supabase } from "../supabase";
+import { getCurrentUserId } from "../session";
 import { dbCache, oplogStore } from "./localdb";
 import { processStoragePutBatch } from "./attachments";
 import { calcBackoff, groupOps, normalizeRecord } from "./utils";
@@ -40,10 +41,29 @@ function getOrCreateClientTag() {
 
 const clientTag = getOrCreateClientTag();
 
+const USER_SCOPED_TABLES = new Set([
+  "transactions",
+  "categories",
+  "budgets",
+  "subscriptions",
+  "goals",
+  "challenges",
+  "transaction_tags",
+  "receipts",
+  "accounts",
+  "merchants",
+  "tags",
+]);
+
+function requiresUserContext(entity) {
+  return USER_SCOPED_TABLES.has(entity);
+}
+
 async function sendOp(op) {
   if (op.type === "UPSERT") {
-    const payload = normalizeRecord(op.payload);
-    const { error } = await supabase.from(op.entity).upsert([payload], { onConflict: "id" });
+    const payload = op.meta?.normalized ? op.payload : normalizeRecord(op.payload);
+    const onConflict = op.meta?.onConflict || "id";
+    const { error } = await supabase.from(op.entity).upsert([payload], { onConflict });
     if (error) throw error;
     await dbCache.set(op.entity, payload);
   } else if (op.type === "DELETE") {
@@ -61,24 +81,32 @@ async function tryImmediate(op) {
 }
 
 export async function upsert(entity, record) {
+  const payload = { ...record };
+  if (requiresUserContext(entity)) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Pengguna belum masuk");
+    if (!payload.user_id) payload.user_id = userId;
+  }
+  const normalized = normalizeRecord(payload);
   const op = {
     opId: crypto.randomUUID(),
     entity,
     type: "UPSERT",
-    payload: record,
+    payload: normalized,
     attempts: 0,
     nextAt: 0,
     ts: Date.now(),
     clientTag,
+    meta: { normalized: true },
   };
   try {
     await tryImmediate(op);
   } catch {
-    await dbCache.set(entity, record); // optimistic
+    await dbCache.set(entity, normalized); // optimistic
     await oplogStore.add(op);
     setStatus(SyncStatus.OFFLINE);
   }
-  return record;
+  return normalized;
 }
 
 export async function remove(entity, id) {
@@ -115,10 +143,13 @@ export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
     const slice = g.items.slice(0, batchSize);
     try {
       if (g.type === "UPSERT") {
-        const payloads = slice.map((o) => normalizeRecord(o.payload));
+        const payloads = slice.map((o) =>
+          o.meta?.normalized ? o.payload : normalizeRecord(o.payload)
+        );
+        const onConflict = slice[0]?.meta?.onConflict || "id";
         const { error } = await supabase
           .from(g.entity)
-          .upsert(payloads, { onConflict: "id" });
+          .upsert(payloads, { onConflict });
         if (error) throw error;
         await dbCache.bulkSet(g.entity, payloads);
       } else if (g.type === "DELETE") {
