@@ -59,7 +59,7 @@ export default function AddWizard({ categories, onAdd, onCancel }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [step, amount, date, category]);
+  }, [step, amount, date, category, back, next, onCancel]);
 
   const presets = [
     { label: "+10k", val: 10000 },

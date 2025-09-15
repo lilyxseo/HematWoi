@@ -112,7 +112,7 @@ function AppShell({ prefs, setPrefs }) {
       return {};
     }
   });
-  const [allocRules, setAllocRules] = useState(() => {
+  const [allocRules] = useState(() => {
     try {
       return (
         JSON.parse(localStorage.getItem("hematwoi:v3:alloc")) || {
@@ -179,7 +179,7 @@ function AppShell({ prefs, setPrefs }) {
       }
     }
     loadProfile();
-  }, [useCloud, sessionUser]);
+  }, [useCloud, sessionUser, setPrefs]);
 
   useEffect(() => {
     async function saveProfile() {
@@ -376,14 +376,6 @@ function AppShell({ prefs, setPrefs }) {
     }
     if (prefs.walletSound) playChaChing();
     triggerMoneyTalk(tx);
-  };
-
-  const addGoal = (goal) => {
-    setData((d) => ({ ...d, goals: [...(d.goals || []), goal] }));
-  };
-
-  const addEnvelope = (env) => {
-    setData((d) => ({ ...d, envelopes: [...(d.envelopes || []), env] }));
   };
 
   const updateTx = async (id, patch) => {
@@ -637,14 +629,20 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
+      <TopBar
+        stats={stats}
+        useCloud={useCloud}
+        setUseCloud={setUseCloud}
+        theme={theme}
+        setTheme={setTheme}
+      />
       {!hideNav && (
-        <nav className="max-w-5xl mx-auto px-4">
+        <nav aria-label="Primary" className="max-w-5xl mx-auto px-4">
           <ul className="flex gap-3 overflow-auto">
             <li>
               <Link
                 to="/"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   location.pathname === "/" ? "text-brand border-b-2 border-brand" : ""
                 }`}
               >
@@ -654,7 +652,7 @@ function AppShell({ prefs, setPrefs }) {
             <li>
               <Link
                 to="/transactions"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   location.pathname === "/transactions"
                     ? "text-brand border-b-2 border-brand"
                     : ""
@@ -666,7 +664,7 @@ function AppShell({ prefs, setPrefs }) {
             <li>
               <Link
                 to="/budgets"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   location.pathname === "/budgets" ? "text-brand border-b-2 border-brand" : ""
                 }`}
               >
@@ -676,7 +674,7 @@ function AppShell({ prefs, setPrefs }) {
             <li>
               <Link
                 to="/goals"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   location.pathname === "/goals" ? "text-brand border-b-2 border-brand" : ""
                 }`}
               >
@@ -686,7 +684,7 @@ function AppShell({ prefs, setPrefs }) {
             <li>
               <Link
                 to="/categories"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   location.pathname === "/categories"
                     ? "text-brand border-b-2 border-brand"
                     : ""
@@ -698,7 +696,7 @@ function AppShell({ prefs, setPrefs }) {
             <li>
               <Link
                 to="/data"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   location.pathname === "/data" ? "text-brand border-b-2 border-brand" : ""
                 }`}
               >
@@ -708,7 +706,7 @@ function AppShell({ prefs, setPrefs }) {
             <li>
               <Link
                 to="/subscriptions"
-                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                className={`px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                   location.pathname === "/subscriptions" ? "text-brand border-b-2 border-brand" : ""
                 }`}
               >
