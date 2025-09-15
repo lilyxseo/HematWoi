@@ -1,7 +1,7 @@
 import { supabase } from "../supabase";
 import { dbCache, oplogStore } from "./localdb";
 import { processStoragePutBatch } from "./attachments";
-import { calcBackoff, groupOps, normalizeRecord, resolveConflict } from "./utils";
+import { calcBackoff, groupOps, normalizeRecord } from "./utils";
 
 export const SYNC_INTERVAL_MS = 20000;
 export const SYNC_BATCH_SIZE = 100;

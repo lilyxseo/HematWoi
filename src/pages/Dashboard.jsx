@@ -24,7 +24,6 @@ import TopSpendsTable from "../components/TopSpendsTable";
 import useInsights from "../hooks/useInsights";
 
 
-import AvatarLevel from "../components/AvatarLevel.jsx";
 import EventBus from "../lib/eventBus";
 import { useMoneyTalk } from "../context/MoneyTalkContext.jsx";
 
@@ -35,7 +34,6 @@ export default function Dashboard({
   txs,
   budgets,
   months = [],
-  challenges = [],
   prefs = {},
 }) {
   const streak = useMemo(() => {
@@ -150,39 +148,32 @@ export default function Dashboard({
       <PageHeader title="Dashboard" description="Ringkasan keuanganmu" />
       <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
       <Summary stats={stats} />
-            <div className="relative flex justify-end">
-        <WalletAvatar
-          status={wallet.status}
-          trend={finance.weeklyTrend}
-          balance={finance.balance}
-          isOverBudget={finance.isAnyOverBudget}
-          soundEnabled={prefs?.walletSound}
-          onClick={() => setWalletOpen((o) => !o)}
-        />
-        {walletOpen && (
-          <WalletPanel
-            insights={{
-              balance: finance.balance,
-              weeklyTrend: finance.weeklyTrend,
-              topSpenderCategory: finance.topSpenderCategory,
-              tip: wallet.tip,
-            }}
-            showTips={prefs?.walletShowTips}
-            onClose={() => setWalletOpen(false)}
+      <div className="flex items-center justify-center gap-4">
+        <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
+        <div className="relative">
+          <WalletAvatar
+            status={wallet.status}
+            trend={finance.weeklyTrend}
+            balance={finance.balance}
+            isOverBudget={finance.isAnyOverBudget}
+            soundEnabled={prefs?.walletSound}
+            onClick={() => setWalletOpen((o) => !o)}
           />
-        )}
+          {walletOpen && (
+            <WalletPanel
+              insights={{
+                balance: finance.balance,
+                weeklyTrend: finance.weeklyTrend,
+                topSpenderCategory: finance.topSpenderCategory,
+                tip: wallet.tip,
+              }}
+              showTips={prefs?.walletShowTips}
+              onClose={() => setWalletOpen(false)}
+            />
+          )}
+        </div>
       </div>
-
-      <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
       <DailyStreak streak={streak} />
-        <AvatarLevel transactions={txs} challenges={challenges} />
-      <button
-        type="button"
-        onClick={() => EventBus.emit("xp:add", { code: "demo", amount: 10 })}
-        className="px-2 py-1 text-xs bg-emerald-500 text-white rounded"
-      >
-        +10 XP Demo
-      </button>
       <DailyQuote />
       <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
       <AchievementBadges stats={stats} streak={streak} target={savingsTarget} />
