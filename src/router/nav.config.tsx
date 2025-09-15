@@ -12,31 +12,95 @@ export type NavItem = {
   children?: NavItem[];
 };
 
-import { Home, BarChart3 } from 'lucide-react';
+import {
+  LayoutDashboard,
+  ListChecks,
+  Wallet,
+  Flag,
+  Tags,
+  Database,
+  Repeat,
+  Settings as SettingsIcon,
+  User as UserIcon,
+} from 'lucide-react';
 
 export const NAV_ITEMS: NavItem[] = [
   {
-    title: 'Home',
+    title: 'Dashboard',
     path: '/',
-    icon: <Home className="h-4 w-4" />,
-    section: 'Main',
-    inSidebar: true,
-    protected: false,
-  },
-  {
-    title: 'Reports',
-    path: '/reports',
-    icon: <BarChart3 className="h-4 w-4" />,
-    section: 'Main',
+    icon: <LayoutDashboard className="h-5 w-5" />,
+    section: 'primary',
     inSidebar: true,
     protected: true,
-    featureFlag: 'reports',
-  }
-  ,
+  },
+  {
+    title: 'Transaksi',
+    path: '/transactions',
+    icon: <ListChecks className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Anggaran',
+    path: '/budgets',
+    icon: <Wallet className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Goals',
+    path: '/goals',
+    icon: <Flag className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Kategori',
+    path: '/categories',
+    icon: <Tags className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Data',
+    path: '/data',
+    icon: <Database className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Langganan',
+    path: '/subscriptions',
+    icon: <Repeat className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Profile',
+    path: '/profile',
+    icon: <UserIcon className="h-5 w-5" />,
+    section: 'secondary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Settings',
+    path: '/settings',
+    icon: <SettingsIcon className="h-5 w-5" />,
+    section: 'secondary',
+    inSidebar: true,
+    protected: true,
+  },
   {
     title: 'Auth',
     path: '/auth',
     inSidebar: false,
     protected: false,
-  }
+  },
 ];
