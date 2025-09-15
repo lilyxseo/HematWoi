@@ -37,12 +37,15 @@ export default function AchievementBadges({ stats = {}, streak = 0, target = 0 }
 
   return (
     <div className="card animate-slide">
-      <h2 className="mb-2 font-semibold">Achievements</h2>
-      <ul className="divide-y divide-slate-200 text-sm dark:divide-slate-700">
+      <h2 className="font-semibold mb-2">Achievements</h2>
+      <ul className="space-y-2">
         {badges.map((b) => (
-          <li key={b.id} className="flex items-center gap-2 py-1.5">
+          <li
+            key={b.id}
+            className="flex items-center gap-2 text-sm bg-slate-50 dark:bg-slate-700 p-2 rounded"
+          >
             {b.icon}
-            <span className="flex-1 leading-tight line-clamp-2">{b.text}</span>
+            <span>{b.text}</span>
           </li>
         ))}
       </ul>
