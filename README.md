@@ -16,6 +16,13 @@ Run unit tests with:
 pnpm test
 ```
 
+## Data Mode
+
+HematWoi now supports a cloud or local data mode. The default mode uses
+Supabase for persistent storage. Switch to local mode from the Settings
+page and optionally seed dummy data for quick testing. The current mode is
+stored in `localStorage` under `hw:mode`.
+
 ## Folder Structure
 
 ```

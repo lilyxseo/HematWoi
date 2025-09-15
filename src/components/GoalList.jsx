@@ -1,49 +1,56 @@
-import { useState } from "react";
-import GoalForm from "./GoalForm";
-import { goalProgress } from "../lib/goals";
+import { useState } from 'react';
+import GoalCard from './GoalCard';
+import GoalFormModal from './GoalFormModal';
 
-export default function GoalList({ goals = [], onSave }) {
-  const [adding, setAdding] = useState(false);
+export default function GoalList({ goals, onAdd, onUpdate, onDelete }) {
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const startAdd = () => {
+    setEditing(null);
+    setOpen(true);
+  };
+  const startEdit = (g) => {
+    setEditing(g);
+    setOpen(true);
+  };
+
+  const handleSave = (data) => {
+    if (editing) {
+      onUpdate(editing.id, data);
+    } else {
+      onAdd({ ...data, id: crypto.randomUUID(), allocated: 0 });
+    }
+    setOpen(false);
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Goals</h2>
-        <button
-          className="px-3 py-1 rounded bg-brand text-white"
-          onClick={() => setAdding(true)}
-        >
+        <button className="btn btn-primary" onClick={startAdd}>
           Tambah
         </button>
       </div>
-      {adding && (
-        <GoalForm
-          onSave={(g) => {
-            onSave({ ...g, id: crypto.randomUUID(), allocated: 0 });
-            setAdding(false);
-          }}
-          onCancel={() => setAdding(false)}
-        />
+      {goals.length === 0 && (
+        <div className="text-center text-sm text-slate-500">
+          Belum ada goal.{' '}
+          <button className="text-brand" onClick={startAdd}>
+            Buat Goal Pertama
+          </button>
+        </div>
       )}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {goals.map((g) => (
-          <div
-            key={g.id}
-            className="p-4 border rounded shadow-sm bg-white dark:bg-slate-800"
-          >
-            <div className="font-medium mb-1">{g.name}</div>
-            <div className="text-sm text-slate-500 mb-2">
-              Rp {g.allocated?.toFixed(0)} / Rp {g.target.toFixed(0)}
-            </div>
-            <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded">
-              <div
-                className="h-2 bg-brand rounded"
-                style={{ width: `${goalProgress(g) * 100}%` }}
-              />
-            </div>
-          </div>
+          <GoalCard key={g.id} goal={g} onEdit={startEdit} onDelete={onDelete} />
         ))}
       </div>
+      <GoalFormModal
+        open={open}
+        onClose={() => setOpen(false)}
+        onSave={handleSave}
+        initial={editing}
+      />
     </div>
   );
 }

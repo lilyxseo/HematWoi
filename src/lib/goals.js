@@ -3,6 +3,16 @@ export function goalProgress(goal) {
   return Math.min(goal.allocated / goal.target, 1);
 }
 
+export function estimateGoalETA(goal, avgPerDay = 0) {
+  if (!goal || !avgPerDay) return null;
+  const remaining = (goal.target || 0) - (goal.allocated || 0);
+  if (remaining <= 0) return new Date();
+  const days = Math.ceil(remaining / avgPerDay);
+  const eta = new Date();
+  eta.setDate(eta.getDate() + days);
+  return eta;
+}
+
 export function updateGoalBalance(goals, id, amount) {
   return goals.map((g) => (g.id === id ? { ...g, allocated: amount } : g));
 }

@@ -13,8 +13,13 @@ import AddWizard from "./pages/AddWizard";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
+import SettingsPage from "./pages/Settings";
+import ProfilePage from "./pages/Profile";
+import AuthPage from "./pages/Auth";
 import ChallengesPage from "./pages/Challenges.jsx";
 import useChallenges from "./hooks/useChallenges.js";
+import AuthGuard from "./components/AuthGuard";
+import { DataProvider } from "./context/DataContext";
 
 import { supabase } from "./lib/supabase";
 import { playChaChing } from "./lib/walletSound";
@@ -715,113 +720,106 @@ function AppShell({ prefs, setPrefs }) {
       )}
       <main id="main" tabIndex="-1" className="focus:outline-none">
         <Routes>
-          <Route
-            path="/"
-            element={
-              <Dashboard
-                stats={stats}
-                monthForReport={
-                  filter.month === "all" ? currentMonth : filter.month
-                }
-                txs={data.txs}
-                budgets={data.budgets}
-                months={months}
-                challenges={challenges}
-                prefs={prefs}
-              />
-            }
-          />
-          <Route
-            path="/transactions"
-            element={
-              <Transactions
-                months={months}
-                categories={allCategories}
-                filter={filter}
-                setFilter={setFilter}
-                items={filtered}
-                onRemove={removeTx}
-                onUpdate={updateTx}
-              />
-            }
-          />
-          <Route
-            path="/budgets"
-            element={
-              <Budgets
-                currentMonth={currentMonth}
-                data={data}
-                onAdd={addBudget}
-                onRemove={removeBudget}
-              />
-            }
-          />
-          <Route
-            path="/goals"
-            element={
-              <GoalsPage
-                goals={data.goals}
-                envelopes={data.envelopes}
-                rules={allocRules}
-                onAddGoal={addGoal}
-                onAddEnvelope={addEnvelope}
-                onSaveRules={setAllocRules}
-              />
-            }
-          />
-          <Route
-            path="/challenges"
-            element={
-              <ChallengesPage
-                challenges={challenges}
-                onAdd={addChallenge}
-                onUpdate={updateChallenge}
-                onRemove={removeChallenge}
-                txs={data.txs}
-              />
-            }
-          />
-          <Route
-            path="/categories"
-            element={<Categories cat={data.cat} onSave={saveCategories} />}
-          />
-          <Route
-            path="/subscriptions"
-            element={<Subscriptions categories={data.cat} />}
-          />
-          <Route
-            path="/data"
-            element={
-              <DataToolsPage
-                onExport={handleExport}
-                onImportJSON={handleImportJSON}
-                onImportCSV={handleImportCSV}
-              />
-            }
-          />
-          <Route
-            path="/import"
-            element={
-              <ImportWizard
-                txs={data.txs}
-                onAdd={addTx}
-                categories={data.cat}
-                rules={rules}
-                setRules={setRules}
-                onCancel={() => navigate("/data")}
-              />
-            }
-          />
-          <Route
-            path="/add"
-            element={
-              <AddWizard
-                categories={data.cat}
-                onAdd={addTx}
-                onCancel={() => navigate("/")}
-              />
-            }
-          />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route element={<AuthGuard />}>
+            <Route
+              path="/"
+              element={
+                <Dashboard
+                  stats={stats}
+                  monthForReport={
+                    filter.month === "all" ? currentMonth : filter.month
+                  }
+                  txs={data.txs}
+                  budgets={data.budgets}
+                  months={months}
+                  challenges={challenges}
+                  prefs={prefs}
+                />
+              }
+            />
+            <Route
+              path="/transactions"
+              element={
+                <Transactions
+                  months={months}
+                  categories={allCategories}
+                  filter={filter}
+                  setFilter={setFilter}
+                  items={filtered}
+                  onRemove={removeTx}
+                  onUpdate={updateTx}
+                />
+              }
+            />
+            <Route
+              path="/budgets"
+              element={
+                <Budgets
+                  currentMonth={currentMonth}
+                  data={data}
+                  onAdd={addBudget}
+                  onRemove={removeBudget}
+                />
+              }
+            />
+            <Route path="/goals" element={<GoalsPage />} />
+            <Route
+              path="/challenges"
+              element={
+                <ChallengesPage
+                  challenges={challenges}
+                  onAdd={addChallenge}
+                  onUpdate={updateChallenge}
+                  onRemove={removeChallenge}
+                  txs={data.txs}
+                />
+              }
+            />
+            <Route
+              path="/categories"
+              element={<Categories cat={data.cat} onSave={saveCategories} />}
+            />
+            <Route
+              path="/subscriptions"
+              element={<Subscriptions categories={data.cat} />}
+            />
+            <Route
+              path="/data"
+              element={
+                <DataToolsPage
+                  onExport={handleExport}
+                  onImportJSON={handleImportJSON}
+                  onImportCSV={handleImportCSV}
+                />
+              }
+            />
+            <Route
+              path="/import"
+              element={
+                <ImportWizard
+                  txs={data.txs}
+                  onAdd={addTx}
+                  categories={data.cat}
+                  rules={rules}
+                  setRules={setRules}
+                  onCancel={() => navigate("/data")}
+                />
+              }
+            />
+            <Route
+              path="/add"
+              element={
+                <AddWizard
+                  categories={data.cat}
+                  onAdd={addTx}
+                  onCancel={() => navigate("/")}
+                />
+              }
+            />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+          </Route>
         </Routes>
       </main>
       <SettingsPanel
@@ -903,7 +901,9 @@ export default function App() {
   return (
     <UserProfileProvider>
       <ToastProvider>
-        <AppContent />
+        <DataProvider>
+          <AppContent />
+        </DataProvider>
       </ToastProvider>
     </UserProfileProvider>
   );
