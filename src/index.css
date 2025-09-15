@@ -2,15 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
-.btn { @apply inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm; }
-.btn-primary { @apply bg-brand border-brand text-white; }
-.card { @apply bg-white rounded-xl shadow-sm border p-4; }
-.input { @apply w-full rounded-lg border px-3 py-2; }
-.badge { @apply inline-block rounded-full border px-2 py-0.5 text-xs; }
-.table-wrap { @apply overflow-auto; }
+@layer base {
+  body { @apply bg-white text-brand-text; }
+  h1, h2, h3, h4, h5, h6 { @apply font-semibold; }
+}
+
+@layer components {
+  .btn { @apply inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors; }
+  .btn-primary { @apply bg-brand text-white border-brand hover:bg-brand-hover; }
+  .btn-secondary { @apply bg-brand-secondary text-white border-brand-secondary hover:bg-brand-secondary-hover; }
+  .card { @apply bg-white rounded-xl shadow-sm border p-4; }
+  .input { @apply w-full rounded-lg border px-3 py-2; }
+  .badge { @apply inline-block rounded-full border px-2 py-0.5 text-xs; }
+  .table-wrap { @apply overflow-auto; }
+}
 
 .dark body { @apply bg-slate-950 text-slate-100; }
 .dark .card { @apply bg-slate-900 border-slate-800; }
 .dark .input { @apply bg-slate-900 border-slate-700 text-slate-100; }
 .dark .btn { @apply border-slate-700; }
 .dark .badge { @apply border-slate-700; }
+.dark .btn-primary { @apply bg-brand hover:bg-brand-hover border-brand; }
+.dark .btn-secondary { @apply bg-brand-secondary hover:bg-brand-secondary-hover border-brand-secondary; }
