@@ -1,28 +1,40 @@
 // src/lib/api.js
 import { supabase } from "./supabase";
+import syncEngine, { normalize } from "./sync/SyncEngine.js";
+import * as localdb from "./sync/localdb.js";
 
 /**
- * List transaksi dari Supabase dengan filter & pagination.
- * @param {Object} opts
- * @param {"income"|"expense"|"all"|undefined} opts.type
- * @param {string|undefined} opts.month - "YYYY-MM" atau "all"
- * @param {string|undefined} opts.q - query pencarian
- * @param {number} opts.page - mulai 1
- * @param {number} opts.pageSize - default 20
- * @returns {{rows: Array, total: number, page: number, pageSize: number}}
+ * List transaksi dengan filter & pagination.
  */
 export async function listTransactions(
-  { type, month, q, page = 1, pageSize = 20 } = {}
+  { type, month, q, page = 1, pageSize = 20 } = {},
 ) {
+  if (!navigator.onLine) {
+    let rows = await localdb.getCache("transactions");
+    rows = rows.map((t) => ({ ...t }));
+    if (type && type !== "all") rows = rows.filter((r) => r.type === type);
+    if (month && month !== "all") rows = rows.filter((r) => r.date.startsWith(month));
+    if (q && q.trim()) {
+      const like = q.toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          r.note?.toLowerCase().includes(like) ||
+          r.category?.toLowerCase().includes(like),
+      );
+    }
+    const total = rows.length;
+    const from = (page - 1) * pageSize;
+    const paged = rows.slice(from, from + pageSize);
+    return { rows: paged, total, page, pageSize };
+  }
+
   let query = supabase
     .from("transactions")
     .select(
-      // ambil kategori via FK alias `categories`
       "id,date,type,amount,note,category_id,categories:category_id (name)",
-      { count: "exact" }
+      { count: "exact" },
     )
     .order("date", { ascending: false });
-
   if (type && type !== "all") {
     query = query.eq("type", type);
   }
@@ -34,73 +46,66 @@ export async function listTransactions(
   }
   if (q && q.trim()) {
     const like = `%${q}%`;
-    // cari di note atau nama kategori
     query = query.or(`note.ilike.${like},categories.name.ilike.${like}`);
   }
-
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
-
   const { data, error, count } = await query.range(from, to);
   if (error) throw error;
-
   const rows = (data || []).map((t) => ({
     ...t,
     category: t.categories?.name || null,
   }));
+  await localdb.setCache("transactions", rows);
   return { rows, total: count || 0, page, pageSize };
 }
 
 /**
  * Insert transaksi baru
- * @returns {Promise<Object>}
  */
 export async function addTransaction({ date, type, amount, note, category_id }) {
-  const { data, error } = await supabase
-    .from("transactions")
-    .insert({
-      date,
-      type,
-      amount,
-      note: note || null,
-      category_id: category_id || null,
-    })
-    .select("id,date,type,amount,note,category_id,categories:category_id (name)")
-    .single();
-  if (error) throw error;
-  return { ...data, category: data.categories?.name || null };
+  const record = normalize("transactions", {
+    date,
+    type,
+    amount,
+    note: note || null,
+    category_id: category_id || null,
+  });
+  await syncEngine.enqueueOrRun("transactions", "UPSERT", record);
+  const cats = await localdb.getCache("categories");
+  const category = cats.find((c) => c.id === record.category_id)?.name || null;
+  return { ...record, category };
 }
 
 /**
  * Update transaksi by id
- * @returns {Promise<Object>}
  */
 export async function updateTransaction(id, patch) {
-  const { data, error } = await supabase
-    .from("transactions")
-    .update(patch)
-    .eq("id", id)
-    .select("id,date,type,amount,note,category_id,categories:category_id (name)")
-    .single();
-  if (error) throw error;
-  return { ...data, category: data.categories?.name || null };
+  const record = normalize("transactions", { id, ...patch });
+  await syncEngine.enqueueOrRun("transactions", "UPSERT", record);
+  const cats = await localdb.getCache("categories");
+  const category = cats.find((c) => c.id === record.category_id)?.name || null;
+  return { ...record, category };
 }
 
 /**
  * Hapus transaksi by id
  */
 export async function deleteTransaction(id) {
-  const { error } = await supabase.from("transactions").delete().eq("id", id);
-  if (error) throw error;
+  await syncEngine.enqueueOrRun("transactions", "DELETE", { id });
 }
 
 // -- CATEGORIES ----------------------------------------
 
 /**
  * List kategori (opsional filter type)
- * @param {"income"|"expense"|undefined} type
  */
 export async function listCategories(type) {
+  if (!navigator.onLine) {
+    let rows = await localdb.getCache("categories");
+    if (type) rows = rows.filter((c) => c.type === type);
+    return rows;
+  }
   let query = supabase
     .from("categories")
     .select("id,type,name")
@@ -108,6 +113,7 @@ export async function listCategories(type) {
   if (type) query = query.eq("type", type);
   const { data, error } = await query;
   if (error) throw error;
+  await localdb.setCache("categories", data || []);
   return data || [];
 }
 
@@ -115,19 +121,13 @@ export async function listCategories(type) {
  * Tambah satu kategori
  */
 export async function addCategory({ type, name }) {
-  const { data, error } = await supabase
-    .from("categories")
-    .insert({ type, name })
-    .select("id,type,name")
-    .single();
-  if (error) throw error;
-  return data;
+  const record = normalize("categories", { type, name });
+  await syncEngine.enqueueOrRun("categories", "UPSERT", record);
+  return record;
 }
 
 /**
  * Upsert daftar kategori income/expense (idempotent)
- * @param {{income?: string[], expense?: string[]}} payload
- * @returns {Promise<Array<{id:string,type:string,name:string}>>}
  */
 export async function upsertCategories({ income = [], expense = [] }) {
   const { data: existing, error } = await supabase
@@ -154,6 +154,6 @@ export async function upsertCategories({ income = [], expense = [] }) {
     .select("id,type,name")
     .order("name", { ascending: true });
   if (errFinal) throw errFinal;
-
+  await localdb.setCache("categories", final || []);
   return final || [];
 }
