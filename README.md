@@ -58,11 +58,34 @@ Dark mode is supported via the `dark` class on `<html>`.
 
 These components aim to keep spacing and typography consistent across pages.
 
-## Feature Toggles
+## Settings & Preferences
 
-User preferences such as dark mode, MoneyTalk intensity and late-month mode are
-stored in `localStorage` under the `hematwoi:v3:prefs` key. They can be tweaked
-from the settings panel within the app.
+The `/settings` page groups application preferences into:
+
+- **General UI** – dark mode, density (compact/comfortable) and language (ID/EN).
+- **Gamification** – avatar leveling toggle, MoneyTalk intensity and sound FX.
+- **Finance** – currency (IDR by default), digit separator format and first day of week.
+- **Privacy** – mock PIN lock and an incognito mode that hides amounts.
+- **Data Mode** – switch between cloud or local storage; a "Seed Dummy Data" button appears when using local mode.
+- **Backup** – export or import all user data as a JSON file.
+
+Preferences are stored in `localStorage` under the `hw:prefs` key with the schema:
+
+```json
+{
+  "darkMode": false,
+  "density": "comfortable",
+  "language": "id",
+  "avatarLeveling": true,
+  "moneyTalk": "normal",
+  "soundFx": true,
+  "currency": "IDR",
+  "digitFormat": "comma",
+  "firstDay": 1,
+  "pinLock": false,
+  "incognito": false
+}
+```
 
 ## Contributing
 

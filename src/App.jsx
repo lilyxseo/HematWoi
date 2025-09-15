@@ -13,7 +13,7 @@ import AddWizard from "./pages/AddWizard";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
-import SettingsPage from "./pages/Settings";
+import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
 import AuthPage from "./pages/Auth";
 import ChallengesPage from "./pages/Challenges.jsx";
