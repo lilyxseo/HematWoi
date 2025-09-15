@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useRef, useState, useEffect } from "react";
 import MoneyTalkBubble from "../components/MoneyTalkBubble";
 import { quotes, tips, special } from "../lib/moneyTalkContent";
+import { createMoneyTalkLimiter } from "../lib/moneyTalkQueue";
 
 const MoneyTalkContext = createContext({ speak: () => {} });
 
@@ -11,7 +12,11 @@ export function useMoneyTalk() {
 export default function MoneyTalkProvider({ prefs = {}, children }) {
   const [current, setCurrent] = useState(null);
   const queue = useRef([]);
-  const lastShown = useRef([]);
+  const limiter = useRef(createMoneyTalkLimiter(prefs.moneyTalkIntensity));
+
+  useEffect(() => {
+    limiter.current = createMoneyTalkLimiter(prefs.moneyTalkIntensity);
+  }, [prefs.moneyTalkIntensity]);
 
   const handleDismiss = useCallback(() => {
     setCurrent(null);
@@ -19,18 +24,9 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
 
   const process = useCallback(() => {
     if (current || !queue.current.length) return;
-    const now = Date.now();
-    lastShown.current = lastShown.current.filter((t) => now - t < 60000);
-    const maxPerMin =
-      prefs.moneyTalkIntensity === "jarang"
-        ? 1
-        : prefs.moneyTalkIntensity === "ramai"
-        ? 3
-        : 2;
-    if (lastShown.current.length >= maxPerMin) return;
+    if (!limiter.current.tryConsume()) return;
     const next = queue.current.shift();
     setCurrent(next);
-    lastShown.current.push(now);
     setTimeout(() => {
       handleDismiss();
       process();

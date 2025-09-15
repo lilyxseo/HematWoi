@@ -1,6 +1,7 @@
 import Filters from "../components/Filters";
 import TxTable from "../components/TxTable";
 import FAB from "../components/FAB";
+import PageHeader from "../layout/PageHeader";
 
 export default function Transactions({
   months,
@@ -13,9 +14,7 @@ export default function Transactions({
 }) {
   return (
     <main className="max-w-5xl mx-auto p-4 space-y-4">
-      <div className="card">
-        <h1 className="text-sm font-semibold">Transaksi</h1>
-      </div>
+      <PageHeader title="Transaksi" description="Kelola catatan keuangan" />
       <Filters
         months={months}
         categories={categories}
