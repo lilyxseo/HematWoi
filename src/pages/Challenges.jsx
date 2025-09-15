@@ -17,14 +17,14 @@ export default function ChallengesPage({ challenges, onAdd, onUpdate, txs }) {
       <div className="flex gap-2">
         <button
           type="button"
-          className={`px-3 py-1 rounded ${tab === "active" ? "bg-brand-var text-white" : "bg-gray-200"}`}
+          className={`px-3 py-1 rounded ${tab === "active" ? "bg-brand-var text-brand-foreground" : "bg-surface-2"}`}
           onClick={() => setTab("active")}
         >
           Active
         </button>
         <button
           type="button"
-          className={`px-3 py-1 rounded ${tab === "completed" ? "bg-brand-var text-white" : "bg-gray-200"}`}
+          className={`px-3 py-1 rounded ${tab === "completed" ? "bg-brand-var text-brand-foreground" : "bg-surface-2"}`}
           onClick={() => setTab("completed")}
         >
           Completed

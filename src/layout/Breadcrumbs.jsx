@@ -10,7 +10,7 @@ export default function Breadcrumbs() {
   if (!segments.length) return null;
   let path = "";
   return (
-    <nav aria-label="Breadcrumb" className="mb-2 text-xs text-slate-600 dark:text-slate-400">
+    <nav aria-label="Breadcrumb" className="mb-2 text-xs text-muted">
       <ol className="flex items-center gap-1">
         <li>
           <NavLink to="/" className="hover:text-brand">

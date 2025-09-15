@@ -33,7 +33,7 @@ export default function GoalList({ goals, onAdd, onUpdate, onDelete, onQuickAdd 
         </button>
       </div>
       {goals.length === 0 && (
-        <div className="text-center text-sm text-slate-500">
+        <div className="text-center text-sm text-muted">
           Belum ada goal.{' '}
           <button className="text-brand" onClick={startAdd}>
             Buat Goal Pertama

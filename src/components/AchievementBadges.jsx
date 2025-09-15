@@ -22,7 +22,7 @@ export default function AchievementBadges({ stats = {}, streak = 0, target = 0 }
   if (target && balance >= target) {
     badges.push({
       id: "target",
-      icon: <Target className="h-4 w-4 text-green-500" />,
+      icon: <Target className="h-4 w-4 text-success" />,
       text: "Target tabungan tercapai 🎯",
     });
   }
@@ -42,7 +42,7 @@ export default function AchievementBadges({ stats = {}, streak = 0, target = 0 }
         {badges.map((b) => (
           <li
             key={b.id}
-            className="flex items-center gap-2 text-sm bg-slate-50 dark:bg-slate-700 p-2 rounded"
+            className="flex items-center gap-2 text-sm bg-surface-2 p-2 rounded"
           >
             {b.icon}
             <span>{b.text}</span>

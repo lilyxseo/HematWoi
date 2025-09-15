@@ -27,10 +27,10 @@ function Item({ item, onNameChange, onNameBlur, onColorChange, onRemove }) {
     transition,
   };
   return (
-    <div
+      <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 justify-between border rounded-lg px-2 py-1 bg-white"
+      className="flex items-center gap-2 justify-between border border-border rounded-lg px-2 py-1 bg-surface-1"
     >
       <div className="flex items-center gap-2 flex-1">
         <span
@@ -54,7 +54,7 @@ function Item({ item, onNameChange, onNameBlur, onColorChange, onRemove }) {
         onChange={(e) => onColorChange(item.id, e.target.value)}
         className="h-6 w-6"
       />
-      <button onClick={() => onRemove(item.id)} className="text-red-500">
+      <button onClick={() => onRemove(item.id)} className="text-danger">
         ✕
       </button>
     </div>

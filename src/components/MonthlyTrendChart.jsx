@@ -13,7 +13,7 @@ export default function MonthlyTrendChart({ data = [] }) {
     if (!payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="rounded bg-white p-2 text-xs shadow">
+      <div className="rounded bg-surface-1 border border-border p-2 text-xs shadow">
         <div>{label}</div>
         <div>{toRupiah(p.value)}</div>
       </div>

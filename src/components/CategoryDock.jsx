@@ -8,8 +8,8 @@ function Chip({ name }) {
   return (
     <span
       ref={setNodeRef}
-      className={`badge rounded-full whitespace-nowrap cursor-pointer select-none border bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 ${
-        isOver ? "bg-slate-100 dark:bg-slate-800" : ""
+      className={`badge rounded-full whitespace-nowrap cursor-pointer select-none border border-border bg-surface-1 hover:bg-surface-2 ${
+        isOver ? "bg-surface-2" : ""
       }`}
       style={{
         backgroundColor: getColor(name),

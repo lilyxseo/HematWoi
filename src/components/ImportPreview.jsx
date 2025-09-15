@@ -69,7 +69,7 @@ export default function ImportPreview({ rows = [], txs = [], categories, rules =
           </thead>
           <tbody>
             {items.map((r, idx) => (
-              <tr key={idx} className="border-t border-slate-200 dark:border-slate-700">
+              <tr key={idx} className="border-t border-border">
                 <td className="p-2 whitespace-nowrap">{r.date}</td>
                 <td className="p-2">{r.note}</td>
                 <td className="p-2 text-right">{formatter.format(r.amount)}</td>
@@ -88,7 +88,7 @@ export default function ImportPreview({ rows = [], txs = [], categories, rules =
                 </td>
                 <td className="p-2">
                   {r.duplicate && (
-                    <span className="px-2 py-1 text-xs rounded bg-red-200 text-red-700">
+                    <span className="px-2 py-1 text-xs rounded bg-danger/20 text-danger">
                       Duplikat
                     </span>
                   )}

@@ -16,7 +16,7 @@ export default function GoalForm({ initial = {}, onSave, onCancel }) {
       }}
     >
       <input
-        className="w-full p-2 border rounded"
+        className="input"
         placeholder="Nama tujuan"
         value={form.name}
         onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -24,7 +24,7 @@ export default function GoalForm({ initial = {}, onSave, onCancel }) {
       />
       <input
         type="number"
-        className="w-full p-2 border rounded"
+        className="input"
         placeholder="Target"
         value={form.target}
         onChange={(e) => setForm({ ...form, target: Number(e.target.value) })}
@@ -32,21 +32,21 @@ export default function GoalForm({ initial = {}, onSave, onCancel }) {
       />
       <input
         type="date"
-        className="w-full p-2 border rounded"
+        className="input"
         value={form.targetDate}
         onChange={(e) => setForm({ ...form, targetDate: e.target.value })}
       />
       <div className="flex gap-2 justify-end pt-2">
         <button
           type="button"
-          className="px-3 py-1 rounded bg-slate-200 dark:bg-slate-700"
+          className="px-3 py-1 rounded bg-surface-2 border border-border"
           onClick={onCancel}
         >
           Batal
         </button>
         <button
           type="submit"
-          className="px-3 py-1 rounded bg-brand text-white"
+          className="px-3 py-1 rounded bg-brand text-brand-foreground"
         >
           Simpan
         </button>

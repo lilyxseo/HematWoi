@@ -19,7 +19,7 @@ export default function KpiCard({
       <CardBody className="space-y-1">
         <div className="text-sm text-muted whitespace-nowrap">{label}</div>
         {loading ? (
-          <div className="mx-auto h-6 w-24 rounded bg-slate-200 dark:bg-slate-700 animate-pulse" />
+          <div className="mx-auto h-6 w-24 rounded bg-surface-2 animate-pulse" />
         ) : (
           <div
             className={clsx(

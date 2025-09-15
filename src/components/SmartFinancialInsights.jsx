@@ -110,8 +110,8 @@ export default function SmartFinancialInsights({ txs = [] }) {
     <span
       className={`text-xs px-2 py-0.5 rounded-full ${
         weekly.trend === "hemat"
-          ? "bg-green-100 text-green-700"
-          : "bg-red-100 text-red-700"
+          ? "bg-success/20 text-success"
+          : "bg-danger/20 text-danger"
       }`}
     >
       {weekly.trend === "hemat" ? "Hemat" : "Boros"}

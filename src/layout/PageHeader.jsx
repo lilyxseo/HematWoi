@@ -6,11 +6,11 @@ export default function PageHeader({ title, description, children }) {
       <Breadcrumbs />
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-text dark:text-white">
+          <h1 className="text-xl font-bold text-text">
             {title}
           </h1>
           {description && (
-            <p className="text-sm text-slate-600 dark:text-slate-300">
+            <p className="text-sm text-muted">
               {description}
             </p>
           )}

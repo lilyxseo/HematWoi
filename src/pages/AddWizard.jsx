@@ -144,7 +144,7 @@ export default function AddWizard({ categories, onAdd, onCancel }) {
         </div>
       )}
 
-      <footer className="sticky bottom-0 bg-white dark:bg-slate-950 p-4 flex justify-between">
+      <footer className="sticky bottom-0 bg-surface-1 p-4 flex justify-between border-t border-border">
         <button className="btn" onClick={back} disabled={step === 0}>
           Kembali
         </button>

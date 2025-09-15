@@ -10,13 +10,13 @@ export default function EnvelopeManager({ envelopes = [], onSave }) {
     <div className="space-y-4">
       <div className="flex items-end gap-2">
         <input
-          className="flex-1 p-2 border rounded"
+          className="input flex-1"
           placeholder="Kategori"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <button
-          className="px-3 py-1 rounded bg-brand text-white"
+          className="px-3 py-1 rounded bg-brand text-brand-foreground"
           onClick={() => {
             if (!name) return;
             onSave({ category: name, balance: 0 });
@@ -48,10 +48,10 @@ export default function EnvelopeManager({ envelopes = [], onSave }) {
         {envelopes.map((e) => (
           <div
             key={e.category}
-            className="p-4 border rounded shadow-sm bg-white dark:bg-slate-800"
+            className="p-4 border border-border rounded shadow-sm bg-surface-2"
           >
             <div className="font-medium">{e.category}</div>
-            <div className="text-sm text-slate-500">Rp {e.balance?.toFixed(0)}</div>
+            <div className="text-sm text-muted">Rp {e.balance?.toFixed(0)}</div>
           </div>
         ))}
       </div>

@@ -11,7 +11,7 @@ export default function QuoteBubble({ lang = "id" }) {
 
   return (
     <figure className="mx-auto w-full max-w-3xl">
-      <blockquote className="relative w-full rounded-xl border border-brand/20 bg-brand/5 p-4 text-left shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <blockquote className="relative w-full rounded-xl border border-brand/20 bg-brand/5 p-4 text-left shadow-sm dark:border-border dark:bg-surface-2">
         <span className="absolute -top-2 left-4 text-2xl text-brand" aria-hidden>
           “
         </span>

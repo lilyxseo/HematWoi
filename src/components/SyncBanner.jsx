@@ -21,7 +21,7 @@ export default function SyncBanner() {
   else text = "All synced";
 
   return (
-    <div className="bg-slate-100 dark:bg-slate-800 text-center text-sm py-1">
+    <div className="bg-surface-2 text-center text-sm py-1">
       <span>{text}</span>
       {count > 0 && (
         <button

@@ -22,7 +22,7 @@ export default function GoalCard({ goal, onEdit, onDelete, onQuickAdd }) {
   };
 
   return (
-    <div className="p-4 border rounded shadow-sm bg-white dark:bg-slate-800 flex flex-col gap-2">
+    <div className="p-4 border border-border rounded shadow-sm bg-surface-2 flex flex-col gap-2">
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-medium truncate" title={goal.name}>{goal.name}</h3>
         <div className="flex gap-2 text-sm">
@@ -33,15 +33,15 @@ export default function GoalCard({ goal, onEdit, onDelete, onQuickAdd }) {
             <button className="text-brand" onClick={() => onEdit(goal)} aria-label="Edit goal">Edit</button>
           )}
           {onDelete && (
-            <button className="text-red-600" onClick={() => onDelete(goal.id)} aria-label="Delete goal">Delete</button>
+            <button className="text-danger" onClick={() => onDelete(goal.id)} aria-label="Delete goal">Delete</button>
           )}
         </div>
       </div>
-      <div className="text-sm text-slate-500">
+      <div className="text-sm text-muted">
         {formatCurrency(goal.saved)} / {formatCurrency(goal.target)}
       </div>
       <GoalProgressBar goal={goal} />
-      <div className="text-xs text-slate-500">ETA: {etaText}</div>
+      <div className="text-xs text-muted">ETA: {etaText}</div>
     </div>
   );
 }

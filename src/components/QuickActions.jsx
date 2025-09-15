@@ -40,7 +40,7 @@ export default function QuickActions() {
               </span>
               <span className="flex flex-col">
                 <span className="font-medium">{action.label}</span>
-                <span className="text-xs text-slate-500">{action.shortcut}</span>
+                <span className="text-xs text-muted">{action.shortcut}</span>
               </span>
             </Link>
           );
