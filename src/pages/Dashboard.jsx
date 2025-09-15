@@ -57,8 +57,8 @@ export default function Dashboard({
   const lateMode = useLateMonthMode({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense }, prefs);
   const { speak } = useMoneyTalk();
   const insights = useInsights(txs);
-
-
+  
+  
   useEffect(() => {
     if (finance.isAnyOverBudget) {
       speak({
@@ -73,7 +73,13 @@ export default function Dashboard({
     <main className="max-w-5xl mx-auto p-4 space-y-6">
       <PageHeader title="Dashboard" description="Ringkasan keuanganmu" />
       <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
-      <Summary stats={stats} />
+      <Reports
+        month={monthForReport}
+        months={months}
+        txs={txs}
+        budgets={budgets}
+        comparePrevEnabled={false}
+      />
       <DailyStreak streak={streak} />
       <QuoteBubble />
       <SmartFinancialInsights txs={txs} />
@@ -98,21 +104,13 @@ export default function Dashboard({
         <MonthlyTrendChart data={insights.trend} />
         <CategoryDonut data={insights.categories} />
       </div>
+      <div className="grid gap-4 md:grid-cols-2">
       <TopSpendsTable
         data={insights.topSpends}
         onSelect={(t) => EventBus.emit("tx:open", t)}
       />
-      <div className="grid gap-4 md:grid-cols-2">
-        <DashboardCharts month={monthForReport} txs={txs} />
         <RecentTransactions txs={txs} />
       </div>
-      <Reports
-        month={monthForReport}
-        months={months}
-        txs={txs}
-        budgets={budgets}
-        comparePrevEnabled={false}
-      />
     </main>
   );
 }
