@@ -1,4 +1,5 @@
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from "recharts";
 
 function toRupiah(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -14,6 +15,33 @@ function toPercent(n = 0) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
+}
+
+function Sparkline({ data = [], color }) {
+  const id = `spark-${color.replace("#", "")}`;
+  const points = data.map((v, i) => ({ i, v }));
+  return (
+    <ResponsiveContainer width="100%" height={36}>
+      <AreaChart data={points} margin={{ left: 0, right: 0, top: 2, bottom: 2 }}>
+        <defs>
+          <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.4} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="i" hide />
+        <YAxis hide domain={[0, "dataMax"]} />
+        <Area
+          type="monotone"
+          dataKey="v"
+          stroke={color}
+          fill={`url(#${id})`}
+          strokeWidth={1}
+          dot={false}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
 }
 
 export default function KPITiles({ income = 0, expense = 0, prevIncome = 0, prevExpense = 0 }) {
@@ -43,25 +71,33 @@ export default function KPITiles({ income = 0, expense = 0, prevIncome = 0, prev
     );
   };
 
+  const series = typeof window !== "undefined" ? window.__hw_kpiSeries || {} : {};
+  const incomeSeries = series.income || [];
+  const expenseSeries = series.expense || [];
+  const balanceSeries = series.balance || [];
+
   return (
     <div className="card">
       <div className="grid gap-4 text-center sm:grid-cols-4">
-        <div>
+        <div className="space-y-1">
           <div className="text-sm">Pemasukan</div>
           <div className="text-lg font-semibold text-green-600">{toRupiah(income)}</div>
           <div className="text-xs">{renderDelta(incomeDelta)}</div>
+          <Sparkline data={incomeSeries} color="#16a34a" />
         </div>
-        <div>
+        <div className="space-y-1">
           <div className="text-sm">Pengeluaran</div>
           <div className="text-lg font-semibold text-red-600">{toRupiah(expense)}</div>
           <div className="text-xs">{renderDelta(expenseDelta)}</div>
+          <Sparkline data={expenseSeries} color="#dc2626" />
         </div>
-        <div>
+        <div className="space-y-1">
           <div className="text-sm">Saldo</div>
           <div className="text-lg font-semibold text-blue-600">{toRupiah(balance)}</div>
           <div className="text-xs">{renderDelta(balanceDelta)}</div>
+          <Sparkline data={balanceSeries} color="#3898f8" />
         </div>
-        <div>
+        <div className="space-y-1">
           <div className="text-sm">Savings Rate</div>
           <div className="text-lg font-semibold">{toPercent(savings)}</div>
           <div className="text-xs">{renderDelta(savingsDelta)}</div>
@@ -70,3 +106,4 @@ export default function KPITiles({ income = 0, expense = 0, prevIncome = 0, prev
     </div>
   );
 }
+

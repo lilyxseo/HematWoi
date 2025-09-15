@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import KPITiles from "./KPITiles";
+import HeatmapCalendar from "./HeatmapCalendar";
 import ExportReport from "./ExportReport";
 import {
   ResponsiveContainer,
@@ -116,6 +117,17 @@ export default function Reports({
     };
   });
 
+  const incomeSeries = byDay.map((d) => d.income);
+  const expenseSeries = byDay.map((d) => d.expense);
+  const balanceSeries = byDay.map((d) => d.income - d.expense);
+  if (typeof window !== "undefined") {
+    window.__hw_kpiSeries = {
+      income: incomeSeries,
+      expense: expenseSeries,
+      balance: balanceSeries,
+    };
+  }
+
   const budgetsForMonth = budgets
     .filter((b) => b.month === month)
     .map((b) => {
@@ -208,6 +220,7 @@ export default function Reports({
           prevIncome={prevIncome}
           prevExpense={prevExpense}
         />
+        <HeatmapCalendar month={month} txs={txs} />
         <div className="grid gap-4 md:grid-cols-2">
           <div className="h-[260px] md:h-[300px]">
             {pieData.length ? (
@@ -323,3 +336,4 @@ export default function Reports({
     </section>
   );
 }
+
