@@ -14,6 +14,8 @@
           const theme = mode === 'system' ? (prefersDark ? 'dark' : 'light') : mode;
           const root = document.documentElement;
           root.setAttribute('data-theme', theme);
+          const collapsed = localStorage.getItem('hw:sidebar-collapsed') === '1';
+          root.setAttribute('data-nav', collapsed ? 'mini' : 'full');
           if (stored.brand) {
             const b = stored.brand;
             root.style.setProperty('--brand-h', b.h);

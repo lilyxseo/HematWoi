@@ -692,20 +692,23 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <SyncBanner />
-      <div className="flex min-h-screen">
-        {!hideNav && (
-          <Sidebar
-            theme={theme}
-            setTheme={setTheme}
-            brand={brand}
-            setBrand={setBrand}
-            useCloud={useCloud}
-            setUseCloud={setUseCloud}
-          />
-        )}
-        <main id="main" tabIndex="-1" className="flex-1 focus:outline-none">
-          <Routes>
+      {!hideNav && (
+        <Sidebar
+          theme={theme}
+          setTheme={setTheme}
+          brand={brand}
+          setBrand={setBrand}
+          useCloud={useCloud}
+          setUseCloud={setUseCloud}
+        />
+      )}
+      <main
+        id="main"
+        tabIndex="-1"
+        className={`${hideNav ? '' : 'md:ml-[var(--sidebar-w)]'} h-screen [height:100dvh] overflow-y-auto focus:outline-none max-w-[var(--content-max)]`}
+      >
+        <SyncBanner />
+        <Routes>
           <Route path="/auth" element={<AuthPage />} />
           <Route element={<AuthGuard />}>
             <Route
@@ -810,8 +813,7 @@ function AppShell({ prefs, setPrefs }) {
             />
           </Route>
         </Routes>
-        </main>
-      </div>
+      </main>
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
