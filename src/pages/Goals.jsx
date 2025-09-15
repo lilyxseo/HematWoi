@@ -1,24 +1,15 @@
-import GoalList from "../components/GoalList";
-import EnvelopeManager from "../components/EnvelopeManager";
-import AutoAllocationRules from "../components/AutoAllocationRules";
+import GoalList from '../components/GoalList';
+import useGoals from '../hooks/useGoals';
 
-export default function Goals({
-  goals,
-  envelopes,
-  rules,
-  onAddGoal,
-  onAddEnvelope,
-  onSaveRules,
-}) {
+export default function GoalsPage() {
+  const { goals, addGoal, updateGoal, deleteGoal } = useGoals();
   return (
-    <div className="p-4 space-y-8">
-      <GoalList goals={goals} onSave={onAddGoal} />
-      <EnvelopeManager envelopes={envelopes} onSave={onAddEnvelope} />
-      <AutoAllocationRules
+    <div className="p-4">
+      <GoalList
         goals={goals}
-        envelopes={envelopes}
-        rules={rules}
-        onSave={onSaveRules}
+        onAdd={addGoal}
+        onUpdate={updateGoal}
+        onDelete={deleteGoal}
       />
     </div>
   );

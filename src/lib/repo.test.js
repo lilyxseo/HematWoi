@@ -1,0 +1,25 @@
+import { describe, it, expect } from 'vitest';
+import { LocalRepo } from './repo';
+
+// simple in-memory localStorage polyfill
+global.localStorage = {
+  store: {},
+  getItem(k) {
+    return this.store[k] || null;
+  },
+  setItem(k, v) {
+    this.store[k] = String(v);
+  },
+  removeItem(k) {
+    delete this.store[k];
+  },
+};
+
+describe('LocalRepo', () => {
+  it('seeds dummy goals', async () => {
+    const repo = new LocalRepo();
+    repo.seedDummy();
+    const goals = await repo.goals.list();
+    expect(goals.length).toBeGreaterThan(0);
+  });
+});
