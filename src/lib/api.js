@@ -94,7 +94,7 @@ export async function deleteTransaction(id) {
   if (error) throw error;
 }
 
-// ==== CATEGORIES ======================================
+// -- CATEGORIES ----------------------------------------
 
 /**
  * List kategori (opsional filter type)
