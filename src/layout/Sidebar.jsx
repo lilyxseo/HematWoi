@@ -15,6 +15,7 @@ import { NAV_ITEMS } from '../router/nav.config';
 import Logo from '../components/Logo';
 import SignIn from '../components/SignIn';
 import { supabase } from '../lib/supabase';
+import { useMode } from '../hooks/useMode';
 
 const PRESETS = [
   { name: 'Blue', h: 211, s: 92, l: 60 },
@@ -66,13 +67,14 @@ function hexToHsl(hex) {
   return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
 
-export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, setUseCloud }) {
+export default function Sidebar({ theme, setTheme, brand, setBrand }) {
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem('hw:sidebar-collapsed') === '1'
   );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [showSignIn, setShowSignIn] = useState(false);
+  const { mode, toggle } = useMode();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setSessionUser(data.user ?? null));
@@ -161,26 +163,18 @@ export default function Sidebar({ theme, setTheme, brand, setBrand, useCloud, se
       </nav>
       <div className="p-4 border-t border-border space-y-4">
         <div className="flex items-center justify-between">
-          {!collapsed && <span className="text-sm">All synced</span>}
-        </div>
-        <div className="flex items-center justify-between">
           {!collapsed && (
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={useCloud}
-                onChange={(e) => setUseCloud(e.target.checked)}
-              />
-              Cloud
-            </label>
+            <button className="text-sm" onClick={toggle}>
+              {mode === "online" ? "Switch to Local Mode" : "Switch to Online Mode"}
+            </button>
           )}
           {collapsed && (
             <button
               className="p-1"
-              aria-label="Toggle cloud"
-              onClick={() => setUseCloud(!useCloud)}
+              aria-label="Toggle mode"
+              onClick={toggle}
             >
-              {useCloud ? <Cloud className="h-4 w-4" /> : <CloudOff className="h-4 w-4" />}
+              {mode === "online" ? <Cloud className="h-4 w-4" /> : <CloudOff className="h-4 w-4" />}
             </button>
           )}
         </div>
