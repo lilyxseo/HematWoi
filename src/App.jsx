@@ -1,18 +1,11 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Routes, Route, Link, useNavigate } from "react-router-dom";
 import TopBar from "./components/TopBar";
-import AddForm from "./components/AddForm";
-import Filters from "./components/Filters";
-import Summary from "./components/Summary";
-import DataTools from "./components/DataTools";
-import TxTable from "./components/TxTable";
-import BudgetSection from "./components/BudgetSection";
 import Modal from "./components/Modal";
 import ManageCategories from "./components/ManageCategories";
-import DashboardCharts from "./components/DashboardCharts";
-import ReportFilters from "./components/ReportFilters";
-import Reports from "./components/Reports";
-import Skeleton from "./components/Skeleton";
-import { Table as TableIcon } from "lucide-react";
+import SettingsPanel from "./components/SettingsPanel";
+import Dashboard from "./pages/Dashboard";
+import AddWizard from "./pages/AddWizard";
 import { supabase } from "./lib/supabase";
 import {
   listTransactions,
@@ -23,8 +16,6 @@ import {
 } from "./lib/api";
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
-
-import SettingsPanel from "./components/SettingsPanel";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -61,8 +52,6 @@ function AppContent() {
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({ type: "all", q: "", month: "all" });
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const [reportMonth, setReportMonth] = useState(filter.month === "all" ? currentMonth : filter.month);
-  const [comparePrev, setComparePrev] = useState(false);
   const [showCat, setShowCat] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('hematwoi:v3:theme') || 'system');
   const [prefs, setPrefs] = useState(() => {
@@ -70,8 +59,6 @@ function AppContent() {
     return raw ? JSON.parse(raw) : { density: 'comfortable', defaultMonth: 'current', currency: 'IDR' };
   });
   const [settingsOpen, setSettingsOpen] = useState(false);
-
-
   const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [catMeta, setCatMeta] = useState(() => {
@@ -81,11 +68,11 @@ function AppContent() {
       return {};
     }
   });
-  const [catMap, setCatMap] = useState({}); // name -> id (cloud)
+  const [catMap, setCatMap] = useState({});
   window.__hw_prefs = prefs;
 
   const { addToast } = useToast();
-  const addRef = useRef(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     try {
@@ -121,7 +108,6 @@ function AppContent() {
     }
   }, [addToast]);
 
-  // Supabase auth
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setSessionUser(data.user ?? null));
     const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) => {
@@ -146,8 +132,6 @@ function AppContent() {
     localStorage.setItem('hematwoi:v3:prefs', JSON.stringify(prefs));
     window.__hw_prefs = prefs;
   }, [prefs]);
-
-
 
   useEffect(() => {
     async function loadProfile() {
@@ -200,7 +184,6 @@ function AppContent() {
     return () => window.removeEventListener('hw:open-settings', open);
   }, []);
 
-  // Persist local
   useEffect(() => {
     localStorage.setItem("hematwoi:v3", JSON.stringify(data));
   }, [data]);
@@ -209,7 +192,6 @@ function AppContent() {
     localStorage.setItem("hematwoi:v3:catMeta", JSON.stringify(catMeta));
   }, [catMeta]);
 
-  // Cloud fetch when toggled on and user available
   useEffect(() => {
     if (useCloud && sessionUser) {
       fetchCategoriesCloud();
@@ -257,7 +239,6 @@ function AppContent() {
   async function fetchTxsCloud() {
     try {
       const res = await listTransactions({ pageSize: 1000 });
-      // res.rows diharapkan sudah mengandung: { id, date, type, amount, note, category }
       setData((d) => ({ ...d, txs: res.rows || [] }));
     } catch (e) {
       console.error("fetch transactions failed", e);
@@ -277,7 +258,6 @@ function AppContent() {
     }
   }
 
-  // --- Transactions CRUD ---
   const addTx = async (tx) => {
     if (useCloud && sessionUser) {
       try {
@@ -288,7 +268,6 @@ function AppContent() {
           note: tx.note,
           category_id: catMap[tx.category] || null,
         });
-        // normalisasi agar FE tetap punya name kategori
         const res = { ...saved, category: tx.category };
         setData((d) => ({ ...d, txs: [res, ...d.txs] }));
       } catch (e) {
@@ -307,7 +286,7 @@ function AppContent() {
           payload.category_id = catMap[payload.category];
         }
         const saved = await apiUpdate(id, payload);
-        const res = { ...saved, category: saved.category }; // pastikan ada kategori di FE
+        const res = { ...saved, category: saved.category };
         setData((d) => ({
           ...d,
           txs: d.txs.map((t) => (t.id === id ? res : t)),
@@ -336,7 +315,6 @@ function AppContent() {
     }
   };
 
-  // --- Categories ---
   const saveCategories = async (payload) => {
     setData((d) => ({ ...d, cat: payload }));
     if (useCloud && sessionUser) {
@@ -386,7 +364,6 @@ function AppContent() {
     return () => window.removeEventListener("hw:save-cat-meta", onSaveMeta);
   }, [useCloud, sessionUser]);
 
-  // --- Budgets ---
   const addBudget = async ({ category, month, amount }) => {
     if (!data.cat.expense.includes(category)) return;
     const m = String(month).slice(0, 7);
@@ -424,7 +401,6 @@ function AppContent() {
     setData((d) => ({ ...d, budgets: d.budgets.filter((b) => b.id !== id) }));
   };
 
-  // --- Derived data ---
   const months = useMemo(() => {
     const set = new Set(data.txs.map((t) => String(t.date).slice(0, 7)));
     return Array.from(set).sort().reverse();
@@ -455,7 +431,6 @@ function AppContent() {
     return { income, expense, balance: income - expense };
   }, [filtered]);
 
-  // --- T6: Export & Import handlers ---
   function handleExport() {
     const payload = { txs: data.txs, cat: data.cat, budgets: data.budgets };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
@@ -509,7 +484,6 @@ function AppContent() {
         .filter(Boolean);
       if (!lines.length) return;
 
-      // deteksi header
       let start = 0;
       const header = lines[0].toLowerCase();
       if (
@@ -522,7 +496,7 @@ function AppContent() {
 
       const txs = [];
       for (let i = start; i < lines.length; i++) {
-        const cols = lines[i].split(",");
+        const cols = lines[i].split(",").map((c) => c.trim());
         if (cols.length < 5) continue;
         const [date, type, category, note, amountStr] = cols;
         if (!date || !type || !category || amountStr == null) continue;
@@ -538,87 +512,51 @@ function AppContent() {
     reader.readAsText(file);
   }
 
-  const isLoading = useCloud && data.txs.length === 0;
-
   return (
     <CategoryProvider catMeta={catMeta}>
       <TopBar stats={stats} useCloud={useCloud} setUseCloud={setUseCloud} />
-      <main className="max-w-5xl mx-auto p-4 space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div ref={addRef}>
-            <AddForm categories={data.cat} onAdd={addTx} />
-          </div>
-          <Filters months={months} filter={filter} setFilter={setFilter} />
-          <Summary stats={stats} />
-          <DataTools
-            onExport={handleExport}
-            onImportJSON={handleImportJSON}
-            onImportCSV={handleImportCSV}
-            onManageCat={() => setShowCat(true)}
-          />
-        </div>
-
-        {isLoading ? (
-          <Skeleton className="h-28 w-full" />
-        ) : (
-          <DashboardCharts
-            month={filter.month === "all" ? currentMonth : filter.month}
-            txs={data.txs}
-          />
-        )}
-
-        <ReportFilters
-          month={reportMonth}
-          months={months}
-          comparePrev={comparePrev}
-          onToggleCompare={setComparePrev}
-          onChange={setReportMonth}
+      <nav className="max-w-5xl mx-auto px-4 flex gap-2 pb-2 text-sm">
+        <Link to="/" className="btn">
+          Dashboard
+        </Link>
+        <Link to="/add" className="btn">
+          Tambah
+        </Link>
+      </nav>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <Dashboard
+              months={months}
+              filter={filter}
+              setFilter={setFilter}
+              stats={stats}
+              data={data}
+              addTx={addTx}
+              removeTx={removeTx}
+              updateTx={updateTx}
+              currentMonth={currentMonth}
+              setShowCat={setShowCat}
+              addBudget={addBudget}
+              removeBudget={removeBudget}
+              onExport={handleExport}
+              onImportJSON={handleImportJSON}
+              onImportCSV={handleImportCSV}
+            />
+          }
         />
-        <Reports
-          month={reportMonth}
-          months={months}
-          txs={data.txs}
-          budgets={data.budgets}
-          comparePrevEnabled={comparePrev}
+        <Route
+          path="/add"
+          element={
+            <AddWizard
+              categories={data.cat}
+              onAdd={addTx}
+              onCancel={() => navigate("/")}
+            />
+          }
         />
-
-        <BudgetSection
-          filterMonth={filter.month === "all" ? currentMonth : filter.month}
-          budgets={data.budgets}
-          txs={data.txs}
-          categories={data.cat}
-          onAdd={addBudget}
-          onRemove={removeBudget}
-        />
-
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <TableIcon className="h-4 w-4" />
-            <h2 className="text-sm font-semibold">Daftar Transaksi</h2>
-          </div>
-          {isLoading ? (
-            <Skeleton className="h-48 w-full" />
-          ) : filtered.length === 0 ? (
-            <div className="card text-center">
-              <div className="mb-2">Belum ada transaksi.</div>
-              <button
-                className="btn btn-primary"
-                onClick={() =>
-                  addRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  })
-                }
-              >
-                Tambah Transaksi
-              </button>
-            </div>
-          ) : (
-            <TxTable items={filtered} onRemove={removeTx} onUpdate={updateTx} />
-          )}
-        </div>
-      </main>
-
+      </Routes>
       <Modal
         open={showCat}
         title="Kelola Kategori"
@@ -636,7 +574,6 @@ function AppContent() {
           setPrefs({ density, defaultMonth, currency });
         }}
       />
-
     </CategoryProvider>
   );
 }
