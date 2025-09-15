@@ -13,7 +13,7 @@ export default function MonthlyTrendChart({ data = [] }) {
     if (!payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="rounded bg-white p-2 text-xs shadow">
+      <div className="card" style={{ padding: "8px", fontSize: "var(--fs-300)" }}>
         <div>{label}</div>
         <div>{toRupiah(p.value)}</div>
       </div>
@@ -21,7 +21,7 @@ export default function MonthlyTrendChart({ data = [] }) {
   };
 
   return (
-    <div className="card h-[260px]">
+    <div className="chart-wrap">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" />

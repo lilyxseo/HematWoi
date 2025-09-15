@@ -1,0 +1,38 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Page component > renders layout 1`] = `
+<DocumentFragment>
+  <div
+    class="container page"
+  >
+    <div
+      class="page-header"
+    >
+      <h1
+        style="font-size: var(--fs-700); margin: 0px;"
+      >
+        Demo
+      </h1>
+      <div
+        style="display: flex; gap: 8px; flex-wrap: wrap;"
+      >
+        <button>
+          Action
+        </button>
+      </div>
+    </div>
+    <div
+      class="card-grid"
+    >
+      <section
+        class="card "
+        style="container-type: inline-size; container-name: card;"
+      >
+        <div>
+          Item
+        </div>
+      </section>
+    </div>
+  </div>
+</DocumentFragment>
+`;

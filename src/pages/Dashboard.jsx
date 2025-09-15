@@ -1,213 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
-import Summary from "../components/Summary";
-import DashboardCharts from "../components/DashboardCharts";
-import Reports from "../components/Reports";
-import QuickActions from "../components/QuickActions";
-import RecentTransactions from "../components/RecentTransactions";
-import SmartFinancialInsights from "../components/SmartFinancialInsights";
-import DailyStreak from "../components/DailyStreak";
-import SavingsProgress from "../components/SavingsProgress";
-import AchievementBadges from "../components/AchievementBadges";
-import DailyQuote from "../components/DailyQuote";
-import FinanceMascot from "../components/FinanceMascot";
-import WalletAvatar from "../components/WalletAvatar";
-import WalletPanel from "../components/WalletPanel";
-import PageHeader from "../layout/PageHeader";
-import useFinanceSummary from "../hooks/useFinanceSummary";
-import useWalletStatus from "../hooks/useWalletStatus";
-import LateMonthMode from "../components/LateMonthMode";
-import useLateMonthMode from "../hooks/useLateMonthMode";
-import KpiCards from "../components/KpiCards";
-import MonthlyTrendChart from "../components/MonthlyTrendChart";
-import CategoryDonut from "../components/CategoryDonut";
-import TopSpendsTable from "../components/TopSpendsTable";
-import useInsights from "../hooks/useInsights";
+import { Page } from "../components/ui/Page";
+import ResponsiveGrid from "../components/ui/ResponsiveGrid";
+import { Card, CardHeader, CardBody } from "../components/ui/Card";
 
-
-import AvatarLevel from "../components/AvatarLevel.jsx";
-import EventBus from "../lib/eventBus";
-import { useMoneyTalk } from "../context/MoneyTalkContext.jsx";
-
-
-export default function Dashboard({
-  stats,
-  monthForReport,
-  txs,
-  budgets,
-  months = [],
-  challenges = [],
-  prefs = {},
-}) {
-  const streak = useMemo(() => {
-    const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
-    let count = 0;
-    const today = new Date();
-    while (
-      dates.has(
-        new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - count
-        ).toDateString()
-      )
-    ) {
-      count++;
-    }
-    return count;
-  }, [txs]);
-
-  const savingsTarget = stats?.savingsTarget || 1_000_000;
-
-  const finance = useFinanceSummary(txs, budgets);
-  const wallet = useWalletStatus({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense, weeklyTrend: finance.weeklyTrend }, { sensitivity: prefs?.walletSensitivity });
-  const lateMode = useLateMonthMode({ balance: finance.balance, avgMonthlyExpense: finance.avgMonthlyExpense }, prefs);
-  const [walletOpen, setWalletOpen] = useState(false);
-  const { speak } = useMoneyTalk();
-  const insights = useInsights(txs);
-
-  const summary = useMemo(() => {
-    const today = new Date();
-    const todayStr = today.toISOString().split("T")[0];
-
-    const todayTx = txs.filter((t) => t.date === todayStr);
-    const todayExpense = todayTx
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const todayIncome = todayTx
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const categoryTotals = todayTx
-      .filter((t) => t.type === "expense")
-      .reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {});
-    const topCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
-
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
-    const weekTx = txs.filter((t) => {
-      const d = new Date(t.date);
-      return d >= startOfWeek && d <= today;
-    });
-    const weekExpense = weekTx
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const weekIncome = weekTx
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const monthTx = txs.filter((t) => {
-      const d = new Date(t.date);
-      return d.getMonth() === today.getMonth() && d.getFullYear() === today.getFullYear();
-    });
-    const monthExpense = monthTx
-      .filter((t) => t.type === "expense")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const monthIncome = monthTx
-      .filter((t) => t.type === "income")
-      .reduce((sum, t) => sum + t.amount, 0);
-    const dayOfMonth = today.getDate();
-    const dailyAverageExpense = dayOfMonth ? monthExpense / dayOfMonth : 0;
-
-    const topCategoriesByDay = [];
-    for (let i = 0; i < 3; i++) {
-      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-      const dStr = d.toISOString().split("T")[0];
-      const dayTx = txs.filter((t) => t.date === dStr && t.type === "expense");
-      const totals = dayTx.reduce((acc, t) => {
-        acc[t.category] = (acc[t.category] || 0) + t.amount;
-        return acc;
-      }, {});
-      const top = Object.entries(totals).sort((a, b) => b[1] - a[1])[0]?.[0];
-      if (top) topCategoriesByDay.push(top);
-    }
-
-    return {
-      today: { income: todayIncome, expense: todayExpense, topCategory },
-      thisWeek: { income: weekIncome, expense: weekExpense },
-      thisMonth: {
-        income: monthIncome,
-        expense: monthExpense,
-        dailyAverageExpense,
-        topCategoriesByDay,
-      },
-    };
-  }, [txs]);
-
-  useEffect(() => {
-    if (finance.isAnyOverBudget) {
-      speak({
-        category: finance.topSpenderCategory || "Belanja",
-        amount: 0,
-        context: { isOverBudget: true },
-      });
-    }
-  }, [finance.isAnyOverBudget, finance.topSpenderCategory, speak]);
-
+export default function Dashboard() {
   return (
-    <main className="max-w-5xl mx-auto p-4 space-y-6">
-      <PageHeader title="Dashboard" description="Ringkasan keuanganmu" />
-      <LateMonthMode active={lateMode.active} onDismiss={lateMode.dismiss} onCreateChallenge={() => EventBus.emit("challenge:create", { days: 3 })} />
-      <Summary stats={stats} />
-            <div className="relative flex justify-end">
-        <WalletAvatar
-          status={wallet.status}
-          trend={finance.weeklyTrend}
-          balance={finance.balance}
-          isOverBudget={finance.isAnyOverBudget}
-          soundEnabled={prefs?.walletSound}
-          onClick={() => setWalletOpen((o) => !o)}
-        />
-        {walletOpen && (
-          <WalletPanel
-            insights={{
-              balance: finance.balance,
-              weeklyTrend: finance.weeklyTrend,
-              topSpenderCategory: finance.topSpenderCategory,
-              tip: wallet.tip,
-            }}
-            showTips={prefs?.walletShowTips}
-            onClose={() => setWalletOpen(false)}
-          />
-        )}
-      </div>
-
-      <FinanceMascot summary={summary} budgets={budgets} onRefresh={() => {}} />
-      <DailyStreak streak={streak} />
-        <AvatarLevel transactions={txs} challenges={challenges} />
-      <button
-        type="button"
-        onClick={() => EventBus.emit("xp:add", { code: "demo", amount: 10 })}
-        className="px-2 py-1 text-xs bg-emerald-500 text-white rounded"
-      >
-        +10 XP Demo
-      </button>
-      <DailyQuote />
-      <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
-      <AchievementBadges stats={stats} streak={streak} target={savingsTarget} />
-      <SmartFinancialInsights txs={txs} />
-      <QuickActions />
-      <KpiCards {...insights.kpis} />
-      <div className="grid gap-4 md:grid-cols-2">
-        <MonthlyTrendChart data={insights.trend} />
-        <CategoryDonut data={insights.categories} />
-      </div>
-      <TopSpendsTable
-        data={insights.topSpends}
-        onSelect={(t) => EventBus.emit("tx:open", t)}
-      />
-      <div className="grid gap-4 md:grid-cols-2">
-        <DashboardCharts month={monthForReport} txs={txs} />
-        <RecentTransactions txs={txs} />
-      </div>
-      <Reports
-        month={monthForReport}
-        months={months}
-        txs={txs}
-        budgets={budgets}
-        comparePrevEnabled={false}
-      />
-    </main>
+    <Page title="Dashboard">
+      <ResponsiveGrid>
+        <Card>
+          <CardHeader title="Net This Month" subtitle="Ringkasan" />
+          <CardBody>{/* KPI cards / angka */}</CardBody>
+        </Card>
+        <Card className="compact">
+          <CardHeader title="Tren 6 Bulan" />
+          <CardBody>
+            <div className="chart-wrap">{/* chart component */}</div>
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader title="Kategori (Bulan ini)" />
+          <CardBody>{/* donut */}</CardBody>
+        </Card>
+      </ResponsiveGrid>
+    </Page>
   );
 }
