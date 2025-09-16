@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Routes,
   Route,
@@ -136,6 +136,7 @@ function AppShell({ prefs, setPrefs }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
+  const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
   const useCloud = mode === "online";
   const [catMeta, setCatMeta] = useState(() => {
     try {
@@ -145,6 +146,16 @@ function AppShell({ prefs, setPrefs }) {
     }
   });
   const [catMap, setCatMap] = useState({});
+  const categoryNameById = useCallback(
+    (id) => {
+      if (!id) return null;
+      for (const [name, value] of Object.entries(catMap)) {
+        if (value === id) return name;
+      }
+      return null;
+    },
+    [catMap]
+  );
   const [rules, setRules] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("hematwoi:v3:rules")) || {};
@@ -173,6 +184,38 @@ function AppShell({ prefs, setPrefs }) {
   const navigate = useNavigate();
   const location = useLocation();
   const hideNav = location.pathname.startsWith("/add");
+
+  const handleProfileSyncError = useCallback(
+    (error, context) => {
+      if (!error) return false;
+      const code = error.code;
+      const status = error.status ?? error.statusCode;
+      const message = String(error.message || "").toLowerCase();
+      const mentionsProfiles = message.includes("profile");
+      const notFoundMessage =
+        message.includes("not found") ||
+        message.includes("does not exist") ||
+        message.includes("unknown");
+      const isMissingTable =
+        code === "42P01" ||
+        code === "PGRST116" ||
+        code === "PGRST114" ||
+        status === 404 ||
+        (mentionsProfiles && notFoundMessage);
+      if (isMissingTable) {
+        if (profileSyncEnabled) {
+          console.warn(
+            `Menonaktifkan sinkronisasi profil karena tabel Supabase tidak tersedia (${context || "profiles"})`,
+            error
+          );
+          setProfileSyncEnabled(false);
+        }
+        return true;
+      }
+      return false;
+    },
+    [profileSyncEnabled]
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -244,33 +287,50 @@ function AppShell({ prefs, setPrefs }) {
 
   useEffect(() => {
     async function loadProfile() {
-      if (!useCloud || !sessionUser) return;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("preferences")
-        .eq("id", sessionUser.id)
-        .single();
-      if (!error && data?.preferences) {
-        const p = data.preferences || {};
-        if (p.theme) setTheme(p.theme);
-        setPrefs((prev) => ({ ...prev, ...p }));
+      if (!useCloud || !sessionUser || !profileSyncEnabled) return;
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("preferences")
+          .eq("id", sessionUser.id)
+          .maybeSingle();
+        if (error) {
+          if (!handleProfileSyncError(error, "load")) {
+            console.error("Gagal memuat preferensi profil", error);
+          }
+          return;
+        }
+        if (data?.preferences) {
+          const p = data.preferences || {};
+          if (p.theme) setTheme(p.theme);
+          setPrefs((prev) => ({ ...prev, ...p }));
+        }
+      } catch (err) {
+        console.error("Gagal memuat preferensi profil", err);
       }
     }
     loadProfile();
-  }, [useCloud, sessionUser, setPrefs]);
+  }, [useCloud, sessionUser, setPrefs, profileSyncEnabled, handleProfileSyncError]);
 
   useEffect(() => {
     async function saveProfile() {
-      if (!useCloud || !sessionUser) return;
-      const preferences = { ...prefs, theme };
-      await supabase
-        .from("profiles")
-        .upsert({ id: sessionUser.id, preferences })
-        .select("id")
-        .single();
+      if (!useCloud || !sessionUser || !profileSyncEnabled) return;
+      try {
+        const preferences = { ...prefs, theme };
+        const { error } = await supabase
+          .from("profiles")
+          .upsert({ id: sessionUser.id, preferences })
+          .select("id")
+          .maybeSingle();
+        if (error && !handleProfileSyncError(error, "save")) {
+          console.error("Gagal menyimpan preferensi profil", error);
+        }
+      } catch (err) {
+        console.error("Gagal menyimpan preferensi profil", err);
+      }
     }
     saveProfile();
-  }, [theme, prefs, useCloud, sessionUser]);
+  }, [theme, prefs, useCloud, sessionUser, profileSyncEnabled, handleProfileSyncError]);
 
   useEffect(() => {
     const applied = sessionStorage.getItem("hw:applied-default-month");
@@ -315,9 +375,9 @@ function AppShell({ prefs, setPrefs }) {
       fetchTxsCloud();
       fetchBudgetsCloud();
     }
-  }, [useCloud, sessionUser]);
+  }, [useCloud, sessionUser, fetchCategoriesCloud, fetchTxsCloud, fetchBudgetsCloud]);
 
-  async function fetchCategoriesCloud() {
+  const fetchCategoriesCloud = useCallback(async () => {
     try {
       const rows = await apiListCategories();
       const map = {};
@@ -355,43 +415,85 @@ function AppShell({ prefs, setPrefs }) {
     } catch (e) {
       console.error("fetch categories failed", e);
     }
-  }
+  }, []);
 
-  async function fetchTxsCloud() {
+  const fetchTxsCloud = useCallback(async () => {
     try {
       const res = await listTransactions({ pageSize: 1000 });
       setData((d) => ({ ...d, txs: res.rows || [] }));
     } catch (e) {
       console.error("fetch transactions failed", e);
     }
-  }
+  }, []);
 
-  async function fetchBudgetsCloud() {
+  const fetchBudgetsCloud = useCallback(async () => {
     try {
       if (!sessionUser) return;
       const { data: rows, error } = await supabase
         .from("budgets")
         .select(
-          "id, month, amount_planned, carryover_enabled, notes, category_id, categories:category_id (name)"
+          "id, month, amount_planned, amount, carryover_enabled, carryover, notes, note, category_id"
         )
         .eq("user_id", sessionUser.id)
         .order("month", { ascending: false });
       if (error) throw error;
-      const mapped = (rows || []).map((row) => ({
-        id: row.id,
-        category_id: row.category_id,
-        category: row.categories?.name || row.category || null,
-        month: row.month ? String(row.month).slice(0, 7) : null,
-        amount: Number(row.amount_planned ?? row.amount ?? 0),
-        amount_planned: Number(row.amount_planned ?? row.amount ?? 0),
-        carryover_enabled: row.carryover_enabled ?? false,
-        notes: row.notes ?? null,
-      }));
+      const categoriesById = {};
+      const missingIds = [];
+      (rows || []).forEach((row) => {
+        if (!row?.category_id) return;
+        if (!categoryNameById(row.category_id)) {
+          missingIds.push(row.category_id);
+        }
+      });
+      const uniqueMissing = Array.from(new Set(missingIds));
+      if (uniqueMissing.length) {
+        const { data: catRows, error: catError } = await supabase
+          .from("categories")
+          .select("id, name")
+          .eq("user_id", sessionUser.id)
+          .in("id", uniqueMissing);
+        if (!catError && Array.isArray(catRows)) {
+          catRows.forEach((item) => {
+            if (item?.id && item?.name) {
+              categoriesById[item.id] = item.name;
+            }
+          });
+        }
+      }
+      if (Object.keys(categoriesById).length) {
+        setCatMap((prev) => {
+          const next = { ...prev };
+          Object.entries(categoriesById).forEach(([id, name]) => {
+            if (name && !next[name]) next[name] = id;
+          });
+          return next;
+        });
+      }
+      const mapped = (rows || []).map((row) => {
+        const planned = Number(row?.amount_planned ?? row?.amount ?? 0);
+        const categoryLabel =
+          (row?.category_id &&
+            (categoryNameById(row.category_id) ||
+              categoriesById[row.category_id])) ||
+          row?.category ||
+          row?.category_name ||
+          "Tanpa kategori";
+        return {
+          id: row.id,
+          category_id: row.category_id,
+          category: categoryLabel,
+          month: row?.month ? String(row.month).slice(0, 7) : null,
+          amount: planned,
+          amount_planned: planned,
+          carryover_enabled: row?.carryover_enabled ?? row?.carryover ?? false,
+          notes: row?.notes ?? row?.note ?? null,
+        };
+      });
       setData((d) => ({ ...d, budgets: mapped }));
     } catch (e) {
       console.error("fetch budgets failed", e);
     }
-  }
+  }, [sessionUser, categoryNameById]);
 
   const triggerMoneyTalk = (tx) => {
     const category = tx.category;
@@ -425,14 +527,6 @@ function AppShell({ prefs, setPrefs }) {
       amount,
       context: { isHigh, isSavings, isOverBudget },
     });
-  };
-
-  const categoryNameById = (id) => {
-    if (!id) return null;
-    for (const [name, value] of Object.entries(catMap)) {
-      if (value === id) return name;
-    }
-    return null;
   };
 
   const addTx = async (tx) => {
@@ -491,7 +585,6 @@ function AppShell({ prefs, setPrefs }) {
           date: tx.date,
           type: tx.type,
           amount: tx.amount,
-          note: resolvedNote,
           notes: resolvedNote,
           title: tx.title ?? null,
           category_id: categoryId,
@@ -617,19 +710,26 @@ function AppShell({ prefs, setPrefs }) {
             amount_planned: amount,
           })
           .select(
-            "id, month, amount_planned, carryover_enabled, notes, category_id, categories:category_id (name)"
+            "id, month, amount_planned, amount, carryover_enabled, carryover, notes, note, category_id"
           )
           .single();
         if (error) throw error;
+        const planned = Number(row?.amount_planned ?? row?.amount ?? amount);
+        const categoryLabel =
+          (row?.category_id && categoryNameById(row.category_id)) ||
+          category ||
+          row?.category ||
+          row?.category_name ||
+          "Tanpa kategori";
         const mapped = {
           id: row.id,
           category_id: row.category_id,
-          category: row.categories?.name || category,
-          month: row.month ? String(row.month).slice(0, 7) : m,
-          amount: Number(row.amount_planned ?? amount),
-          amount_planned: Number(row.amount_planned ?? amount),
-          carryover_enabled: row.carryover_enabled ?? false,
-          notes: row.notes ?? null,
+          category: categoryLabel,
+          month: row?.month ? String(row.month).slice(0, 7) : m,
+          amount: planned,
+          amount_planned: planned,
+          carryover_enabled: row?.carryover_enabled ?? row?.carryover ?? false,
+          notes: row?.notes ?? row?.note ?? null,
         };
         setData((d) => ({ ...d, budgets: [...d.budgets, mapped] }));
       } catch (e) {
