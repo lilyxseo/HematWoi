@@ -60,19 +60,37 @@ const TRANSACTION_COLUMNS = [
   "user_id",
   "date",
   "type",
-  "category_id",
+  "amount",
+  "title",
+  "notes",
   "account_id",
   "to_account_id",
+  "category_id",
   "merchant_id",
-  "note",
-  "amount",
-  "receipt_url",
   "parent_id",
   "transfer_group_id",
+  "receipt_url",
   "deleted_at",
   "updated_at",
+  "created_at",
   "rev",
 ];
+
+const TRANSACTION_KEY_ALIASES = {
+  note: "notes",
+  notes: "notes",
+  title: "title",
+  userId: "user_id",
+  accountId: "account_id",
+  toAccountId: "to_account_id",
+  categoryId: "category_id",
+  merchantId: "merchant_id",
+  parentId: "parent_id",
+  transferGroupId: "transfer_group_id",
+  receiptUrl: "receipt_url",
+  createdAt: "created_at",
+  updatedAt: "updated_at",
+};
 
 const errorListeners = new Set();
 
@@ -95,10 +113,14 @@ export function onError(fn) {
   return () => errorListeners.delete(fn);
 }
 
-function sanitizeTransaction(record) {
+function sanitizeTransaction(record = {}) {
   const cleaned = {};
-  for (const key of TRANSACTION_COLUMNS) {
-    if (record[key] !== undefined) cleaned[key] = record[key];
+  for (const [rawKey, value] of Object.entries(record)) {
+    if (value === undefined) continue;
+    const key = TRANSACTION_KEY_ALIASES[rawKey] ?? rawKey;
+    if (!TRANSACTION_COLUMNS.includes(key)) continue;
+    if (cleaned[key] !== undefined) continue;
+    cleaned[key] = value;
   }
   return cleaned;
 }
@@ -123,23 +145,33 @@ function sanitizeForSupabase(entity, record) {
 function handleSyncError(error, context = {}) {
   if (!error) return;
   if (error?.message === "offline") return;
+  const message = error?.message || String(error);
+  const prefix = context?.entity ? `Sync ${context.entity}` : "Sync";
+  const friendlyMessage = `${prefix} gagal${message ? `: ${message}` : ""}`;
+  const friendlyError = new Error(friendlyMessage);
+  if (friendlyError && error instanceof Error) {
+    friendlyError.cause = error;
+  }
   console.error("Sync error", { context, error });
-  emitError(error, context);
+  emitError(friendlyError, context);
+}
+
+function logUpsertPayload(entity, payload) {
+  const items = Array.isArray(payload) ? payload : [payload];
+  console.debug(
+    `[SyncEngine] Upserting ${items.length} ${entity} record${items.length > 1 ? "s" : ""}`,
+    items
+  );
 }
 
 async function sendOp(op) {
   if (op.type === "UPSERT") {
     const basePayload = op.meta?.normalized ? op.payload : normalizeRecord(op.payload);
     const payload = sanitizeForSupabase(op.entity, basePayload);
-    if (op.entity === "transactions") {
-      console.log("Syncing transaction payload:", payload);
-    }
-    const options = {};
-    if (op.entity === "transactions") options.onConflict = "id";
-    else if (op.meta?.onConflict) options.onConflict = op.meta.onConflict;
+    logUpsertPayload(op.entity, payload);
     const { error } = await supabase
       .from(op.entity)
-      .upsert([payload], Object.keys(options).length ? options : undefined);
+      .upsert([payload], { onConflict: "id" });
     if (error) throw error;
     await dbCache.set(op.entity, payload);
   } else if (op.type === "DELETE") {
@@ -221,18 +253,12 @@ export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
         if (g.type === "UPSERT") {
           const payloads = slice.map((o) => {
             const base = o.meta?.normalized ? o.payload : normalizeRecord(o.payload);
-            const payload = sanitizeForSupabase(g.entity, base);
-            if (g.entity === "transactions") {
-              console.log("Syncing transaction payload:", payload);
-            }
-            return payload;
+            return sanitizeForSupabase(g.entity, base);
           });
-          const options = {};
-          if (g.entity === "transactions") options.onConflict = "id";
-          else if (slice[0]?.meta?.onConflict) options.onConflict = slice[0].meta.onConflict;
+          logUpsertPayload(g.entity, payloads);
           const { error } = await supabase
             .from(g.entity)
-            .upsert(payloads, Object.keys(options).length ? options : undefined);
+            .upsert(payloads, { onConflict: "id" });
           if (error) throw error;
           await dbCache.bulkSet(g.entity, payloads);
         } else if (g.type === "DELETE") {
