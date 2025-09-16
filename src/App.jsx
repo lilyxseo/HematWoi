@@ -424,7 +424,7 @@ function AppShell({ prefs, setPrefs }) {
       const { data: rows, error } = await supabase
         .from("budgets")
         .select(
-          "id, month, amount_planned, amount, carryover_enabled, carryover, notes, note, category_id"
+          "id, month, amount, carryover_enabled, carryover, notes, note, category_id"
         )
         .eq("user_id", sessionUser.id)
         .order("month", { ascending: false });
@@ -462,7 +462,7 @@ function AppShell({ prefs, setPrefs }) {
         });
       }
       const mapped = (rows || []).map((row) => {
-        const planned = Number(row?.amount_planned ?? row?.amount ?? 0);
+        const planned = Number(row?.amount ?? row?.amount_planned ?? 0);
         const categoryLabel =
           (row?.category_id &&
             (categoryNameById(row.category_id) ||
@@ -707,14 +707,14 @@ function AppShell({ prefs, setPrefs }) {
             user_id: sessionUser.id,
             category_id: categoryId,
             month: `${m}-01`,
-            amount_planned: amount,
+            amount,
           })
           .select(
-            "id, month, amount_planned, amount, carryover_enabled, carryover, notes, note, category_id"
+            "id, month, amount, carryover_enabled, carryover, notes, note, category_id"
           )
           .single();
         if (error) throw error;
-        const planned = Number(row?.amount_planned ?? row?.amount ?? amount);
+        const planned = Number(row?.amount ?? row?.amount_planned ?? amount);
         const categoryLabel =
           (row?.category_id && categoryNameById(row.category_id)) ||
           category ||
