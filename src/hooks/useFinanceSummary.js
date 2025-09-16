@@ -70,7 +70,7 @@ export default function useFinanceSummary(txs = [], budgets = []) {
       const spent = monthTx
         .filter((t) => t.type === "expense" && t.category === b.category)
         .reduce((s, t) => s + Number(t.amount || 0), 0);
-      return spent > Number(b.amount || 0);
+      return spent > Number(b.amount_planned || 0);
     });
 
     return {

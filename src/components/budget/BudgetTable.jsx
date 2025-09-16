@@ -21,7 +21,7 @@ export default function BudgetTable({ items, onSelect }) {
               onClick={() => onSelect(item)}
             >
               <td className="py-2">{item.category}</td>
-              <td className="py-2 text-right">{formatCurrency(item.amount)}</td>
+              <td className="py-2 text-right">{formatCurrency(item.amount_planned)}</td>
               <td className="py-2 text-right">{formatCurrency(item.actual)}</td>
               <td className="py-2 text-right">{formatCurrency(item.remaining)}</td>
               <td className="py-2 text-right">{item.pct}%</td>

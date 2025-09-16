@@ -20,7 +20,7 @@ export default function EnvelopeGrid({ items, onSelect }) {
             <span className="text-sm">{formatCurrency(item.remaining)}</span>
           </div>
           <div className="text-xs text-muted">
-            {formatCurrency(item.actual)} / {formatCurrency(item.amount)}
+            {formatCurrency(item.actual)} / {formatCurrency(item.amount_planned)}
           </div>
           <div className="h-2 w-full rounded-full bg-surface-2">
             <div

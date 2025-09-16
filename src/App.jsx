@@ -74,6 +74,59 @@ const BRAND_PRESETS = {
   rose: { h: 347, s: 77, l: 60 },
 };
 
+function normalizeBudgetRecord(budget, overrides = {}) {
+  if (!budget) return null;
+
+  const {
+    amount,
+    amount_planned,
+    carryover,
+    carryover_enabled,
+    note,
+    notes,
+    limit,
+    cap,
+    month,
+    ...rest
+  } = budget;
+
+  const {
+    amount_planned: overridePlanned,
+    carryover_enabled: overrideCarryover,
+    notes: overrideNotes,
+    month: overrideMonth,
+    ...extra
+  } = overrides;
+
+  const plannedSource =
+    overridePlanned ?? amount_planned ?? amount ?? limit ?? cap ?? 0;
+  const plannedValue = Number(plannedSource);
+  const normalizedPlanned = Number.isFinite(plannedValue)
+    ? plannedValue
+    : 0;
+
+  const carryoverSource =
+    overrideCarryover ?? carryover_enabled ?? carryover ?? false;
+  const normalizedCarryover =
+    typeof carryoverSource === "string"
+      ? carryoverSource === "true"
+      : Boolean(carryoverSource);
+
+  const resolvedNotes = overrideNotes ?? notes ?? note ?? null;
+
+  const monthSource = overrideMonth ?? month;
+  const normalizedMonth = monthSource ? String(monthSource).slice(0, 7) : null;
+
+  return {
+    ...rest,
+    ...extra,
+    month: normalizedMonth,
+    amount_planned: normalizedPlanned,
+    carryover_enabled: normalizedCarryover,
+    notes: resolvedNotes,
+  };
+}
+
 function loadInitial() {
   try {
     const raw = localStorage.getItem("hematwoi:v3");
@@ -89,7 +142,11 @@ function loadInitial() {
     return {
       txs: parsed.txs || [],
       cat: parsed.cat || defaultCategories,
-      budgets: parsed.budgets || [],
+      budgets: Array.isArray(parsed.budgets)
+        ? parsed.budgets
+            .map((item) => normalizeBudgetRecord(item))
+            .filter(Boolean)
+        : [],
       goals: parsed.goals || [],
       envelopes: parsed.envelopes || [],
     };
@@ -423,9 +480,7 @@ function AppShell({ prefs, setPrefs }) {
       if (!sessionUser) return;
       const { data: rows, error } = await supabase
         .from("budgets")
-        .select(
-          "id, month, amount_planned, carryover_enabled, carryover, notes, note, category_id"
-        )
+        .select("id, month, amount_planned, carryover_enabled, notes, category_id")
         .eq("user_id", sessionUser.id)
         .order("month", { ascending: false });
       if (error) throw error;
@@ -461,31 +516,25 @@ function AppShell({ prefs, setPrefs }) {
           return next;
         });
       }
-      const mapped = (rows || []).map((row) => {
-        const planned = Number(row?.amount ?? row?.amount_planned ?? 0);
-        const categoryLabel =
-          (row?.category_id &&
-            (categoryNameById(row.category_id) ||
-              categoriesById[row.category_id])) ||
-          row?.category ||
-          row?.category_name ||
-          "Tanpa kategori";
-        return {
-          id: row.id,
-          category_id: row.category_id,
-          category: categoryLabel,
-          month: row?.month ? String(row.month).slice(0, 7) : null,
-          amount: planned,
-          amount_planned: planned,
-          carryover_enabled: row?.carryover_enabled ?? row?.carryover ?? false,
-          notes: row?.notes ?? row?.note ?? null,
-        };
-      });
+      const mapped = (rows || [])
+        .map((row) => {
+          const categoryLabel =
+            (row?.category_id &&
+              (categoryNameById(row.category_id) ||
+                categoriesById[row.category_id])) ||
+            row?.category ||
+            row?.category_name ||
+            "Tanpa kategori";
+          return normalizeBudgetRecord(row, { category: categoryLabel });
+        })
+        .filter(Boolean);
       setData((d) => ({ ...d, budgets: mapped }));
     } catch (e) {
       console.error("fetch budgets failed", e);
+      const detail = e?.message ? `: ${e.message}` : "";
+      addToast(`Gagal memuat data anggaran${detail}`, "error");
     }
-  }, [sessionUser, categoryNameById]);
+  }, [sessionUser, categoryNameById, addToast]);
 
   useEffect(() => {
     if (useCloud && sessionUser) {
@@ -521,7 +570,9 @@ function AppShell({ prefs, setPrefs }) {
       )
       .reduce((s, t) => s + Number(t.amount || 0), 0);
     if (tx.type === "expense") spent += amount;
-    const isOverBudget = budget ? spent > Number(budget.amount || 0) : false;
+    const isOverBudget = budget
+      ? spent > Number(budget.amount_planned || 0)
+      : false;
     speak({
       category,
       amount,
@@ -691,13 +742,18 @@ function AppShell({ prefs, setPrefs }) {
     }
   };
 
-  const addBudget = async ({ category, month, amount }) => {
+  const addBudget = async ({ category, month, amount_planned, amount }) => {
     if (!data.cat.expense.includes(category)) return;
     const m = String(month).slice(0, 7);
     const categoryId = catMap[category] ?? null;
     if (useCloud && sessionUser && !categoryId) return;
     if (data.budgets.some((b) => b.category === category && b.month === m))
       return;
+
+    const plannedValue = Number(amount_planned ?? amount ?? 0);
+    const normalizedPlanned = Number.isFinite(plannedValue)
+      ? plannedValue
+      : 0;
 
     if (useCloud && sessionUser) {
       try {
@@ -707,47 +763,45 @@ function AppShell({ prefs, setPrefs }) {
             user_id: sessionUser.id,
             category_id: categoryId,
             month: `${m}-01`,
-            amount_planned: amount,
+            amount_planned: normalizedPlanned,
           })
-          .select(
-            "id, month, amount_planned, carryover_enabled, carryover, notes, note, category_id"
-          )
+          .select("id, month, amount_planned, carryover_enabled, notes, category_id")
           .single();
         if (error) throw error;
-        const planned = Number(row?.amount ?? row?.amount_planned ?? amount);
         const categoryLabel =
           (row?.category_id && categoryNameById(row.category_id)) ||
           category ||
           row?.category ||
           row?.category_name ||
           "Tanpa kategori";
-        const mapped = {
-          id: row.id,
-          category_id: row.category_id,
+        const mapped = normalizeBudgetRecord(row, {
           category: categoryLabel,
-          month: row?.month ? String(row.month).slice(0, 7) : m,
-          amount: planned,
-          amount_planned: planned,
-          carryover_enabled: row?.carryover_enabled ?? row?.carryover ?? false,
-          notes: row?.notes ?? row?.note ?? null,
-        };
-        setData((d) => ({ ...d, budgets: [...d.budgets, mapped] }));
+        });
+        setData((d) => ({
+          ...d,
+          budgets: mapped ? [...d.budgets, mapped] : d.budgets,
+        }));
       } catch (e) {
-        alert("Gagal menambah budget: " + e.message);
+        addToast(`Gagal menambah budget: ${e.message}`, "error");
       }
     } else {
+      const offlineBudget = normalizeBudgetRecord(
+        {
+          id: uid(),
+          category,
+          category_id: categoryId,
+          month: m,
+          amount_planned: normalizedPlanned,
+          carryover_enabled: false,
+          notes: null,
+        },
+        { category }
+      );
       setData((d) => ({
         ...d,
         budgets: [
           ...d.budgets,
-          {
-            id: uid(),
-            category,
-            category_id: categoryId,
-            month: m,
-            amount,
-            amount_planned: amount,
-          },
+          ...(offlineBudget ? [offlineBudget] : []),
         ],
       }));
     }
@@ -762,7 +816,7 @@ function AppShell({ prefs, setPrefs }) {
           .eq("id", id)
           .eq("user_id", sessionUser.id);
       } catch (e) {
-        alert("Gagal menghapus budget: " + e.message);
+        addToast(`Gagal menghapus budget: ${e.message}`, "error");
         return;
       }
     }
@@ -874,11 +928,16 @@ function AppShell({ prefs, setPrefs }) {
         ) {
           throw new Error("invalid");
         }
+        const incomingBudgets = Array.isArray(parsed.budgets)
+          ? parsed.budgets
+              .map((item) => normalizeBudgetRecord(item))
+              .filter(Boolean)
+          : [];
         setData((d) => ({
           txs: Array.isArray(parsed.txs) ? [...parsed.txs, ...d.txs] : d.txs,
           cat: parsed.cat || d.cat,
-          budgets: Array.isArray(parsed.budgets)
-            ? [...parsed.budgets, ...d.budgets]
+          budgets: incomingBudgets.length
+            ? [...incomingBudgets, ...d.budgets]
             : d.budgets,
         }));
       } catch {
