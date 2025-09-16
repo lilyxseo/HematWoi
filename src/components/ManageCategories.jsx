@@ -150,12 +150,25 @@ export default function ManageCategories({ cat, onSave }) {
     );
   };
 
+  const findItemById = (id) =>
+    listIncome.find((item) => item.id === id) ||
+    listExpense.find((item) => item.id === id);
+
+  const hasDuplicateName = (name, type, excludeId = null) => {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized) return true;
+    const pool = type === "income" ? listIncome : listExpense;
+    return pool.some(
+      (item) =>
+        item.id !== excludeId && item.name.trim().toLowerCase() === normalized
+    );
+  };
+
   const commitName = (id, value) => {
     const name = value.trim();
-    const others = [...listIncome, ...listExpense]
-      .filter((i) => i.id !== id)
-      .map((i) => i.name.trim().toLowerCase());
-    if (!name || others.includes(name.toLowerCase())) {
+    const item = findItemById(id);
+    const type = item?.type || "expense";
+    if (!item || hasDuplicateName(name, type, id)) {
       setListIncome((arr) =>
         arr.map((i) => (i.id === id ? { ...i, name: i.orig } : i))
       );
@@ -172,13 +185,10 @@ export default function ManageCategories({ cat, onSave }) {
     );
   };
 
-  const allNames = () =>
-    [...listIncome, ...listExpense].map((c) => c.name.trim().toLowerCase());
-
   const addCategory = () => {
     const name = newName.trim();
     if (!name) return;
-    if (allNames().includes(name.toLowerCase())) {
+    if (hasDuplicateName(name, newType)) {
       alert("Nama kategori sudah ada");
       return;
     }
@@ -207,10 +217,16 @@ export default function ManageCategories({ cat, onSave }) {
       name: c.name.trim(),
       sort: idx,
     }));
-    const names = [...incomeDetail, ...expenseDetail].map((c) =>
-      c.name.toLowerCase()
-    );
-    if (names.some((n) => !n) || new Set(names).size !== names.length) {
+    const checkInvalid = (items) => {
+      const seen = new Set();
+      for (const item of items) {
+        const normalized = item.name.trim().toLowerCase();
+        if (!normalized || seen.has(normalized)) return true;
+        seen.add(normalized);
+      }
+      return false;
+    };
+    if (checkInvalid(incomeDetail) || checkInvalid(expenseDetail)) {
       alert("Nama kategori duplikat atau kosong");
       return;
     }
