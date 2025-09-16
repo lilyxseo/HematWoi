@@ -9,6 +9,7 @@ describe("useMode", () => {
   it("switches online → local → online and persists", async () => {
     process.env.VITE_SUPABASE_URL = "http://localhost";
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY = "key";
+    process.env.VITE_SUPABASE_ANON_KEY = "key";
     const { ModeProvider, useMode } = await import("./useMode.jsx");
     const wrapper = ({ children }) => <ModeProvider>{children}</ModeProvider>;
     const { result } = renderHook(() => useMode(), { wrapper });
