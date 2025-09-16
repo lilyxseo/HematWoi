@@ -72,7 +72,7 @@ const TRANSACTION_COLUMNS = [
   "receipt_url",
   "deleted_at",
   "updated_at",
-  "created_at",
+  "inserted_at",
   "rev",
 ];
 
@@ -88,11 +88,14 @@ const TRANSACTION_KEY_ALIASES = {
   parentId: "parent_id",
   transferGroupId: "transfer_group_id",
   receiptUrl: "receipt_url",
-  createdAt: "created_at",
+  createdAt: "inserted_at",
+  insertedAt: "inserted_at",
   updatedAt: "updated_at",
 };
 
 const errorListeners = new Set();
+
+const reportedInvalidTransactionColumns = new Set();
 
 function requiresUserContext(entity) {
   return USER_SCOPED_TABLES.has(entity);
@@ -115,12 +118,28 @@ export function onError(fn) {
 
 function sanitizeTransaction(record = {}) {
   const cleaned = {};
+  const invalidColumns = new Set();
   for (const [rawKey, value] of Object.entries(record)) {
     if (value === undefined) continue;
     const key = TRANSACTION_KEY_ALIASES[rawKey] ?? rawKey;
-    if (!TRANSACTION_COLUMNS.includes(key)) continue;
+    if (!TRANSACTION_COLUMNS.includes(key)) {
+      invalidColumns.add(rawKey);
+      continue;
+    }
     if (cleaned[key] !== undefined) continue;
     cleaned[key] = value;
+  }
+  if (invalidColumns.size > 0) {
+    const unseen = [...invalidColumns].filter(
+      (column) => !reportedInvalidTransactionColumns.has(column)
+    );
+    unseen.forEach((column) => reportedInvalidTransactionColumns.add(column));
+    if (unseen.length > 0) {
+      const message = `Payload transaksi memiliki kolom tidak dikenal: ${unseen.join(
+        ", "
+      )}`;
+      emitError(new Error(message), { entity: "transactions", stage: "sanitize" });
+    }
   }
   return cleaned;
 }

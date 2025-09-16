@@ -90,11 +90,11 @@ export function mapTransactionRow(tx = {}) {
     tx.merchants?.id ??
     null;
 
-  const createdAt =
-    tx.created_at ??
-    tx.createdAt ??
+  const insertedAt =
     tx.inserted_at ??
     tx.insertedAt ??
+    tx.created_at ??
+    tx.createdAt ??
     tx.created ??
     tx.updated_at ??
     null;
@@ -131,7 +131,7 @@ export function mapTransactionRow(tx = {}) {
     deleted_at: tx.deleted_at ?? null,
     rev: tx.rev ?? null,
     updated_at: tx.updated_at ?? null,
-    created_at: createdAt,
+    inserted_at: insertedAt,
   };
 }
 
@@ -230,6 +230,7 @@ export async function listTransactions(
     transfer_group_id,
     receipt_url,
     rev,
+    inserted_at,
     updated_at,
     deleted_at,
     account:account_id (*),
@@ -289,6 +290,12 @@ export async function listTransactions(
 
 function normalizeTransactionInput(input = {}) {
   const noteValue = input.notes ?? input.note ?? null;
+  const insertedAt =
+    input.inserted_at ??
+    input.insertedAt ??
+    input.created_at ??
+    input.createdAt ??
+    null;
   return {
     id: input.id || crypto.randomUUID(),
     date: input.date ?? new Date().toISOString(),
@@ -304,7 +311,7 @@ function normalizeTransactionInput(input = {}) {
     transfer_group_id: input.transfer_group_id ?? null,
     receipt_url: input.receipt_url ?? null,
     rev: input.rev ?? null,
-    created_at: input.created_at ?? new Date().toISOString(),
+    inserted_at: insertedAt ?? new Date().toISOString(),
   };
 }
 
