@@ -47,7 +47,7 @@ import { allocateIncome } from "./lib/goals";
 import MoneyTalkProvider, {
   useMoneyTalk,
 } from "./context/MoneyTalkContext.jsx";
-import { ModeProvider } from "./hooks/useMode";
+import { ModeProvider, useMode } from "./hooks/useMode";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -105,6 +105,7 @@ function loadInitial() {
 }
 
 function AppShell({ prefs, setPrefs }) {
+  const { mode, setMode } = useMode();
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({
     type: "all",
@@ -133,8 +134,9 @@ function AppShell({ prefs, setPrefs }) {
   const [theme, setTheme] = useState(storedTheme);
   const [brand, setBrand] = useState(storedBrand);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [useCloud, setUseCloud] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const useCloud = mode === "online";
   const [catMeta, setCatMeta] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("hematwoi:v3:catMeta")) || {};
@@ -173,18 +175,35 @@ function AppShell({ prefs, setPrefs }) {
   const hideNav = location.pathname.startsWith("/add");
 
   useEffect(() => {
+    let isMounted = true;
     supabase.auth
       .getUser()
-      .then(({ data }) => setSessionUser(data.user ?? null));
+      .then(({ data }) => {
+        if (!isMounted) return;
+        setSessionUser(data.user ?? null);
+        setSessionChecked(true);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setSessionUser(null);
+        setSessionChecked(true);
+      });
     const { data: sub } = supabase.auth.onAuthStateChange((_ev, session) => {
+      if (!isMounted) return;
       setSessionUser(session?.user ?? null);
+      setSessionChecked(true);
     });
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      sub.subscription?.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    if (!sessionUser && useCloud) setUseCloud(false);
-  }, [sessionUser, useCloud]);
+    if (sessionChecked && !sessionUser && mode === "online") {
+      setMode("local");
+    }
+  }, [sessionChecked, sessionUser, mode, setMode]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -817,8 +836,6 @@ function AppShell({ prefs, setPrefs }) {
           setTheme={setTheme}
           brand={brand}
           setBrand={setBrand}
-          useCloud={useCloud}
-          setUseCloud={setUseCloud}
         />
       )}
       <div
