@@ -369,14 +369,6 @@ function AppShell({ prefs, setPrefs }) {
     localStorage.setItem("hematwoi:v3:alloc", JSON.stringify(allocRules));
   }, [allocRules]);
 
-  useEffect(() => {
-    if (useCloud && sessionUser) {
-      fetchCategoriesCloud();
-      fetchTxsCloud();
-      fetchBudgetsCloud();
-    }
-  }, [useCloud, sessionUser, fetchCategoriesCloud, fetchTxsCloud, fetchBudgetsCloud]);
-
   const fetchCategoriesCloud = useCallback(async () => {
     try {
       const rows = await apiListCategories();
@@ -494,6 +486,14 @@ function AppShell({ prefs, setPrefs }) {
       console.error("fetch budgets failed", e);
     }
   }, [sessionUser, categoryNameById]);
+
+  useEffect(() => {
+    if (useCloud && sessionUser) {
+      fetchCategoriesCloud();
+      fetchTxsCloud();
+      fetchBudgetsCloud();
+    }
+  }, [useCloud, sessionUser, fetchCategoriesCloud, fetchTxsCloud, fetchBudgetsCloud]);
 
   const triggerMoneyTalk = (tx) => {
     const category = tx.category;
