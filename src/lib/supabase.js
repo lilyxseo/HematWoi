@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
 const browserEnv = typeof import.meta !== 'undefined' ? import.meta.env ?? {} : {}
-const nodeEnv = typeof process !== 'undefined' && process.env ? process.env : {}
+const nodeEnv =
+  typeof globalThis !== 'undefined' && globalThis.process?.env
+    ? globalThis.process.env
+    : {}
 
 const supabaseUrl = browserEnv.VITE_SUPABASE_URL ?? nodeEnv.VITE_SUPABASE_URL
 const supabaseKey =

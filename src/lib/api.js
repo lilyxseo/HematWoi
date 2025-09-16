@@ -288,7 +288,6 @@ function normalizeTransactionInput(input = {}) {
     amount: Number(input.amount ?? 0),
     title: input.title ?? null,
     notes: noteValue,
-    note: noteValue,
     account_id: input.account_id ?? null,
     to_account_id: input.to_account_id ?? null,
     category_id: input.category_id ?? null,

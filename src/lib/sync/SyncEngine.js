@@ -59,9 +59,32 @@ function requiresUserContext(entity) {
   return USER_SCOPED_TABLES.has(entity);
 }
 
+function sanitizeForSupabase(entity, record) {
+  if (entity === "transactions") {
+    const cleaned = { ...record };
+    delete cleaned.note;
+    delete cleaned.tags;
+    delete cleaned.tag_ids;
+    delete cleaned.tagNames;
+    delete cleaned.tag_labels;
+    delete cleaned.category;
+    delete cleaned.category_name;
+    delete cleaned.account;
+    delete cleaned.account_name;
+    delete cleaned.to_account;
+    delete cleaned.to_account_name;
+    delete cleaned.merchant;
+    delete cleaned.merchant_name;
+    delete cleaned.receipts;
+    return cleaned;
+  }
+  return record;
+}
+
 async function sendOp(op) {
   if (op.type === "UPSERT") {
-    const payload = op.meta?.normalized ? op.payload : normalizeRecord(op.payload);
+    const basePayload = op.meta?.normalized ? op.payload : normalizeRecord(op.payload);
+    const payload = sanitizeForSupabase(op.entity, basePayload);
     const onConflict = op.meta?.onConflict || "id";
     const { error } = await supabase.from(op.entity).upsert([payload], { onConflict });
     if (error) throw error;
@@ -87,7 +110,8 @@ export async function upsert(entity, record) {
     if (!userId) throw new Error("Pengguna belum masuk");
     if (!payload.user_id) payload.user_id = userId;
   }
-  const normalized = normalizeRecord(payload);
+  const sanitized = sanitizeForSupabase(entity, payload);
+  const normalized = normalizeRecord(sanitized);
   const op = {
     opId: crypto.randomUUID(),
     entity,
@@ -143,9 +167,10 @@ export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
     const slice = g.items.slice(0, batchSize);
     try {
       if (g.type === "UPSERT") {
-        const payloads = slice.map((o) =>
-          o.meta?.normalized ? o.payload : normalizeRecord(o.payload)
-        );
+        const payloads = slice.map((o) => {
+          const base = o.meta?.normalized ? o.payload : normalizeRecord(o.payload);
+          return sanitizeForSupabase(g.entity, base);
+        });
         const onConflict = slice[0]?.meta?.onConflict || "id";
         const { error } = await supabase
           .from(g.entity)
