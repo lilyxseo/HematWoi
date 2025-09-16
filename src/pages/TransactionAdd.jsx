@@ -131,6 +131,16 @@ export default function TransactionAdd({ onAdd }) {
     loadMasterData();
   }, [addToast]);
 
+  const categoriesByType = useMemo(() => {
+    const map = { income: [], expense: [], transfer: [] };
+    (categories || []).forEach((cat) => {
+      const key = (cat.type || "expense").toLowerCase();
+      if (!map[key]) map[key] = [];
+      map[key].push(cat);
+    });
+    return map;
+  }, [categories]);
+
   useEffect(() => {
     const list = categoriesByType[type] || [];
     if (list.length === 0) {
@@ -157,16 +167,6 @@ export default function TransactionAdd({ onAdd }) {
   useEffect(() => {
     localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates));
   }, [templates]);
-
-  const categoriesByType = useMemo(() => {
-    const map = { income: [], expense: [], transfer: [] };
-    (categories || []).forEach((cat) => {
-      const key = (cat.type || "expense").toLowerCase();
-      if (!map[key]) map[key] = [];
-      map[key].push(cat);
-    });
-    return map;
-  }, [categories]);
 
   const accountOptions = useMemo(() => accounts.map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" })), [accounts]);
 
