@@ -43,7 +43,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     title: 'Tambah',
-    path: '/add',
+    path: '/transaction/add',
     inSidebar: false,
     protected: true,
   },

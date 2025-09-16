@@ -4,7 +4,7 @@ import { PlusCircle, Wallet, CreditCard } from "lucide-react";
 export default function QuickActions() {
   const actions = [
     {
-      to: "/add",
+      to: "/transaction/add",
       label: "Tambah Transaksi",
       icon: PlusCircle,
       shortcut: "Ctrl/Cmd + T",

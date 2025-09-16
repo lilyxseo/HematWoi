@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Routes,
   Route,
+  Navigate,
   useNavigate,
   useLocation,
 } from "react-router-dom";
@@ -15,7 +16,7 @@ import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
 import Categories from "./pages/Categories";
 import DataToolsPage from "./pages/DataToolsPage";
-import AddWizard from "./pages/AddWizard";
+import TransactionAdd from "./pages/TransactionAdd";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
@@ -407,42 +408,45 @@ function AppShell({ prefs, setPrefs }) {
     });
   };
 
+  const categoryNameById = (id) => {
+    if (!id) return null;
+    for (const [name, value] of Object.entries(catMap)) {
+      if (value === id) return name;
+    }
+    return null;
+  };
+
   const addTx = async (tx) => {
-    if (useCloud && sessionUser) {
-      try {
-        const saved = await apiAdd({
-          date: tx.date,
-          type: tx.type,
-          amount: tx.amount,
-          note: tx.note,
-          category_id: catMap[tx.category] || null,
-        });
-        const res = { ...saved, category: tx.category };
-        setData((d) => {
-          let goals = d.goals;
-          let envelopes = d.envelopes;
-          if (tx.type === "income") {
-            const alloc = allocateIncome(
-              tx.amount,
-              d.goals,
-              d.envelopes,
-              allocRules
-            );
-            goals = alloc.goals;
-            envelopes = alloc.envelopes;
-          }
-          return { ...d, txs: [res, ...d.txs], goals, envelopes };
-        });
-      } catch (e) {
-        alert("Gagal menambah transaksi: " + e.message);
-      }
-    } else {
+    const categoryId = tx.category_id ?? (tx.category ? catMap[tx.category] ?? null : null);
+    const resolvedNote = tx.notes ?? tx.note ?? "";
+    const tagsPayload = Array.isArray(tx.tag_ids)
+      ? tx.tag_ids.filter(Boolean)
+      : Array.isArray(tx.tags)
+      ? tx.tags.filter(Boolean)
+      : [];
+    const displayTags =
+      Array.isArray(tx.tag_labels) && tx.tag_labels.length
+        ? tx.tag_labels
+        : Array.isArray(tx.tagNames)
+        ? tx.tagNames
+        : [];
+    const receiptsPayload = Array.isArray(tx.receipts) ? tx.receipts : [];
+    const merchantLabel = tx.merchant_name ?? tx.merchant ?? null;
+    const accountLabel = tx.account_name ?? tx.account ?? null;
+    const toAccountLabel = tx.to_account_name ?? tx.to_account ?? null;
+    const baseCategoryName = tx.category ?? tx.category_name ?? categoryNameById(categoryId);
+
+    const pushRecord = (record) => {
+      const normalized = {
+        ...record,
+        amount: Number(record.amount ?? tx.amount ?? 0),
+      };
       setData((d) => {
         let goals = d.goals;
         let envelopes = d.envelopes;
-        if (tx.type === "income") {
+        if (normalized.type === "income") {
           const alloc = allocateIncome(
-            tx.amount,
+            normalized.amount,
             d.goals,
             d.envelopes,
             allocRules
@@ -452,14 +456,76 @@ function AppShell({ prefs, setPrefs }) {
         }
         return {
           ...d,
-          txs: [{ ...tx, id: uid() }, ...d.txs],
+          txs: [normalized, ...d.txs],
           goals,
           envelopes,
         };
       });
+      return normalized;
+    };
+
+    let finalRecord = null;
+
+    if (useCloud && sessionUser) {
+      try {
+        const saved = await apiAdd({
+          date: tx.date,
+          type: tx.type,
+          amount: tx.amount,
+          note: resolvedNote,
+          notes: resolvedNote,
+          title: tx.title ?? null,
+          category_id: categoryId,
+          account_id: tx.account_id ?? null,
+          to_account_id: tx.type === "transfer" ? tx.to_account_id ?? null : null,
+          merchant_id: tx.merchant_id ?? null,
+          tags: tagsPayload,
+          receipts: receiptsPayload,
+        });
+        const resolvedCategory =
+          baseCategoryName ??
+          saved.category ??
+          categoryNameById(saved.category_id) ??
+          null;
+        if (resolvedCategory && saved.category_id && !catMap[resolvedCategory]) {
+          setCatMap((prev) => ({ ...prev, [resolvedCategory]: saved.category_id }));
+        }
+        finalRecord = pushRecord({
+          ...saved,
+          category: resolvedCategory,
+          note: saved.note ?? resolvedNote,
+          tags: saved.tags?.length ? saved.tags : displayTags,
+          tag_ids: saved.tag_ids?.length ? saved.tag_ids : tagsPayload,
+          merchant: saved.merchant ?? merchantLabel,
+          account: saved.account ?? accountLabel,
+          to_account: saved.to_account ?? toAccountLabel,
+        });
+      } catch (e) {
+        alert("Gagal menambah transaksi: " + e.message);
+        return;
+      }
+    } else {
+      finalRecord = pushRecord({
+        ...tx,
+        id: uid(),
+        category: baseCategoryName,
+        category_id: categoryId,
+        note: resolvedNote,
+        tags: displayTags,
+        tag_ids: tagsPayload,
+        merchant: merchantLabel,
+        account: accountLabel,
+        to_account: toAccountLabel,
+        receipts: receiptsPayload,
+      });
     }
+
+    if (categoryId && baseCategoryName && !catMap[baseCategoryName]) {
+      setCatMap((prev) => ({ ...prev, [baseCategoryName]: categoryId }));
+    }
+
     if (prefs.walletSound) playChaChing();
-    triggerMoneyTalk(tx);
+    triggerMoneyTalk(finalRecord || tx);
   };
 
   const updateTx = async (id, patch) => {
@@ -853,15 +919,10 @@ function AppShell({ prefs, setPrefs }) {
               }
             />
             <Route
-              path="/add"
-              element={
-                <AddWizard
-                  categories={data.cat}
-                  onAdd={addTx}
-                  onCancel={() => navigate("/")}
-                />
-              }
+              path="/transaction/add"
+              element={<TransactionAdd onAdd={addTx} />}
             />
+            <Route path="/add" element={<Navigate to="/transaction/add" replace />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route
               path="/profile"

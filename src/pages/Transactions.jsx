@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import FilterBar from "../components/FilterBar";
 import FilterChips from "../components/FilterChips";
 import TxTable from "../components/TxTable";
@@ -22,9 +23,9 @@ export default function Transactions() {
           </span>
         </span>
         <div className="flex gap-2">
-          <button className="btn btn-primary flex items-center gap-1">
+          <Link to="/transaction/add" className="btn btn-primary flex items-center gap-1">
             <Plus className="h-4 w-4" /> Tambah Transaksi
-          </button>
+          </Link>
           <button className="btn flex items-center gap-1">
             <Upload className="h-4 w-4" /> Import
           </button>

@@ -9,7 +9,7 @@ export default function FAB() {
   return (
     <button
       type="button"
-      onClick={() => navigate("/add")}
+      onClick={() => navigate("/transaction/add")}
       aria-label="Tambah transaksi"
       className={[
         "fixed right-4 bottom-[calc(4rem+env(safe-area-inset-bottom))]",

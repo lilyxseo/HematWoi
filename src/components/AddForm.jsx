@@ -55,8 +55,8 @@ export default function AddForm({ categories, onAdd }) {
         onChange={(e) => setNote(e.target.value)}
       />
       <div className="flex justify-between pt-2">
-        <Link to="/add" className="btn">
-          Ke Wizard
+        <Link to="/transaction/add" className="btn">
+          Form lengkap
         </Link>
         <button type="submit" className="btn btn-primary">
           Tambah Cepat
