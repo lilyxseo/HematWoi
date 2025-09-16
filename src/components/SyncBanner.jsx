@@ -24,8 +24,8 @@ export default function SyncBanner() {
 
   useEffect(() => {
     const unsubscribe = onError((error) => {
-      const detail = error?.message ? `: ${error.message}` : "";
-      addToast(`Sync gagal, cek log${detail}`, "error");
+      const message = error?.message || "Sync gagal. Lihat konsol untuk detail.";
+      addToast(message, "error");
     });
     return unsubscribe;
   }, [addToast]);

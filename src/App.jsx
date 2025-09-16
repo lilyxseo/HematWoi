@@ -638,10 +638,10 @@ function AppShell({ prefs, setPrefs }) {
           amount: tx.amount,
           notes: resolvedNote,
           title: tx.title ?? null,
-          category_id: categoryId,
-          account_id: tx.account_id ?? null,
-          to_account_id: tx.type === "transfer" ? tx.to_account_id ?? null : null,
-          merchant_id: tx.merchant_id ?? null,
+          category_id: categoryId || null,
+          account_id: tx.account_id || null,
+          to_account_id: tx.type === "transfer" ? tx.to_account_id || null : null,
+          merchant_id: tx.merchant_id || null,
           tags: tagsPayload,
           receipts: receiptsPayload,
         });
@@ -697,6 +697,26 @@ function AppShell({ prefs, setPrefs }) {
         const payload = { ...patch };
         if (payload.category && catMap[payload.category]) {
           payload.category_id = catMap[payload.category];
+        }
+        if ("category_id" in payload) {
+          payload.category_id = payload.category_id || null;
+        }
+        if ("account_id" in payload) {
+          payload.account_id = payload.account_id || null;
+        }
+        if ("merchant_id" in payload) {
+          payload.merchant_id = payload.merchant_id || null;
+        }
+        if ("parent_id" in payload) {
+          payload.parent_id = payload.parent_id || null;
+        }
+        if ("transfer_group_id" in payload) {
+          payload.transfer_group_id =
+            payload.type === "transfer" ? payload.transfer_group_id || null : null;
+        }
+        if ("to_account_id" in payload) {
+          payload.to_account_id =
+            payload.type === "transfer" ? payload.to_account_id || null : null;
         }
         const saved = await apiUpdate(id, payload);
         const res = { ...saved, category: saved.category };
