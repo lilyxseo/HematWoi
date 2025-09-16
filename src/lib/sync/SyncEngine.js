@@ -6,6 +6,7 @@ import { calcBackoff, groupOps, normalizeRecord } from "./utils";
 
 export const SYNC_INTERVAL_MS = 20000;
 export const SYNC_BATCH_SIZE = 100;
+export const MAX_RETRY_ATTEMPTS = 5;
 
 export const SyncStatus = {
   OFFLINE: "OFFLINE",
@@ -55,7 +56,7 @@ const USER_SCOPED_TABLES = new Set([
   "tags",
 ]);
 
-const TRANSACTION_COLUMNS = [
+const TRANSACTION_COLUMNS = new Set([
   "id",
   "user_id",
   "date",
@@ -72,26 +73,144 @@ const TRANSACTION_COLUMNS = [
   "receipt_url",
   "deleted_at",
   "updated_at",
-  "inserted_at",
   "rev",
-];
+]);
 
 const TRANSACTION_KEY_ALIASES = {
   note: "notes",
   notes: "notes",
   title: "title",
+  account: "account_id",
   userId: "user_id",
   accountId: "account_id",
+  toAccount: "to_account_id",
   toAccountId: "to_account_id",
+  category: "category_id",
   categoryId: "category_id",
+  merchant: "merchant_id",
   merchantId: "merchant_id",
   parentId: "parent_id",
   transferGroupId: "transfer_group_id",
   receiptUrl: "receipt_url",
-  createdAt: "inserted_at",
-  insertedAt: "inserted_at",
   updatedAt: "updated_at",
 };
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const VALID_TRANSACTION_TYPES = new Set(["expense", "income", "transfer"]);
+
+const TRANSACTION_UUID_FIELDS = [
+  "id",
+  "user_id",
+  "account_id",
+  "to_account_id",
+  "category_id",
+  "merchant_id",
+  "parent_id",
+  "transfer_group_id",
+];
+
+const SPLIT_FLAG_KEYS = [
+  "is_split_child",
+  "isSplitChild",
+  "split_child",
+  "splitChild",
+];
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function extractUuidCandidate(value) {
+  if (value == null) return null;
+  if (typeof value === "object") {
+    if (typeof value.id === "string") return extractUuidCandidate(value.id);
+    if (typeof value.value === "string") return extractUuidCandidate(value.value);
+    return null;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return UUID_REGEX.test(trimmed) ? trimmed : null;
+}
+
+function toNullableUuid(value) {
+  return extractUuidCandidate(value);
+}
+
+function toNullableText(value) {
+  if (value == null) return null;
+  const str = String(value);
+  const trimmed = str.trim();
+  return trimmed ? trimmed : null;
+}
+
+function toAmount(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(0, value);
+  }
+  if (typeof value === "string") {
+    const normalized = value.replace(/[\s,]/g, "");
+    const parsed = Number.parseFloat(normalized);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, parsed);
+    }
+  }
+  return 0;
+}
+
+function toIsoDate(value) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return new Date().toISOString();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) return new Date(parsed).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function toTimestamp(value) {
+  if (value == null || value === "") return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "number") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Date.parse(trimmed);
+    if (!Number.isNaN(parsed)) return new Date(parsed).toISOString();
+  }
+  return null;
+}
+
+function toInteger(value) {
+  if (value == null || value === "") return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function toBooleanFlag(value) {
+  if (value === true) return true;
+  if (value === false) return false;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    if (["true", "1", "yes", "y"].includes(normalized)) return true;
+    if (["false", "0", "no", "n"].includes(normalized)) return false;
+  }
+  return Boolean(value);
+}
 
 const errorListeners = new Set();
 
@@ -117,17 +236,16 @@ export function onError(fn) {
 }
 
 function sanitizeTransaction(record = {}) {
-  const cleaned = {};
+  const normalized = {};
   const invalidColumns = new Set();
-  for (const [rawKey, value] of Object.entries(record)) {
+  for (const [rawKey, value] of Object.entries(record || {})) {
     if (value === undefined) continue;
     const key = TRANSACTION_KEY_ALIASES[rawKey] ?? rawKey;
-    if (!TRANSACTION_COLUMNS.includes(key)) {
+    if (!TRANSACTION_COLUMNS.has(key)) {
       invalidColumns.add(rawKey);
       continue;
     }
-    if (cleaned[key] !== undefined) continue;
-    cleaned[key] = value;
+    if (!hasOwn(normalized, key)) normalized[key] = value;
   }
   if (invalidColumns.size > 0) {
     const unseen = [...invalidColumns].filter(
@@ -141,7 +259,66 @@ function sanitizeTransaction(record = {}) {
       emitError(new Error(message), { entity: "transactions", stage: "sanitize" });
     }
   }
-  return cleaned;
+
+  const sanitized = {};
+
+  for (const field of TRANSACTION_UUID_FIELDS) {
+    if (hasOwn(normalized, field)) {
+      const value = toNullableUuid(normalized[field]);
+      sanitized[field] = value ?? null;
+    }
+  }
+
+  let type = hasOwn(normalized, "type") ? String(normalized.type ?? "").toLowerCase() : "";
+  if (!VALID_TRANSACTION_TYPES.has(type)) type = "expense";
+  sanitized.type = type;
+
+  sanitized.amount = toAmount(normalized.amount);
+  sanitized.date = toIsoDate(normalized.date);
+
+  if (hasOwn(normalized, "title")) sanitized.title = toNullableText(normalized.title);
+  if (hasOwn(normalized, "notes")) sanitized.notes = toNullableText(normalized.notes);
+
+  if (hasOwn(normalized, "receipt_url")) {
+    sanitized.receipt_url = toNullableText(normalized.receipt_url);
+  }
+
+  if (hasOwn(normalized, "deleted_at")) {
+    sanitized.deleted_at = toTimestamp(normalized.deleted_at);
+  }
+
+  if (hasOwn(normalized, "updated_at")) {
+    sanitized.updated_at = toTimestamp(normalized.updated_at) ?? new Date().toISOString();
+  }
+
+  if (hasOwn(normalized, "rev")) {
+    sanitized.rev = toInteger(normalized.rev);
+  }
+
+  const parentId = toNullableUuid(normalized.parent_id);
+  const hasSplitFlag = SPLIT_FLAG_KEYS.some((key) => toBooleanFlag(record?.[key]));
+  const isSplitChild = parentId != null || hasSplitFlag;
+  if (hasOwn(normalized, "parent_id") || isSplitChild) {
+    sanitized.parent_id = isSplitChild ? parentId : null;
+  }
+
+  if (sanitized.type !== "transfer") {
+    if (hasOwn(normalized, "to_account_id") || hasOwn(sanitized, "to_account_id")) {
+      sanitized.to_account_id = null;
+    }
+    if (hasOwn(normalized, "transfer_group_id") || hasOwn(sanitized, "transfer_group_id")) {
+      sanitized.transfer_group_id = null;
+    }
+  } else {
+    if (hasOwn(normalized, "to_account_id")) {
+      sanitized.to_account_id = toNullableUuid(normalized.to_account_id);
+    }
+    if (hasOwn(normalized, "transfer_group_id")) {
+      sanitized.transfer_group_id = toNullableUuid(normalized.transfer_group_id);
+    }
+  }
+
+  return sanitized;
 }
 
 function sanitizePayload(entity, record) {
@@ -153,21 +330,26 @@ function sanitizePayload(entity, record) {
 
 function sanitizeForSupabase(entity, record) {
   const sanitized = sanitizePayload(entity, record);
-  if (sanitized === record) return sanitized;
-  const withoutNullish = {};
-  for (const [key, value] of Object.entries(sanitized)) {
-    if (value !== undefined) withoutNullish[key] = value;
+  let finalRecord = sanitized;
+  if (sanitized !== record) {
+    finalRecord = {};
+    for (const [key, value] of Object.entries(sanitized)) {
+      if (value !== undefined) finalRecord[key] = value;
+    }
   }
-  return withoutNullish;
+  if (entity === "transactions") {
+    console.debug("[SyncEngine] Sanitized transaction payload:", {
+      before: record,
+      after: finalRecord,
+    });
+  }
+  return finalRecord;
 }
 
 function handleSyncError(error, context = {}) {
   if (!error) return;
   if (error?.message === "offline") return;
-  const message = error?.message || String(error);
-  const prefix = context?.entity ? `Sync ${context.entity}` : "Sync";
-  const friendlyMessage = `${prefix} gagal${message ? `: ${message}` : ""}`;
-  const friendlyError = new Error(friendlyMessage);
+  const friendlyError = new Error("Sync gagal. Lihat konsol untuk detail.");
   if (friendlyError && error instanceof Error) {
     friendlyError.cause = error;
   }
@@ -293,6 +475,17 @@ export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
         handleSyncError(error, { entity: g.entity, type: g.type });
         for (const o of slice) {
           const attempt = (o.attempts || 0) + 1;
+          if (attempt >= MAX_RETRY_ATTEMPTS) {
+            console.error("[SyncEngine] Max retry reached, dropping op", {
+              opId: o.opId,
+              entity: g.entity,
+              type: g.type,
+              attempts: attempt,
+              error,
+            });
+            await oplogStore.bulkRemove([o.opId]);
+            continue;
+          }
           const delay = calcBackoff(attempt);
           await oplogStore.markDeferred(
             o.opId,

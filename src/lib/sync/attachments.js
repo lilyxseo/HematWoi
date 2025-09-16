@@ -34,7 +34,9 @@ export async function processStoragePutBatch(slice) {
       updated_at: new Date().toISOString(),
     };
     if (userId) payload.user_id = userId;
-    const { error: upsertError } = await supabase.from("transactions").upsert(payload);
+    const { error: upsertError } = await supabase
+      .from("transactions")
+      .upsert(payload, { onConflict: "id" });
     if (upsertError) throw upsertError;
     const cached = await dbCache.get("transactions", txId);
     if (cached) {

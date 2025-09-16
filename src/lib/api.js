@@ -290,28 +290,29 @@ export async function listTransactions(
 
 function normalizeTransactionInput(input = {}) {
   const noteValue = input.notes ?? input.note ?? null;
-  const insertedAt =
-    input.inserted_at ??
-    input.insertedAt ??
-    input.created_at ??
-    input.createdAt ??
-    null;
+  const toNullable = (value) => {
+    if (value == null) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      return trimmed ? trimmed : null;
+    }
+    return value;
+  };
   return {
     id: input.id || crypto.randomUUID(),
     date: input.date ?? new Date().toISOString(),
     type: input.type ?? "expense",
     amount: Number(input.amount ?? 0),
-    title: input.title ?? null,
-    notes: noteValue,
-    account_id: input.account_id ?? null,
-    to_account_id: input.to_account_id ?? null,
-    category_id: input.category_id ?? null,
-    merchant_id: input.merchant_id ?? null,
-    parent_id: input.parent_id ?? null,
-    transfer_group_id: input.transfer_group_id ?? null,
-    receipt_url: input.receipt_url ?? null,
+    title: toNullable(input.title),
+    notes: toNullable(noteValue),
+    account_id: toNullable(input.account_id),
+    to_account_id: toNullable(input.to_account_id),
+    category_id: toNullable(input.category_id),
+    merchant_id: toNullable(input.merchant_id),
+    parent_id: toNullable(input.parent_id),
+    transfer_group_id: toNullable(input.transfer_group_id),
+    receipt_url: toNullable(input.receipt_url),
     rev: input.rev ?? null,
-    inserted_at: insertedAt ?? new Date().toISOString(),
   };
 }
 
