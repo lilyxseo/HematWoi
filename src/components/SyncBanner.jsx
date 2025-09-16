@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
-import { flushQueue, onStatusChange, pending, SyncStatus } from "../lib/sync/SyncEngine";
+import { useToast } from "../context/ToastContext";
+import {
+  flushQueue,
+  onError,
+  onStatusChange,
+  pending,
+  SyncStatus,
+} from "../lib/sync/SyncEngine";
 
 export default function SyncBanner() {
   const [status, setStatus] = useState(SyncStatus.IDLE);
   const [count, setCount] = useState(0);
+  const { addToast } = useToast();
 
   useEffect(() => {
     const unsub = onStatusChange(async (s) => {
@@ -13,6 +21,14 @@ export default function SyncBanner() {
     (async () => setCount(await pending()))();
     return unsub;
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onError((error) => {
+      const detail = error?.message ? `: ${error.message}` : "";
+      addToast(`Sync gagal, cek log${detail}`, "error");
+    });
+    return unsubscribe;
+  }, [addToast]);
 
   let text = "";
   if (status === SyncStatus.OFFLINE) text = "Offline";
