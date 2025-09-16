@@ -43,10 +43,11 @@ export default function Budgets({ currentMonth, data }) {
       .filter((b) => b.month === filter.month)
       .map((b) => {
         const actual = Number(spentByCat[b.category] || 0);
-        const remaining = Number(b.amount || 0) - actual;
+        const planned = Number(b.amount_planned || 0);
+        const remaining = planned - actual;
         const pct =
-          b.amount > 0 ? Math.min(100, Math.round((actual / b.amount) * 100)) : 0;
-        return { ...b, actual, remaining, pct };
+          planned > 0 ? Math.min(100, Math.round((actual / planned) * 100)) : 0;
+        return { ...b, amount_planned: planned, actual, remaining, pct };
       })
       .filter((b) =>
         b.category.toLowerCase().includes(filter.search.toLowerCase())
@@ -55,7 +56,7 @@ export default function Budgets({ currentMonth, data }) {
 
   const totals = items.reduce(
     (acc, i) => {
-      acc.planned += Number(i.amount || 0);
+      acc.planned += Number(i.amount_planned || 0);
       acc.actual += i.actual;
       return acc;
     },

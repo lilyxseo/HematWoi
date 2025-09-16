@@ -17,7 +17,7 @@ export default function BudgetDetailPanel({ item, onClose }) {
         </button>
         <h2 className="mb-2 text-lg font-semibold">{item.category}</h2>
         <div className="space-y-1 text-sm">
-          <div>Planned: {formatCurrency(item.amount)}</div>
+          <div>Planned: {formatCurrency(item.amount_planned)}</div>
           <div>Actual: {formatCurrency(item.actual)}</div>
           <div>Remaining: {formatCurrency(item.remaining)}</div>
         </div>
