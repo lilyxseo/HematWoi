@@ -424,7 +424,7 @@ function AppShell({ prefs, setPrefs }) {
       const { data: rows, error } = await supabase
         .from("budgets")
         .select(
-          "id, month, amount, carryover_enabled, carryover, notes, note, category_id"
+          "id, month, amount_planned, carryover_enabled, carryover, notes, note, category_id"
         )
         .eq("user_id", sessionUser.id)
         .order("month", { ascending: false });
@@ -707,10 +707,10 @@ function AppShell({ prefs, setPrefs }) {
             user_id: sessionUser.id,
             category_id: categoryId,
             month: `${m}-01`,
-            amount,
+            amount_planned: amount,
           })
           .select(
-            "id, month, amount, carryover_enabled, carryover, notes, note, category_id"
+            "id, month, amount_planned, carryover_enabled, carryover, notes, note, category_id"
           )
           .single();
         if (error) throw error;
