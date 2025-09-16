@@ -12,7 +12,7 @@ export default function BottomNav() {
           <Home className="h-5 w-5" />
           <span>Dashboard</span>
         </NavLink>
-        <NavLink to="/add" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
+        <NavLink to="/transaction/add" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
           <Plus className="h-5 w-5" />
           <span>Tambah</span>
         </NavLink>

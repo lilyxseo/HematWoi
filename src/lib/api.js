@@ -520,3 +520,159 @@ export async function upsertCategories({ income = [], expense = [] }) {
   }
   return listCategories();
 }
+
+// -- ACCOUNTS ------------------------------------------
+
+function mapAccountRow(row = {}, userId) {
+  return {
+    id: row.id,
+    user_id: row.user_id ?? userId ?? null,
+    name: row.name ?? row.title ?? row.label ?? "",
+    type: row.type ?? row.account_type ?? null,
+    currency: row.currency ?? row.account_currency ?? row.currency_code ?? "IDR",
+    balance: Number(row.balance ?? row.current_balance ?? row.initial_balance ?? 0),
+    is_archived: row.is_archived ?? row.archived ?? false,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
+export async function listAccounts() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    const cached = await dbCache.list("accounts");
+    return cached.map((row) => mapAccountRow(row, userId));
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("accounts")
+      .select("*")
+      .eq("user_id", userId)
+      .order("name", { ascending: true });
+    if (error) throw error;
+    const rows = (data || []).map((row) => mapAccountRow(row, userId));
+    await dbCache.bulkSet("accounts", rows);
+    return rows;
+  } catch (err) {
+    console.error("listAccounts failed, falling back to cache", err);
+    const cached = await dbCache.list("accounts");
+    return cached.map((row) => mapAccountRow(row, userId));
+  }
+}
+
+// -- MERCHANTS -----------------------------------------
+
+function mapMerchantRow(row = {}, userId) {
+  return {
+    id: row.id,
+    user_id: row.user_id ?? userId ?? null,
+    name: row.name ?? row.title ?? "",
+    category_id: row.category_id ?? null,
+    notes: row.notes ?? row.note ?? null,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
+export async function listMerchants() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    const cached = await dbCache.list("merchants");
+    return cached.map((row) => mapMerchantRow(row, userId));
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("merchants")
+      .select("*")
+      .eq("user_id", userId)
+      .order("name", { ascending: true });
+    if (error) throw error;
+    const rows = (data || []).map((row) => mapMerchantRow(row, userId));
+    await dbCache.bulkSet("merchants", rows);
+    return rows;
+  } catch (err) {
+    console.error("listMerchants failed, falling back to cache", err);
+    const cached = await dbCache.list("merchants");
+    return cached.map((row) => mapMerchantRow(row, userId));
+  }
+}
+
+export async function saveMerchant({ id, name, category_id = null, notes = null }) {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Pengguna belum masuk");
+  if (!name) throw new Error("Nama merchant wajib diisi");
+  const now = new Date().toISOString();
+  const record = {
+    id: id || crypto.randomUUID(),
+    user_id: userId,
+    name,
+    category_id,
+    notes,
+    updated_at: now,
+    created_at: id ? undefined : now,
+  };
+  const saved = await upsert("merchants", record);
+  return mapMerchantRow(saved, userId);
+}
+
+// -- TAGS ----------------------------------------------
+
+function mapTagRow(row = {}, userId) {
+  return {
+    id: row.id,
+    user_id: row.user_id ?? userId ?? null,
+    name: row.name ?? row.title ?? "",
+    color: row.color ?? null,
+    created_at: row.created_at ?? null,
+    updated_at: row.updated_at ?? null,
+  };
+}
+
+export async function listTags() {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    const cached = await dbCache.list("tags");
+    return cached.map((row) => mapTagRow(row, userId));
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("tags")
+      .select("*")
+      .eq("user_id", userId)
+      .order("name", { ascending: true });
+    if (error) throw error;
+    const rows = (data || []).map((row) => mapTagRow(row, userId));
+    await dbCache.bulkSet("tags", rows);
+    return rows;
+  } catch (err) {
+    console.error("listTags failed, falling back to cache", err);
+    const cached = await dbCache.list("tags");
+    return cached.map((row) => mapTagRow(row, userId));
+  }
+}
+
+export async function addTag({ name, color = null }) {
+  const userId = await getCurrentUserId();
+  if (!userId) throw new Error("Pengguna belum masuk");
+  if (!name) throw new Error("Nama tag wajib diisi");
+  const now = new Date().toISOString();
+  const record = {
+    id: crypto.randomUUID(),
+    user_id: userId,
+    name,
+    color,
+    updated_at: now,
+    created_at: now,
+  };
+  const saved = await upsert("tags", record);
+  return mapTagRow(saved, userId);
+}

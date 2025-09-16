@@ -10,8 +10,10 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/Dashboard'));
     case '/transactions':
       return lazy(() => import('../pages/Transactions'));
+    case '/transaction/add':
+      return lazy(() => import('../pages/TransactionAdd'));
     case '/add':
-      return lazy(() => import('../pages/AddTransaction'));
+      return lazy(() => import('../pages/TransactionAdd'));
     case '/budgets':
       return lazy(() => import('../pages/Budgets'));
     case '/goals':
