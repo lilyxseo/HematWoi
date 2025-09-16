@@ -14,6 +14,19 @@ export class CloudRepo implements IRepo {
     this.client = client;
   }
 
+  private async runQuery<T>(
+    query: Promise<{ data: T; error: any }>,
+    table: string,
+    action: string
+  ): Promise<T> {
+    const { data, error } = await query;
+    if (error) {
+      console.error(`[CloudRepo] Failed to ${action} ${table}`, error);
+      throw error;
+    }
+    return data;
+  }
+
   private async getUserId(): Promise<string | null> {
     const { data, error } = await this.client.auth.getUser();
     if (error) throw error;
@@ -39,23 +52,27 @@ export class CloudRepo implements IRepo {
       list: async () => {
         let query = this.client.from(name).select('*');
         query = await this.withUserScope(query, name);
-        const { data } = await query;
+        const data = await this.runQuery<any>(query, name, 'list');
         return (data || []) as T[];
       },
       add: async (item: T) => {
         const payload = await this.ensureUserPayload(name, item);
-        const { data } = await this.client.from(name).insert(payload).select().single();
+        const data = await this.runQuery<any>(
+          this.client.from(name).insert(payload).select().single(),
+          name,
+          'insert into'
+        );
         return (data as T) || (payload as T);
       },
       update: async (id: string | number, data: Partial<T>) => {
         let query = this.client.from(name).update(data).eq('id', id);
         query = await this.withUserScope(query, name);
-        await query;
+        await this.runQuery<any>(query, name, 'update');
       },
       remove: async (id: string | number) => {
         let query = this.client.from(name).delete().eq('id', id);
         query = await this.withUserScope(query, name);
-        await query;
+        await this.runQuery<any>(query, name, 'delete from');
       },
     };
   }
@@ -70,17 +87,21 @@ export class CloudRepo implements IRepo {
     get: async () => {
       const userId = await this.getUserId();
       if (!userId) return {};
-      const { data } = await this.client
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const data = await this.runQuery<any>(
+        this.client.from('profiles').select('*').eq('id', userId).maybeSingle(),
+        'profiles',
+        'load'
+      );
       return data || {};
     },
     update: async (data: any) => {
       const userId = await this.getUserId();
       if (!userId) return;
-      await this.client.from('profiles').update(data).eq('id', userId);
+      await this.runQuery<any>(
+        this.client.from('profiles').update(data).eq('id', userId),
+        'profiles',
+        'update'
+      );
     },
   };
 
@@ -89,18 +110,17 @@ export class CloudRepo implements IRepo {
     addSaving: async (id: string | number, amount: number) => {
       const userId = await this.getUserId();
       if (!userId) throw new Error('User not authenticated');
-      const { data } = await this.client
-        .from('goals')
-        .select('saved')
-        .eq('id', id)
-        .eq('user_id', userId)
-        .single();
-      const saved = (data?.saved || 0) + amount;
-      await this.client
-        .from('goals')
-        .update({ saved })
-        .eq('id', id)
-        .eq('user_id', userId);
+      const existing = await this.runQuery<any>(
+        this.client.from('goals').select('saved').eq('id', id).eq('user_id', userId).single(),
+        'goals',
+        'fetch savings for'
+      );
+      const saved = (existing?.saved || 0) + amount;
+      await this.runQuery<any>(
+        this.client.from('goals').update({ saved }).eq('id', id).eq('user_id', userId),
+        'goals',
+        'update savings for'
+      );
       return saved;
     },
   };
