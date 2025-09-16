@@ -62,6 +62,8 @@ function requiresUserContext(entity) {
 function sanitizeForSupabase(entity, record) {
   if (entity === "transactions") {
     const cleaned = { ...record };
+    delete cleaned.created_at;
+    delete cleaned.createdAt;
     delete cleaned.note;
     delete cleaned.tags;
     delete cleaned.tag_ids;

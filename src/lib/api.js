@@ -90,6 +90,15 @@ export function mapTransactionRow(tx = {}) {
     tx.merchants?.id ??
     null;
 
+  const createdAt =
+    tx.created_at ??
+    tx.createdAt ??
+    tx.inserted_at ??
+    tx.insertedAt ??
+    tx.created ??
+    tx.updated_at ??
+    null;
+
   const note =
     tx.note ??
     tx.notes ??
@@ -122,7 +131,7 @@ export function mapTransactionRow(tx = {}) {
     deleted_at: tx.deleted_at ?? null,
     rev: tx.rev ?? null,
     updated_at: tx.updated_at ?? null,
-    created_at: tx.created_at ?? null,
+    created_at: createdAt,
   };
 }
 
@@ -222,7 +231,6 @@ export async function listTransactions(
     receipt_url,
     rev,
     updated_at,
-    created_at,
     deleted_at,
     account:account_id (*),
     to_account:to_account_id (*),
