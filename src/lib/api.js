@@ -418,23 +418,34 @@ export async function deleteTransaction(id) {
 
 function mapCategoryRow(row = {}, userId) {
   const typeFromGroup = typeof row.group === "string" ? row.group.toLowerCase() : "";
-  const inferredType = row.type
-    ? row.type
+  const rawType = row.type ?? row.category_type;
+  const inferredType = rawType
+    ? rawType
     : typeFromGroup.includes("income")
     ? "income"
     : typeFromGroup.includes("expense")
     ? "expense"
     : undefined;
+  let normalizedType = typeof inferredType === "string" ? inferredType.toLowerCase() : "";
+  if (!normalizedType || !["income", "expense"].includes(normalizedType)) {
+    normalizedType = "expense";
+  }
+  const rawOrder = row.order_index ?? row.sort_order;
+  let orderIndex = null;
+  if (typeof rawOrder === "number" && Number.isFinite(rawOrder)) {
+    orderIndex = rawOrder;
+  } else if (typeof rawOrder === "string") {
+    const parsed = Number.parseInt(rawOrder.trim(), 10);
+    if (Number.isFinite(parsed)) orderIndex = parsed;
+  }
   return {
     id: row.id,
     user_id: row.user_id ?? userId ?? null,
     name: row.name ?? row.title ?? row.label ?? "",
-    type: inferredType ?? row.category_type ?? "expense",
+    type: normalizedType,
     group: row.group ?? null,
-    order_index: row.order_index ?? row.sort_order ?? null,
-    color: row.color ?? null,
-    created_at: row.created_at ?? null,
-    updated_at: row.updated_at ?? null,
+    order_index: orderIndex,
+    inserted_at: row.inserted_at ?? row.created_at ?? null,
   };
 }
 
@@ -452,7 +463,7 @@ export async function listCategories(type) {
   try {
     const { data, error } = await supabase
       .from("categories")
-      .select("*")
+      .select('id, user_id, type, name, order_index, inserted_at, "group"')
       .eq("user_id", userId);
     if (error) throw error;
     const rows = (data || []).map((row) => mapCategoryRow(row, userId));
@@ -473,20 +484,25 @@ export async function listCategories(type) {
 }
 
 /** Tambah satu kategori */
-export async function addCategory({ type, name, group = null, order_index = null, color = null }) {
+export async function addCategory({ type, name, group = null, order_index = null }) {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Pengguna belum masuk");
-  const now = new Date().toISOString();
+  const normalizedType = typeof type === "string" ? type.toLowerCase() : "";
+  const finalType = normalizedType === "income" ? "income" : "expense";
+  let orderIndex = null;
+  if (typeof order_index === "number" && Number.isFinite(order_index)) {
+    orderIndex = order_index;
+  } else if (typeof order_index === "string") {
+    const parsed = Number.parseInt(order_index.trim(), 10);
+    if (Number.isFinite(parsed)) orderIndex = parsed;
+  }
   const record = {
     id: crypto.randomUUID(),
     user_id: userId,
-    type,
+    type: finalType,
     name,
     group,
-    order_index,
-    color,
-    updated_at: now,
-    created_at: now,
+    order_index: orderIndex,
   };
   const saved = await upsert("categories", record);
   return mapCategoryRow(saved, userId);
@@ -502,7 +518,6 @@ export async function upsertCategories({ income = [], expense = [] }) {
       .filter((row) => row.user_id === userId)
       .map((row) => [`${(row.type || "").toLowerCase()}:${(row.name || "").toLowerCase()}`, row]),
   );
-  const now = new Date().toISOString();
   const rows = [];
   income.forEach((name, order) => {
     const key = `income:${String(name).toLowerCase()}`;
@@ -513,8 +528,7 @@ export async function upsertCategories({ income = [], expense = [] }) {
       type: "income",
       name,
       order_index: order,
-      updated_at: now,
-      created_at: prev?.created_at ?? now,
+      group: prev?.group ?? null,
     });
   });
   expense.forEach((name, order) => {
@@ -526,8 +540,7 @@ export async function upsertCategories({ income = [], expense = [] }) {
       type: "expense",
       name,
       order_index: order,
-      updated_at: now,
-      created_at: prev?.created_at ?? now,
+      group: prev?.group ?? null,
     });
   });
   for (const row of rows) {

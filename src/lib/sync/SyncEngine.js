@@ -99,6 +99,9 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const VALID_TRANSACTION_TYPES = new Set(["expense", "income", "transfer"]);
+const VALID_CATEGORY_TYPES = new Set(["income", "expense"]);
+
+const CATEGORY_SELECT_COLUMNS = 'id, user_id, type, name, order_index, inserted_at, "group"';
 
 const TRANSACTION_UUID_FIELDS = [
   "id",
@@ -321,9 +324,67 @@ function sanitizeTransaction(record = {}) {
   return sanitized;
 }
 
+function sanitizeCategory(record = {}) {
+  const sanitized = {};
+
+  const id = toNullableUuid(record.id);
+  if (id) sanitized.id = id;
+  else if (hasOwn(record, "id")) sanitized.id = null;
+
+  const userId = toNullableUuid(record.user_id);
+  if (userId) sanitized.user_id = userId;
+  else if (hasOwn(record, "user_id")) sanitized.user_id = null;
+
+  let type = typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
+  if (!VALID_CATEGORY_TYPES.has(type)) type = "expense";
+  sanitized.type = type;
+
+  const rawName = record?.name;
+  const name =
+    rawName == null
+      ? ""
+      : typeof rawName === "string"
+      ? rawName.trim()
+      : String(rawName).trim();
+  sanitized.name = name;
+
+  if (hasOwn(record, "order_index")) {
+    const value = record.order_index;
+    let parsed = null;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      parsed = value;
+    } else if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed) {
+        const n = Number.parseInt(trimmed, 10);
+        if (Number.isFinite(n)) parsed = n;
+      }
+    }
+    sanitized.order_index = parsed;
+  }
+
+  if (hasOwn(record, "group")) {
+    sanitized.group = toNullableText(record.group);
+  }
+
+  if (hasOwn(record, "inserted_at")) {
+    sanitized.inserted_at = toTimestamp(record.inserted_at);
+  }
+
+  console.debug("[SyncEngine] Sanitized category payload:", {
+    before: record,
+    after: sanitized,
+  });
+
+  return sanitized;
+}
+
 function sanitizePayload(entity, record) {
   if (entity === "transactions") {
     return sanitizeTransaction(record);
+  }
+  if (entity === "categories") {
+    return sanitizeCategory(record);
   }
   return record;
 }
@@ -346,11 +407,20 @@ function sanitizeForSupabase(entity, record) {
   return finalRecord;
 }
 
+function getSelectColumns(entity) {
+  if (entity === "categories") return CATEGORY_SELECT_COLUMNS;
+  return undefined;
+}
+
 function handleSyncError(error, context = {}) {
   if (!error) return;
   if (error?.message === "offline") return;
-  const friendlyError = new Error("Sync gagal. Lihat konsol untuk detail.");
-  if (friendlyError && error instanceof Error) {
+  const message =
+    context?.entity === "categories"
+      ? "Sync categories gagal. Lihat konsol untuk detail."
+      : "Sync gagal. Lihat konsol untuk detail.";
+  const friendlyError = new Error(message);
+  if (error instanceof Error) {
     friendlyError.cause = error;
   }
   console.error("Sync error", { context, error });
@@ -370,11 +440,25 @@ async function sendOp(op) {
     const basePayload = op.meta?.normalized ? op.payload : normalizeRecord(op.payload);
     const payload = sanitizeForSupabase(op.entity, basePayload);
     logUpsertPayload(op.entity, payload);
-    const { error } = await supabase
-      .from(op.entity)
-      .upsert([payload], { onConflict: "id" });
-    if (error) throw error;
-    await dbCache.set(op.entity, payload);
+    const query = supabase.from(op.entity).upsert([payload], { onConflict: "id" });
+    const selectColumns = getSelectColumns(op.entity);
+    const { data, error, status, statusText } = selectColumns
+      ? await query.select(selectColumns)
+      : await query;
+    if (error) {
+      console.error("[SyncEngine] Supabase upsert error", {
+        entity: op.entity,
+        status,
+        statusText,
+        error,
+      });
+      throw error;
+    }
+    if (selectColumns && Array.isArray(data) && data.length > 0) {
+      await dbCache.bulkSet(op.entity, data);
+    } else {
+      await dbCache.set(op.entity, payload);
+    }
   } else if (op.type === "DELETE") {
     const { error } = await supabase.from(op.entity).delete().eq("id", op.payload.id);
     if (error) throw error;
@@ -457,11 +541,25 @@ export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
             return sanitizeForSupabase(g.entity, base);
           });
           logUpsertPayload(g.entity, payloads);
-          const { error } = await supabase
-            .from(g.entity)
-            .upsert(payloads, { onConflict: "id" });
-          if (error) throw error;
-          await dbCache.bulkSet(g.entity, payloads);
+          const query = supabase.from(g.entity).upsert(payloads, { onConflict: "id" });
+          const selectColumns = getSelectColumns(g.entity);
+          const { data, error, status, statusText } = selectColumns
+            ? await query.select(selectColumns)
+            : await query;
+          if (error) {
+            console.error("[SyncEngine] Supabase upsert error", {
+              entity: g.entity,
+              status,
+              statusText,
+              error,
+            });
+            throw error;
+          }
+          if (selectColumns && Array.isArray(data) && data.length > 0) {
+            await dbCache.bulkSet(g.entity, data);
+          } else {
+            await dbCache.bulkSet(g.entity, payloads);
+          }
         } else if (g.type === "DELETE") {
           const ids = slice.map((o) => o.payload.id);
           const { error } = await supabase.from(g.entity).delete().in("id", ids);
