@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
+import clsx from "clsx";
 import Segmented from "./ui/Segmented";
+import DataList from "./dashboard/DataList";
 
 function formatCurrency(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -26,10 +28,14 @@ export default function RecentTransactions({ txs = [] }) {
       .slice(0, 5);
   }, [txs, period]);
 
+  const periodLabel =
+    period === "day" ? "24 jam" : period === "week" ? "7 hari" : "30 hari";
+
   return (
-    <div className="card">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-semibold">Transaksi Terbaru</h2>
+    <DataList
+      title="Transaksi Terbaru"
+      subtext={`Ringkasan transaksi ${periodLabel} terakhir`}
+      actions={
         <Segmented
           value={period}
           onChange={setPeriod}
@@ -39,24 +45,40 @@ export default function RecentTransactions({ txs = [] }) {
             { label: "Bulan", value: "month" },
           ]}
         />
-      </div>
-      {!filtered.length && (
-        <div className="text-sm text-muted">Belum ada transaksi.</div>
-      )}
-      <ul className="space-y-2">
-        {filtered.map((t) => (
-          <li key={t.id} className="flex justify-between text-sm">
-            <span>{t.note || t.category}</span>
+      }
+      rows={filtered}
+      emptyMessage="Belum ada transaksi periode ini."
+      columns={[
+        {
+          key: "note",
+          label: "Transaksi",
+          render: (row) => (
+            <div className="flex flex-col gap-1">
+              <span className="truncate font-medium text-text dark:text-slate-100">
+                {row.note || row.category}
+              </span>
+              <span className="text-xs text-muted/80">{row.date}</span>
+            </div>
+          ),
+        },
+        {
+          key: "amount",
+          label: "Jumlah",
+          align: "right",
+          render: (row) => (
             <span
-              className={
-                t.type === "income" ? "text-success" : "text-danger"
-              }
+              className={clsx(
+                "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold",
+                row.type === "income"
+                  ? "bg-success/10 text-success"
+                  : "bg-danger/10 text-danger"
+              )}
             >
-              {formatCurrency(t.amount)}
+              {formatCurrency(row.amount)}
             </span>
-          </li>
-        ))}
-      </ul>
-    </div>
+          ),
+        },
+      ]}
+    />
   );
 }

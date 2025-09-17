@@ -27,8 +27,8 @@
     --page-y: clamp(16px, 4vw, 28px);
     --section-y: clamp(12px, 3vw, 24px);
     --block-y: clamp(8px, 2vw, 16px);
-    --sidebar-w-expanded: 280px;
-    --sidebar-w-collapsed: 72px;
+    --sidebar-w-expanded: 264px;
+    --sidebar-w-collapsed: 80px;
     --sidebar-width: var(--sidebar-w-expanded);
   }
   [data-theme='dark'] {
@@ -44,13 +44,16 @@
     --brand-soft: hsl(var(--brand-h) var(--brand-s) 20%);
     --brand-ring: hsl(var(--brand-h) var(--brand-s) 70%);
   }
-  body { @apply bg-bg text-text transition-colors duration-300; }
+  body {
+    @apply bg-bg text-text transition-colors duration-300 overflow-hidden;
+  }
   h1, h2, h3, h4, h5, h6 { @apply font-semibold; }
 }
 
 @layer components {
   .card {
-    @apply bg-surface-2 border border-border rounded-xl shadow-sm p-4 md:p-6;
+    @apply rounded-2xl border border-white/10 bg-white/60 p-4 shadow-sm backdrop-blur
+      transition-colors duration-300 sm:p-5 lg:p-6 dark:bg-white/5;
   }
   .input {
     @apply w-full rounded-xl border border-border bg-surface-1 px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-brand-ring;

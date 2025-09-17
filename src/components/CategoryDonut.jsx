@@ -1,4 +1,5 @@
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+import ChartCard from "./dashboard/ChartCard";
 
 function toRupiah(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -15,32 +16,56 @@ export default function CategoryDonut({ data = [] }) {
     if (!payload?.length) return null;
     const p = payload[0];
     return (
-      <div className="rounded bg-surface-1 border border-border p-2 text-xs shadow">
-        {p.name}: {toRupiah(p.value)}
+      <div className="rounded-lg border border-white/10 bg-white/95 px-3 py-2 text-xs text-text shadow-lg dark:bg-slate-900/90">
+        <div className="font-medium text-text">{p.name}</div>
+        <div className="text-brand">{toRupiah(p.value)}</div>
       </div>
     );
   };
 
   return (
-    <div className="card aspect-video min-h-[200px]">
-      {data.length ? (
-        <ResponsiveContainer width="100%" height="100%">
+    <ChartCard
+      title="Distribusi Kategori"
+      subtext="Persentase pengeluaran per kategori"
+      isEmpty={!data.length}
+      footer={
+        data.length ? (
+          <ul className="flex flex-wrap items-center gap-3 text-xs text-muted/90">
+            {data.map((item, index) => (
+              <li key={item.name} className="flex min-w-0 items-center gap-2">
+                <span
+                  className="h-3 w-3 flex-shrink-0 rounded-full"
+                  style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                />
+                <span className="truncate">
+                  {item.name} · {toRupiah(item.value)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null
+      }
+    >
+      {({ height }) => (
+        <ResponsiveContainer width="100%" height={height}>
           <PieChart>
-            <Pie data={data} dataKey="value" innerRadius="60%" outerRadius="80%">
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              innerRadius="55%"
+              outerRadius="80%"
+              paddingAngle={4}
+            >
               {data.map((entry, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                <Cell key={entry.name || i} fill={COLORS[i % COLORS.length]} />
               ))}
             </Pie>
             <Tooltip content={renderTooltip} />
-            <Legend />
           </PieChart>
         </ResponsiveContainer>
-      ) : (
-        <div className="flex h-full items-center justify-center text-sm text-muted">
-          Tidak ada data
-        </div>
       )}
-    </div>
+    </ChartCard>
   );
 }
 
