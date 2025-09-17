@@ -10,10 +10,10 @@ export default function MainLayout({
 }) {
   useEffect(() => {
     const { style } = document.body;
-    const prevOverflow = style.overflow;
-    style.overflow = "hidden";
+    const prevOverflowX = style.overflowX;
+    style.overflowX = "hidden";
     return () => {
-      style.overflow = prevOverflow;
+      style.overflowX = prevOverflowX;
     };
   }, []);
 
