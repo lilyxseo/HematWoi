@@ -106,8 +106,12 @@ export default function Sidebar({ theme, setTheme, brand, setBrand }) {
 
   const content = (
     <div
-      className="flex h-[100dvh] flex-col overflow-hidden bg-surface-1 text-text shadow-md transition-[width]"
-      style={{ width: collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w-expanded)' }}
+      className="flex h-full flex-col overflow-hidden bg-surface-1/95 text-text shadow-lg ring-1 ring-black/5 transition-[width] duration-300"
+      style={{
+        width: collapsed
+          ? 'var(--sidebar-w-collapsed)'
+          : 'var(--sidebar-w-expanded)',
+      }}
     >
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-2">
@@ -161,7 +165,7 @@ export default function Sidebar({ theme, setTheme, brand, setBrand }) {
           </ul>
         )}
       </nav>
-      <div className="p-4 border-t border-border space-y-4">
+      <div className="space-y-4 border-t border-white/10 p-4">
         <div className="flex items-center justify-between">
           {!collapsed && (
             <button className="text-sm" onClick={toggle}>
@@ -243,7 +247,7 @@ export default function Sidebar({ theme, setTheme, brand, setBrand }) {
         )}
       </div>
       <button
-        className="absolute top-1/2 -right-3 hidden md:flex items-center justify-center w-6 h-6 rounded-full bg-surface-1 border border-border"
+        className="absolute top-1/2 -right-3 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-surface-1/90 text-text shadow-md ring-1 ring-black/5 backdrop-blur md:flex"
         onClick={() => setCollapsed(!collapsed)}
         aria-label="Toggle sidebar"
       >
@@ -260,15 +264,16 @@ export default function Sidebar({ theme, setTheme, brand, setBrand }) {
       />
       <div
         className={`fixed inset-y-0 left-0 z-50 transform transition-transform md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ width: collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w-expanded)' }}
       >
         {content}
       </div>
       <button
-        className="md:hidden p-2"
+        className="fixed left-4 top-4 z-40 inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface-1/90 text-text shadow-lg ring-1 ring-black/5 backdrop-blur md:hidden"
         onClick={() => setMobileOpen(true)}
         aria-label="Open sidebar"
       >
-        <Menu className="h-6 w-6" />
+        <Menu className="h-5 w-5" />
       </button>
       <SignIn open={showSignIn} onClose={() => setShowSignIn(false)} />
     </>

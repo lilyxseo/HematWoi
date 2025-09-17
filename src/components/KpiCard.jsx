@@ -16,14 +16,16 @@ export default function KpiCard({
 
   return (
     <Card className="text-center">
-      <CardBody className="space-y-1">
-        <div className="text-sm text-muted whitespace-nowrap">{label}</div>
+      <CardBody className="space-y-2">
+        <div className="whitespace-nowrap text-sm font-medium text-muted/90">
+          {label}
+        </div>
         {loading ? (
-          <div className="mx-auto h-6 w-24 rounded bg-surface-2 animate-pulse" />
+          <div className="mx-auto h-7 w-24 rounded-full bg-white/20 animate-pulse" />
         ) : (
           <div
             className={clsx(
-              "text-2xl font-semibold whitespace-nowrap",
+              "whitespace-nowrap text-2xl font-bold tracking-tight sm:text-3xl",
               color
             )}
           >

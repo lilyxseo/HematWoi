@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 
 import Sidebar from "./layout/Sidebar";
+import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
 import SyncBanner from "./components/SyncBanner";
 
@@ -1009,29 +1010,28 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      {!hideNav && (
-        <Sidebar
-          theme={theme}
-          setTheme={setTheme}
-          brand={brand}
-          setBrand={setBrand}
-        />
-      )}
-      <div
-        className={`min-h-[100dvh] flex flex-col overflow-x-hidden ${!hideNav ? 'md:ml-[var(--sidebar-width)]' : ''}`}
+      <MainLayout
+        hideSidebar={hideNav}
+        sidebar={
+          !hideNav ? (
+            <Sidebar
+              theme={theme}
+              setTheme={setTheme}
+              brand={brand}
+              setBrand={setBrand}
+            />
+          ) : null
+        }
       >
-        <SyncBanner />
-        <main
-          id="main"
-          tabIndex="-1"
-          className="flex-1 overflow-y-auto focus:outline-none"
-        >
-          <Routes>
-            <Route path="/auth" element={<AuthPage />} />
-            <Route element={<AuthGuard />}>
-              <Route
-              path="/"
-              element={
+        <div className="flex min-h-full flex-col">
+          <SyncBanner />
+          <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+            <Routes>
+              <Route path="/auth" element={<AuthPage />} />
+              <Route element={<AuthGuard />}>
+                <Route
+                path="/"
+                element={
                 <Dashboard
                   stats={stats}
                   monthForReport={
@@ -1125,9 +1125,10 @@ function AppShell({ prefs, setPrefs }) {
               element={<ProfilePage transactions={data.txs} challenges={challenges} />}
             />
           </Route>
-          </Routes>
-        </main>
-      </div>
+            </Routes>
+          </div>
+        </div>
+      </MainLayout>
       <SettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

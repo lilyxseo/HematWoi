@@ -1,7 +1,4 @@
 import { useMemo } from "react";
-import Page from "../layout/Page";
-import PageHeader from "../layout/PageHeader";
-import Section from "../layout/Section";
 import KpiCards from "../components/KpiCards";
 import QuoteBubble from "../components/QuoteBubble";
 import SavingsProgress from "../components/SavingsProgress";
@@ -39,48 +36,49 @@ export default function Dashboard({ stats, txs }) {
   const savingsTarget = stats?.savingsTarget || 1_000_000;
 
   return (
-    <Page>
-      <PageHeader title="Dashboard" description="Ringkasan keuanganmu" />
-      <Section first>
-        <KpiCards
-          income={stats?.income || 0}
-          expense={stats?.expense || 0}
-          net={stats?.balance || 0}
+    <div className="space-y-6 sm:space-y-8 lg:space-y-10">
+      <header className="flex flex-col gap-2">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          Dashboard
+        </h1>
+        <p className="text-sm text-muted sm:text-base">
+          Ringkasan keuanganmu
+        </p>
+      </header>
+
+      <KpiCards
+        income={stats?.income || 0}
+        expense={stats?.expense || 0}
+        net={stats?.balance || 0}
+      />
+
+      <QuoteBubble />
+
+      <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
+        <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
+        <AchievementBadges
+          stats={stats}
+          streak={streak}
+          target={savingsTarget}
         />
-      </Section>
-      <Section>
-        <QuoteBubble />
-      </Section>
-      <Section>
-        <div className="grid gap-[var(--block-y)] lg:grid-cols-2">
-          <SavingsProgress
-            current={stats?.balance || 0}
-            target={savingsTarget}
-          />
-          <AchievementBadges
-            stats={stats}
-            streak={streak}
-            target={savingsTarget}
-          />
-        </div>
-      </Section>
-      <Section>
-        <QuickActions />
-      </Section>
-      <Section>
+      </div>
+
+      <QuickActions />
+
+      <section className="space-y-6 sm:space-y-8 lg:space-y-10">
         <SectionHeader title="Analisis Bulanan" />
-        <div className="grid gap-[var(--block-y)] md:grid-cols-2">
+        <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
           <MonthlyTrendChart data={insights.trend} />
           <CategoryDonut data={insights.categories} />
         </div>
-        <div className="grid gap-[var(--block-y)] md:grid-cols-2">
+        <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
           <TopSpendsTable
             data={insights.topSpends}
             onSelect={(t) => EventBus.emit("tx:open", t)}
           />
           <RecentTransactions txs={txs} />
         </div>
-      </Section>
-    </Page>
+      </section>
+    </div>
   );
 }
