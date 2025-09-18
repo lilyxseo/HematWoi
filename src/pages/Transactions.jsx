@@ -4,8 +4,6 @@ import clsx from "clsx";
 import {
   AlertTriangle,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Check,
   Download,
   Loader2,
@@ -645,159 +643,22 @@ function TransactionsFilterBar({
   onOpenAdd = () => {},
 }) {
   const currentMonth = currentMonthValue();
-  const toolbarRef = useRef(null);
   const customButtonRef = useRef(null);
-  const moreButtonRef = useRef(null);
   const actualSearchInputRef = useRef(null);
-  const collapseRef = useRef(false);
   const [customOpen, setCustomOpen] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [collapseSecondary, setCollapseSecondary] = useState(false);
-  const [viewport, setViewport] = useState(() => {
-    if (typeof window === "undefined") return "desktop";
-    const width = window.innerWidth;
-    if (width < 992) return "mobile";
-    if (width < 1280) return "tablet";
-    return "desktop";
-  });
-  const [scrollHints, setScrollHints] = useState({ left: false, right: false });
-
   const typeSelectId = useId();
   const sortSelectId = useId();
   const searchInputId = useId();
-
-  const isMobile = viewport === "mobile";
-  const isTablet = viewport === "tablet";
-
-  useEffect(() => {
-    collapseRef.current = collapseSecondary;
-  }, [collapseSecondary]);
 
   useEffect(() => {
     if (!searchInputRef) return;
     searchInputRef.current = {
       focus: () => {
-        if (isMobile) {
-          setMobileSearchOpen(true);
-          requestAnimationFrame(() => {
-            actualSearchInputRef.current?.focus();
-            actualSearchInputRef.current?.select();
-          });
-        } else {
-          actualSearchInputRef.current?.focus();
-          actualSearchInputRef.current?.select();
-        }
+        actualSearchInputRef.current?.focus();
+        actualSearchInputRef.current?.select();
       },
     };
-  }, [isMobile, searchInputRef]);
-
-  const detectViewport = useCallback(() => {
-    if (typeof window === "undefined") return "desktop";
-    const width = window.innerWidth;
-    if (width < 992) return "mobile";
-    if (width < 1280) return "tablet";
-    return "desktop";
-  }, []);
-
-  useEffect(() => {
-    const handler = () => {
-      setViewport(detectViewport());
-    };
-    handler();
-    window.addEventListener("resize", handler);
-    return () => window.removeEventListener("resize", handler);
-  }, [detectViewport]);
-
-  const ensureCollapse = useCallback((next) => {
-    if (collapseRef.current !== next) {
-      collapseRef.current = next;
-      setCollapseSecondary(next);
-    }
-  }, []);
-
-  const updateOverflow = useCallback(() => {
-    const element = toolbarRef.current;
-    if (!element) return;
-    if (!isTablet) {
-      ensureCollapse(false);
-      return;
-    }
-    if (!collapseRef.current) {
-      const overflow = element.scrollWidth - element.clientWidth > 4;
-      if (overflow) {
-        ensureCollapse(true);
-      }
-      return;
-    }
-    ensureCollapse(false);
-    requestAnimationFrame(() => {
-      const target = toolbarRef.current;
-      if (!target) return;
-      const overflow = target.scrollWidth - target.clientWidth > 4;
-      if (overflow) {
-        ensureCollapse(true);
-      }
-    });
-  }, [ensureCollapse, isTablet]);
-
-  useEffect(() => {
-    const element = toolbarRef.current;
-    if (!element) return;
-    updateOverflow();
-    const observer = new ResizeObserver(() => updateOverflow());
-    observer.observe(element);
-    window.addEventListener("resize", updateOverflow);
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", updateOverflow);
-    };
-  }, [updateOverflow]);
-
-  useEffect(() => {
-    updateOverflow();
-  }, [updateOverflow, filter.categories.length, filter.period.end, filter.period.preset, filter.period.start, searchTerm, viewport]);
-
-  const updateScrollHints = useCallback(() => {
-    const element = toolbarRef.current;
-    if (!element) return;
-    const maxScroll = element.scrollWidth - element.clientWidth;
-    setScrollHints({
-      left: element.scrollLeft > 8,
-      right: maxScroll - element.scrollLeft > 8,
-    });
-  }, []);
-
-  useEffect(() => {
-    const element = toolbarRef.current;
-    if (!element) return;
-    updateScrollHints();
-    element.addEventListener("scroll", updateScrollHints, { passive: true });
-    const observer = new ResizeObserver(() => updateScrollHints());
-    observer.observe(element);
-    window.addEventListener("resize", updateScrollHints);
-    return () => {
-      element.removeEventListener("scroll", updateScrollHints);
-      observer.disconnect();
-      window.removeEventListener("resize", updateScrollHints);
-    };
-  }, [updateScrollHints, collapseSecondary, viewport]);
-
-  useEffect(() => {
-    updateScrollHints();
-  }, [updateScrollHints, collapseSecondary, viewport]);
-
-  useEffect(() => {
-    if (!isTablet) {
-      setMoreOpen(false);
-    }
-  }, [isTablet]);
-
-  useEffect(() => {
-    if (!collapseSecondary) {
-      setMoreOpen(false);
-    }
-  }, [collapseSecondary]);
+  }, [searchInputRef]);
 
   useEffect(() => {
     if (filter.period.preset !== "custom") {
@@ -851,212 +712,128 @@ function TransactionsFilterBar({
     onSearchChange(value);
   };
 
-  const handleOpenSearch = () => {
-    if (isMobile) {
-      setMobileSearchOpen(true);
-      requestAnimationFrame(() => {
-        actualSearchInputRef.current?.focus();
-        actualSearchInputRef.current?.select();
-      });
-    } else {
-      actualSearchInputRef.current?.focus();
-      actualSearchInputRef.current?.select();
-    }
-  };
-
-  const showSecondaryInline = !isTablet || !collapseSecondary;
-  const showMoreButton = isTablet && collapseSecondary;
-  const toolbarStyle = {
-    overscrollBehaviorInline: "contain",
-    scrollbarGutter: "stable both-edges",
-  };
-
   const handleTypeChange = (value) => {
     onFilterChange({ type: value });
-    if (showMoreButton) {
-      setMoreOpen(false);
-    }
   };
 
   const handleSortChange = (value) => {
     onFilterChange({ sort: value });
-    if (showMoreButton) {
-      setMoreOpen(false);
-    }
   };
 
-  const typeSelect = (
-    <div className="flex min-w-[160px] flex-shrink-0">
-      <label htmlFor={typeSelectId} className="sr-only">
-        Filter jenis transaksi
-      </label>
-      <select
-        id={typeSelectId}
-        value={filter.type}
-        onChange={(event) => handleTypeChange(event.target.value)}
-        aria-label="Filter jenis transaksi"
-        className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-      >
-        <option value="all">Semua</option>
-        <option value="expense">Pengeluaran</option>
-        <option value="income">Pemasukan</option>
-        <option value="transfer">Transfer</option>
-      </select>
-    </div>
-  );
-
-  const sortSelect = (
-    <div className="flex min-w-[160px] flex-shrink-0">
-      <label htmlFor={sortSelectId} className="sr-only">
-        Urutkan transaksi
-      </label>
-      <select
-        id={sortSelectId}
-        value={filter.sort}
-        onChange={(event) => handleSortChange(event.target.value)}
-        aria-label="Urutkan transaksi"
-        className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-      >
-        <option value="date-desc">Terbaru</option>
-        <option value="date-asc">Terlama</option>
-        <option value="amount-desc">Terbesar</option>
-        <option value="amount-asc">Terkecil</option>
-      </select>
-    </div>
-  );
-
   return (
-    <div className="relative">
+    <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-4">
       <div
-        ref={toolbarRef}
         role="toolbar"
         aria-label="Filter transaksi"
-        className="flex items-center gap-3 overflow-x-auto whitespace-nowrap px-4 py-3"
-        style={toolbarStyle}
+        className="grid min-w-0 grid-cols-2 items-center gap-3 md:grid-cols-6"
       >
-        <div
-          className="flex h-11 flex-shrink-0 items-center gap-1 rounded-full border border-white/15 bg-white/10 px-1.5"
-          role="group"
-          aria-label="Rentang waktu"
-        >
-          {Object.entries(PERIOD_LABELS).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => handlePresetChange(value)}
-              ref={value === "custom" ? customButtonRef : undefined}
-              className={clsx(
-                "inline-flex h-9 items-center rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
-                filter.period.preset === value
-                  ? "bg-brand text-white shadow"
-                  : "text-white/70 hover:bg-white/10",
-              )}
-              aria-pressed={filter.period.preset === value}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="col-span-2 min-w-0 md:col-span-2">
+          <div
+            className="flex flex-wrap gap-2 md:flex-nowrap"
+            role="group"
+            aria-label="Rentang waktu"
+          >
+            {Object.entries(PERIOD_LABELS).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => handlePresetChange(value)}
+                ref={value === "custom" ? customButtonRef : undefined}
+                className={clsx(
+                  "inline-flex h-9 items-center rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
+                  filter.period.preset === value
+                    ? "bg-brand text-white shadow"
+                    : "text-white/70 hover:bg-white/10",
+                )}
+                aria-pressed={filter.period.preset === value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
-        <CategoryMultiSelect
-          categories={categories}
-          selected={filter.categories}
-          onChange={handleCategoryChange}
-          ariaLabel="Filter kategori transaksi"
-        />
-        {showSecondaryInline && typeSelect}
-        {showSecondaryInline && sortSelect}
-        {!isMobile && (
-          <div className="relative flex min-w-[280px] flex-1 items-center">
-            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-white/40" aria-hidden="true" />
+        <div className="col-span-2 min-w-0 md:col-span-1">
+          <CategoryMultiSelect
+            categories={categories}
+            selected={filter.categories}
+            onChange={handleCategoryChange}
+            ariaLabel="Filter kategori transaksi"
+          />
+        </div>
+        <div className="col-span-1 min-w-0 md:col-span-1">
+          <label htmlFor={typeSelectId} className="sr-only">
+            Filter jenis transaksi
+          </label>
+          <select
+            id={typeSelectId}
+            value={filter.type}
+            onChange={(event) => handleTypeChange(event.target.value)}
+            aria-label="Filter jenis transaksi"
+            className="h-[40px] w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          >
+            <option value="all">Semua</option>
+            <option value="expense">Pengeluaran</option>
+            <option value="income">Pemasukan</option>
+            <option value="transfer">Transfer</option>
+          </select>
+        </div>
+        <div className="col-span-1 min-w-0 md:col-span-1">
+          <label htmlFor={sortSelectId} className="sr-only">
+            Urutkan transaksi
+          </label>
+          <select
+            id={sortSelectId}
+            value={filter.sort}
+            onChange={(event) => handleSortChange(event.target.value)}
+            aria-label="Urutkan transaksi"
+            className="h-[40px] w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          >
+            <option value="date-desc">Terbaru</option>
+            <option value="date-asc">Terlama</option>
+            <option value="amount-desc">Terbesar</option>
+            <option value="amount-asc">Terkecil</option>
+          </select>
+        </div>
+        <div className="col-span-2 min-w-0 md:col-span-1">
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" aria-hidden="true" />
             <input
               id={searchInputId}
               ref={actualSearchInputRef}
               type="search"
               value={searchTerm}
               onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder="Cari judul, catatan, nominal"
+              placeholder="Cari judul/catatan…"
               aria-label="Cari transaksi"
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+              className="h-[40px] w-full rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white placeholder:text-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
             />
           </div>
-        )}
-        {isMobile && (
-          <button
-            type="button"
-            onClick={handleOpenSearch}
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            aria-label="Buka pencarian transaksi"
-          >
-            <Search className="h-4 w-4" />
-          </button>
-        )}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
         <button
           type="button"
           onClick={handleReset}
-          className="flex h-11 flex-shrink-0 items-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          className="inline-flex h-[40px] items-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
           aria-label="Reset semua filter"
         >
           Reset
         </button>
-        {showMoreButton && (
-          <button
-            type="button"
-            ref={moreButtonRef}
-            onClick={() => setMoreOpen((prev) => !prev)}
-            className="flex h-11 flex-shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            aria-haspopup="menu"
-            aria-expanded={moreOpen}
-            aria-label="Tampilkan filter lainnya"
-          >
-            More ▾
-          </button>
-        )}
         <button
           type="button"
           onClick={onOpenAdd}
-          className="inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
           aria-label="Tambah transaksi"
         >
           <Plus className="h-4 w-4" /> Tambah Transaksi
         </button>
       </div>
-      {isMobile && scrollHints.left && (
-        <div className="pointer-events-none absolute left-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center bg-gradient-to-r from-slate-900/80 to-transparent text-white/60">
-          <ChevronLeft className="h-4 w-4" />
-        </div>
-      )}
-      {isMobile && scrollHints.right && (
-        <div className="pointer-events-none absolute right-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center bg-gradient-to-l from-slate-900/80 to-transparent text-white/60">
-          <ChevronRight className="h-4 w-4" />
-        </div>
-      )}
       {customOpen && filter.period.preset === "custom" && (
         <CustomRangePopover
           anchorRef={customButtonRef}
           period={filter.period}
           onChange={(next) => onFilterChange({ period: next })}
           onClose={() => setCustomOpen(false)}
-        />
-      )}
-      {showMoreButton && moreOpen && (
-        <MoreMenu anchorRef={moreButtonRef} onClose={() => setMoreOpen(false)}>
-          <div className="space-y-3" role="none">
-            <div className="w-full" role="menuitem">
-              {typeSelect}
-            </div>
-            <div className="w-full" role="menuitem">
-              {sortSelect}
-            </div>
-          </div>
-        </MoreMenu>
-      )}
-      {isMobile && (
-        <MobileSearchSheet
-          open={mobileSearchOpen}
-          onClose={() => setMobileSearchOpen(false)}
-          searchTerm={searchTerm}
-          onSearchChange={handleSearchChange}
-          inputRef={actualSearchInputRef}
         />
       )}
     </div>
@@ -1163,7 +940,7 @@ function CategoryMultiSelect({ categories = [], selected = [], onChange, ariaLab
         type="button"
         ref={triggerRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex h-11 min-w-[260px] max-w-[320px] flex-shrink-0 items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+        className="inline-flex h-[40px] w-full min-w-0 flex-shrink-0 items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
@@ -1342,142 +1119,6 @@ function CustomRangePopover({ anchorRef, period, onChange, onClose }) {
   return createPortal(content, document.body);
 }
 
-function MoreMenu({ anchorRef, onClose, children }) {
-  const menuRef = useRef(null);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-
-  const updatePosition = useCallback(() => {
-    const anchor = anchorRef?.current;
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    const width = 280;
-    const left = Math.min(
-      Math.max(16, rect.right - width),
-      window.innerWidth - width - 16,
-    );
-    setPosition({ top: rect.bottom + 8, left, width });
-  }, [anchorRef]);
-
-  useEffect(() => {
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [updatePosition]);
-
-  useEffect(() => {
-    const handleClick = (event) => {
-      if (anchorRef?.current?.contains(event.target)) return;
-      if (menuRef.current?.contains(event.target)) return;
-      onClose();
-    };
-    const handleKey = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [anchorRef, onClose]);
-
-  const content = (
-    <div className="fixed inset-0 z-40" role="presentation">
-      <div
-        ref={menuRef}
-        role="menu"
-        className="absolute w-[min(280px,calc(100%-32px))] rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur"
-        style={{ top: position.top, left: position.left, width: position.width || undefined }}
-      >
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/60">Filter lainnya</p>
-        {children}
-      </div>
-    </div>
-  );
-
-  return createPortal(content, document.body);
-}
-
-function MobileSearchSheet({ open, onClose, searchTerm, onSearchChange, inputRef }) {
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onClose]);
-
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previous;
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    requestAnimationFrame(() => {
-      inputRef?.current?.focus();
-      inputRef?.current?.select();
-    });
-  }, [open, inputRef]);
-
-  if (!open) return null;
-
-  const content = (
-    <div className="fixed inset-0 z-40 flex flex-col bg-slate-950/80 backdrop-blur-sm">
-      <button
-        type="button"
-        className="flex-1"
-        onClick={onClose}
-        aria-label="Tutup pencarian"
-      />
-      <div
-        className="rounded-t-3xl border border-white/10 bg-slate-900/95 p-5 shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Cari transaksi"
-      >
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
-          <Search className="h-5 w-5 text-white/50" aria-hidden="true" />
-          <input
-            ref={inputRef}
-            type="search"
-            value={searchTerm}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Cari judul, catatan, nominal"
-            className="flex-1 bg-transparent text-base text-white placeholder:text-white/40 focus-visible:outline-none"
-            aria-label="Cari transaksi"
-          />
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full px-3 py-1 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          >
-            Batal
-          </button>
-        </div>
-        <p className="mt-3 text-xs text-white/50">Gunakan Ctrl/Cmd + / untuk membuka lebih cepat.</p>
-      </div>
-    </div>
-  );
-
-  return createPortal(content, document.body);
-}
-
 function ActiveFilterChips({ chips, onRemove }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-slate-900/40 px-4 py-3">
@@ -1641,114 +1282,112 @@ function TransactionsTable({
   }
 
   const tableContent = (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
-      <div className="table-scroll" style={scrollVariables}>
-        <table className="transactions-table text-sm text-white/80">
-          <colgroup>
-            <col className="tx-col-select" />
-            <col className="tx-col-category" />
-            <col className="tx-col-date" />
-            <col className="tx-col-notes" />
-            <col className="tx-col-account" />
-            <col className="tx-col-tags" />
-            <col className="tx-col-amount" />
-            <col className="tx-col-actions" />
-          </colgroup>
-          <thead className="tx-table-head text-left text-xs font-semibold uppercase tracking-wide text-white/60">
-            <tr>
-              <th scope="col" className="tx-cell tx-col-select">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={onToggleSelectAll}
-                  className="mx-auto h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                  aria-label="Pilih semua"
+    <div className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
+      <div
+        className="min-w-0 max-h-[calc(100vh-var(--header-and-filter-height,280px))] overflow-y-auto"
+        style={scrollVariables}
+      >
+        <div className="min-w-0 -mx-3 overflow-x-auto px-3 md:mx-0 md:px-0">
+          <table className="w-full table-auto text-sm text-white/80 md:table-fixed">
+            <thead className="sticky top-0 z-10 bg-bg/95 text-white/60 backdrop-blur supports-[backdrop-filter]:bg-bg/75">
+              <tr className="text-xs font-semibold uppercase tracking-wide">
+                <th scope="col" className="w-12 px-4 py-3 text-center">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={onToggleSelectAll}
+                    className="mx-auto h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                    aria-label="Pilih semua"
+                  />
+                </th>
+                <th scope="col" className="min-w-[140px] px-4 py-3 text-left">
+                  Kategori
+                </th>
+                <th scope="col" className="min-w-[120px] px-4 py-3 text-left">
+                  Tanggal
+                </th>
+                <th scope="col" className="min-w-[200px] px-4 py-3 text-left">
+                  Catatan
+                </th>
+                <th scope="col" className="min-w-[160px] px-4 py-3 text-left">
+                  Akun
+                </th>
+                <th scope="col" className="min-w-[160px] px-4 py-3 text-left">
+                  Tags
+                </th>
+                <th scope="col" className="min-w-[120px] px-4 py-3 text-right">
+                  Jumlah
+                </th>
+                <th scope="col" className="w-[120px] px-4 py-3 text-center">
+                  Aksi
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <TransactionItem
+                  key={item.id}
+                  item={item}
+                  variant="table"
+                  isSelected={selectedIds.has(item.id)}
+                  onToggleSelect={() => onToggleSelect(item.id)}
+                  onUpdate={onUpdate}
+                  onDelete={() => onDelete(item.id)}
+                  categoriesByType={categoriesByType}
                 />
-              </th>
-              <th scope="col" className="tx-cell tx-col-category">
-                Kategori
-              </th>
-              <th scope="col" className="tx-cell tx-col-date">
-                Tanggal
-              </th>
-              <th scope="col" className="tx-cell tx-col-notes">
-                Catatan
-              </th>
-              <th scope="col" className="tx-cell tx-col-account">
-                Akun
-              </th>
-              <th scope="col" className="tx-cell tx-col-tags">
-                Tags
-              </th>
-              <th scope="col" className="tx-cell tx-col-amount">
-                Jumlah
-              </th>
-              <th scope="col" className="tx-cell tx-col-actions text-right">
-                Aksi
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => (
-              <TransactionItem
-                key={item.id}
-                item={item}
-                variant="table"
-                isSelected={selectedIds.has(item.id)}
-                onToggleSelect={() => onToggleSelect(item.id)}
-                onUpdate={onUpdate}
-                onDelete={() => onDelete(item.id)}
-                categoriesByType={categoriesByType}
-              />
-            ))}
-            {items.length === 0 &&
-              loading &&
-              Array.from({ length: 6 }).map((_, index) => (
-                <tr key={`tx-skeleton-${index}`} className="tx-row">
-                  <td className="tx-cell tx-col-select">
-                    <div className="mx-auto h-4 w-4 animate-pulse rounded bg-white/10" />
-                  </td>
-                  <td className="tx-cell tx-col-category">
-                    <div className="h-3.5 w-[160px] animate-pulse rounded bg-white/10" />
-                  </td>
-                  <td className="tx-cell tx-col-date">
-                    <div className="h-3.5 w-[90px] animate-pulse rounded bg-white/10" />
-                  </td>
-                  <td className="tx-cell tx-col-notes">
-                    <div className="h-3.5 w-full max-w-[260px] animate-pulse rounded bg-white/10" />
-                  </td>
-                  <td className="tx-cell tx-col-account">
-                    <div className="h-3.5 w-[120px] animate-pulse rounded bg-white/10" />
-                  </td>
-                  <td className="tx-cell tx-col-tags">
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-14 animate-pulse rounded-full bg-white/10" />
-                      <div className="h-3 w-10 animate-pulse rounded-full bg-white/10" />
-                    </div>
-                  </td>
-                  <td className="tx-cell tx-col-amount">
-                    <div className="ml-auto h-3.5 w-20 animate-pulse rounded bg-white/10" />
-                  </td>
-                  <td className="tx-cell tx-col-actions">
-                    <div className="ml-auto flex gap-2">
-                      <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
-                      <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
+              ))}
+              {items.length === 0 &&
+                loading &&
+                Array.from({ length: 6 }).map((_, index) => (
+                  <tr
+                    key={`tx-skeleton-${index}`}
+                    className="border-b border-white/5 odd:bg-muted/30"
+                  >
+                    <td className="w-12 px-4 py-3 align-middle text-center">
+                      <div className="mx-auto h-4 w-4 animate-pulse rounded bg-white/10" />
+                    </td>
+                    <td className="min-w-[140px] px-4 py-3 align-middle text-left">
+                      <div className="h-3.5 w-[160px] animate-pulse rounded bg-white/10" />
+                    </td>
+                    <td className="min-w-[120px] px-4 py-3 align-middle text-left">
+                      <div className="h-3.5 w-[90px] animate-pulse rounded bg-white/10" />
+                    </td>
+                    <td className="min-w-[200px] px-4 py-3 align-middle text-left">
+                      <div className="h-3.5 w-full max-w-[260px] animate-pulse rounded bg-white/10" />
+                    </td>
+                    <td className="min-w-[160px] px-4 py-3 align-middle text-left">
+                      <div className="h-3.5 w-[120px] animate-pulse rounded bg-white/10" />
+                    </td>
+                    <td className="min-w-[160px] px-4 py-3 align-middle text-left">
+                      <div className="flex items-center justify-start gap-2">
+                        <div className="h-3 w-14 animate-pulse rounded-full bg-white/10" />
+                        <div className="h-3 w-10 animate-pulse rounded-full bg-white/10" />
+                      </div>
+                    </td>
+                    <td className="min-w-[120px] px-4 py-3 align-middle text-right">
+                      <div className="ml-auto h-3.5 w-20 animate-pulse rounded bg-white/10" />
+                    </td>
+                    <td className="w-[120px] px-4 py-3 align-middle text-center">
+                      <div className="mx-auto flex max-w-[96px] justify-center gap-2">
+                        <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
+                        <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              {items.length > 0 && loading && (
+                <tr className="border-b border-white/5">
+                  <td colSpan={8} className="px-4 py-4">
+                    <div className="flex items-center justify-center gap-2 text-xs text-white/60">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      Memuat transaksi...
                     </div>
                   </td>
                 </tr>
-              ))}
-            {items.length > 0 && loading && (
-              <tr className="tx-row">
-                <td colSpan={8} className="px-3 py-4">
-                  <div className="flex items-center justify-center gap-2 text-xs text-white/60">
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    Memuat transaksi...
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -1873,8 +1512,12 @@ function TransactionItem({
   const extraTags = Math.max(tags.length - visibleTags.length, 0);
   const tagsTitle = tags.join(", ");
   const amountClass = clsx(
-    "tx-amount",
-    item.type === "income" ? "income" : item.type === "transfer" ? "transfer" : "expense",
+    "text-right text-sm font-semibold tabular-nums",
+    item.type === "income"
+      ? "text-success"
+      : item.type === "transfer"
+        ? "text-info"
+        : "text-danger",
   );
   const hasAttachments = Boolean(item.receipt_url) || (Array.isArray(item.receipts) && item.receipts.length > 0);
   const attachmentHref = item.receipt_url;
@@ -1944,12 +1587,17 @@ function TransactionItem({
   );
 
   const amountInputClass = clsx(
-    "rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-right text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60",
+    "h-[40px] rounded-lg border border-white/15 bg-white/10 px-3 text-right text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60",
     variant === "card" ? "min-w-[160px]" : "w-32",
   );
 
   const renderActions = () => (
-    <div className="tx-actions">
+    <div
+      className={clsx(
+        "flex items-center gap-2",
+        variant === "card" ? "justify-end" : "justify-center",
+      )}
+    >
       {hasAttachments && attachmentHref && (
         <a
           href={attachmentHref}
@@ -2071,7 +1719,7 @@ function TransactionItem({
               className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
             />
           ) : (
-            <p className="truncate" title={noteValue || "Tidak ada catatan"}>
+            <p className="text-white/70 line-clamp-2" title={noteValue || "Tidak ada catatan"}>
               {noteValue || "Tidak ada catatan"}
             </p>
           )}
@@ -2119,11 +1767,16 @@ function TransactionItem({
   }
 
   return (
-    <tr className={clsx("tx-row", isSelected && "bg-white/10")}>
-      <td className="tx-cell tx-col-select">
+    <tr
+      className={clsx(
+        "border-b border-white/5 transition-colors odd:bg-muted/30 hover:bg-muted/50 focus-within:bg-muted/40 last:border-b-0",
+        isSelected && "bg-brand/15 hover:bg-brand/20 focus-within:bg-brand/20",
+      )}
+    >
+      <td className="w-12 px-4 py-3 align-middle text-center">
         <div className="flex items-center justify-center">{selectionCheckbox}</div>
       </td>
-      <td className="tx-cell tx-col-category">
+      <td className="min-w-[140px] px-4 py-3 align-middle text-left">
         {editing ? (
           <select
             id={categoryInputId}
@@ -2147,7 +1800,7 @@ function TransactionItem({
           </div>
         )}
       </td>
-      <td className="tx-cell tx-col-date">
+      <td className="min-w-[120px] px-4 py-3 align-middle text-left">
         {editing ? (
           <input
             id={dateInputId}
@@ -2163,7 +1816,7 @@ function TransactionItem({
           </time>
         )}
       </td>
-      <td className="tx-cell tx-col-notes">
+      <td className="min-w-[200px] px-4 py-3 align-middle text-left">
         {editing ? (
           <textarea
             value={draft.notes}
@@ -2173,19 +1826,19 @@ function TransactionItem({
             className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
           />
         ) : (
-          <span className="block truncate text-white/70" title={noteValue || "Tidak ada catatan"}>
+          <span className="block text-white/70 line-clamp-2" title={noteValue || "Tidak ada catatan"}>
             {noteValue || "-"}
           </span>
         )}
       </td>
-      <td className="tx-cell tx-col-account">
+      <td className="min-w-[160px] px-4 py-3 align-middle text-left">
         <span className="block truncate text-white/70" title={accountLabel}>
           {accountLabel}
         </span>
       </td>
-      <td className="tx-cell tx-col-tags">
+      <td className="min-w-[160px] px-4 py-3 align-middle text-left">
         {tags.length ? (
-          <div className="flex items-center gap-1" title={tagsTitle}>
+          <div className="flex flex-wrap items-center gap-1" title={tagsTitle}>
             {visibleTags.map((tag) => (
               <span key={tag} className="max-w-[96px] truncate rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">
                 {tag}
@@ -2199,7 +1852,7 @@ function TransactionItem({
           <span className="text-white/40">-</span>
         )}
       </td>
-      <td className="tx-cell tx-col-amount">
+      <td className="min-w-[120px] px-4 py-3 align-middle text-right">
         {editing ? (
           <input
             type="number"
@@ -2214,7 +1867,7 @@ function TransactionItem({
           <span className={amountClass}>{formatIDR(item.amount)}</span>
         )}
       </td>
-      <td className="tx-cell tx-col-actions">{renderActions()}</td>
+      <td className="w-[120px] px-4 py-3 align-middle text-center">{renderActions()}</td>
     </tr>
   );
 }
