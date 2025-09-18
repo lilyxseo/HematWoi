@@ -8,19 +8,153 @@ function sanitizeIlike(value = "") {
   return String(value).replace(/[%_]/g, (m) => `\\${m}`);
 }
 
-function toMonthRange(month) {
-  if (!month) return null;
-  const [y, m] = month.split("-").map(Number);
-  if (!y || !m) return null;
-  const start = new Date(Date.UTC(y, m - 1, 1));
-  const end = new Date(Date.UTC(y, m, 1));
-  return { start: start.toISOString(), end: end.toISOString() };
-}
-
 function arrayify(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
   return [value];
+}
+
+function startOfWeek(date = new Date()) {
+  const clone = new Date(date);
+  const day = clone.getDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  clone.setDate(clone.getDate() + diff);
+  clone.setHours(0, 0, 0, 0);
+  return clone;
+}
+
+function formatDateInput(date) {
+  if (!(date instanceof Date)) return null;
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function nextMonthStart(year, month) {
+  const next = new Date(Date.UTC(year, month, 1));
+  return formatDateInput(next);
+}
+
+function normalizeTransactionFilters(options = {}) {
+  const search = options.search ?? options.q ?? "";
+  const sort = options.sort ?? "date-desc";
+  const page = Number.parseInt(options.page ?? 1, 10) || 1;
+  const pageSize = Number.parseInt(options.pageSize ?? options.limit ?? 50, 10) || 50;
+
+  let preset = options.period?.preset ?? options.range ?? null;
+  let monthValue = options.period?.month ?? options.monthValue ?? null;
+  let startDate = options.period?.start ?? options.startDate ?? options.date_from ?? null;
+  let endDate = options.period?.end ?? options.endDate ?? options.date_to ?? null;
+
+  if (!preset && options.month && options.month !== "all") {
+    preset = "month";
+    monthValue = options.month;
+  }
+
+  if (!preset && (startDate || endDate)) {
+    preset = "custom";
+  }
+
+  if (!preset) preset = "all";
+
+  if (preset === "month" && !monthValue) {
+    const now = new Date();
+    monthValue = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+
+  const categoryInput = options.categories ?? options.category ?? [];
+  let categories = [];
+  if (Array.isArray(categoryInput)) {
+    categories = categoryInput.filter(Boolean);
+  } else if (typeof categoryInput === "string") {
+    if (categoryInput !== "all" && categoryInput.trim() !== "") {
+      categories = categoryInput
+        .split(/[,\s]+/)
+        .map((v) => v.trim())
+        .filter(Boolean);
+    }
+  } else if (categoryInput != null) {
+    categories = [categoryInput];
+  }
+
+  const type = options.type ?? "all";
+
+  return {
+    preset,
+    month: monthValue,
+    startDate: startDate || null,
+    endDate: endDate || null,
+    categories,
+    type,
+    sort,
+    search,
+    page,
+    pageSize,
+  };
+}
+
+function resolveDateRange(filters) {
+  const { preset, month, startDate, endDate } = filters;
+  if (preset === "month" && month) {
+    const [yStr, mStr] = String(month).split("-");
+    const y = Number.parseInt(yStr, 10);
+    const m = Number.parseInt(mStr, 10);
+    if (!Number.isNaN(y) && !Number.isNaN(m)) {
+      const start = new Date(Date.UTC(y, m - 1, 1));
+      const nextStart = new Date(Date.UTC(y, m, 1));
+      return {
+        from: formatDateInput(start),
+        to: formatDateInput(new Date(nextStart.getTime() - 86400000)),
+        toExclusive: nextMonthStart(y, m),
+      };
+    }
+  }
+  if (preset === "week") {
+    const now = new Date();
+    const start = startOfWeek(now);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return {
+      from: formatDateInput(start),
+      to: formatDateInput(end),
+      toExclusive: formatDateInput(new Date(end.getTime() + 86400000)),
+    };
+  }
+  if (preset === "custom") {
+    const from = startDate ? String(startDate).slice(0, 10) : null;
+    const to = endDate ? String(endDate).slice(0, 10) : null;
+    if (from && to) {
+      const toDate = new Date(`${to}T00:00:00Z`);
+      return {
+        from,
+        to,
+        toExclusive: formatDateInput(new Date(toDate.getTime() + 86400000)),
+      };
+    }
+    if (from) {
+      return { from, to: null, toExclusive: null };
+    }
+    if (to) {
+      return { from: null, to, toExclusive: formatDateInput(new Date(new Date(`${to}T00:00:00Z`).getTime() + 86400000)) };
+    }
+  }
+  return { from: null, to: null, toExclusive: null };
+}
+
+function matchesDateRange(dateValue, range) {
+  if (!range) return true;
+  const { from, to, toExclusive } = range;
+  if (!from && !to && !toExclusive) return true;
+  if (!dateValue) return false;
+  const dateStr = String(dateValue).slice(0, 10);
+  if (from && dateStr < from) return false;
+  if (toExclusive) {
+    if (dateStr >= toExclusive) return false;
+    return true;
+  }
+  if (to && dateStr > to) return false;
+  return true;
 }
 
 export function mapTransactionRow(tx = {}) {
@@ -136,30 +270,34 @@ export function mapTransactionRow(tx = {}) {
 }
 
 function filterTransactionsOffline(rows = [], filters = {}, userId) {
-  const { type = "all", month = "all", category = "all", q } = filters;
+  const normalized = normalizeTransactionFilters(filters);
+  const range = resolveDateRange(normalized);
   let list = rows
     .map(mapTransactionRow)
     .filter((row) => !row.deleted_at);
+
   if (userId) {
     list = list.filter((row) => !row.user_id || row.user_id === userId);
   }
-  if (type && type !== "all") {
-    list = list.filter((row) => row.type === type);
+
+  if (normalized.type && normalized.type !== "all") {
+    list = list.filter((row) => row.type === normalized.type);
   }
-  if (month && month !== "all") {
-    list = list.filter((row) =>
-      row.date ? String(row.date).slice(0, 7) === month : false
-    );
+
+  if (normalized.categories.length) {
+    const set = new Set(normalized.categories);
+    list = list.filter((row) => row.category_id && set.has(row.category_id));
   }
-  if (category && category !== "all") {
-    list = list.filter(
-      (row) => row.category_id === category || row.category === category
-    );
+
+  if (range.from || range.to || range.toExclusive) {
+    list = list.filter((row) => matchesDateRange(row.date, range));
   }
-  if (q && q.trim()) {
-    const needle = q.trim().toLowerCase();
+
+  if (normalized.search && normalized.search.trim()) {
+    const needle = normalized.search.trim().toLowerCase();
     list = list.filter((row) => {
       const fields = [
+        row.notes,
         row.note,
         row.title,
         row.merchant,
@@ -168,9 +306,13 @@ function filterTransactionsOffline(rows = [], filters = {}, userId) {
       ]
         .filter(Boolean)
         .map((v) => String(v).toLowerCase());
-      return fields.some((field) => field.includes(needle));
+      const amountMatch = String(row.amount ?? "")
+        .toLowerCase()
+        .includes(needle);
+      return amountMatch || fields.some((field) => field.includes(needle));
     });
   }
+
   return list;
 }
 
@@ -198,21 +340,23 @@ function paginate(rows = [], page = 1, pageSize = 20) {
  * List transaksi dari Supabase dengan filter & pagination.
  * Fallback ke cache jika offline.
  */
-export async function listTransactions(
-  { type, month, category, sort = "date-desc", q, page = 1, pageSize = 20 } = {},
-) {
+export async function listTransactions(options = {}) {
+  const normalized = normalizeTransactionFilters(options);
+  const { sort, page, pageSize } = normalized;
   const userId = await getCurrentUserId();
   if (!userId) {
-    return { rows: [], total: 0, page: 1, pageSize };
+    return { rows: [], total: 0, page, pageSize };
   }
 
   if (!navigator.onLine || window.__sync?.fakeOffline) {
     const cached = await dbCache.list("transactions");
-    const filtered = filterTransactionsOffline(cached, { type, month, category, q }, userId);
+    const filtered = filterTransactionsOffline(cached, normalized, userId);
     const sorted = sortTransactions(filtered, sort);
     const paged = paginate(sorted, page, pageSize);
     return { rows: paged, total: sorted.length, page, pageSize };
   }
+
+  const range = resolveDateRange(normalized);
 
   const columns = `
     id,
@@ -252,21 +396,28 @@ export async function listTransactions(
   const orderField = sortField === "amount" ? "amount" : "date";
   query = query.order(orderField, { ascending });
 
-  if (type && type !== "all") {
-    query = query.eq("type", type);
+  if (normalized.type && normalized.type !== "all") {
+    query = query.eq("type", normalized.type);
   }
-  if (month && month !== "all") {
-    const range = toMonthRange(month);
-    if (range) {
-      query = query.gte("date", range.start).lt("date", range.end);
+  if (normalized.categories.length) {
+    query = query.in("category_id", normalized.categories);
+  }
+  if (range.from) {
+    query = query.gte("date", range.from);
+  }
+  if (range.toExclusive) {
+    query = query.lt("date", range.toExclusive);
+  } else if (range.to) {
+    query = query.lte("date", range.to);
+  }
+  if (normalized.search && normalized.search.trim()) {
+    const like = `%${sanitizeIlike(normalized.search.trim())}%`;
+    const numberCandidate = Number.parseFloat(normalized.search.replace(/[^0-9.-]/g, ""));
+    if (!Number.isNaN(numberCandidate) && normalized.search.trim().match(/\d/)) {
+      query = query.or(`title.ilike.${like},notes.ilike.${like},amount.eq.${numberCandidate}`);
+    } else {
+      query = query.or(`title.ilike.${like},notes.ilike.${like}`);
     }
-  }
-  if (category && category !== "all") {
-    query = query.eq("category_id", category);
-  }
-  if (q && q.trim()) {
-    const like = `%${sanitizeIlike(q.trim())}%`;
-    query = query.or(`title.ilike.${like},notes.ilike.${like}`);
   }
 
   const from = (page - 1) * pageSize;
@@ -281,10 +432,82 @@ export async function listTransactions(
   } catch (err) {
     console.error("listTransactions failed, falling back to cache", err);
     const cached = await dbCache.list("transactions");
-    const filtered = filterTransactionsOffline(cached, { type, month, category, q }, userId);
+    const filtered = filterTransactionsOffline(cached, normalized, userId);
     const sorted = sortTransactions(filtered, sort);
     const paged = paginate(sorted, page, pageSize);
     return { rows: paged, total: sorted.length, page, pageSize };
+  }
+}
+
+export async function getTransactionsSummary(options = {}) {
+  const normalized = normalizeTransactionFilters(options);
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    return { income: 0, expense: 0, net: 0 };
+  }
+
+  const accumulate = (rows = []) => {
+    return rows.reduce(
+      (acc, row) => {
+        const amount = Number(row.amount ?? 0);
+        if (row.type === "income") {
+          acc.income += amount;
+        } else if (row.type === "expense") {
+          acc.expense += amount;
+        }
+        acc.net = acc.income - acc.expense;
+        return acc;
+      },
+      { income: 0, expense: 0, net: 0 },
+    );
+  };
+
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    const cached = await dbCache.list("transactions");
+    const filtered = filterTransactionsOffline(cached, normalized, userId);
+    return accumulate(filtered);
+  }
+
+  try {
+    const range = resolveDateRange(normalized);
+    let query = supabase
+      .from("transactions")
+      .select("type, amount")
+      .eq("user_id", userId)
+      .is("deleted_at", null);
+
+    if (normalized.type && normalized.type !== "all") {
+      query = query.eq("type", normalized.type);
+    }
+    if (normalized.categories.length) {
+      query = query.in("category_id", normalized.categories);
+    }
+    if (range.from) {
+      query = query.gte("date", range.from);
+    }
+    if (range.toExclusive) {
+      query = query.lt("date", range.toExclusive);
+    } else if (range.to) {
+      query = query.lte("date", range.to);
+    }
+    if (normalized.search && normalized.search.trim()) {
+      const like = `%${sanitizeIlike(normalized.search.trim())}%`;
+      const numberCandidate = Number.parseFloat(normalized.search.replace(/[^0-9.-]/g, ""));
+      if (!Number.isNaN(numberCandidate) && normalized.search.trim().match(/\d/)) {
+        query = query.or(`title.ilike.${like},notes.ilike.${like},amount.eq.${numberCandidate}`);
+      } else {
+        query = query.or(`title.ilike.${like},notes.ilike.${like}`);
+      }
+    }
+
+    const { data, error } = await query.limit(5000);
+    if (error) throw error;
+    return accumulate(data || []);
+  } catch (err) {
+    console.error("getTransactionsSummary failed, falling back to cache", err);
+    const cached = await dbCache.list("transactions");
+    const filtered = filterTransactionsOffline(cached, normalized, userId);
+    return accumulate(filtered);
   }
 }
 
