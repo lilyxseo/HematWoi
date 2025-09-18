@@ -24,6 +24,9 @@
     --danger: #ef4444;
     --info: #3b82f6;
     --ring: hsl(var(--brand-h) var(--brand-s) var(--brand-l));
+    --tx-expense: #f87171;
+    --tx-income: #34d399;
+    --tx-transfer: #38bdf8;
     --page-y: clamp(16px, 4vw, 28px);
     --section-y: clamp(12px, 3vw, 24px);
     --block-y: clamp(8px, 2vw, 16px);
@@ -43,6 +46,9 @@
     --brand-foreground: #ffffff;
     --brand-soft: hsl(var(--brand-h) var(--brand-s) 20%);
     --brand-ring: hsl(var(--brand-h) var(--brand-s) 70%);
+    --tx-expense: #f87171;
+    --tx-income: #4ade80;
+    --tx-transfer: #38bdf8;
   }
   body {
     @apply bg-bg text-text transition-colors duration-300 overflow-x-hidden;
@@ -57,6 +63,122 @@
   }
   .input {
     @apply w-full rounded-xl border border-border bg-surface-1 px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-brand-ring;
+  }
+  .table-scroll {
+    max-height: calc(100vh - var(--header-and-filter-height, 280px));
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
+  }
+  .transactions-table {
+    width: 100%;
+    min-width: 1024px;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .transactions-table col.tx-col-select,
+  .transactions-table th.tx-col-select,
+  .transactions-table td.tx-col-select {
+    width: 40px;
+  }
+  .transactions-table col.tx-col-category,
+  .transactions-table th.tx-col-category,
+  .transactions-table td.tx-col-category {
+    width: clamp(140px, 18vw, 220px);
+  }
+  .transactions-table col.tx-col-date,
+  .transactions-table th.tx-col-date,
+  .transactions-table td.tx-col-date {
+    width: 140px;
+  }
+  .transactions-table col.tx-col-notes,
+  .transactions-table th.tx-col-notes,
+  .transactions-table td.tx-col-notes {
+    width: clamp(220px, 34vw, 480px);
+  }
+  .transactions-table col.tx-col-account,
+  .transactions-table col.tx-col-tags,
+  .transactions-table th.tx-col-account,
+  .transactions-table th.tx-col-tags,
+  .transactions-table td.tx-col-account,
+  .transactions-table td.tx-col-tags {
+    width: clamp(160px, 20vw, 220px);
+  }
+  .transactions-table col.tx-col-amount,
+  .transactions-table th.tx-col-amount,
+  .transactions-table td.tx-col-amount {
+    width: 160px;
+    text-align: right;
+  }
+  .transactions-table col.tx-col-actions,
+  .transactions-table th.tx-col-actions,
+  .transactions-table td.tx-col-actions {
+    width: 120px;
+  }
+  .tx-table-head {
+    position: sticky;
+    top: var(--app-header-offset, 64px);
+    z-index: 15;
+    background: var(--surface);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(10px);
+  }
+  .tx-table-head th {
+    background: inherit;
+  }
+  .tx-row {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    transition: background-color 0.2s ease;
+  }
+  .tx-row:last-child {
+    border-bottom: none;
+  }
+  .tx-row:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+  .tx-cell {
+    padding-inline: 12px;
+    height: 52px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  .tx-amount {
+    font-weight: 600;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .tx-amount.expense {
+    color: var(--tx-expense);
+  }
+  .tx-amount.income {
+    color: var(--tx-income);
+  }
+  .tx-amount.transfer {
+    color: var(--tx-transfer);
+  }
+  .tx-actions {
+    width: 120px;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+  }
+  .tx-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(15, 23, 42, 0.4);
+    padding: 16px;
+    backdrop-filter: blur(12px);
+  }
+  .tx-card:hover {
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  .tx-card .tx-actions {
+    width: auto;
   }
 }
 
