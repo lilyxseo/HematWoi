@@ -18,11 +18,11 @@ export default function MainLayout({
   }, []);
 
   return (
-    <div className={clsx("relative flex min-h-screen bg-bg text-text", className)}>
+    <div className={clsx("relative flex min-h-screen min-w-0 bg-bg text-text", className)}>
       {!hideSidebar && sidebar}
       <div
         className={clsx(
-          "flex min-h-screen w-full flex-col transition-[padding-left] duration-300 ease-out",
+          "flex min-h-screen w-full min-w-0 flex-col transition-[padding-left] duration-300 ease-out",
           hideSidebar
             ? "pl-0"
             : "pl-0 md:pl-[var(--sidebar-width)]"
@@ -32,7 +32,7 @@ export default function MainLayout({
         <main
           id="main"
           tabIndex={-1}
-          className="flex-1 overflow-y-auto focus:outline-none"
+          className="flex-1 min-w-0 overflow-y-auto focus:outline-none"
         >
           {children}
         </main>

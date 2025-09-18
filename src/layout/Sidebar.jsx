@@ -106,12 +106,7 @@ export default function Sidebar({ theme, setTheme, brand, setBrand }) {
 
   const content = (
     <div
-      className="flex h-full flex-col overflow-hidden bg-surface-1/95 text-text shadow-lg ring-1 ring-black/5 transition-[width] duration-300"
-      style={{
-        width: collapsed
-          ? 'var(--sidebar-w-collapsed)'
-          : 'var(--sidebar-w-expanded)',
-      }}
+      className="flex h-full w-[84vw] max-w-[340px] flex-col overflow-hidden bg-surface-1/95 text-text shadow-lg ring-1 ring-black/5 transition-[width] duration-300 md:w-[var(--sidebar-width)]"
     >
       <div className="flex items-center justify-between p-4">
         <div className="flex items-center gap-2">
@@ -263,8 +258,7 @@ export default function Sidebar({ theme, setTheme, brand, setBrand }) {
         onClick={() => setMobileOpen(false)}
       />
       <div
-        className={`fixed inset-y-0 left-0 z-50 transform transition-transform md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ width: collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w-expanded)' }}
+        className={`fixed inset-y-0 left-0 z-50 w-[84vw] max-w-[340px] transform transition-transform md:w-[var(--sidebar-width)] md:translate-x-0 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         {content}
       </div>
