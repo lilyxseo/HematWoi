@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Check,
   Download,
   Loader2,
@@ -99,6 +103,7 @@ export default function Transactions() {
   const [filterBarHeight, setFilterBarHeight] = useState(0);
   const searchInputRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(filter.search);
+  const [filterBarStuck, setFilterBarStuck] = useState(false);
 
   useEffect(() => {
     setSearchTerm(filter.search);
@@ -112,6 +117,26 @@ export default function Transactions() {
     });
     observer.observe(filterBarRef.current);
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const element = filterBarRef.current;
+    if (!element) return;
+
+    const updateStickyState = () => {
+      const style = window.getComputedStyle(element);
+      const topValue = parseFloat(style.top || "0");
+      const { top } = element.getBoundingClientRect();
+      setFilterBarStuck(top <= topValue + 1);
+    };
+
+    updateStickyState();
+    window.addEventListener("scroll", updateStickyState, { passive: true });
+    window.addEventListener("resize", updateStickyState);
+    return () => {
+      window.removeEventListener("scroll", updateStickyState);
+      window.removeEventListener("resize", updateStickyState);
+    };
   }, []);
 
   useEffect(() => {
@@ -159,7 +184,11 @@ export default function Transactions() {
         handleExport();
         return;
       }
-      if (!isTyping && event.key === "/") {
+      if (
+        !isTyping &&
+        event.key === "/" &&
+        (event.ctrlKey || event.metaKey)
+      ) {
         event.preventDefault();
         searchInputRef.current?.focus();
       }
@@ -184,7 +213,7 @@ export default function Transactions() {
     if (trimmedTerm === trimmedFilter) return;
     const timer = setTimeout(() => {
       setFilter({ search: searchTerm });
-    }, 300);
+    }, 250);
     return () => clearTimeout(timer);
   }, [searchTerm, filter.search, setFilter]);
 
@@ -431,7 +460,7 @@ export default function Transactions() {
     setSelectedIds(new Set());
   }, [refresh]);
 
-  const tableStickyTop = `calc(var(--app-topbar-h, 64px) + ${filterBarHeight}px + 16px)`;
+  const tableStickyTop = `calc(var(--app-header-height, var(--app-topbar-h, 64px)) + ${filterBarHeight}px + 16px)`;
 
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
@@ -472,7 +501,15 @@ export default function Transactions() {
 
         <div
           ref={filterBarRef}
-          className="sticky top-[calc(var(--app-topbar-h,64px)+8px)] z-20 rounded-2xl border border-white/10 bg-white/5 backdrop-blur"
+          className={clsx(
+            "sticky z-20 rounded-2xl border border-white/10 bg-slate-900/60 transition-all",
+            filterBarStuck && "border-white/15 shadow-[0_12px_30px_-16px_rgba(15,23,42,0.85)]"
+          )}
+          style={{
+            top: "var(--app-header-height, var(--app-topbar-h, 64px))",
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)"
+          }}
         >
           <TransactionsFilterBar
             filter={filter}
@@ -481,6 +518,7 @@ export default function Transactions() {
             onSearchChange={setSearchTerm}
             onFilterChange={setFilter}
             searchInputRef={searchInputRef}
+            onOpenAdd={() => setAddOpen(true)}
           />
           {activeChips.length > 0 && (
             <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
@@ -566,26 +604,201 @@ export default function Transactions() {
     </main>
   );
 }
-function TransactionsFilterBar({ filter, categories, searchTerm, onSearchChange, onFilterChange, searchInputRef }) {
+
+function TransactionsFilterBar({
+  filter,
+  categories,
+  searchTerm,
+  onSearchChange,
+  onFilterChange,
+  searchInputRef,
+  onOpenAdd = () => {},
+}) {
   const currentMonth = currentMonthValue();
+  const toolbarRef = useRef(null);
+  const customButtonRef = useRef(null);
+  const moreButtonRef = useRef(null);
+  const actualSearchInputRef = useRef(null);
+  const collapseRef = useRef(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [collapseSecondary, setCollapseSecondary] = useState(false);
+  const [viewport, setViewport] = useState(() => {
+    if (typeof window === "undefined") return "desktop";
+    const width = window.innerWidth;
+    if (width < 992) return "mobile";
+    if (width < 1280) return "tablet";
+    return "desktop";
+  });
+  const [scrollHints, setScrollHints] = useState({ left: false, right: false });
+
+  const typeSelectId = useId();
+  const sortSelectId = useId();
+  const searchInputId = useId();
+
+  const isMobile = viewport === "mobile";
+  const isTablet = viewport === "tablet";
+
+  useEffect(() => {
+    collapseRef.current = collapseSecondary;
+  }, [collapseSecondary]);
+
+  useEffect(() => {
+    if (!searchInputRef) return;
+    searchInputRef.current = {
+      focus: () => {
+        if (isMobile) {
+          setMobileSearchOpen(true);
+          requestAnimationFrame(() => {
+            actualSearchInputRef.current?.focus();
+            actualSearchInputRef.current?.select();
+          });
+        } else {
+          actualSearchInputRef.current?.focus();
+          actualSearchInputRef.current?.select();
+        }
+      },
+    };
+  }, [isMobile, searchInputRef]);
+
+  const detectViewport = useCallback(() => {
+    if (typeof window === "undefined") return "desktop";
+    const width = window.innerWidth;
+    if (width < 992) return "mobile";
+    if (width < 1280) return "tablet";
+    return "desktop";
+  }, []);
+
+  useEffect(() => {
+    const handler = () => {
+      setViewport(detectViewport());
+    };
+    handler();
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [detectViewport]);
+
+  const ensureCollapse = useCallback((next) => {
+    if (collapseRef.current !== next) {
+      collapseRef.current = next;
+      setCollapseSecondary(next);
+    }
+  }, []);
+
+  const updateOverflow = useCallback(() => {
+    const element = toolbarRef.current;
+    if (!element) return;
+    if (!isTablet) {
+      ensureCollapse(false);
+      return;
+    }
+    if (!collapseRef.current) {
+      const overflow = element.scrollWidth - element.clientWidth > 4;
+      if (overflow) {
+        ensureCollapse(true);
+      }
+      return;
+    }
+    ensureCollapse(false);
+    requestAnimationFrame(() => {
+      const target = toolbarRef.current;
+      if (!target) return;
+      const overflow = target.scrollWidth - target.clientWidth > 4;
+      if (overflow) {
+        ensureCollapse(true);
+      }
+    });
+  }, [ensureCollapse, isTablet]);
+
+  useEffect(() => {
+    const element = toolbarRef.current;
+    if (!element) return;
+    updateOverflow();
+    const observer = new ResizeObserver(() => updateOverflow());
+    observer.observe(element);
+    window.addEventListener("resize", updateOverflow);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateOverflow);
+    };
+  }, [updateOverflow]);
+
+  useEffect(() => {
+    updateOverflow();
+  }, [updateOverflow, filter.categories.length, filter.period.end, filter.period.preset, filter.period.start, searchTerm, viewport]);
+
+  const updateScrollHints = useCallback(() => {
+    const element = toolbarRef.current;
+    if (!element) return;
+    const maxScroll = element.scrollWidth - element.clientWidth;
+    setScrollHints({
+      left: element.scrollLeft > 8,
+      right: maxScroll - element.scrollLeft > 8,
+    });
+  }, []);
+
+  useEffect(() => {
+    const element = toolbarRef.current;
+    if (!element) return;
+    updateScrollHints();
+    element.addEventListener("scroll", updateScrollHints, { passive: true });
+    const observer = new ResizeObserver(() => updateScrollHints());
+    observer.observe(element);
+    window.addEventListener("resize", updateScrollHints);
+    return () => {
+      element.removeEventListener("scroll", updateScrollHints);
+      observer.disconnect();
+      window.removeEventListener("resize", updateScrollHints);
+    };
+  }, [updateScrollHints, collapseSecondary, viewport]);
+
+  useEffect(() => {
+    updateScrollHints();
+  }, [updateScrollHints, collapseSecondary, viewport]);
+
+  useEffect(() => {
+    if (!isTablet) {
+      setMoreOpen(false);
+    }
+  }, [isTablet]);
+
+  useEffect(() => {
+    if (!collapseSecondary) {
+      setMoreOpen(false);
+    }
+  }, [collapseSecondary]);
+
+  useEffect(() => {
+    if (filter.period.preset !== "custom") {
+      setCustomOpen(false);
+    }
+  }, [filter.period.preset]);
 
   const handlePresetChange = (preset) => {
-    if (preset === filter.period.preset) return;
+    if (preset === "custom" && filter.period.preset === "custom") {
+      setCustomOpen((prev) => !prev);
+      return;
+    }
     if (preset === "all") {
       onFilterChange({ period: { preset: "all", month: "", start: "", end: "" } });
+      setCustomOpen(false);
       return;
     }
     if (preset === "month") {
       onFilterChange({ period: { preset: "month", month: filter.period.month || currentMonth, start: "", end: "" } });
+      setCustomOpen(false);
       return;
     }
     if (preset === "week") {
       onFilterChange({ period: { preset: "week", month: "", start: "", end: "" } });
+      setCustomOpen(false);
       return;
     }
     if (preset === "custom") {
       const today = new Date().toISOString().slice(0, 10);
       onFilterChange({ period: { preset: "custom", month: "", start: filter.period.start || today, end: filter.period.end || today } });
+      setCustomOpen(true);
     }
   };
 
@@ -593,125 +806,292 @@ function TransactionsFilterBar({ filter, categories, searchTerm, onSearchChange,
     onFilterChange({ categories: selected });
   };
 
+  const handleReset = () => {
+    onFilterChange({
+      period: { preset: "all", month: "", start: "", end: "" },
+      categories: [],
+      type: "all",
+      sort: "date-desc",
+      search: "",
+    });
+    onSearchChange("");
+  };
+
+  const handleSearchChange = (value) => {
+    onSearchChange(value);
+  };
+
+  const handleOpenSearch = () => {
+    if (isMobile) {
+      setMobileSearchOpen(true);
+      requestAnimationFrame(() => {
+        actualSearchInputRef.current?.focus();
+        actualSearchInputRef.current?.select();
+      });
+    } else {
+      actualSearchInputRef.current?.focus();
+      actualSearchInputRef.current?.select();
+    }
+  };
+
+  const showSecondaryInline = !isTablet || !collapseSecondary;
+  const showMoreButton = isTablet && collapseSecondary;
+  const toolbarStyle = {
+    overscrollBehaviorInline: "contain",
+    scrollbarGutter: "stable both-edges",
+  };
+
+  const handleTypeChange = (value) => {
+    onFilterChange({ type: value });
+    if (showMoreButton) {
+      setMoreOpen(false);
+    }
+  };
+
+  const handleSortChange = (value) => {
+    onFilterChange({ sort: value });
+    if (showMoreButton) {
+      setMoreOpen(false);
+    }
+  };
+
+  const typeSelect = (
+    <div className="flex min-w-[160px] flex-shrink-0">
+      <label htmlFor={typeSelectId} className="sr-only">
+        Filter jenis transaksi
+      </label>
+      <select
+        id={typeSelectId}
+        value={filter.type}
+        onChange={(event) => handleTypeChange(event.target.value)}
+        aria-label="Filter jenis transaksi"
+        className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+      >
+        <option value="all">Semua</option>
+        <option value="expense">Pengeluaran</option>
+        <option value="income">Pemasukan</option>
+        <option value="transfer">Transfer</option>
+      </select>
+    </div>
+  );
+
+  const sortSelect = (
+    <div className="flex min-w-[160px] flex-shrink-0">
+      <label htmlFor={sortSelectId} className="sr-only">
+        Urutkan transaksi
+      </label>
+      <select
+        id={sortSelectId}
+        value={filter.sort}
+        onChange={(event) => handleSortChange(event.target.value)}
+        aria-label="Urutkan transaksi"
+        className="h-11 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+      >
+        <option value="date-desc">Terbaru</option>
+        <option value="date-asc">Terlama</option>
+        <option value="amount-desc">Terbesar</option>
+        <option value="amount-asc">Terkecil</option>
+      </select>
+    </div>
+  );
+
   return (
-    <div className="flex flex-col gap-4 p-4 sm:p-5 lg:p-6">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
-        <div className="space-y-2 md:col-span-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-white/60">Rentang Waktu</label>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(PERIOD_LABELS).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => handlePresetChange(value)}
-                className={clsx(
-                  "rounded-full px-3 py-1 text-sm font-medium focus-visible:outline-none focus-visible:ring",
-                  filter.period.preset === value
-                    ? "bg-brand text-white shadow"
-                    : "border border-white/20 bg-white/5 text-white/70 hover:bg-white/10",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {filter.period.preset === "custom" && (
-            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-xs text-white/70">
-                <span>Mulai</span>
-                <input
-                  type="date"
-                  value={filter.period.start || ""}
-                  onChange={(event) =>
-                    onFilterChange({ period: { ...filter.period, start: event.target.value } })
-                  }
-                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/70">
-                <span>Selesai</span>
-                <input
-                  type="date"
-                  value={filter.period.end || ""}
-                  min={filter.period.start || undefined}
-                  onChange={(event) =>
-                    onFilterChange({ period: { ...filter.period, end: event.target.value } })
-                  }
-                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                />
-              </label>
-            </div>
-          )}
+    <div className="relative">
+      <div
+        ref={toolbarRef}
+        role="toolbar"
+        aria-label="Filter transaksi"
+        className="flex items-center gap-3 overflow-x-auto whitespace-nowrap px-4 py-3"
+        style={toolbarStyle}
+      >
+        <div
+          className="flex h-11 flex-shrink-0 items-center gap-1 rounded-full border border-white/15 bg-white/10 px-1.5"
+          role="group"
+          aria-label="Rentang waktu"
+        >
+          {Object.entries(PERIOD_LABELS).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => handlePresetChange(value)}
+              ref={value === "custom" ? customButtonRef : undefined}
+              className={clsx(
+                "inline-flex h-9 items-center rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
+                filter.period.preset === value
+                  ? "bg-brand text-white shadow"
+                  : "text-white/70 hover:bg-white/10",
+              )}
+              aria-pressed={filter.period.preset === value}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <div className="md:col-span-2">
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-white/60">
-            Kategori
-          </label>
-          <CategoryMultiSelect
-            categories={categories}
-            selected={filter.categories}
-            onChange={handleCategoryChange}
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-white/60">Jenis</label>
-          <select
-            value={filter.type}
-            onChange={(event) => onFilterChange({ type: event.target.value })}
-            className="w-full rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          >
-            <option value="all">Semua</option>
-            <option value="expense">Pengeluaran</option>
-            <option value="income">Pemasukan</option>
-          </select>
-        </div>
-        <div className="space-y-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-white/60">Urutkan</label>
-          <select
-            value={filter.sort}
-            onChange={(event) => onFilterChange({ sort: event.target.value })}
-            className="w-full rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          >
-            {Object.entries(SORT_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-white/60">Cari</label>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+        <CategoryMultiSelect
+          categories={categories}
+          selected={filter.categories}
+          onChange={handleCategoryChange}
+          ariaLabel="Filter kategori transaksi"
+        />
+        {showSecondaryInline && typeSelect}
+        {showSecondaryInline && sortSelect}
+        {!isMobile && (
+          <div className="relative flex min-w-[280px] flex-1 items-center">
+            <Search className="pointer-events-none absolute left-3 h-4 w-4 text-white/40" aria-hidden="true" />
             <input
-              ref={searchInputRef}
+              id={searchInputId}
+              ref={actualSearchInputRef}
               type="search"
               value={searchTerm}
-              onChange={(event) => onSearchChange(event.target.value)}
+              onChange={(event) => handleSearchChange(event.target.value)}
               placeholder="Cari judul, catatan, nominal"
-              className="w-full rounded-xl border border-white/10 bg-white/10 pl-9 pr-3 py-2 text-sm text-white placeholder:text-white/40 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+              aria-label="Cari transaksi"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
             />
           </div>
-          <p className="text-xs text-white/40">Gunakan Ctrl/Cmd + / untuk fokus cepat.</p>
-        </div>
+        )}
+        {isMobile && (
+          <button
+            type="button"
+            onClick={handleOpenSearch}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            aria-label="Buka pencarian transaksi"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={handleReset}
+          className="flex h-11 flex-shrink-0 items-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          aria-label="Reset semua filter"
+        >
+          Reset
+        </button>
+        {showMoreButton && (
+          <button
+            type="button"
+            ref={moreButtonRef}
+            onClick={() => setMoreOpen((prev) => !prev)}
+            className="flex h-11 flex-shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            aria-haspopup="menu"
+            aria-expanded={moreOpen}
+            aria-label="Tampilkan filter lainnya"
+          >
+            More ▾
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onOpenAdd}
+          className="inline-flex h-11 flex-shrink-0 items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          aria-label="Tambah transaksi"
+        >
+          <Plus className="h-4 w-4" /> Tambah Transaksi
+        </button>
       </div>
+      {isMobile && scrollHints.left && (
+        <div className="pointer-events-none absolute left-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center bg-gradient-to-r from-slate-900/80 to-transparent text-white/60">
+          <ChevronLeft className="h-4 w-4" />
+        </div>
+      )}
+      {isMobile && scrollHints.right && (
+        <div className="pointer-events-none absolute right-0 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center bg-gradient-to-l from-slate-900/80 to-transparent text-white/60">
+          <ChevronRight className="h-4 w-4" />
+        </div>
+      )}
+      {customOpen && filter.period.preset === "custom" && (
+        <CustomRangePopover
+          anchorRef={customButtonRef}
+          period={filter.period}
+          onChange={(next) => onFilterChange({ period: next })}
+          onClose={() => setCustomOpen(false)}
+        />
+      )}
+      {showMoreButton && moreOpen && (
+        <MoreMenu anchorRef={moreButtonRef} onClose={() => setMoreOpen(false)}>
+          <div className="space-y-3" role="none">
+            <div className="w-full" role="menuitem">
+              {typeSelect}
+            </div>
+            <div className="w-full" role="menuitem">
+              {sortSelect}
+            </div>
+          </div>
+        </MoreMenu>
+      )}
+      {isMobile && (
+        <MobileSearchSheet
+          open={mobileSearchOpen}
+          onClose={() => setMobileSearchOpen(false)}
+          searchTerm={searchTerm}
+          onSearchChange={handleSearchChange}
+          inputRef={actualSearchInputRef}
+        />
+      )}
     </div>
   );
 }
 
-function CategoryMultiSelect({ categories = [], selected = [], onChange }) {
+
+function CategoryMultiSelect({ categories = [], selected = [], onChange, ariaLabel }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef(null);
+  const [query, setQuery] = useState("");
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      const anchor = triggerRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const preferredWidth = Math.min(320, Math.max(260, rect.width || 260));
+      const left = Math.min(
+        Math.max(16, rect.left),
+        window.innerWidth - preferredWidth - 16,
+      );
+      setPosition({
+        top: rect.bottom + 8,
+        left,
+        width: preferredWidth,
+      });
+    };
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const handleClick = (event) => {
-      if (!open) return;
-      if (!containerRef.current) return;
-      if (containerRef.current.contains(event.target)) return;
+      if (triggerRef.current?.contains(event.target)) return;
+      if (panelRef.current?.contains(event.target)) return;
       setOpen(false);
     };
+    const handleKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+      }
+    };
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+    }
   }, [open]);
 
   const toggle = (id) => {
@@ -721,62 +1101,356 @@ function CategoryMultiSelect({ categories = [], selected = [], onChange }) {
     onChange(Array.from(set));
   };
 
+  const clearAll = () => {
+    onChange([]);
+  };
+
+  const filteredCategories = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return categories;
+    return categories.filter((cat) => {
+      return (
+        cat.name?.toLowerCase().includes(term) ||
+        (TYPE_LABELS[cat.type] || "").toLowerCase().includes(term)
+      );
+    });
+  }, [categories, query]);
+
+  const summaryLabel = useMemo(() => {
+    if (!selected.length) return "Semua kategori";
+    if (selected.length === 1) {
+      const match = categories.find((cat) => cat.id === selected[0]);
+      return match?.name || "1 dipilih";
+    }
+    return `${selected.length} dipilih`;
+  }, [categories, selected]);
+
+  const label = ariaLabel || "Pilih kategori transaksi";
+
   return (
-    <div ref={containerRef} className="relative">
+    <>
       <button
         type="button"
+        ref={triggerRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+        className="inline-flex h-11 min-w-[260px] max-w-[320px] flex-shrink-0 items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={label}
       >
-        <span>{selected.length ? `${selected.length} dipilih` : "Semua kategori"}</span>
-        <span className="text-xs text-white/50">Pilih</span>
+        <span className="truncate">{summaryLabel}</span>
+        <ChevronDown className="h-4 w-4 text-white/60" aria-hidden="true" />
       </button>
-      {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Semua Kategori</span>
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className="rounded-full px-2 py-1 text-xs text-white/60 hover:bg-white/10"
+      {open &&
+        createPortal(
+          <div className="fixed inset-0 z-40" role="presentation">
+            <div
+              ref={panelRef}
+              role="listbox"
+              aria-multiselectable="true"
+              className="absolute max-h-[320px] w-[min(320px,calc(100%-32px))] overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur"
+              style={{ top: position.top, left: position.left, width: position.width || undefined }}
+              data-role="category-panel"
             >
-              Reset
-            </button>
-          </div>
-          <div className="space-y-1">
-            {categories.map((cat) => (
-              <label key={cat.id} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-2 text-sm text-white/80 hover:bg-white/10">
-                <div className="flex flex-col">
-                  <span className="font-medium text-white">{cat.name}</span>
-                  <span className="text-xs text-white/40">{TYPE_LABELS[cat.type] || ""}</span>
+              <div className="flex items-center justify-between px-3 pt-3">
+                <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
+                <button
+                  type="button"
+                  onClick={clearAll}
+                  className="rounded-full px-2 py-1 text-xs text-white/60 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+                >
+                  Reset
+                </button>
+              </div>
+              <div className="px-3 pb-2">
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3">
+                  <Search className="h-4 w-4 text-white/40" aria-hidden="true" />
+                  <input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Cari kategori"
+                    className="h-9 w-full bg-transparent text-sm text-white placeholder:text-white/40 focus-visible:outline-none"
+                    aria-label="Cari kategori"
+                  />
                 </div>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(cat.id)}
-                  onChange={() => toggle(cat.id)}
-                  className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                />
-              </label>
-            ))}
-          </div>
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-full bg-brand px-4 py-1.5 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            >
-              Selesai
-            </button>
-          </div>
+              </div>
+              <div className="max-h-[220px] overflow-y-auto px-1 pb-3">
+                {filteredCategories.length ? (
+                  filteredCategories.map((cat) => {
+                    const checked = selected.includes(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => toggle(cat.id)}
+                        className={clsx(
+                          "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
+                          checked ? "bg-white/10 text-white" : "text-white/80 hover:bg-white/5",
+                        )}
+                        role="option"
+                        aria-selected={checked}
+                      >
+                        <div className="flex flex-col text-left">
+                          <span className="font-medium text-white">{cat.name}</span>
+                          <span className="text-xs text-white/40">{TYPE_LABELS[cat.type] || ""}</span>
+                        </div>
+                        {checked ? (
+                          <Check className="h-4 w-4 text-brand" aria-hidden="true" />
+                        ) : (
+                          <span className="h-4 w-4 rounded-full border border-white/30" aria-hidden="true" />
+                        )}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="px-3 py-6 text-center text-sm text-white/50">Tidak ada kategori ditemukan.</p>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}
+
+function CustomRangePopover({ anchorRef, period, onChange, onClose }) {
+  const popoverRef = useRef(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef?.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = Math.min(360, Math.max(280, rect.width + 120));
+    const left = Math.min(
+      Math.max(16, rect.left - (width - rect.width) / 2),
+      window.innerWidth - width - 16,
+    );
+    setPosition({
+      top: rect.bottom + 8,
+      left,
+      width,
+    });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [updatePosition]);
+
+  useEffect(() => {
+    const handleClick = (event) => {
+      if (anchorRef?.current?.contains(event.target)) return;
+      if (popoverRef.current?.contains(event.target)) return;
+      onClose();
+    };
+    const handleKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [anchorRef, onClose]);
+
+  const content = (
+    <div className="fixed inset-0 z-40" role="presentation">
+      <div
+        ref={popoverRef}
+        className="absolute w-[min(360px,calc(100%-32px))] rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur"
+        style={{ top: position.top, left: position.left, width: position.width || undefined }}
+        data-role="custom-range"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Rentang custom</p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-2 text-xs text-white/60">
+            <span className="font-medium text-white/70">Mulai</span>
+            <input
+              type="date"
+              value={period.start || ""}
+              onChange={(event) => onChange({ ...period, start: event.target.value })}
+              className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            />
+          </label>
+          <label className="flex flex-col gap-2 text-xs text-white/60">
+            <span className="font-medium text-white/70">Selesai</span>
+            <input
+              type="date"
+              value={period.end || ""}
+              min={period.start || undefined}
+              onChange={(event) => onChange({ ...period, end: event.target.value })}
+              className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            />
+          </label>
         </div>
-      )}
+        <div className="mt-3 flex items-center justify-between text-xs text-white/50">
+          <span>Pilih rentang tanggal sesuai kebutuhan.</span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full px-3 py-1 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          >
+            Selesai
+          </button>
+        </div>
+      </div>
     </div>
   );
+
+  return createPortal(content, document.body);
+}
+
+function MoreMenu({ anchorRef, onClose, children }) {
+  const menuRef = useRef(null);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    const anchor = anchorRef?.current;
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = 280;
+    const left = Math.min(
+      Math.max(16, rect.right - width),
+      window.innerWidth - width - 16,
+    );
+    setPosition({ top: rect.bottom + 8, left, width });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [updatePosition]);
+
+  useEffect(() => {
+    const handleClick = (event) => {
+      if (anchorRef?.current?.contains(event.target)) return;
+      if (menuRef.current?.contains(event.target)) return;
+      onClose();
+    };
+    const handleKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [anchorRef, onClose]);
+
+  const content = (
+    <div className="fixed inset-0 z-40" role="presentation">
+      <div
+        ref={menuRef}
+        role="menu"
+        className="absolute w-[min(280px,calc(100%-32px))] rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur"
+        style={{ top: position.top, left: position.left, width: position.width || undefined }}
+      >
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/60">Filter lainnya</p>
+        {children}
+      </div>
+    </div>
+  );
+
+  return createPortal(content, document.body);
+}
+
+function MobileSearchSheet({ open, onClose, searchTerm, onSearchChange, inputRef }) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => {
+      inputRef?.current?.focus();
+      inputRef?.current?.select();
+    });
+  }, [open, inputRef]);
+
+  if (!open) return null;
+
+  const content = (
+    <div className="fixed inset-0 z-40 flex flex-col bg-slate-950/80 backdrop-blur-sm">
+      <button
+        type="button"
+        className="flex-1"
+        onClick={onClose}
+        aria-label="Tutup pencarian"
+      />
+      <div
+        className="rounded-t-3xl border border-white/10 bg-slate-900/95 p-5 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Cari transaksi"
+      >
+        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-3 py-3">
+          <Search className="h-5 w-5 text-white/50" aria-hidden="true" />
+          <input
+            ref={inputRef}
+            type="search"
+            value={searchTerm}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Cari judul, catatan, nominal"
+            className="flex-1 bg-transparent text-base text-white placeholder:text-white/40 focus-visible:outline-none"
+            aria-label="Cari transaksi"
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full px-3 py-1 text-sm font-medium text-white/70 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+          >
+            Batal
+          </button>
+        </div>
+        <p className="mt-3 text-xs text-white/50">Gunakan Ctrl/Cmd + / untuk membuka lebih cepat.</p>
+      </div>
+    </div>
+  );
+
+  return createPortal(content, document.body);
 }
 
 function ActiveFilterChips({ chips, onRemove }) {
   return (
-    <div className="flex flex-wrap gap-2 border-t border-white/10 bg-white/5 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-slate-900/40 px-4 py-3">
       {chips.map((chip) => (
         <button
           key={chip.key}
