@@ -1,8 +1,5 @@
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { autoUpdate, flip, offset, shift, useFloating } from "@floating-ui/react";
 import {
   AlertTriangle,
   Check,
@@ -19,7 +16,6 @@ import {
 import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
-import { CategoryContext } from "../context/CategoryContext";
 import {
   addTransaction,
   deleteTransaction,
@@ -32,7 +28,6 @@ import {
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
-import CategoryFilterDropdown from "../components/CategoryFilterDropdown";
 
 const TYPE_LABELS = {
   income: "Pemasukan",
@@ -54,23 +49,6 @@ const PERIOD_LABELS = {
 };
 
 const PAGE_DESCRIPTION = "Kelola catatan keuangan";
-
-const ROW_HEIGHT = 56;
-
-const COLUMN_DEFS = [
-  { key: "select", header: "", template: "48px", align: "center" },
-  { key: "category", header: "Kategori", template: "minmax(160px, 1.3fr)" },
-  { key: "date", header: "Tanggal", template: "minmax(140px, 0.9fr)" },
-  { key: "notes", header: "Catatan", template: "minmax(280px, 1.8fr)" },
-  { key: "account", header: "Akun", template: "minmax(140px, 0.9fr)", hideOn: "tablet" },
-  { key: "tags", header: "Tags", template: "minmax(160px, 0.9fr)", hideOn: "tablet" },
-  { key: "amount", header: "Jumlah", template: "minmax(140px, 0.8fr)", align: "end" },
-  { key: "actions", header: "Aksi", template: "80px", align: "end" },
-];
-
-function buildColumnTemplate(columns) {
-  return columns.map((column) => column.template).join(" ");
-}
 
 function toDateInput(value) {
   if (!value) return "";
@@ -111,7 +89,6 @@ export default function Transactions() {
   } = useTransactionsQuery();
   const { addToast } = useToast();
   const online = useNetworkStatus();
-  const { getColor } = useContext(CategoryContext);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -122,7 +99,6 @@ export default function Transactions() {
   const [filterBarHeight, setFilterBarHeight] = useState(0);
   const searchInputRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(filter.search);
-  const categoryDropdownRef = useRef(null);
 
   useEffect(() => {
     setSearchTerm(filter.search);
@@ -244,53 +220,29 @@ export default function Transactions() {
   const activeChips = useMemo(() => {
     const chips = [];
     if (filter.period.preset === "month") {
-      chips.push({ key: "period", label: PERIOD_LABELS.month, removable: true });
+      chips.push({ key: "period", label: PERIOD_LABELS.month });
     } else if (filter.period.preset === "week") {
-      chips.push({ key: "period", label: PERIOD_LABELS.week, removable: true });
+      chips.push({ key: "period", label: PERIOD_LABELS.week });
     } else if (filter.period.preset === "custom") {
       const start = filter.period.start ? filter.period.start : "?";
       const end = filter.period.end ? filter.period.end : "?";
-      chips.push({ key: "period", label: `Rentang: ${start} - ${end}`, removable: true });
+      chips.push({ key: "period", label: `Rentang: ${start} - ${end}` });
     }
-
-    const categoryChips = filter.categories
-      .map((id) => {
-        const cat = categoriesById.get(id) || categoriesById.get(id?.toLowerCase?.());
-        const label = cat?.name || "Kategori";
-        return {
-          key: `category:${id}`,
-          label,
-          removable: true,
-          color: getColor(label),
-        };
-      })
-      .filter(Boolean);
-
-    const MAX_VISIBLE_CATEGORY_CHIPS = 2;
-    if (categoryChips.length > MAX_VISIBLE_CATEGORY_CHIPS) {
-      const visible = categoryChips.slice(0, MAX_VISIBLE_CATEGORY_CHIPS);
-      chips.push(...visible);
-      chips.push({
-        key: "category-overflow",
-        label: `+${categoryChips.length - MAX_VISIBLE_CATEGORY_CHIPS}`,
-        removable: false,
-        action: "open-category",
-      });
-    } else {
-      chips.push(...categoryChips);
-    }
-
+    filter.categories.forEach((id) => {
+      const cat = categoriesById.get(id) || categoriesById.get(id?.toLowerCase?.());
+      chips.push({ key: `category:${id}`, label: cat?.name || "Kategori" });
+    });
     if (filter.type !== "all") {
-      chips.push({ key: "type", label: TYPE_LABELS[filter.type] || filter.type, removable: true });
+      chips.push({ key: "type", label: TYPE_LABELS[filter.type] || filter.type });
     }
     if (filter.sort !== "date-desc") {
-      chips.push({ key: "sort", label: SORT_LABELS[filter.sort] || "Sort", removable: true });
+      chips.push({ key: "sort", label: SORT_LABELS[filter.sort] || "Sort" });
     }
     if (filter.search.trim()) {
-      chips.push({ key: "search", label: `Cari: ${filter.search}`, removable: true });
+      chips.push({ key: "search", label: `Cari: ${filter.search}` });
     }
     return chips;
-  }, [filter, categoriesById, getColor]);
+  }, [filter, categoriesById]);
 
   const toggleSelect = useCallback((id) => {
     setSelectedIds((prev) => {
@@ -529,14 +481,9 @@ export default function Transactions() {
             onSearchChange={setSearchTerm}
             onFilterChange={setFilter}
             searchInputRef={searchInputRef}
-            categoryDropdownRef={categoryDropdownRef}
           />
           {activeChips.length > 0 && (
-            <ActiveFilterChips
-              chips={activeChips}
-              onRemove={handleRemoveChip}
-              onOpenCategory={() => categoryDropdownRef.current?.open?.()}
-            />
+            <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
           )}
         </div>
 
@@ -590,7 +537,6 @@ export default function Transactions() {
           categoriesByType={categoriesByType}
           tableStickyTop={tableStickyTop}
           total={total}
-          sort={filter.sort}
         />
       </div>
 
@@ -620,15 +566,7 @@ export default function Transactions() {
     </main>
   );
 }
-function TransactionsFilterBar({
-  filter,
-  categories,
-  searchTerm,
-  onSearchChange,
-  onFilterChange,
-  searchInputRef,
-  categoryDropdownRef,
-}) {
+function TransactionsFilterBar({ filter, categories, searchTerm, onSearchChange, onFilterChange, searchInputRef }) {
   const currentMonth = currentMonthValue();
 
   const handlePresetChange = (preset) => {
@@ -709,8 +647,7 @@ function TransactionsFilterBar({
           <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-white/60">
             Kategori
           </label>
-          <CategoryFilterDropdown
-            ref={categoryDropdownRef}
+          <CategoryMultiSelect
             categories={categories}
             selected={filter.categories}
             onChange={handleCategoryChange}
@@ -762,59 +699,95 @@ function TransactionsFilterBar({
   );
 }
 
-function ActiveFilterChips({ chips, onRemove, onOpenCategory }) {
-  if (!chips.length) return null;
+function CategoryMultiSelect({ categories = [], selected = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (event) => {
+      if (!open) return;
+      if (!containerRef.current) return;
+      if (containerRef.current.contains(event.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const toggle = (id) => {
+    const set = new Set(selected);
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
+    onChange(Array.from(set));
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+      >
+        <span>{selected.length ? `${selected.length} dipilih` : "Semua kategori"}</span>
+        <span className="text-xs text-white/50">Pilih</span>
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur">
+          <div className="flex items-center justify-between pb-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Semua Kategori</span>
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              className="rounded-full px-2 py-1 text-xs text-white/60 hover:bg-white/10"
+            >
+              Reset
+            </button>
+          </div>
+          <div className="space-y-1">
+            {categories.map((cat) => (
+              <label key={cat.id} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-2 text-sm text-white/80 hover:bg-white/10">
+                <div className="flex flex-col">
+                  <span className="font-medium text-white">{cat.name}</span>
+                  <span className="text-xs text-white/40">{TYPE_LABELS[cat.type] || ""}</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(cat.id)}
+                  onChange={() => toggle(cat.id)}
+                  className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                />
+              </label>
+            ))}
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-full bg-brand px-4 py-1.5 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            >
+              Selesai
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActiveFilterChips({ chips, onRemove }) {
   return (
     <div className="flex flex-wrap gap-2 border-t border-white/10 bg-white/5 px-4 py-3">
-      {chips.map((chip) => {
-        if (chip.action === "open-category") {
-          return (
-            <button
-              key={chip.key}
-              type="button"
-              onClick={onOpenCategory}
-              className="inline-flex items-center gap-2 rounded-full border border-dashed border-white/20 bg-transparent px-3 py-1 text-xs font-medium text-white/80 transition hover:border-white/40 hover:text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            >
-              <span>{chip.label} lagi</span>
-            </button>
-          );
-        }
-        if (chip.removable === false) {
-          return (
-            <span
-              key={chip.key}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-medium text-white/80"
-            >
-              {chip.color && (
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: chip.color }}
-                  aria-hidden
-                />
-              )}
-              <span>{chip.label}</span>
-            </span>
-          );
-        }
-        return (
-          <button
-            key={chip.key}
-            type="button"
-            onClick={() => onRemove(chip)}
-            className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          >
-            {chip.color && (
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ backgroundColor: chip.color }}
-                aria-hidden
-              />
-            )}
-            <span>{chip.label}</span>
-            <X className="h-3.5 w-3.5" />
-          </button>
-        );
-      })}
+      {chips.map((chip) => (
+        <button
+          key={chip.key}
+          type="button"
+          onClick={() => onRemove(chip)}
+          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+        >
+          <span>{chip.label}</span>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ))}
     </div>
   );
 }
@@ -912,57 +885,10 @@ function TransactionsTable({
   categoriesByType,
   tableStickyTop,
   total,
-  sort,
 }) {
-  const initialWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
-  const [isMobile, setIsMobile] = useState(initialWidth < 640);
-  const [hiddenColumns, setHiddenColumns] = useState(initialWidth < 1024 ? ["account", "tags"] : []);
-  const [scrolled, setScrolled] = useState(false);
-  const containerRef = useRef(null);
-  const bodyRef = useRef(null);
-
-  useEffect(() => {
-    if (!containerRef.current || typeof ResizeObserver === "undefined") return undefined;
-    const applyWidth = (width) => {
-      setIsMobile(width < 640);
-      const nextHidden = width < 1024 ? ["account", "tags"] : [];
-      setHiddenColumns((prev) => {
-        if (prev.length === nextHidden.length && prev.every((value, index) => value === nextHidden[index])) {
-          return prev;
-        }
-        return nextHidden;
-      });
-    };
-    const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      const width = entry.contentRect?.width;
-      if (typeof width === "number") {
-        applyWidth(width);
-      }
-    });
-    const rect = containerRef.current.getBoundingClientRect();
-    if (rect?.width) {
-      applyWidth(rect.width);
-    }
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const visibleColumns = useMemo(
-    () => COLUMN_DEFS.filter((column) => !hiddenColumns.includes(column.key)),
-    [hiddenColumns],
-  );
-  const columnTemplate = useMemo(() => buildColumnTemplate(visibleColumns), [visibleColumns]);
   const isFetchingMore = loading && items.length > 0;
   const start = items.length > 0 ? 1 : 0;
   const end = items.length;
-
-  const rowVirtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => bodyRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 8,
-  });
 
   if (error && items.length === 0) {
     return (
@@ -993,82 +919,35 @@ function TransactionsTable({
     );
   }
 
-  const tableStyle = { "--transactions-columns": columnTemplate };
-
-  const renderHeaderCell = (column) => {
-    if (column.key === "select") {
-      return (
-        <div
-          key={column.key}
-          className="transactions-header-cell"
-          role="columnheader"
-          data-column={column.key}
-          data-align={column.align || "start"}
-        >
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={onToggleSelectAll}
-            className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            aria-label="Pilih semua"
-          />
-        </div>
-      );
-    }
-    const ariaSort = (() => {
-      if (column.key === "date" && sort?.startsWith("date-")) {
-        return sort.endsWith("asc") ? "ascending" : "descending";
-      }
-      if (column.key === "amount" && sort?.startsWith("amount-")) {
-        return sort.endsWith("asc") ? "ascending" : "descending";
-      }
-      return undefined;
-    })();
-    return (
-      <div
-        key={column.key}
-        className="transactions-header-cell"
-        role="columnheader"
-        data-column={column.key}
-        data-align={column.align || "start"}
-        aria-sort={ariaSort}
-      >
-        {column.header}
-      </div>
-    );
-  };
-
-  const tableContent = (
-    <div
-      ref={containerRef}
-      className="transactions-table"
-      role="table"
-      aria-label="Daftar transaksi"
-      data-scrolled={scrolled}
-      style={tableStyle}
-    >
-      <div
-        className="transactions-table__header"
-        role="rowgroup"
-        style={{ top: tableStickyTop }}
-      >
-        <div className="transactions-header-row" role="row">
-          {visibleColumns.map((column) => renderHeaderCell(column))}
-        </div>
-      </div>
-      <div
-        ref={bodyRef}
-        className="transactions-table__body"
-        role="rowgroup"
-        onScroll={(event) => {
-          setScrolled(event.currentTarget.scrollTop > 0);
-        }}
-      >
-        <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: "relative" }}>
-          {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-            const item = items[virtualRow.index];
-            if (!item) return null;
-            return (
+  return (
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
+        <table className="min-w-full text-sm text-white/80">
+          <thead
+            className="bg-white/5 text-left text-xs uppercase tracking-wide text-white/60"
+            style={{ position: "sticky", top: tableStickyTop, zIndex: 10 }}
+          >
+            <tr>
+              <th className="w-12 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={onToggleSelectAll}
+                  className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  aria-label="Pilih semua"
+                />
+              </th>
+              <th className="px-4 py-3">Kategori</th>
+              <th className="px-4 py-3">Tanggal</th>
+              <th className="px-4 py-3">Catatan</th>
+              <th className="px-4 py-3">Akun</th>
+              <th className="px-4 py-3">Tags</th>
+              <th className="px-4 py-3 text-right">Jumlah</th>
+              <th className="px-4 py-3 text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
               <TransactionRow
                 key={item.id}
                 item={item}
@@ -1077,73 +956,22 @@ function TransactionsTable({
                 onUpdate={onUpdate}
                 onDelete={() => onDelete(item.id)}
                 categoriesByType={categoriesByType}
-                visibleColumns={visibleColumns}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  transform: `translateY(${virtualRow.start}px)`,
-                  height: `${virtualRow.size}px`,
-                }}
-                index={virtualRow.index}
-                isMobile={false}
               />
-            );
-          })}
-        </div>
-        {loading && items.length === 0 && (
-          <div className="px-4 py-6 text-center text-white/60">Memuat transaksi...</div>
-        )}
-        {loading && items.length > 0 && (
-          <div className="px-4 py-4 text-center text-xs text-white/50">
-            <Loader2 className="mr-2 inline h-4 w-4 animate-spin" /> Memuat data terbaru
-          </div>
-        )}
+            ))}
+            {loading && items.length === 0 && (
+              <tr className="border-t border-white/10">
+                <td colSpan={8} className="px-4 py-6">
+                  <div className="space-y-3">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <div key={index} className="h-10 animate-pulse rounded bg-white/10" />
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
-    </div>
-  );
-
-  const mobileContent = (
-    <div ref={containerRef} className="transactions-mobile" role="group" aria-label="Daftar transaksi">
-      <div className="transactions-mobile__select-all">
-        <label className="flex items-center gap-2 text-xs text-white/70">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={onToggleSelectAll}
-            className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          />
-          Pilih semua
-        </label>
-      </div>
-      <div className="transactions-mobile__list">
-        {items.map((item, index) => (
-          <TransactionRow
-            key={item.id}
-            item={item}
-            isSelected={selectedIds.has(item.id)}
-            onToggleSelect={() => onToggleSelect(item.id)}
-            onUpdate={onUpdate}
-            onDelete={() => onDelete(item.id)}
-            categoriesByType={categoriesByType}
-            visibleColumns={COLUMN_DEFS}
-            index={index}
-            isMobile
-          />
-        ))}
-        {loading && (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-center text-sm text-white/60">
-            <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin" /> Memuat transaksi...
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="space-y-4">
-      {isMobile ? mobileContent : tableContent}
       <div className="flex flex-col gap-3 text-sm text-white/60 sm:flex-row sm:items-center sm:justify-between">
         <span>
           Menampilkan {start}-{end} dari {total}
@@ -1165,24 +993,9 @@ function TransactionsTable({
   );
 }
 
-function TransactionRow({
-  item,
-  isSelected,
-  onToggleSelect,
-  onUpdate,
-  onDelete,
-  categoriesByType,
-  visibleColumns,
-  style,
-  index = 0,
-  isMobile = false,
-}) {
+function TransactionRow({ item, isSelected, onToggleSelect, onUpdate, onDelete, categoriesByType }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [inlineError, setInlineError] = useState("");
-  const noteRef = useRef(null);
-  const amountRef = useRef(null);
   const [draft, setDraft] = useState(() => ({
     date: toDateInput(item.date),
     category_id: item.category_id || "",
@@ -1197,54 +1010,28 @@ function TransactionRow({
       notes: item.notes ?? item.note ?? "",
       amount: String(item.amount ?? 0),
     });
-    setInlineError("");
   }, [item]);
-
-  useEffect(() => {
-    if (editing && noteRef.current) {
-      noteRef.current.focus();
-    }
-  }, [editing]);
 
   const categoryOptions = useMemo(() => {
     const list = categoriesByType[item.type] || [];
     return list.length ? list : categoriesByType.expense || [];
   }, [categoriesByType, item.type]);
 
-  const amountNumber = Number(
-    draft.amount
-      .toString()
-      .replace(/[^0-9.,-]/g, "")
-      .replace(/,/g, "."),
-  );
-
-  const hasAttachments =
-    Boolean(item.receipt_url) || (Array.isArray(item.receipts) && item.receipts.length > 0);
-
-  const resetDraft = () => {
-    setDraft({
-      date: toDateInput(item.date),
-      category_id: item.category_id || "",
-      notes: item.notes ?? item.note ?? "",
-      amount: String(item.amount ?? 0),
-    });
-    setInlineError("");
-  };
+  const amountNumber = Number(draft.amount.replace(/[^0-9.,-]/g, "").replace(/,/g, "."));
 
   const handleSave = async () => {
     if (!draft.category_id) {
-      setInlineError("Kategori wajib dipilih");
+      alert("Kategori wajib dipilih");
       return;
     }
     if (!draft.date) {
-      setInlineError("Tanggal tidak valid");
+      alert("Tanggal tidak valid");
       return;
     }
     if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      setInlineError("Nominal harus lebih besar dari 0");
+      alert("Nominal harus lebih besar dari 0");
       return;
     }
-    setInlineError("");
     setSaving(true);
     try {
       await onUpdate(item.id, {
@@ -1256,7 +1043,6 @@ function TransactionRow({
       setEditing(false);
     } catch (err) {
       console.error(err);
-      setInlineError(err?.message || "Gagal menyimpan perubahan");
     } finally {
       setSaving(false);
     }
@@ -1264,7 +1050,12 @@ function TransactionRow({
 
   const handleCancel = () => {
     setEditing(false);
-    resetDraft();
+    setDraft({
+      date: toDateInput(item.date),
+      category_id: item.category_id || "",
+      notes: item.notes ?? item.note ?? "",
+      amount: String(item.amount ?? 0),
+    });
   };
 
   const handleKeyDown = (event) => {
@@ -1276,466 +1067,152 @@ function TransactionRow({
       event.preventDefault();
       handleCancel();
     }
-    if (event.key.toLowerCase() === "s" && !event.ctrlKey && !event.metaKey) {
-      event.preventDefault();
-      handleSave();
-    }
   };
 
-  const handleAmountChange = (event) => {
-    const value = event.target.value.replace(/[^0-9.,-]/g, "");
-    setDraft((prev) => ({ ...prev, amount: value }));
-  };
-
-  const handleConfirmDelete = async () => {
-    try {
-      await onDelete();
-    } catch (err) {
-      console.error(err);
-      setInlineError(err?.message || "Gagal menghapus transaksi");
-    } finally {
-      setConfirmOpen(false);
-    }
-  };
-
-  const categoryDisplay = (
-    <div className="flex flex-col gap-0.5">
-      <span className="font-medium text-white">
-        {item.category || categoryOptions.find((option) => option.id === draft.category_id)?.name ||
-          "(Tanpa kategori)"}
-      </span>
-      <span className="text-xs text-white/45">{TYPE_LABELS[item.type] || ""}</span>
-    </div>
-  );
-  const categoryEditor = (
-    <InlineCategoryPicker
-      options={categoryOptions}
-      value={draft.category_id}
-      onChange={(next) => setDraft((prev) => ({ ...prev, category_id: next }))}
-    />
-  );
-  const categoryContent = editing ? categoryEditor : categoryDisplay;
-
-  const dateDisplay = <span className="whitespace-nowrap">{toDateInput(item.date)}</span>;
-  const dateEditor = (
-    <input
-      type="date"
-      value={draft.date}
-      onChange={(event) => setDraft((prev) => ({ ...prev, date: event.target.value }))}
-      onKeyDown={handleKeyDown}
-      className="transactions-input w-[140px]"
-    />
-  );
-  const dateContent = editing ? dateEditor : dateDisplay;
-
-  const notesDisplay = (
-    <span className="truncate text-white/70" title={item.notes ?? item.note ?? "-"}>
-      {item.notes ?? item.note ?? "-"}
-    </span>
-  );
-  const notesEditor = (
-    <input
-      ref={noteRef}
-      type="text"
-      value={draft.notes}
-      onChange={(event) => setDraft((prev) => ({ ...prev, notes: event.target.value }))}
-      onKeyDown={handleKeyDown}
-      className="transactions-input w-full"
-      placeholder="Catatan"
-    />
-  );
-  const notesContent = editing ? notesEditor : notesDisplay;
-
-  const accountContent = <span className="text-white/70">{item.account || "-"}</span>;
-
-  const tagsContent =
-    Array.isArray(item.tags) && item.tags.length > 0 ? (
-      <div className="flex flex-wrap gap-1">
-        {item.tags.map((tag) => (
-          <span key={tag} className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">
-            {tag}
-          </span>
-        ))}
-      </div>
-    ) : (
-      <span className="text-white/60">-</span>
-    );
-
-  const amountDisplay = (
-    <span
-      className={clsx(
-        "tabular-nums",
-        item.type === "income" ? "text-emerald-400" : "text-rose-400",
-      )}
-    >
-      {formatIDR(item.amount)}
-    </span>
-  );
-  const amountEditor = (
-    <div className="relative w-[120px]">
-      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-white/50">
-        Rp
-      </span>
-      <input
-        ref={amountRef}
-        type="text"
-        inputMode="decimal"
-        value={draft.amount}
-        onChange={handleAmountChange}
-        onKeyDown={handleKeyDown}
-        className="transactions-input w-full pl-6 text-right"
-      />
-    </div>
-  );
-  const amountContent = editing ? amountEditor : amountDisplay;
-
-  const attachmentsView =
-    hasAttachments && item.receipt_url ? (
-      <a
-        href={item.receipt_url}
-        target="_blank"
-        rel="noreferrer"
-        className="transactions-action-button"
-        aria-label="Lihat lampiran"
-      >
-        <Paperclip className="h-4 w-4" />
-      </a>
-    ) : null;
-
-  const actionContent = (
-    <div className="flex items-center gap-2">
-      {attachmentsView}
-      {editing ? (
-        <>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="transactions-action-button transactions-action-button--primary"
-            aria-label="Simpan perubahan"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="transactions-action-button"
-            aria-label="Batalkan edit"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => {
-              setInlineError("");
-              setEditing(true);
-            }}
-            className="transactions-action-button"
-            aria-label="Edit cepat"
-          >
-            <Pencil className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmOpen(true)}
-            className="transactions-action-button transactions-action-button--danger"
-            aria-label="Hapus transaksi"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </>
-      )}
-    </div>
-  );
-
-  const selectInput = (
-    <input
-      type="checkbox"
-      checked={isSelected}
-      onChange={onToggleSelect}
-      className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-      aria-label="Pilih baris"
-    />
-  );
-
-  const rowStyle = style ? { ...style } : undefined;
-
-  const desktopRow = (
-    <div
-      className={clsx(
-        "transactions-row",
-        index % 2 === 1 && "transactions-row--zebra",
-        editing && "transactions-row--editing",
-      )}
-      role="row"
-      style={rowStyle}
-      data-row-state={isSelected ? "selected" : undefined}
-    >
-      {visibleColumns.map((column) => {
-        if (column.key === "select") {
-          return (
-            <div
-              key={column.key}
-              className="transactions-cell transactions-cell--select"
-              role="cell"
-              data-column={column.key}
-            >
-              {selectInput}
-            </div>
-          );
-        }
-        if (column.key === "category") {
-          return (
-            <div key={column.key} className="transactions-cell" role="cell" data-column={column.key}>
-              {categoryContent}
-            </div>
-          );
-        }
-        if (column.key === "date") {
-          return (
-            <div key={column.key} className="transactions-cell" role="cell" data-column={column.key}>
-              {dateContent}
-            </div>
-          );
-        }
-        if (column.key === "notes") {
-          return (
-            <div key={column.key} className="transactions-cell" role="cell" data-column={column.key}>
-              {notesContent}
-            </div>
-          );
-        }
-        if (column.key === "account") {
-          return (
-            <div key={column.key} className="transactions-cell" role="cell" data-column={column.key}>
-              {accountContent}
-            </div>
-          );
-        }
-        if (column.key === "tags") {
-          return (
-            <div key={column.key} className="transactions-cell" role="cell" data-column={column.key}>
-              {tagsContent}
-            </div>
-          );
-        }
-        if (column.key === "amount") {
-          return (
-            <div
-              key={column.key}
-              className="transactions-cell transactions-cell--amount"
-              role="cell"
-              data-column={column.key}
-            >
-              {amountContent}
-            </div>
-          );
-        }
-        if (column.key === "actions") {
-          return (
-            <div
-              key={column.key}
-              className="transactions-cell transactions-cell--actions"
-              role="cell"
-              data-column={column.key}
-            >
-              {actionContent}
-            </div>
-          );
-        }
-        return null;
-      })}
-      {inlineError && <div className="transactions-row__error">{inlineError}</div>}
-    </div>
-  );
-
-  const mobileRow = (
-    <div
-      className={clsx(
-        "transactions-card",
-        index % 2 === 1 && "transactions-card--zebra",
-        editing && "transactions-card--editing",
-        isSelected && "transactions-card--selected",
-      )}
-      data-row-state={isSelected ? "selected" : undefined}
-    >
-      <div className="transactions-card__header">
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={isSelected}
-            onChange={onToggleSelect}
-            className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            aria-label="Pilih baris"
-          />
-          {!editing && <span className="text-xs text-white/50">{toDateInput(item.date)}</span>}
-        </div>
-        <div className="transactions-card__amount">
-          {editing ? amountEditor : amountDisplay}
-        </div>
-      </div>
-      <div className="transactions-card__body">
-        <div className="transactions-card__row">
-          <span className="transactions-card__label">Tanggal</span>
-          <div className="transactions-card__value">{editing ? dateEditor : dateDisplay}</div>
-        </div>
-        <div className="transactions-card__row">
-          <span className="transactions-card__label">Kategori</span>
-          <div className="transactions-card__value">{categoryContent}</div>
-        </div>
-        <div className="transactions-card__row">
-          <span className="transactions-card__label">Catatan</span>
-          <div className="transactions-card__value">{notesContent}</div>
-        </div>
-        <div className="transactions-card__row">
-          <span className="transactions-card__label">Akun</span>
-          <div className="transactions-card__value">{accountContent}</div>
-        </div>
-        <div className="transactions-card__row">
-          <span className="transactions-card__label">Tags</span>
-          <div className="transactions-card__value">{tagsContent}</div>
-        </div>
-      </div>
-      <div className="transactions-card__actions">{actionContent}</div>
-      {inlineError && <div className="transactions-card__error">{inlineError}</div>}
-    </div>
-  );
+  const hasAttachments = Boolean(item.receipt_url) || (Array.isArray(item.receipts) && item.receipts.length > 0);
 
   return (
-    <>
-      {isMobile ? mobileRow : desktopRow}
-      <ConfirmDialog
-        open={confirmOpen}
-        onCancel={() => setConfirmOpen(false)}
-        onConfirm={handleConfirmDelete}
-        message="Hapus transaksi ini?"
-      />
-    </>
-  );
-}
-
-function InlineCategoryPicker({ options = [], value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef(null);
-  const { refs, floatingStyles } = useFloating({
-    placement: "bottom-start",
-    open,
-    onOpenChange: setOpen,
-    middleware: [offset(6), flip({ padding: 8 }), shift({ padding: 8 })],
-    whileElementsMounted: autoUpdate,
-  });
-
-  useEffect(() => {
-    refs.setReference(buttonRef.current);
-  }, [refs]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const handlePointerDown = (event) => {
-      if (buttonRef.current?.contains(event.target)) return;
-      if (refs.floating.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    const handleKey = (event) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("pointerdown", handlePointerDown);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open, refs.floating]);
-
-  const selected = options.find((option) => option.id === value);
-
-  return (
-    <>
-      <button
-        ref={(node) => {
-          buttonRef.current = node;
-          refs.setReference(node);
-        }}
-        type="button"
-        onClick={() => setOpen((prev) => !prev)}
-        className="transactions-inline-picker"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {selected?.name || "Pilih kategori"}
-      </button>
-      {open &&
-        createPortal(
-          <div
-            ref={refs.setFloating}
-            style={{ ...floatingStyles, zIndex: 1400 }}
-            className="transactions-inline-picker__panel"
-            role="listbox"
+    <tr className="border-b border-white/5 hover:bg-white/5">
+      <td className="px-4 py-3">
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggleSelect}
+          className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          aria-label="Pilih baris"
+        />
+      </td>
+      <td className="px-4 py-3 align-top">
+        {editing ? (
+          <select
+            value={draft.category_id}
+            onChange={(event) => setDraft((prev) => ({ ...prev, category_id: event.target.value }))}
+            className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
           >
-            {options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => {
-                  onChange(option.id);
-                  setOpen(false);
-                }}
-                className={clsx(
-                  "transactions-inline-picker__option",
-                  option.id === value && "transactions-inline-picker__option--active",
-                )}
-                role="option"
-                aria-selected={option.id === value}
-              >
-                {option.name}
-              </button>
+            <option value="">Pilih kategori</option>
+            {categoryOptions.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.name}
+              </option>
             ))}
-            {!options.length && (
-              <div className="px-3 py-2 text-sm text-white/60">Tidak ada kategori</div>
-            )}
-          </div>,
-          document.body,
+          </select>
+        ) : (
+          <div className="flex flex-col">
+            <span className="font-semibold text-white">{item.category || "(Tidak ada kategori)"}</span>
+            <span className="text-xs text-white/40">{TYPE_LABELS[item.type] || ""}</span>
+          </div>
         )}
-    </>
-  );
-}
-
-function ConfirmDialog({ open, onCancel, onConfirm, message }) {
-  useEffect(() => {
-    if (!open) return undefined;
-    const handleKey = (event) => {
-      if (event.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open, onCancel]);
-
-  if (!open) return null;
-
-  return createPortal(
-    <div className="transactions-confirm fixed inset-0 z-[1600] flex items-center justify-center bg-black/60 p-4">
-      <div className="transactions-confirm__panel">
-        <p className="transactions-confirm__message">{message}</p>
-        <div className="transactions-confirm__actions">
-          <button type="button" onClick={onCancel} className="transactions-dialog-button">
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="transactions-dialog-button transactions-dialog-button--danger"
-          >
-            Hapus
-          </button>
+      </td>
+      <td className="px-4 py-3 align-top">
+        {editing ? (
+          <input
+            type="date"
+            value={draft.date}
+            onChange={(event) => setDraft((prev) => ({ ...prev, date: event.target.value }))}
+            onKeyDown={handleKeyDown}
+            className="rounded-lg border border-white/15 bg-white/10 px-3 py-1 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          />
+        ) : (
+          <span>{toDateInput(item.date)}</span>
+        )}
+      </td>
+      <td className="px-4 py-3 align-top">
+        {editing ? (
+          <textarea
+            value={draft.notes}
+            onChange={(event) => setDraft((prev) => ({ ...prev, notes: event.target.value }))}
+            onKeyDown={handleKeyDown}
+            rows={2}
+            className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          />
+        ) : (
+          <span className="line-clamp-2 text-white/70">{item.notes ?? item.note ?? "-"}</span>
+        )}
+      </td>
+      <td className="px-4 py-3 align-top text-white/70">{item.account || "-"}</td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-wrap gap-1">
+          {Array.isArray(item.tags) && item.tags.length > 0
+            ? item.tags.map((tag) => (
+                <span key={tag} className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">
+                  {tag}
+                </span>
+              ))
+            : "-"}
         </div>
-      </div>
-    </div>,
-    document.body,
+      </td>
+      <td className={clsx("px-4 py-3 align-top text-right font-semibold", item.type === "income" ? "text-emerald-400" : "text-rose-400")}
+      >
+        {editing ? (
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={draft.amount}
+            onChange={(event) => setDraft((prev) => ({ ...prev, amount: event.target.value }))}
+            onKeyDown={handleKeyDown}
+            className="w-32 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-right text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          />
+        ) : (
+          formatIDR(item.amount)
+        )}
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex items-center justify-end gap-1">
+          {hasAttachments && item.receipt_url && (
+            <a
+              href={item.receipt_url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-full border border-white/15 bg-white/5 p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+              aria-label="Lihat lampiran"
+            >
+              <Paperclip className="h-4 w-4" />
+            </a>
+          )}
+          {editing ? (
+            <>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-full bg-emerald-500 p-2 text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+                aria-label="Simpan perubahan"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="rounded-full border border-white/15 bg-white/5 p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                aria-label="Batalkan edit"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="rounded-full border border-white/15 bg-white/5 p-2 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                aria-label="Edit cepat"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="rounded-full border border-white/15 bg-white/5 p-2 text-white/70 hover:bg-rose-500/30 focus-visible:outline-none focus-visible:ring focus-visible:ring-rose-300"
+                aria-label="Hapus transaksi"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
   );
 }
 function Modal({ open, onClose, title, children }) {
