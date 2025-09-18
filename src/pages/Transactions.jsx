@@ -1792,11 +1792,8 @@ function TransactionItem({
             ))}
           </select>
         ) : (
-          <div className="flex items-center gap-2 truncate" title={categoryLabel}>
-            <span className="truncate font-semibold text-white">{categoryLabel}</span>
-            {typeLabel && (
-              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] uppercase text-white/60">{typeLabel}</span>
-            )}
+          <div className="flex min-w-0 items-center gap-2" title={categoryLabel}>
+            <span className="min-w-0 truncate font-semibold text-white">{categoryLabel}</span>
           </div>
         )}
       </td>
