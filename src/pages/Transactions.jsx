@@ -3,6 +3,7 @@ import clsx from "clsx";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
   Download,
   Loader2,
   Paperclip,
@@ -701,7 +702,9 @@ function TransactionsFilterBar({ filter, categories, searchTerm, onSearchChange,
 
 function CategoryMultiSelect({ categories = [], selected = [], onChange }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const containerRef = useRef(null);
+  const searchInputRef = useRef(null);
 
   useEffect(() => {
     const handleClick = (event) => {
@@ -714,59 +717,175 @@ function CategoryMultiSelect({ categories = [], selected = [], onChange }) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
 
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (!open) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      setSearch("");
+      return;
+    }
+    const timeout = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 0);
+    return () => clearTimeout(timeout);
+  }, [open]);
+
+  const normalizedSelected = useMemo(
+    () => selected.map((value) => String(value)),
+    [selected],
+  );
+
+  const summaryText = useMemo(() => {
+    if (!normalizedSelected.length) return "Semua kategori";
+    const selectedNames = categories
+      .filter((cat) => normalizedSelected.includes(String(cat.id)))
+      .map((cat) => cat.name)
+      .filter(Boolean);
+    if (selectedNames.length === 0) return `${normalizedSelected.length} dipilih`;
+    if (selectedNames.length <= 2) return selectedNames.join(", ");
+    return `${selectedNames.slice(0, 2).join(", ")} +${selectedNames.length - 2} lainnya`;
+  }, [categories, normalizedSelected]);
+
+  const filteredCategories = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return categories;
+    return categories.filter((cat) => {
+      const name = cat.name?.toLowerCase() ?? "";
+      const type = TYPE_LABELS[cat.type]?.toLowerCase() ?? "";
+      return name.includes(term) || type.includes(term);
+    });
+  }, [categories, search]);
+
   const toggle = (id) => {
-    const set = new Set(selected);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    onChange(Array.from(set));
+    const idStr = String(id);
+    const exists = normalizedSelected.includes(idStr);
+    if (exists) {
+      onChange(selected.filter((value) => String(value) !== idStr));
+    } else {
+      onChange([...selected, id]);
+    }
   };
+
+  const handleReset = () => {
+    onChange([]);
+  };
+
+  const handleSelectAll = () => {
+    onChange(categories.map((cat) => cat.id));
+  };
+
+  const isAllSelected =
+    categories.length > 0 && normalizedSelected.length === categories.length;
 
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
-        <span>{selected.length ? `${selected.length} dipilih` : "Semua kategori"}</span>
-        <span className="text-xs text-white/50">Pilih</span>
+        <span className="flex-1 truncate text-left">{summaryText}</span>
+        <span className="flex items-center gap-2 text-xs text-white/50">
+          {normalizedSelected.length > 0 && (
+            <span className="hidden rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white sm:inline">
+              {normalizedSelected.length}
+            </span>
+          )}
+          <ChevronDown
+            className={clsx(
+              "h-4 w-4 transition-transform",
+              open ? "rotate-180" : "rotate-0",
+            )}
+            aria-hidden
+          />
+        </span>
       </button>
       {open && (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 max-h-64 overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/95 p-3 shadow-xl backdrop-blur">
-          <div className="flex items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Semua Kategori</span>
-            <button
-              type="button"
-              onClick={() => onChange([])}
-              className="rounded-full px-2 py-1 text-xs text-white/60 hover:bg-white/10"
-            >
-              Reset
-            </button>
+        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-xl backdrop-blur">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-white/60">
+                Filter Kategori
+              </p>
+              <p className="text-xs text-white/40">
+                {normalizedSelected.length ? `${normalizedSelected.length} dipilih` : "Menampilkan semua"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={handleSelectAll}
+                disabled={categories.length === 0 || isAllSelected}
+                className="rounded-full border border-white/15 px-3 py-1 font-semibold text-white/70 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Pilih semua
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={normalizedSelected.length === 0}
+                className="rounded-full border border-white/15 px-3 py-1 font-semibold text-white/70 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Reset
+              </button>
+            </div>
           </div>
-          <div className="space-y-1">
-            {categories.map((cat) => (
-              <label key={cat.id} className="flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-2 text-sm text-white/80 hover:bg-white/10">
-                <div className="flex flex-col">
-                  <span className="font-medium text-white">{cat.name}</span>
-                  <span className="text-xs text-white/40">{TYPE_LABELS[cat.type] || ""}</span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={selected.includes(cat.id)}
-                  onChange={() => toggle(cat.id)}
-                  className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                />
-              </label>
-            ))}
+          <div className="relative mb-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" aria-hidden />
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Cari kategori"
+              className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/40 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            />
           </div>
-          <div className="mt-3 flex justify-end">
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-full bg-brand px-4 py-1.5 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            >
-              Selesai
-            </button>
+          <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+            {filteredCategories.length === 0 ? (
+              <p className="px-2 py-3 text-center text-xs text-white/50">
+                Tidak ada kategori yang cocok.
+              </p>
+            ) : (
+              filteredCategories.map((cat) => {
+                const idStr = String(cat.id);
+                const active = normalizedSelected.includes(idStr);
+                return (
+                  <label
+                    key={cat.id}
+                    className={clsx(
+                      "flex cursor-pointer items-center justify-between gap-3 rounded-xl px-2 py-2 text-sm transition",
+                      active
+                        ? "bg-brand/20 text-white hover:bg-brand/30"
+                        : "text-white/80 hover:bg-white/10",
+                    )}
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium text-white">{cat.name}</span>
+                      <span className="text-xs text-white/40">{TYPE_LABELS[cat.type] || ""}</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={active}
+                      onChange={() => toggle(cat.id)}
+                      className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                    />
+                  </label>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -921,8 +1040,9 @@ function TransactionsTable({
 
   return (
     <div className="space-y-4">
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
-        <table className="min-w-full text-sm text-white/80">
+      <div className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
+        <div className="w-full overflow-x-auto">
+          <table className="min-w-[720px] text-sm text-white/80">
           <thead
             className="bg-white/5 text-left text-xs uppercase tracking-wide text-white/60"
             style={{ position: "sticky", top: tableStickyTop, zIndex: 10 }}
@@ -946,31 +1066,32 @@ function TransactionsTable({
               <th className="px-4 py-3 text-right">Aksi</th>
             </tr>
           </thead>
-          <tbody>
-            {items.map((item) => (
-              <TransactionRow
-                key={item.id}
-                item={item}
-                isSelected={selectedIds.has(item.id)}
-                onToggleSelect={() => onToggleSelect(item.id)}
-                onUpdate={onUpdate}
-                onDelete={() => onDelete(item.id)}
-                categoriesByType={categoriesByType}
-              />
-            ))}
-            {loading && items.length === 0 && (
-              <tr className="border-t border-white/10">
-                <td colSpan={8} className="px-4 py-6">
-                  <div className="space-y-3">
-                    {Array.from({ length: 5 }).map((_, index) => (
-                      <div key={index} className="h-10 animate-pulse rounded bg-white/10" />
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            <tbody>
+              {items.map((item) => (
+                <TransactionRow
+                  key={item.id}
+                  item={item}
+                  isSelected={selectedIds.has(item.id)}
+                  onToggleSelect={() => onToggleSelect(item.id)}
+                  onUpdate={onUpdate}
+                  onDelete={() => onDelete(item.id)}
+                  categoriesByType={categoriesByType}
+                />
+              ))}
+              {loading && items.length === 0 && (
+                <tr className="border-t border-white/10">
+                  <td colSpan={8} className="px-4 py-6">
+                    <div className="space-y-3">
+                      {Array.from({ length: 5 }).map((_, index) => (
+                        <div key={index} className="h-10 animate-pulse rounded bg-white/10" />
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
       <div className="flex flex-col gap-3 text-sm text-white/60 sm:flex-row sm:items-center sm:justify-between">
         <span>
