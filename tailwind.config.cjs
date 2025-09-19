@@ -11,6 +11,7 @@ module.exports = {
           soft: 'var(--brand-soft)',
           ring: 'var(--brand-ring)'
         },
+        background: 'var(--bg)',
         success: 'var(--success)',
         warning: 'var(--warning)',
         danger: 'var(--danger)',

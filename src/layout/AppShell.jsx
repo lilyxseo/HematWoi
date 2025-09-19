@@ -15,15 +15,18 @@ function ShellContent() {
   const [brand, setBrand] = useState({ h: 211, s: 92, l: 60 });
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen w-full min-w-0">
       <AppSidebar
         theme={theme}
         setTheme={setTheme}
         brand={brand}
         setBrand={setBrand}
       />
-      <div className="flex-1 flex flex-col">
-        <nav aria-label="Breadcrumb" className="border-b p-4 text-sm">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <nav
+          aria-label="Breadcrumb"
+          className="border-b p-4 text-sm"
+        >
           {breadcrumbs.map((b, idx) => (
             <span key={b.path}>
               {idx > 0 && " / "}
@@ -35,8 +38,8 @@ function ShellContent() {
             </span>
           ))}
         </nav>
-        <main className="p-4 flex-1">{element}</main>
-        <div className="p-2 text-xs text-right border-t">
+        <main className="flex-1 min-w-0 p-4">{element}</main>
+        <div className="border-t p-2 text-right text-xs">
           {mode === "online" ? "✅ Online Mode aktif" : "📴 Local Mode aktif"}
         </div>
       </div>

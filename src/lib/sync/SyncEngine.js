@@ -609,7 +609,21 @@ export async function pending() {
   return oplogStore.count();
 }
 
+function isRealtimeEnabled() {
+  const importMetaEnv = typeof import.meta !== "undefined" ? import.meta.env ?? {} : {};
+  const nodeEnv =
+    typeof globalThis !== "undefined" && globalThis.process?.env
+      ? globalThis.process.env
+      : {};
+  const raw =
+    importMetaEnv.VITE_ENABLE_REALTIME ??
+    nodeEnv.VITE_ENABLE_REALTIME ??
+    "false";
+  return String(raw).toLowerCase() === "true";
+}
+
 export function wireRealtime() {
+  if (!isRealtimeEnabled()) return;
   ["transactions", "categories"].forEach((table) => {
     supabase
       .channel(`rt:${table}`)

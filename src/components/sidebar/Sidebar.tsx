@@ -132,7 +132,7 @@ export default function Sidebar({
         role="navigation"
         aria-label="Main"
         className={clsx(
-          "relative flex h-full min-h-0 w-full flex-col bg-surface-1/95 text-text transition-[background,color] duration-200",
+          "relative flex h-full min-h-0 min-w-0 w-full flex-col bg-surface-1/95 text-text transition-[background,color] duration-200",
           collapsed ? "px-2" : "px-4"
         )}
       >
