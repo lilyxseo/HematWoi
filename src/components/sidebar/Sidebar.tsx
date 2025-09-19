@@ -34,6 +34,7 @@ const MAIN_PATHS = [
   "/transactions",
   "/budgets",
   "/goals",
+  "/debts",
   "/categories",
   "/data",
   "/subscriptions",
