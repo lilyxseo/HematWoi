@@ -23,9 +23,7 @@ export default function MainLayout({
       <div
         className={clsx(
           "flex min-h-screen w-full min-w-0 flex-col transition-[padding-left] duration-300 ease-out",
-          hideSidebar
-            ? "pl-0"
-            : "pl-0 md:pl-[var(--sidebar-width)]"
+          hideSidebar ? "pl-0" : "pl-0 lg:pl-[var(--sidebar-width)]"
         )}
       >
         {topbar}

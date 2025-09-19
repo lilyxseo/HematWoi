@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { NavLink, useLocation, useRoutes } from "react-router-dom";
 import { NAV_ITEMS } from "../router/nav.config";
 import { buildBreadcrumbs } from "../router/breadcrumbs";
 import { ROUTES } from "../router/routes";
-import Sidebar from "./Sidebar";
+import AppSidebar from "./AppSidebar";
 import { ModeProvider, useMode } from "../hooks/useMode";
 
 function ShellContent() {
@@ -10,10 +11,17 @@ function ShellContent() {
   const location = useLocation();
   const breadcrumbs = buildBreadcrumbs(location.pathname, NAV_ITEMS);
   const { mode } = useMode();
+  const [theme, setTheme] = useState("dark");
+  const [brand, setBrand] = useState({ h: 211, s: 92, l: 60 });
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <AppSidebar
+        theme={theme}
+        setTheme={setTheme}
+        brand={brand}
+        setBrand={setBrand}
+      />
       <div className="flex-1 flex flex-col">
         <nav aria-label="Breadcrumb" className="border-b p-4 text-sm">
           {breadcrumbs.map((b, idx) => (

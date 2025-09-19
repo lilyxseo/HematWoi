@@ -7,7 +7,7 @@ import {
   useLocation,
 } from "react-router-dom";
 
-import Sidebar from "./layout/Sidebar";
+import AppSidebar from "./layout/AppSidebar";
 import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
 import SyncBanner from "./components/SyncBanner";
@@ -1014,7 +1014,7 @@ function AppShell({ prefs, setPrefs }) {
         hideSidebar={hideNav}
         sidebar={
           !hideNav ? (
-            <Sidebar
+            <AppSidebar
               theme={theme}
               setTheme={setTheme}
               brand={brand}

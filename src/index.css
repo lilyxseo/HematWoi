@@ -38,8 +38,8 @@
     --page-y: clamp(16px, 4vw, 28px);
     --section-y: clamp(12px, 3vw, 24px);
     --block-y: clamp(8px, 2vw, 16px);
-    --sidebar-w-expanded: 264px;
-    --sidebar-w-collapsed: 80px;
+    --sidebar-w-expanded: 16rem;
+    --sidebar-w-collapsed: 4rem;
     --sidebar-width: var(--sidebar-w-expanded);
   }
   [data-theme='dark'] {
