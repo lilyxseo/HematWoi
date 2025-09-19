@@ -73,6 +73,13 @@ export const NAV_ITEMS: NavItem[] = [
     protected: true,
   },
   {
+    title: 'Hutang',
+    path: '/debs',
+    inSidebar: false,
+    protected: true,
+    breadcrumb: 'Hutang',
+  },
+  {
     title: 'Kategori',
     path: '/categories',
     icon: <Tags className="h-5 w-5" />,
