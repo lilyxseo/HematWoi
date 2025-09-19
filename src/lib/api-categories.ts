@@ -16,6 +16,50 @@ export interface CategoryRecord {
 }
 
 const DEFAULT_COLOR = "#64748B";
+const CATEGORY_BASE_COLUMNS =
+  "id, user_id, name, type, sort_order, created_at, updated_at, inserted_at";
+
+let categoryColorSupported: boolean | undefined;
+
+function shouldUseCategoryColor(): boolean {
+  return categoryColorSupported !== false;
+}
+
+function getCategorySelectColumns(): string {
+  return shouldUseCategoryColor()
+    ? `${CATEGORY_BASE_COLUMNS}, color`
+    : CATEGORY_BASE_COLUMNS;
+}
+
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const maybeCode = (error as { code?: unknown }).code;
+  const maybeMessage = (error as { message?: unknown }).message;
+  if (typeof maybeMessage === "string") {
+    const normalized = maybeMessage.toLowerCase();
+    if (
+      normalized.includes(column.toLowerCase()) &&
+      (normalized.includes("does not exist") || normalized.includes("could not find"))
+    ) {
+      return true;
+    }
+  }
+  if (maybeCode === "42703" || maybeCode === "PGRST204") {
+    if (typeof maybeMessage === "string") {
+      return maybeMessage.toLowerCase().includes(column.toLowerCase());
+    }
+    return true;
+  }
+  return false;
+}
+
+function handleMissingCategoryColor(error: unknown): boolean {
+  if (shouldUseCategoryColor() && isMissingColumnError(error, "color")) {
+    categoryColorSupported = false;
+    return true;
+  }
+  return false;
+}
 
 const isDevelopment = Boolean(
   (typeof import.meta !== "undefined" && import.meta.env?.DEV) ||
@@ -98,7 +142,7 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
   try {
     let query = supabase
       .from("categories")
-      .select("id, user_id, name, type, color, sort_order, created_at, updated_at, inserted_at")
+      .select(getCategorySelectColumns())
       .eq("user_id", userId)
       .order("type", { ascending: true })
       .order("sort_order", { ascending: true })
@@ -114,6 +158,9 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
     await dbCache.bulkSet("categories", rows);
     return rows;
   } catch (error) {
+    if (handleMissingCategoryColor(error)) {
+      return listCategories(signal);
+    }
     if (signal?.aborted) {
       return [];
     }
@@ -181,16 +228,21 @@ export async function createCategory(input: {
     if (orderError) throw orderError;
     const nextOrder = normalizeSortOrder(orderRows?.[0]?.sort_order, -1) + 1;
 
+    const insertPayload: Record<string, unknown> = {
+      user_id: userId,
+      name,
+      type,
+      sort_order: nextOrder,
+    };
+
+    if (shouldUseCategoryColor()) {
+      insertPayload.color = color;
+    }
+
     const { data, error } = await supabase
       .from("categories")
-      .insert({
-        user_id: userId,
-        name,
-        type,
-        color,
-        sort_order: nextOrder,
-      })
-      .select("id, user_id, name, type, color, sort_order, created_at, updated_at, inserted_at")
+      .insert(insertPayload)
+      .select(getCategorySelectColumns())
       .single();
     if (error) throw error;
 
@@ -198,6 +250,9 @@ export async function createCategory(input: {
     await dbCache.set("categories", record);
     return record;
   } catch (error) {
+    if (handleMissingCategoryColor(error)) {
+      return createCategory(input);
+    }
     logDevError("createCategory", error);
     throw toError(error, "Gagal menambah kategori.");
   }
@@ -220,7 +275,7 @@ export async function updateCategory(
     updates.name = nextName;
   }
 
-  if (typeof patch.color === "string") {
+  if (shouldUseCategoryColor() && typeof patch.color === "string") {
     updates.color = normalizeColor(patch.color);
   }
 
@@ -253,7 +308,7 @@ export async function updateCategory(
       .update(updates)
       .eq("id", id)
       .eq("user_id", userId)
-      .select("id, user_id, name, type, color, sort_order, created_at, updated_at, inserted_at")
+      .select(getCategorySelectColumns())
       .single();
     if (error) throw error;
 
@@ -261,6 +316,9 @@ export async function updateCategory(
     await dbCache.set("categories", record);
     return record;
   } catch (error) {
+    if (handleMissingCategoryColor(error)) {
+      return updateCategory(id, patch);
+    }
     logDevError("updateCategory", error);
     throw toError(error, "Gagal memperbarui kategori.");
   }
@@ -286,12 +344,15 @@ export async function reorderCategories(
     const { data, error } = await supabase
       .from("categories")
       .upsert(payload, { onConflict: "id" })
-      .select("id, user_id, name, type, color, sort_order, created_at, updated_at, inserted_at");
+      .select(getCategorySelectColumns());
     if (error) throw error;
     if (data) {
       await dbCache.bulkSet("categories", data.map((row) => mapCategoryRow(row)));
     }
   } catch (error) {
+    if (handleMissingCategoryColor(error)) {
+      return reorderCategories(type, orderedIds);
+    }
     logDevError("reorderCategories", error);
     throw toError(error, "Gagal mengurutkan kategori.");
   }
