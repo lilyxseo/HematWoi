@@ -668,6 +668,7 @@ function mapCategoryRow(row = {}, userId) {
     type: normalizedType,
     group: row.group ?? null,
     order_index: orderIndex,
+    color: row.color ?? row.hex_color ?? null,
     inserted_at: row.inserted_at ?? row.created_at ?? null,
   };
 }
@@ -683,13 +684,34 @@ export async function listCategories(type) {
     return type ? mapped.filter((r) => r.type === type) : mapped;
   }
 
+  async function fetchRemoteRows() {
+    const attempts = [
+      'id, user_id, type, name, order_index, inserted_at, "group", color, created_at, updated_at',
+      'id, user_id, type, name, sort_order, inserted_at, created_at, updated_at, color, "group"',
+      null,
+    ];
+    let lastError = null;
+    for (const columns of attempts) {
+      let query = supabase.from("categories");
+      query = columns ? query.select(columns) : query.select();
+      const { data, error } = await query.eq("user_id", userId);
+      if (!error) return data || [];
+      lastError = error;
+      const code = error?.code;
+      const message = String(error?.message || "").toLowerCase();
+      const isColumnError =
+        code === "42703" ||
+        message.includes("column") ||
+        message.includes("unknown") ||
+        message.includes("does not exist");
+      if (!isColumnError) throw error;
+    }
+    throw lastError;
+  }
+
   try {
-    const { data, error } = await supabase
-      .from("categories")
-      .select('id, user_id, type, name, order_index, inserted_at, "group"')
-      .eq("user_id", userId);
-    if (error) throw error;
-    const rows = (data || []).map((row) => mapCategoryRow(row, userId));
+    const remoteRows = await fetchRemoteRows();
+    const rows = remoteRows.map((row) => mapCategoryRow(row, userId));
     rows.sort((a, b) => {
       const orderA = a.order_index ?? Number.MAX_SAFE_INTEGER;
       const orderB = b.order_index ?? Number.MAX_SAFE_INTEGER;
