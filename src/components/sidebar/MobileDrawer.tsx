@@ -24,6 +24,7 @@ export default function MobileDrawer({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const lastFocusedElement = useRef<Element | null>(null);
   const location = useLocation();
+  const lastPathnameRef = useRef(location.pathname);
 
   useLockBodyScroll(open);
 
@@ -76,8 +77,12 @@ export default function MobileDrawer({
   }, [open, onOpenChange]);
 
   useEffect(() => {
-    if (!open) return;
-    onOpenChange(false);
+    if (lastPathnameRef.current !== location.pathname) {
+      lastPathnameRef.current = location.pathname;
+      if (open) {
+        onOpenChange(false);
+      }
+    }
   }, [location.pathname, onOpenChange, open]);
 
   useEffect(() => {
