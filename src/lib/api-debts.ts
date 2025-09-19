@@ -152,6 +152,21 @@ function safeNumber(value: unknown): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function toNum(value: unknown): number | undefined {
+  if (value === '' || value == null) return undefined;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : undefined;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function toISODate(value?: string | null): string | null {
   if (!value) return null;
   const isoSource = `${value}T00:00:00`;
@@ -457,47 +472,91 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
   }
 }
 
+async function fetchDebtById(id: string, userId: string): Promise<Record<string, any> | null> {
+  const { data, error } = await supabase
+    .from('debts')
+    .select(getDebtSelectColumns())
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) {
+    if (handleMissingAttachments(error)) {
+      return fetchDebtById(id, userId);
+    }
+    throw error;
+  }
+  return data ?? null;
+}
+
 export async function createDebt(payload: DebtInput): Promise<DebtRecord> {
   try {
     const userId = await getUserId();
-    const dueDateIso = toISODate(payload.due_date ?? null);
-    const dateIso = toISODate(payload.date);
-    const amount = Math.max(0, payload.amount);
-    const paidTotal = 0;
-    const status = evaluateStatus(amount, paidTotal, dueDateIso);
+
+    const amountValue = toNum(payload.amount);
+    if (amountValue === undefined || amountValue <= 0) {
+      throw new Error('Nominal hutang tidak valid.');
+    }
+
+    const dateIso = toISODate(payload.date) ?? new Date().toISOString();
+    const dueDateIso = payload.due_date == null ? null : toISODate(payload.due_date);
+    const rateValue = toNum(payload.rate_percent);
 
     const insertPayload: Record<string, unknown> = {
       user_id: userId,
       type: payload.type,
       party_name: payload.party_name,
       title: payload.title,
-      date: dateIso ?? new Date().toISOString(),
-      due_date: dueDateIso,
-      amount: amount.toFixed(2),
-      rate_percent:
-        payload.rate_percent != null ? Math.max(0, Math.min(100, payload.rate_percent)).toFixed(2) : null,
-      paid_total: paidTotal.toFixed(2),
-      status,
-      notes: payload.notes ?? null,
+      date: dateIso,
+      amount: Number(amountValue.toFixed(2)),
     };
 
-    if (shouldUseDebtAttachments()) {
+    if (payload.due_date !== undefined) {
+      insertPayload.due_date = dueDateIso;
+    }
+
+    if (rateValue !== undefined) {
+      const clamped = Math.max(0, Math.min(100, rateValue));
+      insertPayload.rate_percent = Number(clamped.toFixed(2));
+    }
+
+    if (payload.notes !== undefined) {
+      insertPayload.notes = payload.notes ?? null;
+    }
+
+    if (shouldUseDebtAttachments() && payload.attachments !== undefined) {
       insertPayload.attachments = payload.attachments ?? null;
     }
 
-    const { data, error } = await supabase
+    const { data: inserted, error: insertError } = await supabase
       .from('debts')
       .insert([insertPayload])
-      .select(getDebtSelectColumns())
+      .select('id')
       .single();
 
-    if (error) throw error;
-    return mapDebtRow(data);
+    if (insertError) throw insertError;
+    const insertedId = inserted?.id;
+    if (!insertedId) {
+      throw new Error('Gagal menambahkan hutang');
+    }
+
+    const row = await fetchDebtById(String(insertedId), userId);
+    if (!row) {
+      throw new Error('Hutang tidak ditemukan setelah dibuat.');
+    }
+
+    return mapDebtRow(row);
   } catch (error) {
+    if (error instanceof Error && error.message === 'Nominal hutang tidak valid.') {
+      throw error;
+    }
     if (handleMissingAttachments(error)) {
       return createDebt(payload);
     }
-    return handleError(error, 'Gagal menambahkan hutang');
+    if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('[HW] debts-api', error);
+    }
+    throw new Error('Gagal menambahkan hutang');
   }
 }
 
@@ -510,9 +569,21 @@ export async function updateDebt(id: string, patch: DebtUpdateInput): Promise<De
     if (patch.title != null) updates.title = patch.title;
     if (patch.date) updates.date = toISODate(patch.date);
     if (patch.due_date !== undefined) updates.due_date = toISODate(patch.due_date);
-    if (patch.amount != null) updates.amount = Math.max(0, patch.amount).toFixed(2);
-    if (patch.rate_percent != null)
-      updates.rate_percent = Math.max(0, Math.min(100, patch.rate_percent)).toFixed(2);
+
+    const amountValue = toNum(patch.amount);
+    if (amountValue !== undefined) {
+      if (amountValue <= 0) {
+        throw new Error('Nominal hutang tidak valid.');
+      }
+      updates.amount = Number(Math.max(0, amountValue).toFixed(2));
+    }
+
+    const rateValue = toNum(patch.rate_percent);
+    if (rateValue !== undefined) {
+      const clamped = Math.max(0, Math.min(100, rateValue));
+      updates.rate_percent = Number(clamped.toFixed(2));
+    }
+
     if (patch.notes !== undefined) updates.notes = patch.notes;
     if (shouldUseDebtAttachments() && patch.attachments !== undefined) {
       updates.attachments = patch.attachments;
@@ -534,7 +605,7 @@ export async function updateDebt(id: string, patch: DebtUpdateInput): Promise<De
     }
 
     const shouldRecalculateStatus =
-      !('status' in updates) && (patch.amount != null || patch.due_date !== undefined);
+      !('status' in updates) && (amountValue !== undefined || patch.due_date !== undefined);
 
     if (shouldRecalculateStatus) {
       const { data: debtRow } = await supabase
@@ -544,7 +615,8 @@ export async function updateDebt(id: string, patch: DebtUpdateInput): Promise<De
         .eq('user_id', userId)
         .maybeSingle();
       if (debtRow) {
-        const amount = patch.amount != null ? Math.max(0, patch.amount) : safeNumber(debtRow.amount);
+        const amount =
+          amountValue !== undefined ? Math.max(0, amountValue) : safeNumber(debtRow.amount);
         const paidTotal = safeNumber(debtRow.paid_total);
         const nextDue =
           patch.due_date !== undefined ? updates.due_date ?? null : debtRow.due_date ?? null;
