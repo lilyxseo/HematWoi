@@ -1,0 +1,574 @@
+import { supabase } from './supabase';
+import { getCurrentUserId } from './session';
+
+export type DebtType = 'debt' | 'receivable';
+export type DebtStatus = 'ongoing' | 'paid' | 'overdue';
+
+type SortKey = 'newest' | 'oldest' | 'due_soon' | 'amount';
+
+type DateField = 'created_at' | 'due_date';
+
+export interface DebtRecord {
+  id: string;
+  user_id: string;
+  type: DebtType;
+  party_name: string;
+  title: string;
+  date: string;
+  due_date: string | null;
+  amount: number;
+  rate_percent: number | null;
+  paid_total: number;
+  remaining: number;
+  status: DebtStatus;
+  notes: string | null;
+  attachments: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DebtPaymentRecord {
+  id: string;
+  debt_id: string;
+  user_id: string;
+  amount: number;
+  date: string;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface DebtSummary {
+  totalDebt: number;
+  totalReceivable: number;
+  totalPaidThisMonth: number;
+  dueSoon: number;
+}
+
+export interface DebtFilters {
+  q?: string;
+  type?: DebtType | 'all';
+  status?: DebtStatus | 'all';
+  dateField?: DateField;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  sort?: SortKey;
+}
+
+export interface ListDebtsResponse {
+  items: DebtRecord[];
+  summary: DebtSummary;
+}
+
+export interface DebtInput {
+  type: DebtType;
+  party_name: string;
+  title: string;
+  date: string;
+  due_date?: string | null;
+  amount: number;
+  rate_percent?: number | null;
+  notes?: string | null;
+  attachments?: string | null;
+}
+
+export interface DebtUpdateInput extends Partial<DebtInput> {
+  status?: DebtStatus;
+}
+
+export interface PaymentInput {
+  amount: number;
+  date: string;
+  notes?: string | null;
+}
+
+function logDevError(error: unknown) {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+    // eslint-disable-next-line no-console
+    console.error('[HW] debts-api', error);
+  }
+}
+
+function handleError(error: unknown, fallback: string): never {
+  logDevError(error);
+  if (error instanceof Error && error.message) {
+    throw new Error(error.message);
+  }
+  throw new Error(fallback);
+}
+
+function sanitizeIlike(value?: string | null) {
+  if (!value) return '';
+  return String(value).replace(/[%_]/g, (match) => `\\${match}`);
+}
+
+function safeNumber(value: unknown): number {
+  if (value == null) return 0;
+  const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toISODate(value?: string | null): string | null {
+  if (!value) return null;
+  const isoSource = `${value}T00:00:00`;
+  const date = new Date(isoSource);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function toISODateEnd(value?: string | null): string | null {
+  if (!value) return null;
+  const isoSource = `${value}T23:59:59`;
+  const date = new Date(isoSource);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function evaluateStatus(amount: number, paid: number, dueDate: string | null): DebtStatus {
+  if (paid + 0.0001 >= amount) return 'paid';
+  if (dueDate) {
+    const due = new Date(dueDate);
+    const now = new Date();
+    if (!Number.isNaN(due.getTime()) && due.getTime() < now.getTime()) {
+      return 'overdue';
+    }
+  }
+  return 'ongoing';
+}
+
+function mapDebtRow(row: Record<string, any>): DebtRecord {
+  const amount = safeNumber(row.amount);
+  const paidTotal = safeNumber(row.paid_total);
+  const rate = row.rate_percent != null ? safeNumber(row.rate_percent) : null;
+  const remaining = Math.max(amount - paidTotal, 0);
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    type: row.type as DebtType,
+    party_name: row.party_name ?? '',
+    title: row.title ?? '',
+    date: row.date ?? row.created_at ?? new Date().toISOString(),
+    due_date: row.due_date ?? null,
+    amount,
+    rate_percent: rate,
+    paid_total: paidTotal,
+    remaining,
+    status: row.status as DebtStatus,
+    notes: row.notes ?? null,
+    attachments: row.attachments ?? null,
+    created_at: row.created_at ?? row.date ?? new Date().toISOString(),
+    updated_at: row.updated_at ?? row.created_at ?? new Date().toISOString(),
+  };
+}
+
+function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+  return {
+    id: String(row.id),
+    debt_id: String(row.debt_id),
+    user_id: String(row.user_id),
+    amount: safeNumber(row.amount),
+    date: row.date ?? row.created_at ?? new Date().toISOString(),
+    notes: row.notes ?? null,
+    created_at: row.created_at ?? new Date().toISOString(),
+  };
+}
+
+async function recalculateDebtAggregates(debtId: string, userId: string): Promise<DebtRecord | null> {
+  const { data: debtRow, error: debtError } = await supabase
+    .from('debts')
+    .select('id, user_id, amount, due_date, status, type, party_name, title, date, rate_percent, paid_total, notes, attachments, created_at, updated_at')
+    .eq('id', debtId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (debtError) throw debtError;
+  if (!debtRow) return null;
+
+  const { data: paymentsRows, error: paymentsError } = await supabase
+    .from('debt_payments')
+    .select('amount')
+    .eq('debt_id', debtId)
+    .eq('user_id', userId);
+
+  if (paymentsError) throw paymentsError;
+
+  const paidTotal = (paymentsRows ?? []).reduce((sum, item) => sum + safeNumber(item.amount), 0);
+  const status = evaluateStatus(safeNumber(debtRow.amount), paidTotal, debtRow.due_date ?? null);
+
+  const { data: updated, error: updateError } = await supabase
+    .from('debts')
+    .update({
+      paid_total: paidTotal.toFixed(2),
+      status,
+    })
+    .eq('id', debtId)
+    .eq('user_id', userId)
+    .select('*')
+    .maybeSingle();
+
+  if (updateError) throw updateError;
+  if (!updated) return mapDebtRow({ ...debtRow, paid_total: paidTotal, status });
+  return mapDebtRow(updated);
+}
+
+async function buildSummary(userId: string): Promise<DebtSummary> {
+  const now = new Date();
+  const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+
+  const [{ data: debtsRows, error: debtsError }, { data: paymentRows, error: paymentError }] = await Promise.all([
+    supabase
+      .from('debts')
+      .select('type, amount, paid_total, due_date, status')
+      .eq('user_id', userId),
+    supabase
+      .from('debt_payments')
+      .select('amount, date')
+      .eq('user_id', userId)
+      .gte('date', startOfMonth.toISOString())
+      .lt('date', nextMonth.toISOString()),
+  ]);
+
+  if (debtsError) throw debtsError;
+  if (paymentError) throw paymentError;
+
+  const summary: DebtSummary = {
+    totalDebt: 0,
+    totalReceivable: 0,
+    totalPaidThisMonth: 0,
+    dueSoon: 0,
+  };
+
+  const soonThreshold = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  for (const row of debtsRows ?? []) {
+    const amount = safeNumber(row.amount);
+    const paidTotal = safeNumber(row.paid_total);
+    if (row.type === 'debt') summary.totalDebt += Math.max(amount - paidTotal, 0);
+    if (row.type === 'receivable') summary.totalReceivable += Math.max(amount - paidTotal, 0);
+
+    if (row.status !== 'paid' && row.due_date) {
+      const due = new Date(row.due_date);
+      if (!Number.isNaN(due.getTime()) && due <= soonThreshold) {
+        summary.dueSoon += Math.max(amount - paidTotal, 0);
+      }
+    }
+  }
+
+  for (const payment of paymentRows ?? []) {
+    summary.totalPaidThisMonth += safeNumber(payment.amount);
+  }
+
+  return summary;
+}
+
+export async function getUserId() {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      throw new Error('Pengguna tidak ditemukan. Silakan masuk kembali.');
+    }
+    return userId;
+  } catch (error) {
+    return handleError(error, 'Gagal mendapatkan informasi pengguna');
+  }
+}
+
+export async function listDebts(filters: DebtFilters = {}): Promise<ListDebtsResponse> {
+  try {
+    const userId = await getUserId();
+    const {
+      q = '',
+      type = 'all',
+      status = 'all',
+      dateField = 'created_at',
+      dateFrom,
+      dateTo,
+      sort = 'newest',
+    } = filters;
+
+    let query = supabase
+      .from('debts')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (type !== 'all') {
+      query = query.eq('type', type);
+    }
+    if (status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const search = sanitizeIlike(q?.trim());
+    if (search) {
+      query = query.or(
+        `party_name.ilike.%${search}%,title.ilike.%${search}%,notes.ilike.%${search}%`
+      );
+    }
+
+    const rangeField: DateField = dateField === 'due_date' ? 'due_date' : 'created_at';
+    const fromISO = toISODate(dateFrom ?? undefined);
+    const toISO = toISODateEnd(dateTo ?? undefined);
+    if (fromISO) {
+      query = query.gte(rangeField, fromISO);
+    }
+    if (toISO) {
+      query = query.lte(rangeField, toISO);
+    }
+
+    switch (sort) {
+      case 'oldest':
+        query = query.order('created_at', { ascending: true });
+        break;
+      case 'due_soon':
+        query = query.order('due_date', { ascending: true, nullsLast: true }).order('created_at', {
+          ascending: false,
+        });
+        break;
+      case 'amount':
+        query = query.order('amount', { ascending: false }).order('created_at', {
+          ascending: false,
+        });
+        break;
+      case 'newest':
+      default:
+        query = query.order('created_at', { ascending: false });
+        break;
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const summary = await buildSummary(userId);
+
+    return {
+      items: (data ?? []).map(mapDebtRow),
+      summary,
+    };
+  } catch (error) {
+    return handleError(error, 'Gagal memuat data hutang');
+  }
+}
+
+export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; payments: DebtPaymentRecord[] }>
+{
+  try {
+    const userId = await getUserId();
+    const { data, error } = await supabase
+      .from('debts')
+      .select('*')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+
+    const { data: paymentRows, error: paymentsError } = await supabase
+      .from('debt_payments')
+      .select('*')
+      .eq('debt_id', id)
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (paymentsError) throw paymentsError;
+
+    return {
+      debt: data ? mapDebtRow(data) : null,
+      payments: (paymentRows ?? []).map(mapPaymentRow),
+    };
+  } catch (error) {
+    return handleError(error, 'Gagal memuat detail hutang');
+  }
+}
+
+export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]> {
+  try {
+    const userId = await getUserId();
+    const { data, error } = await supabase
+      .from('debt_payments')
+      .select('*')
+      .eq('debt_id', debtId)
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(mapPaymentRow);
+  } catch (error) {
+    return handleError(error, 'Gagal memuat pembayaran hutang');
+  }
+}
+
+export async function createDebt(payload: DebtInput): Promise<DebtRecord> {
+  try {
+    const userId = await getUserId();
+    const dueDateIso = toISODate(payload.due_date ?? null);
+    const dateIso = toISODate(payload.date);
+    const amount = Math.max(0, payload.amount);
+    const paidTotal = 0;
+    const status = evaluateStatus(amount, paidTotal, dueDateIso);
+
+    const insertPayload = {
+      user_id: userId,
+      type: payload.type,
+      party_name: payload.party_name,
+      title: payload.title,
+      date: dateIso ?? new Date().toISOString(),
+      due_date: dueDateIso,
+      amount: amount.toFixed(2),
+      rate_percent:
+        payload.rate_percent != null ? Math.max(0, Math.min(100, payload.rate_percent)).toFixed(2) : null,
+      paid_total: paidTotal.toFixed(2),
+      status,
+      notes: payload.notes ?? null,
+      attachments: payload.attachments ?? null,
+    };
+
+    const { data, error } = await supabase
+      .from('debts')
+      .insert([insertPayload])
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return mapDebtRow(data);
+  } catch (error) {
+    return handleError(error, 'Gagal menambahkan hutang');
+  }
+}
+
+export async function updateDebt(id: string, patch: DebtUpdateInput): Promise<DebtRecord> {
+  try {
+    const userId = await getUserId();
+    const updates: Record<string, any> = {};
+    if (patch.type) updates.type = patch.type;
+    if (patch.party_name != null) updates.party_name = patch.party_name;
+    if (patch.title != null) updates.title = patch.title;
+    if (patch.date) updates.date = toISODate(patch.date);
+    if (patch.due_date !== undefined) updates.due_date = toISODate(patch.due_date);
+    if (patch.amount != null) updates.amount = Math.max(0, patch.amount).toFixed(2);
+    if (patch.rate_percent != null)
+      updates.rate_percent = Math.max(0, Math.min(100, patch.rate_percent)).toFixed(2);
+    if (patch.notes !== undefined) updates.notes = patch.notes;
+    if (patch.attachments !== undefined) updates.attachments = patch.attachments;
+    if (patch.status) updates.status = patch.status;
+
+    if (Object.keys(updates).length === 0) {
+      const { data } = await supabase
+        .from('debts')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (!data) {
+        throw new Error('Hutang tidak ditemukan');
+      }
+      return mapDebtRow(data);
+    }
+
+    const shouldRecalculateStatus =
+      !('status' in updates) && (patch.amount != null || patch.due_date !== undefined);
+
+    if (shouldRecalculateStatus) {
+      const { data: debtRow } = await supabase
+        .from('debts')
+        .select('amount, paid_total, due_date')
+        .eq('id', id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (debtRow) {
+        const amount = patch.amount != null ? Math.max(0, patch.amount) : safeNumber(debtRow.amount);
+        const paidTotal = safeNumber(debtRow.paid_total);
+        const nextDue =
+          patch.due_date !== undefined ? updates.due_date ?? null : debtRow.due_date ?? null;
+        updates.status = evaluateStatus(amount, paidTotal, nextDue);
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('debts')
+      .update(updates)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+
+    if (error) throw error;
+    return mapDebtRow(data);
+  } catch (error) {
+    return handleError(error, 'Gagal memperbarui hutang');
+  }
+}
+
+export async function deleteDebt(id: string): Promise<void> {
+  try {
+    const userId = await getUserId();
+    const { error } = await supabase
+      .from('debts')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    if (error) throw error;
+  } catch (error) {
+    return handleError(error, 'Gagal menghapus hutang');
+  }
+}
+
+export async function addPayment(
+  debtId: string,
+  payload: PaymentInput
+): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
+{
+  try {
+    const userId = await getUserId();
+    const amount = Math.max(0, payload.amount);
+    const insertPayload = {
+      debt_id: debtId,
+      user_id: userId,
+      amount: amount.toFixed(2),
+      date: toISODate(payload.date) ?? new Date().toISOString(),
+      notes: payload.notes ?? null,
+    };
+
+    const { data, error } = await supabase
+      .from('debt_payments')
+      .insert([insertPayload])
+      .select('*')
+      .single();
+    if (error) throw error;
+
+    const updatedDebt = await recalculateDebtAggregates(debtId, userId);
+
+    return {
+      debt: updatedDebt,
+      payment: mapPaymentRow(data),
+    };
+  } catch (error) {
+    return handleError(error, 'Gagal menambahkan pembayaran');
+  }
+}
+
+export async function deletePayment(paymentId: string): Promise<DebtRecord | null> {
+  try {
+    const userId = await getUserId();
+    const { data: paymentRow, error: fetchError } = await supabase
+      .from('debt_payments')
+      .select('debt_id')
+      .eq('id', paymentId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!paymentRow) {
+      throw new Error('Pembayaran tidak ditemukan');
+    }
+
+    const { error } = await supabase
+      .from('debt_payments')
+      .delete()
+      .eq('id', paymentId)
+      .eq('user_id', userId);
+    if (error) throw error;
+
+    const updatedDebt = await recalculateDebtAggregates(paymentRow.debt_id, userId);
+    return updatedDebt;
+  } catch (error) {
+    return handleError(error, 'Gagal menghapus pembayaran');
+  }
+}

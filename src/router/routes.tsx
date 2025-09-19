@@ -18,6 +18,8 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/Budgets'));
     case '/goals':
       return lazy(() => import('../pages/Goals'));
+    case '/debts':
+      return lazy(() => import('../pages/Debts'));
     case '/categories':
       return lazy(() => import('../pages/Categories'));
     case '/data':
