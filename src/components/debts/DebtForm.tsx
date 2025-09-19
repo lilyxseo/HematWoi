@@ -183,20 +183,46 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
       return;
     }
 
+    if (Number.isNaN(amountValue) || amountValue <= 0) {
+      setErrors((prev) => ({ ...prev, amount: 'Masukkan nominal lebih dari 0.' }));
+      dialogRef.current?.querySelector<HTMLInputElement>('[name="amount"]')?.focus();
+      return;
+    }
+
+    const normalizedAmount = Number(amountValue.toFixed(2));
     const rateValue = values.rate_percent ? parseDecimal(values.rate_percent) : Number.NaN;
+    const hasRateInput = values.rate_percent.trim().length > 0;
+    const normalizedRate = hasRateInput && !Number.isNaN(rateValue) ? clampRate(rateValue) : undefined;
     const payload: DebtInput = {
       type: values.type,
       party_name: values.party_name.trim(),
       title: values.title.trim(),
       date: values.date || todayIso(),
       due_date: values.due_date || null,
-      amount: Number.isNaN(amountValue) ? 0 : amountValue,
-      rate_percent: values.rate_percent ? clampRate(rateValue) : null,
+      amount: normalizedAmount,
       notes: values.notes.trim() ? values.notes.trim() : null,
       attachments: values.attachments.trim() ? values.attachments.trim() : null,
     };
 
-    await onSubmit(payload);
+    if (normalizedRate !== undefined) {
+      payload.rate_percent = normalizedRate;
+    }
+
+    try {
+      await onSubmit(payload);
+    } catch (error) {
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('[HW][DebtForm] submit', error);
+      }
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Terjadi kesalahan saat menyimpan hutang.';
+      if (typeof window !== 'undefined') {
+        window.alert(message);
+      }
+    }
   };
 
   if (!open) return null;
