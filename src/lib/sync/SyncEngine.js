@@ -101,7 +101,7 @@ const UUID_REGEX =
 const VALID_TRANSACTION_TYPES = new Set(["expense", "income", "transfer"]);
 const VALID_CATEGORY_TYPES = new Set(["income", "expense"]);
 
-const CATEGORY_SELECT_COLUMNS = undefined;
+const CATEGORY_SELECT_COLUMNS = 'id, user_id, type, name, order_index, inserted_at, "group"';
 
 const TRANSACTION_UUID_FIELDS = [
   "id",
