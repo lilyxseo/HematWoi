@@ -15,6 +15,7 @@ import SyncBanner from "./components/SyncBanner";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
+import DebtsPage from "./pages/Debts";
 import Categories from "./pages/Categories";
 import DataToolsPage from "./pages/DataToolsPage";
 import TransactionAdd from "./pages/TransactionAdd";
@@ -1070,6 +1071,7 @@ function AppShell({ prefs, setPrefs }) {
                 />
               }
             />
+            <Route path="/debts" element={<DebtsPage />} />
             <Route path="/goals" element={<GoalsPage />} />
             <Route
               path="/challenges"
