@@ -721,18 +721,17 @@ function TransactionsFilterBar({
   };
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-4">
+    <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-white shadow">
       <div
         role="toolbar"
         aria-label="Filter transaksi"
-        className="grid min-w-0 grid-cols-2 items-center gap-3 md:grid-cols-6"
+        className="grid grid-cols-2 items-center gap-3 md:grid-cols-6"
       >
         <div className="col-span-2 min-w-0 md:col-span-2">
-          <div
-            className="flex flex-wrap gap-2 md:flex-nowrap"
-            role="group"
-            aria-label="Rentang waktu"
-          >
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">
+            Rentang Waktu
+          </p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-2 lg:grid-cols-4">
             {Object.entries(PERIOD_LABELS).map(([value, label]) => (
               <button
                 key={value}
@@ -740,7 +739,7 @@ function TransactionsFilterBar({
                 onClick={() => handlePresetChange(value)}
                 ref={value === "custom" ? customButtonRef : undefined}
                 className={clsx(
-                  "inline-flex h-9 items-center rounded-full px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
+                  "inline-flex h-[40px] items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-semibold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
                   filter.period.preset === value
                     ? "bg-brand text-white shadow"
                     : "text-white/70 hover:bg-white/10",
@@ -760,7 +759,7 @@ function TransactionsFilterBar({
             ariaLabel="Filter kategori transaksi"
           />
         </div>
-        <div className="col-span-1 min-w-0 md:col-span-1">
+        <div className="col-span-2 min-w-0 md:col-span-1">
           <label htmlFor={typeSelectId} className="sr-only">
             Filter jenis transaksi
           </label>
@@ -777,7 +776,7 @@ function TransactionsFilterBar({
             <option value="transfer">Transfer</option>
           </select>
         </div>
-        <div className="col-span-1 min-w-0 md:col-span-1">
+        <div className="col-span-2 min-w-0 md:col-span-1">
           <label htmlFor={sortSelectId} className="sr-only">
             Urutkan transaksi
           </label>
@@ -809,24 +808,24 @@ function TransactionsFilterBar({
             />
           </div>
         </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-end gap-2 md:flex-nowrap md:gap-3">
-        <button
-          type="button"
-          onClick={handleReset}
-          className="inline-flex h-[40px] items-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          aria-label="Reset semua filter"
-        >
-          Reset
-        </button>
-        <button
-          type="button"
-          onClick={onOpenAdd}
-          className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          aria-label="Tambah transaksi"
-        >
-          <Plus className="h-4 w-4" /> Tambah Transaksi
-        </button>
+        <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 md:col-span-6 md:flex-nowrap md:gap-3">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="inline-flex h-[40px] items-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            aria-label="Reset semua filter"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={onOpenAdd}
+            className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
+            aria-label="Tambah transaksi"
+          >
+            <Plus className="h-4 w-4" /> Tambah Transaksi
+          </button>
+        </div>
       </div>
       {customOpen && filter.period.preset === "custom" && (
         <CustomRangePopover
@@ -998,10 +997,9 @@ function CategoryMultiSelect({ categories = [], selected = [], onChange, ariaLab
                         role="option"
                         aria-selected={checked}
                       >
-                        <div className="flex flex-col text-left">
-                          <span className="font-medium text-white">{cat.name}</span>
-                          <span className="text-xs text-white/40">{TYPE_LABELS[cat.type] || ""}</span>
-                        </div>
+                      <div className="flex flex-col text-left">
+                        <span className="font-medium text-white">{cat.name}</span>
+                      </div>
                         {checked ? (
                           <Check className="h-4 w-4 text-brand" aria-hidden="true" />
                         ) : (
@@ -1287,9 +1285,9 @@ function TransactionsTable({
         className="min-w-0 max-h-[calc(100vh-var(--header-and-filter-height,280px))] overflow-y-auto"
         style={scrollVariables}
       >
-        <div className="min-w-0 -mx-3 overflow-x-auto px-3 md:mx-0 md:px-0">
+        <div className="min-w-0 overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0">
           <table className="w-full table-auto text-sm text-white/80 md:table-fixed">
-            <thead className="sticky top-0 z-10 bg-bg/95 text-white/60 backdrop-blur supports-[backdrop-filter]:bg-bg/75">
+            <thead className="sticky top-0 z-10 bg-background/95 text-white/60 backdrop-blur supports-[backdrop-filter]:bg-background/75">
               <tr className="text-xs font-semibold uppercase tracking-wide">
                 <th scope="col" className="w-12 px-4 py-3 text-center">
                   <input
@@ -1522,7 +1520,6 @@ function TransactionItem({
   const hasAttachments = Boolean(item.receipt_url) || (Array.isArray(item.receipts) && item.receipts.length > 0);
   const attachmentHref = item.receipt_url;
   const dateValue = toDateInput(item.date);
-  const typeLabel = TYPE_LABELS[item.type] || "";
   const categoryInputId = `category-${item.id}`;
   const dateInputId = `date-${item.id}`;
 
@@ -1693,16 +1690,7 @@ function TransactionItem({
                 <p className="truncate font-semibold text-white" title={categoryLabel}>
                   {categoryLabel}
                 </p>
-                <p
-                  className="flex flex-wrap items-center gap-1 text-xs text-white/50"
-                  title={typeLabel ? `${typeLabel} • ${dateValue}` : dateValue}
-                >
-                  {typeLabel && (
-                    <>
-                      <span>{typeLabel}</span>
-                      <span aria-hidden="true">•</span>
-                    </>
-                  )}
+                <p className="flex items-center gap-1 text-xs text-white/50" title={dateValue}>
                   <time dateTime={dateValue}>{dateValue}</time>
                 </p>
               </>

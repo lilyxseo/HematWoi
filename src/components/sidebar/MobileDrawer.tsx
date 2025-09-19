@@ -110,13 +110,11 @@ export default function MobileDrawer({
         aria-modal="true"
         aria-label={ariaLabel}
         className={clsx(
-          "fixed left-0 top-0 z-[70] flex h-[100dvh] w-[84vw] max-w-[360px] flex-col overflow-hidden bg-surface-1 text-text shadow-2xl transition-transform duration-300",
+          "fixed left-0 top-0 z-[70] flex h-[100dvh] w-[84vw] max-w-[360px] flex-col overflow-y-auto overscroll-contain bg-surface-1 text-text shadow-2xl transition-transform duration-300",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <div className="flex-1 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
-          {children}
-        </div>
+        <div className="flex min-h-full flex-col pb-[env(safe-area-inset-bottom)]">{children}</div>
       </div>
     </>,
     document.body
