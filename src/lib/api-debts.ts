@@ -22,7 +22,6 @@ export interface DebtRecord {
   remaining: number;
   status: DebtStatus;
   notes: string | null;
-  attachments: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,7 +67,6 @@ export interface DebtInput {
   amount: number;
   rate_percent?: number | null;
   notes?: string | null;
-  attachments?: string | null;
 }
 
 export interface DebtUpdateInput extends Partial<DebtInput> {
@@ -81,50 +79,8 @@ export interface PaymentInput {
   notes?: string | null;
 }
 
-const DEBT_BASE_COLUMNS =
-  'id, user_id, type, party_name, title, date, due_date, amount, rate_percent, paid_total, status, notes, created_at, updated_at';
-
-let debtAttachmentsSupported: boolean | undefined;
-
-function shouldUseDebtAttachments(): boolean {
-  return debtAttachmentsSupported !== false;
-}
-
-function getDebtSelectColumns(): string {
-  return shouldUseDebtAttachments()
-    ? `${DEBT_BASE_COLUMNS}, attachments`
-    : DEBT_BASE_COLUMNS;
-}
-
-function isMissingColumnError(error: unknown, column: string): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const maybeCode = (error as { code?: unknown }).code;
-  const maybeMessage = (error as { message?: unknown }).message;
-  if (typeof maybeMessage === 'string') {
-    const normalized = maybeMessage.toLowerCase();
-    if (
-      normalized.includes(column.toLowerCase()) &&
-      (normalized.includes('does not exist') || normalized.includes('could not find'))
-    ) {
-      return true;
-    }
-  }
-  if (maybeCode === '42703' || maybeCode === 'PGRST204') {
-    if (typeof maybeMessage === 'string') {
-      return maybeMessage.toLowerCase().includes(column.toLowerCase());
-    }
-    return true;
-  }
-  return false;
-}
-
-function handleMissingAttachments(error: unknown): boolean {
-  if (shouldUseDebtAttachments() && isMissingColumnError(error, 'attachments')) {
-    debtAttachmentsSupported = false;
-    return true;
-  }
-  return false;
-}
+const DEBT_SELECT_COLUMNS =
+  'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,created_at,updated_at';
 
 function logDevError(error: unknown) {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -214,7 +170,6 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
     remaining,
     status: row.status as DebtStatus,
     notes: row.notes ?? null,
-    attachments: row.attachments ?? null,
     created_at: row.created_at ?? row.date ?? new Date().toISOString(),
     updated_at: row.updated_at ?? row.created_at ?? new Date().toISOString(),
   };
@@ -235,15 +190,12 @@ function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
 async function recalculateDebtAggregates(debtId: string, userId: string): Promise<DebtRecord | null> {
   const { data: debtRow, error: debtError } = await supabase
     .from('debts')
-    .select(getDebtSelectColumns())
+    .select(DEBT_SELECT_COLUMNS)
     .eq('id', debtId)
     .eq('user_id', userId)
     .maybeSingle();
 
   if (debtError) {
-    if (handleMissingAttachments(debtError)) {
-      return recalculateDebtAggregates(debtId, userId);
-    }
     throw debtError;
   }
   if (!debtRow) return null;
@@ -267,13 +219,10 @@ async function recalculateDebtAggregates(debtId: string, userId: string): Promis
     })
     .eq('id', debtId)
     .eq('user_id', userId)
-    .select(getDebtSelectColumns())
+    .select(DEBT_SELECT_COLUMNS)
     .maybeSingle();
 
   if (updateError) {
-    if (handleMissingAttachments(updateError)) {
-      return recalculateDebtAggregates(debtId, userId);
-    }
     throw updateError;
   }
   if (!updated) return mapDebtRow({ ...debtRow, paid_total: paidTotal, status });
@@ -358,7 +307,7 @@ export async function listDebts(filters: DebtFilters = {}): Promise<ListDebtsRes
 
     let query = supabase
       .from('debts')
-      .select(getDebtSelectColumns())
+      .select(DEBT_SELECT_COLUMNS)
       .eq('user_id', userId);
 
     if (type !== 'all') {
@@ -390,14 +339,14 @@ export async function listDebts(filters: DebtFilters = {}): Promise<ListDebtsRes
         query = query.order('created_at', { ascending: true });
         break;
       case 'due_soon':
-        query = query.order('due_date', { ascending: true, nullsLast: true }).order('created_at', {
-          ascending: false,
-        });
+        query = query
+          .order('due_date', { ascending: true, nullsLast: true })
+          .order('created_at', { ascending: false });
         break;
       case 'amount':
-        query = query.order('amount', { ascending: false }).order('created_at', {
-          ascending: false,
-        });
+        query = query
+          .order('amount', { ascending: false })
+          .order('created_at', { ascending: false });
         break;
       case 'newest':
       default:
@@ -415,10 +364,11 @@ export async function listDebts(filters: DebtFilters = {}): Promise<ListDebtsRes
       summary,
     };
   } catch (error) {
-    if (handleMissingAttachments(error)) {
-      return listDebts(filters);
+    if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('[HW] debts-api list', error);
     }
-    return handleError(error, 'Gagal memuat data hutang');
+    throw new Error('Gagal memuat hutang');
   }
 }
 
@@ -428,7 +378,7 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
     const userId = await getUserId();
     const { data, error } = await supabase
       .from('debts')
-      .select(getDebtSelectColumns())
+      .select(DEBT_SELECT_COLUMNS)
       .eq('id', id)
       .eq('user_id', userId)
       .maybeSingle();
@@ -448,9 +398,6 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
       payments: (paymentRows ?? []).map(mapPaymentRow),
     };
   } catch (error) {
-    if (handleMissingAttachments(error)) {
-      return getDebt(id);
-    }
     return handleError(error, 'Gagal memuat detail hutang');
   }
 }
@@ -475,14 +422,11 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
 async function fetchDebtById(id: string, userId: string): Promise<Record<string, any> | null> {
   const { data, error } = await supabase
     .from('debts')
-    .select(getDebtSelectColumns())
+    .select(DEBT_SELECT_COLUMNS)
     .eq('id', id)
     .eq('user_id', userId)
     .maybeSingle();
   if (error) {
-    if (handleMissingAttachments(error)) {
-      return fetchDebtById(id, userId);
-    }
     throw error;
   }
   return data ?? null;
@@ -520,11 +464,7 @@ export async function createDebt(payload: DebtInput): Promise<DebtRecord> {
     }
 
     if (payload.notes !== undefined) {
-      insertPayload.notes = payload.notes ?? null;
-    }
-
-    if (shouldUseDebtAttachments() && payload.attachments !== undefined) {
-      insertPayload.attachments = payload.attachments ?? null;
+      insertPayload.notes = payload.notes?.trim() ? payload.notes.trim() : null;
     }
 
     const { data: inserted, error: insertError } = await supabase
@@ -548,9 +488,6 @@ export async function createDebt(payload: DebtInput): Promise<DebtRecord> {
   } catch (error) {
     if (error instanceof Error && error.message === 'Nominal hutang tidak valid.') {
       throw error;
-    }
-    if (handleMissingAttachments(error)) {
-      return createDebt(payload);
     }
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
       // eslint-disable-next-line no-console
@@ -584,16 +521,15 @@ export async function updateDebt(id: string, patch: DebtUpdateInput): Promise<De
       updates.rate_percent = Number(clamped.toFixed(2));
     }
 
-    if (patch.notes !== undefined) updates.notes = patch.notes;
-    if (shouldUseDebtAttachments() && patch.attachments !== undefined) {
-      updates.attachments = patch.attachments;
+    if (patch.notes !== undefined) {
+      updates.notes = patch.notes === null ? null : patch.notes.trim() ? patch.notes.trim() : null;
     }
     if (patch.status) updates.status = patch.status;
 
     if (Object.keys(updates).length === 0) {
       const { data, error } = await supabase
         .from('debts')
-        .select(getDebtSelectColumns())
+        .select(DEBT_SELECT_COLUMNS)
         .eq('id', id)
         .eq('user_id', userId)
         .maybeSingle();
@@ -629,15 +565,12 @@ export async function updateDebt(id: string, patch: DebtUpdateInput): Promise<De
       .update(updates)
       .eq('id', id)
       .eq('user_id', userId)
-      .select(getDebtSelectColumns())
+      .select(DEBT_SELECT_COLUMNS)
       .single();
 
     if (error) throw error;
     return mapDebtRow(data);
   } catch (error) {
-    if (handleMissingAttachments(error)) {
-      return updateDebt(id, patch);
-    }
     return handleError(error, 'Gagal memperbarui hutang');
   }
 }

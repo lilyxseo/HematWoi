@@ -36,7 +36,6 @@ interface DebtFormValues {
   amount: string;
   rate_percent: string;
   notes: string;
-  attachments: string;
 }
 
 interface DebtFormProps {
@@ -63,7 +62,6 @@ function buildDefaultValues(initial?: DebtRecord | null): DebtFormValues {
       amount: '',
       rate_percent: '',
       notes: '',
-      attachments: '',
     };
   }
   return {
@@ -78,7 +76,6 @@ function buildDefaultValues(initial?: DebtRecord | null): DebtFormValues {
         ? initial.rate_percent.toString()
         : '',
     notes: initial.notes ?? '',
-    attachments: initial.attachments ?? '',
   };
 }
 
@@ -108,10 +105,6 @@ function validate(values: DebtFormValues) {
     } else if (rateValue < 0 || rateValue > 100) {
       errors.rate_percent = 'Nilai persen 0-100.';
     }
-  }
-
-  if (values.attachments && !/^https?:\/\//i.test(values.attachments.trim())) {
-    errors.attachments = 'Masukkan URL yang valid.';
   }
 
   return { errors, amountValue };
@@ -201,7 +194,6 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
       due_date: values.due_date || null,
       amount: normalizedAmount,
       notes: values.notes.trim() ? values.notes.trim() : null,
-      attachments: values.attachments.trim() ? values.attachments.trim() : null,
     };
 
     if (normalizedRate !== undefined) {
@@ -359,19 +351,6 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
               className="rounded-xl border border-border bg-surface-1 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
               placeholder="Catatan tambahan (opsional)"
             />
-          </label>
-
-          <label className="sm:col-span-2 flex min-w-0 flex-col gap-1 text-sm font-medium text-text" htmlFor="attachments">
-            Lampiran (URL)
-            <input
-              id="attachments"
-              name="attachments"
-              value={values.attachments}
-              onChange={handleChange('attachments')}
-              placeholder="https://"
-              className="h-[40px] rounded-xl border border-border bg-surface-1 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-            />
-            {errors.attachments ? <span className="text-xs text-danger">{errors.attachments}</span> : null}
           </label>
 
           <div className="sm:col-span-2 flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
