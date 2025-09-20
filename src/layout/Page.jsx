@@ -5,7 +5,7 @@
 export default function Page({ children }) {
   return (
     <main
-      className="mx-auto max-w-5xl px-4"
+      className="mx-auto w-full max-w-5xl min-w-0 px-4"
       style={{ paddingTop: "var(--page-y)", paddingBottom: "var(--page-y)" }}
     >
       {children}

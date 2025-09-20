@@ -48,18 +48,18 @@ const CARDS = [
 
 export default function SummaryCards({ summary }: SummaryCardsProps) {
   return (
-    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {CARDS.map((card) => {
         const value = summary ? summary[card.key] : 0;
         return (
           <article
             key={card.key}
-            className="card min-w-0 space-y-2 border border-border/60 bg-surface-1/90 text-left"
+            className="card min-w-0 space-y-2 border border-border/60 bg-surface-1/90 p-4 text-left md:p-5"
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               {card.label}
             </p>
-            <p className={`text-2xl font-bold tabular-nums ${card.tone}`}>
+            <p className={`text-xl font-bold tracking-tight tabular-nums md:text-2xl ${card.tone}`}>
               {formatCurrency(value)}
             </p>
             <p className="text-xs text-muted">{card.description}</p>

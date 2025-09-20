@@ -17,6 +17,7 @@ module.exports = {
         danger: 'var(--danger)',
         info: 'var(--info)',
         bg: 'var(--bg)',
+        card: 'var(--surface)',
         'surface-1': 'var(--surface)',
         'surface-2': 'var(--surface-2)',
         border: 'var(--border)',
