@@ -57,9 +57,9 @@ function isDueSoon(debt: DebtRecord) {
 
 export default function DebtsTable({ items, loading, onEdit, onDelete, onAddPayment }: DebtsTableProps) {
   return (
-    <div className="overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0">
-      <table className="w-full min-w-[960px] table-fixed border-separate border-spacing-0 text-left text-sm">
-        <thead className="sticky top-0 z-10 bg-background/95 bg-bg/95 backdrop-blur">
+    <div className="-mx-3 overflow-x-auto px-3 md:mx-0 md:px-0">
+      <table className="w-full min-w-[960px] table-auto border-separate border-spacing-0 text-left text-sm md:table-fixed">
+        <thead className="sticky top-0 z-10 bg-background/95 backdrop-blur">
           <tr className="text-xs font-semibold uppercase tracking-wide text-muted">
             <th scope="col" className="p-3 text-center">Tipe</th>
             <th scope="col" className="p-3">Pihak</th>
@@ -74,7 +74,7 @@ export default function DebtsTable({ items, loading, onEdit, onDelete, onAddPaym
             <th scope="col" className="p-3 text-center">Aksi</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border/60 bg-surface-1/80">
+        <tbody className="bg-surface-1/80">
           {loading ? (
             <tr>
               <td colSpan={11} className="p-6 text-center text-sm text-muted">
@@ -94,7 +94,10 @@ export default function DebtsTable({ items, loading, onEdit, onDelete, onAddPaym
               const statusClass = STATUS_STYLE[debt.status] ?? '';
               const showDueBadge = isDueSoon(debt);
               return (
-                <tr key={debt.id} className="odd:bg-surface-1/60 even:bg-surface-1">
+                <tr
+                  key={debt.id}
+                  className="odd:bg-muted/30 even:bg-surface-1/80 transition-colors hover:bg-muted/50"
+                >
                   <td className="p-3 text-center align-middle">
                     <span
                       className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-soft/40 text-xs font-bold text-text"
@@ -103,7 +106,7 @@ export default function DebtsTable({ items, loading, onEdit, onDelete, onAddPaym
                       {TYPE_LABEL[debt.type]}
                     </span>
                   </td>
-                  <td className="max-w-[160px] p-3 align-middle">
+                  <td className="max-w-[180px] p-3 align-middle">
                     <p className="truncate font-medium text-text" title={debt.party_name}>
                       {debt.party_name}
                     </p>
@@ -113,15 +116,17 @@ export default function DebtsTable({ items, loading, onEdit, onDelete, onAddPaym
                       </p>
                     ) : null}
                   </td>
-                  <td className="max-w-[180px] p-3 align-middle">
-                    <span className="truncate font-medium text-text" title={debt.title}>
+                  <td className="max-w-[220px] p-3 align-middle">
+                    <span className="line-clamp-2 font-medium text-text" title={debt.title}>
                       {debt.title}
                     </span>
                   </td>
-                  <td className="p-3 align-middle text-sm text-text/80">{formatDate(debt.date)}</td>
+                  <td className="p-3 align-middle text-sm text-text/80 whitespace-nowrap">
+                    {formatDate(debt.date)}
+                  </td>
                   <td className="p-3 align-middle text-sm text-text/80">
-                    <div className="flex items-center gap-2">
-                      <span>{formatDate(debt.due_date)}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate">{formatDate(debt.due_date)}</span>
                       {showDueBadge ? (
                         <span className="inline-flex items-center rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300">
                           Jatuh tempo
@@ -134,13 +139,13 @@ export default function DebtsTable({ items, loading, onEdit, onDelete, onAddPaym
                       ? `${debt.rate_percent.toFixed(2)}%`
                       : '-'}
                   </td>
-                  <td className="p-3 text-right align-middle tabular-nums text-text font-semibold">
+                  <td className="p-3 text-right align-middle font-semibold tabular-nums text-text">
                     {formatCurrency(debt.amount)}
                   </td>
                   <td className="p-3 text-right align-middle tabular-nums text-text/80">
                     {formatCurrency(debt.paid_total)}
                   </td>
-                  <td className="p-3 text-right align-middle tabular-nums font-semibold text-text">
+                  <td className="p-3 text-right align-middle font-semibold tabular-nums text-text">
                     {formatCurrency(debt.remaining)}
                   </td>
                   <td className="p-3 text-center align-middle">

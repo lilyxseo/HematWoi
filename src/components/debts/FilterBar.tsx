@@ -69,10 +69,13 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
   };
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-sm">
-      <div className="grid gap-3 min-[420px]:grid-cols-2 lg:grid-cols-7">
-        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted min-w-0">
-          <span>Tipe</span>
+    <form
+      onSubmit={handleSubmit}
+      className="min-w-0 rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-sm"
+    >
+      <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-6">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+          <span className="truncate">Tipe</span>
           <select
             value={filters.type}
             onChange={(event) => handleSelect(event, 'type')}
@@ -86,8 +89,8 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted min-w-0">
-          <span>Status</span>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+          <span className="truncate">Status</span>
           <select
             value={filters.status}
             onChange={(event) => handleSelect(event, 'status')}
@@ -101,8 +104,8 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted min-w-0">
-          <span>Rentang</span>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+          <span className="truncate">Rentang</span>
           <select
             value={filters.dateField}
             onChange={(event) => handleSelect(event, 'dateField')}
@@ -116,8 +119,8 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted min-w-0">
-          <span>Dari</span>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+          <span className="truncate">Dari</span>
           <input
             type="date"
             value={filters.dateFrom ?? ''}
@@ -126,8 +129,8 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted min-w-0">
-          <span>Sampai</span>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+          <span className="truncate">Sampai</span>
           <input
             type="date"
             value={filters.dateTo ?? ''}
@@ -136,8 +139,8 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted min-w-0">
-          <span>Urutkan</span>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+          <span className="truncate">Urutkan</span>
           <select
             value={filters.sort}
             onChange={(event) => handleSelect(event, 'sort')}
@@ -151,14 +154,14 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
           </select>
         </label>
 
-        <div className="col-span-full flex min-w-0 items-center gap-2 rounded-xl border border-border bg-surface-1 px-3 text-sm text-text shadow-sm focus-within:ring-2 focus-within:ring-[color:var(--brand-ring)] min-[420px]:col-span-2 lg:col-span-2">
+        <div className="col-span-2 flex h-[40px] min-w-0 items-center gap-2 rounded-xl border border-border bg-surface-1 px-3 text-sm text-text shadow-sm focus-within:ring-2 focus-within:ring-[color:var(--brand-ring)] md:col-span-6">
           <Search className="h-4 w-4 text-muted" aria-hidden="true" />
           <input
             type="search"
             value={filters.q}
             onChange={(event) => handleInput(event, 'q')}
             placeholder="Cari pihak, judul, atau catatan"
-            className="h-[38px] w-full min-w-0 bg-transparent text-sm text-text placeholder:text-muted focus-visible:outline-none"
+            className="h-full w-full min-w-0 bg-transparent text-sm text-text placeholder:text-muted focus-visible:outline-none"
             aria-label="Pencarian hutang"
           />
           {onReset ? (
