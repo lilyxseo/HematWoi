@@ -151,7 +151,6 @@ export default function Debts() {
         remaining: payload.amount,
         status: computeStatus(payload.amount, 0, toISO(payload.due_date ?? null)),
         notes: payload.notes ?? null,
-        attachments: payload.attachments ?? null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -186,7 +185,6 @@ export default function Debts() {
             amount: payload.amount,
             rate_percent: payload.rate_percent ?? item.rate_percent ?? 0,
             notes: payload.notes ?? null,
-            attachments: payload.attachments ?? null,
             remaining: Math.max(payload.amount - item.paid_total, 0),
             status: computeStatus(payload.amount, item.paid_total, toISO(payload.due_date ?? null)),
           }
