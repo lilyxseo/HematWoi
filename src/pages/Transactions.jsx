@@ -51,6 +51,8 @@ const PERIOD_LABELS = {
 
 const PAGE_DESCRIPTION = "Kelola catatan keuangan";
 
+const FILTER_PANEL_BREAKPOINT = 768;
+const FILTER_PANEL_STORAGE_KEY = "transactions-filter-open";
 const MOBILE_BREAKPOINT = 992;
 
 function detectTableVariant() {
@@ -104,11 +106,28 @@ export default function Transactions() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
   const filterBarRef = useRef(null);
+  const filterPanelId = useId();
   const [filterBarHeight, setFilterBarHeight] = useState(0);
   const searchInputRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(filter.search);
   const [filterBarStuck, setFilterBarStuck] = useState(false);
   const [tableVariant, setTableVariant] = useState(() => detectTableVariant());
+  const [isDesktopFilterView, setIsDesktopFilterView] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia(`(min-width: ${FILTER_PANEL_BREAKPOINT}px)`).matches;
+  });
+  const [filterPanelOpen, setFilterPanelOpen] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const stored = window.sessionStorage.getItem(FILTER_PANEL_STORAGE_KEY);
+      if (stored === null) return false;
+      return stored === "true";
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     setSearchTerm(filter.search);
@@ -122,6 +141,35 @@ export default function Transactions() {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return undefined;
+    }
+    const media = window.matchMedia(`(min-width: ${FILTER_PANEL_BREAKPOINT}px)`);
+    const handleChange = (event) => {
+      setIsDesktopFilterView(event.matches);
+    };
+    handleChange(media);
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", handleChange);
+      return () => media.removeEventListener("change", handleChange);
+    }
+    media.addListener(handleChange);
+    return () => media.removeListener(handleChange);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(
+        FILTER_PANEL_STORAGE_KEY,
+        String(filterPanelOpen),
+      );
+    } catch {
+      /* ignore persistence errors */
+    }
+  }, [filterPanelOpen]);
 
   useEffect(() => {
     if (!filterBarRef.current || typeof ResizeObserver === "undefined") return;
@@ -484,6 +532,13 @@ export default function Transactions() {
   }, [refresh]);
 
   const tableStickyTop = `calc(var(--app-header-height, var(--app-topbar-h, 64px)) + ${filterBarHeight}px + 16px)`;
+  const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
+  const activeFilterCount = activeChips.length;
+
+  const toggleFilterPanel = () => {
+    if (isDesktopFilterView) return;
+    setFilterPanelOpen((prev) => !prev);
+  };
 
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
@@ -524,28 +579,69 @@ export default function Transactions() {
 
         <div
           ref={filterBarRef}
-          className={clsx(
-            "sticky z-20 rounded-2xl border border-white/10 bg-slate-900/60 transition-all",
-            filterBarStuck && "border-white/15 shadow-[0_12px_30px_-16px_rgba(15,23,42,0.85)]"
-          )}
+          className="sticky z-20"
           style={{
             top: "var(--app-header-height, var(--app-topbar-h, 64px))",
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)"
           }}
         >
-          <TransactionsFilterBar
-            filter={filter}
-            categories={categories}
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            onFilterChange={setFilter}
-            searchInputRef={searchInputRef}
-            onOpenAdd={() => setAddOpen(true)}
-          />
-          {activeChips.length > 0 && (
-            <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
-          )}
+          <button
+            type="button"
+            onClick={toggleFilterPanel}
+            className={clsx(
+              "md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-white shadow transition-colors",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
+              filterBarStuck && !isFilterPanelVisible && "border-white/15 shadow-[0_12px_30px_-16px_rgba(15,23,42,0.85)]",
+            )}
+            aria-controls={filterPanelId}
+            aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
+          >
+            <span className="flex items-center gap-2">
+              Filter
+              {activeFilterCount > 0 && (
+                <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-white">
+                  {activeFilterCount}
+                </span>
+              )}
+            </span>
+            <ChevronDown
+              className={clsx(
+                "h-4 w-4 transition-transform duration-200",
+                isFilterPanelVisible ? "rotate-180" : "rotate-0",
+              )}
+              aria-hidden="true"
+            />
+          </button>
+          <div
+            id={filterPanelId}
+            aria-hidden={!isDesktopFilterView && !isFilterPanelVisible}
+            inert={!isDesktopFilterView && !isFilterPanelVisible ? "" : undefined}
+            className={clsx(
+              "rounded-2xl border border-white/10 bg-slate-900/60 transition-[max-height,opacity] duration-200 ease-in-out",
+              "md:max-h-none md:opacity-100 md:transition-none md:overflow-visible md:pointer-events-auto",
+              !isDesktopFilterView && "overflow-hidden",
+              !isDesktopFilterView && isFilterPanelVisible && "mt-3",
+              !isDesktopFilterView && !isFilterPanelVisible && "pointer-events-none",
+              isFilterPanelVisible ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0",
+              filterBarStuck && isFilterPanelVisible && "border-white/15 shadow-[0_12px_30px_-16px_rgba(15,23,42,0.85)]",
+            )}
+            style={{
+              backdropFilter: "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+            }}
+          >
+            <TransactionsFilterBar
+              filter={filter}
+              categories={categories}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              onFilterChange={setFilter}
+              searchInputRef={searchInputRef}
+              onOpenAdd={() => setAddOpen(true)}
+            />
+            {activeChips.length > 0 && (
+              <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
+            )}
+          </div>
         </div>
 
         {showSyncBadge && (
