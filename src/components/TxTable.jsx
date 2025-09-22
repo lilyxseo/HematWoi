@@ -61,7 +61,7 @@ export default function TxTable({ items = [], onRemove, onUpdate, loading }) {
               <tr key={i} className="even:bg-surface-1">
                 {Array.from({ length: 5 }).map((_, j) => (
                   <td key={j} className="p-2">
-                    <div className="h-4 w-full rounded bg-surface-3" />
+                    <div className="h-4 w-full rounded bg-surface-alt" />
                   </td>
                 ))}
               </tr>

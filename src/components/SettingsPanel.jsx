@@ -275,7 +275,7 @@ export default function SettingsPanel({ open, onClose, value, onChange }) {
           </div>
         </div>
         <div className="flex justify-end gap-2">
-          <button className="btn" onClick={onClose}>
+          <button className="btn btn-secondary" onClick={onClose}>
             Batal
           </button>
           <button className="btn btn-primary" onClick={handleSave}>

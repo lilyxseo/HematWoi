@@ -20,9 +20,9 @@ export default function GoalFormModal({ open, onClose, onSave, initial }) {
 
   return (
     <Modal open={open} onClose={onClose} title={initial ? 'Edit Goal' : 'Tambah Goal'}>
-      <form onSubmit={handleSubmit} className="space-y-2">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <input
-          className="w-full p-2 border rounded"
+          className="input"
           placeholder="Nama goal"
           value={form.name}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -30,15 +30,15 @@ export default function GoalFormModal({ open, onClose, onSave, initial }) {
         />
         <input
           type="number"
-          className="w-full p-2 border rounded"
+          className="input"
           placeholder="Target"
           value={form.target}
           min={1}
           onChange={(e) => setForm({ ...form, target: Number(e.target.value) })}
           required
         />
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className="btn" onClick={onClose}>
+        <div className="flex justify-end gap-2 pt-3">
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
             Batal
           </button>
           <button type="submit" className="btn btn-primary">

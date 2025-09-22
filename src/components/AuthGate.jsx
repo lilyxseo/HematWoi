@@ -35,15 +35,15 @@ export default function AuthGate({ children }) {
   if (loading) return <div className="p-6">Loading…</div>
   if (!user) {
     return (
-      <div className="min-h-screen grid place-items-center bg-bg">
-        <form onSubmit={signIn} className="w-[360px] space-y-3 bg-surface-1 p-4 rounded-xl border border-border">
-          <h1 className="text-xl font-bold">Masuk HematWoi</h1>
+      <div className="grid min-h-screen place-items-center bg-bg">
+        <form onSubmit={signIn} className="w-[360px] space-y-3 rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm">
+          <h1 className="text-xl font-bold text-text">Masuk HematWoi</h1>
           <input className="input" placeholder="email" value={email} onChange={e=>setEmail(e.target.value)} />
           <input className="input" type="password" placeholder="password" value={password} onChange={e=>setPassword(e.target.value)} />
           {err && <p className="text-sm text-danger">{err}</p>}
           <div className="flex gap-2">
             <button className="btn btn-primary">Masuk</button>
-            <button type="button" onClick={signUp} className="btn">Daftar</button>
+            <button type="button" onClick={signUp} className="btn btn-secondary">Daftar</button>
           </div>
         </form>
       </div>
@@ -51,9 +51,9 @@ export default function AuthGate({ children }) {
   }
   return (
     <div>
-      <div className="p-2 text-sm bg-surface-2 flex items-center justify-between">
+      <div className="flex items-center justify-between bg-surface-alt p-3 text-sm text-text">
         <span>Login sebagai <b>{user.email}</b></span>
-        <button onClick={signOut} className="btn">Keluar</button>
+        <button onClick={signOut} className="btn btn-secondary">Keluar</button>
       </div>
       {children}
     </div>

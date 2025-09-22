@@ -56,13 +56,16 @@ export default function ColorSwatch({ value, onChange, disabled = false, name }:
               type="button"
               disabled={disabled}
               onClick={() => onChange(preset)}
-              className="relative h-8 w-8 rounded-full border border-white/20 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
+              className="relative h-9 w-9 rounded-full border border-border-subtle/60 shadow-sm transition-transform duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60"
               style={{ backgroundColor: preset }}
               aria-label={`Pilih warna ${preset}`}
               aria-pressed={isActive}
             >
               {isActive ? (
-                <span className="absolute inset-0 rounded-full border-2 border-white/80" aria-hidden="true" />
+                <span
+                  className="absolute inset-0 rounded-full border-[3px] border-border-strong ring-2 ring-primary/25"
+                  aria-hidden="true"
+                />
               ) : null}
             </button>
           );
@@ -70,24 +73,21 @@ export default function ColorSwatch({ value, onChange, disabled = false, name }:
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <label
-            htmlFor={colorId}
-            className="text-xs font-medium text-muted"
-          >
+          <label htmlFor={colorId} className="text-xs font-medium text-muted">
             Palet
           </label>
           <input
             id={colorId}
             name={name ? `${name}-color-picker` : undefined}
             type="color"
-            className="h-9 w-12 cursor-pointer rounded-lg border border-border/70 bg-transparent p-1 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
+            className="h-11 w-14 cursor-pointer rounded-2xl border border-border-subtle bg-transparent p-1.5 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60"
             value={/^#[0-9A-F]{6}$/i.test(current) ? current : "#64748B"}
             onChange={handleColorChange}
             disabled={disabled}
             aria-label="Pilih warna menggunakan color picker"
           />
         </div>
-        <div className="flex flex-1 min-w-[140px] items-center gap-2">
+        <div className="flex min-w-[160px] flex-1 items-center gap-2">
           <label htmlFor={hexId} className="text-xs font-medium text-muted">
             Kode HEX
           </label>
@@ -101,7 +101,7 @@ export default function ColorSwatch({ value, onChange, disabled = false, name }:
             value={current}
             onChange={handleTextChange}
             disabled={disabled}
-            className="h-10 flex-1 rounded-xl border border-border bg-surface-1/80 px-3 text-sm uppercase tracking-wide text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
+            className="form-control flex-1 uppercase tracking-wide"
             placeholder="#RRGGBB"
           />
         </div>

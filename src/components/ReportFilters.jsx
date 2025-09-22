@@ -20,15 +20,15 @@ export default function ReportFilters({ month, months = [], onChange, comparePre
         <input type="date" className="input" disabled />
         <input type="date" className="input" disabled />
         <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
               checked={comparePrev}
               onChange={(e) => onToggleCompare(e.target.checked)}
             />
-            <span className="text-sm">Bandingkan dengan bulan sebelumnya</span>
+            <span>Bandingkan dengan bulan sebelumnya</span>
           </label>
-          <button className="btn" onClick={() => onChange(currentMonth)}>
+          <button className="btn btn-secondary" onClick={() => onChange(currentMonth)}>
             Reset
           </button>
         </div>

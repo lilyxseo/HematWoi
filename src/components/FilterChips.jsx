@@ -36,7 +36,7 @@ export default function FilterChips({ filter, categories = [], onRemove }) {
         {chips.map((chip) => (
           <button
             key={chip.key}
-            className="flex items-center gap-1 rounded-full bg-surface-3 px-3 py-1 text-sm whitespace-nowrap"
+            className="chip whitespace-nowrap text-sm transition hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
             onClick={() => onRemove(chip.key)}
           >
             {chip.label} <X className="h-3 w-3" />

@@ -9,7 +9,7 @@ export default function GoalForm({ initial = {}, onSave, onCancel }) {
 
   return (
     <form
-      className="space-y-2"
+      className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
         onSave({ ...initial, ...form });
@@ -36,18 +36,11 @@ export default function GoalForm({ initial = {}, onSave, onCancel }) {
         value={form.targetDate}
         onChange={(e) => setForm({ ...form, targetDate: e.target.value })}
       />
-      <div className="flex gap-2 justify-end pt-2">
-        <button
-          type="button"
-          className="px-3 py-1 rounded bg-surface-2 border border-border"
-          onClick={onCancel}
-        >
+      <div className="flex justify-end gap-2 pt-3">
+        <button type="button" className="btn btn-secondary" onClick={onCancel}>
           Batal
         </button>
-        <button
-          type="submit"
-          className="px-3 py-1 rounded bg-brand text-brand-foreground"
-        >
+        <button type="submit" className="btn btn-primary">
           Simpan
         </button>
       </div>
