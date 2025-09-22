@@ -585,17 +585,6 @@ function AppShell({ prefs, setPrefs }) {
   const addTx = async (tx) => {
     const categoryId = tx.category_id ?? (tx.category ? catMap[tx.category] ?? null : null);
     const resolvedNote = tx.notes ?? tx.note ?? "";
-    const tagsPayload = Array.isArray(tx.tag_ids)
-      ? tx.tag_ids.filter(Boolean)
-      : Array.isArray(tx.tags)
-      ? tx.tags.filter(Boolean)
-      : [];
-    const displayTags =
-      Array.isArray(tx.tag_labels) && tx.tag_labels.length
-        ? tx.tag_labels
-        : Array.isArray(tx.tagNames)
-        ? tx.tagNames
-        : [];
     const receiptsPayload = Array.isArray(tx.receipts) ? tx.receipts : [];
     const merchantLabel = tx.merchant_name ?? tx.merchant ?? null;
     const accountLabel = tx.account_name ?? tx.account ?? null;
@@ -644,7 +633,6 @@ function AppShell({ prefs, setPrefs }) {
           account_id: tx.account_id || null,
           to_account_id: tx.type === "transfer" ? tx.to_account_id || null : null,
           merchant_id: tx.merchant_id || null,
-          tags: tagsPayload,
           receipts: receiptsPayload,
         });
         const resolvedCategory =
@@ -659,8 +647,6 @@ function AppShell({ prefs, setPrefs }) {
           ...saved,
           category: resolvedCategory,
           note: saved.note ?? resolvedNote,
-          tags: saved.tags?.length ? saved.tags : displayTags,
-          tag_ids: saved.tag_ids?.length ? saved.tag_ids : tagsPayload,
           merchant: saved.merchant ?? merchantLabel,
           account: saved.account ?? accountLabel,
           to_account: saved.to_account ?? toAccountLabel,
@@ -676,8 +662,6 @@ function AppShell({ prefs, setPrefs }) {
         category: baseCategoryName,
         category_id: categoryId,
         note: resolvedNote,
-        tags: displayTags,
-        tag_ids: tagsPayload,
         merchant: merchantLabel,
         account: accountLabel,
         to_account: toAccountLabel,

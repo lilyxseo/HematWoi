@@ -159,17 +159,6 @@ function matchesDateRange(dateValue, range) {
 
 export function mapTransactionRow(tx = {}) {
   if (!tx) return tx;
-  const joinedTags = Array.isArray(tx.transaction_tags)
-    ? tx.transaction_tags
-        .map((item) => item?.tag || item)
-        .filter(Boolean)
-    : [];
-  const tags = Array.isArray(tx.tags)
-    ? tx.tags
-    : joinedTags.map((t) => t.name).filter(Boolean);
-  const tagIds = Array.isArray(tx.tag_ids)
-    ? tx.tag_ids
-    : joinedTags.map((t) => t.id).filter(Boolean);
   const receipts = Array.isArray(tx.receipts)
     ? tx.receipts.map((r) => ({
         id: r.id ?? r.receipt_id ?? null,
@@ -256,8 +245,6 @@ export function mapTransactionRow(tx = {}) {
     category_id: categoryId,
     merchant: merchantName,
     merchant_id: merchantId,
-    tags,
-    tag_ids: tagIds,
     receipts,
     receipt_url: tx.receipt_url ?? null,
     parent_id: tx.parent_id ?? null,
@@ -302,7 +289,6 @@ function filterTransactionsOffline(rows = [], filters = {}, userId) {
         row.title,
         row.merchant,
         row.account,
-        ...(Array.isArray(row.tags) ? row.tags : []),
       ]
         .filter(Boolean)
         .map((v) => String(v).toLowerCase());
@@ -381,7 +367,6 @@ export async function listTransactions(options = {}) {
     to_account:to_account_id (*),
     category:category_id (*),
     merchant:merchant_id (*),
-    transaction_tags:transaction_tags ( tag:tag_id (*) ),
     receipts:receipts (*)
   `;
 
@@ -539,26 +524,6 @@ function normalizeTransactionInput(input = {}) {
   };
 }
 
-async function syncTransactionTags(transactionId, tagIds = [], userId) {
-  if (!transactionId) return;
-  const tags = arrayify(tagIds).filter(Boolean);
-  if (!tags.length) {
-    return;
-  }
-  if (typeof navigator !== "undefined" && (!navigator.onLine || window.__sync?.fakeOffline)) {
-    return;
-  }
-  const rows = tags.map((tagId) => ({
-    transaction_id: transactionId,
-    tag_id: tagId,
-    user_id: userId,
-  }));
-  const { error } = await supabase
-    .from("transaction_tags")
-    .upsert(rows, { onConflict: "transaction_id,tag_id" });
-  if (error) throw error;
-}
-
 async function syncTransactionReceipts(transactionId, receipts = [], userId) {
   const rows = arrayify(receipts)
     .map((r) => ({
@@ -591,7 +556,6 @@ export async function addTransaction(input = {}) {
   base.updated_at = new Date().toISOString();
   const saved = await upsert("transactions", base);
   try {
-    await syncTransactionTags(saved.id, input.tags ?? input.tag_ids, userId);
     await syncTransactionReceipts(saved.id, input.receipts, userId);
   } catch (err) {
     console.error("Failed to sync related data for transaction", err);
@@ -607,13 +571,6 @@ export async function updateTransaction(id, patch = {}) {
   base.user_id = userId;
   base.updated_at = new Date().toISOString();
   const saved = await upsert("transactions", base);
-  if (patch.tags) {
-    try {
-      await syncTransactionTags(id, patch.tags, userId);
-    } catch (err) {
-      console.error("Failed to update transaction tags", err);
-    }
-  }
   if (patch.receipts) {
     try {
       await syncTransactionReceipts(id, patch.receipts, userId);
@@ -870,60 +827,4 @@ export async function saveMerchant({ id, name, category_id = null, notes = null 
   };
   const saved = await upsert("merchants", record);
   return mapMerchantRow(saved, userId);
-}
-
-// -- TAGS ----------------------------------------------
-
-function mapTagRow(row = {}, userId) {
-  return {
-    id: row.id,
-    user_id: row.user_id ?? userId ?? null,
-    name: row.name ?? row.title ?? "",
-    color: row.color ?? null,
-    created_at: row.created_at ?? null,
-    updated_at: row.updated_at ?? null,
-  };
-}
-
-export async function listTags() {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
-
-  if (!navigator.onLine || window.__sync?.fakeOffline) {
-    const cached = await dbCache.list("tags");
-    return cached.map((row) => mapTagRow(row, userId));
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from("tags")
-      .select("*")
-      .eq("user_id", userId)
-      .order("name", { ascending: true });
-    if (error) throw error;
-    const rows = (data || []).map((row) => mapTagRow(row, userId));
-    await dbCache.bulkSet("tags", rows);
-    return rows;
-  } catch (err) {
-    console.error("listTags failed, falling back to cache", err);
-    const cached = await dbCache.list("tags");
-    return cached.map((row) => mapTagRow(row, userId));
-  }
-}
-
-export async function addTag({ name, color = null }) {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk");
-  if (!name) throw new Error("Nama tag wajib diisi");
-  const now = new Date().toISOString();
-  const record = {
-    id: crypto.randomUUID(),
-    user_id: userId,
-    name,
-    color,
-    updated_at: now,
-    created_at: now,
-  };
-  const saved = await upsert("tags", record);
-  return mapTagRow(saved, userId);
 }
