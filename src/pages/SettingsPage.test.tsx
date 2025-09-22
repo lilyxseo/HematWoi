@@ -19,8 +19,8 @@ const store: Record<string, string> = {};
 
 beforeEach(() => localStorage.clear());
 
-const renderWithMode = (mode: 'cloud' | 'local') => {
-  localStorage.setItem('hw:mode', mode);
+const renderWithMode = (mode: 'online' | 'local') => {
+  localStorage.setItem('hw:connectionMode', mode);
   return render(
     <MemoryRouter>
       <DataProvider initialMode={mode}>

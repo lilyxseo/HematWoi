@@ -16,9 +16,9 @@ describe("useMode", () => {
     expect(result.current.mode).toBe("online");
     act(() => result.current.toggle());
     expect(result.current.mode).toBe("local");
-    expect(localStorage.getItem("hw:mode")).toBe("local");
+    expect(localStorage.getItem("hw:connectionMode")).toBe("local");
     act(() => result.current.toggle());
     expect(result.current.mode).toBe("online");
-    expect(localStorage.getItem("hw:mode")).toBe("online");
+    expect(localStorage.getItem("hw:connectionMode")).toBe("online");
   });
 });
