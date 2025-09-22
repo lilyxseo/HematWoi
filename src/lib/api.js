@@ -228,6 +228,13 @@ export function mapTransactionRow(tx = {}) {
     tx.title ??
     "";
 
+  const tagsValue =
+    tx.tags ??
+    tx.tag_list ??
+    tx.labels ??
+    tx.label ??
+    null;
+
   return {
     id: tx.id,
     user_id: tx.user_id ?? null,
@@ -253,6 +260,7 @@ export function mapTransactionRow(tx = {}) {
     rev: tx.rev ?? null,
     updated_at: tx.updated_at ?? null,
     inserted_at: insertedAt,
+    tags: typeof tagsValue === 'string' ? tagsValue : Array.isArray(tagsValue) ? tagsValue.filter(Boolean).join(',') : null,
   };
 }
 
@@ -352,6 +360,7 @@ export async function listTransactions(options = {}) {
     amount,
     title,
     notes,
+    tags,
     account_id,
     to_account_id,
     category_id,

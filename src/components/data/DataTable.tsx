@@ -113,19 +113,16 @@ export default function DataTable({
                 {columns.map((column) => {
                   if (hidden.has(column.id)) return <Fragment key={column.id} />;
                   const value = column.render ? column.render(row) : column.accessor ? column.accessor(row) : row[column.id];
+                  const cellClass = clsx(
+                    'px-3 py-2 align-middle text-sm text-foreground',
+                    column.align === 'right' && 'text-right tabular-nums',
+                    column.align === 'center' && 'text-center',
+                    column.className,
+                    !column.render && 'max-w-[220px] truncate',
+                  );
                   return (
-                    <td
-                      key={column.id}
-                      className={clsx(
-                        'px-3 py-2 align-middle text-sm text-foreground',
-                        column.align === 'right' && 'text-right tabular-nums',
-                        column.align === 'center' && 'text-center',
-                        column.className,
-                        'max-w-[220px] truncate'
-                      )}
-                      title={typeof value === 'string' ? value : undefined}
-                    >
-                      {value ?? '-'}
+                    <td key={column.id} className={cellClass} title={!column.render && typeof value === 'string' ? value : undefined}>
+                      {value ?? (column.render ? null : '-')}
                     </td>
                   );
                 })}

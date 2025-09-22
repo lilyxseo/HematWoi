@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -18,16 +18,28 @@ import BackupRestore from '../components/data/BackupRestore';
 import DedupTool from '../components/data/DedupTool';
 import NormalizeCategories from '../components/data/NormalizeCategories';
 import {
+  TransactionDateEditor,
+  TransactionTitleEditor,
+  TransactionTypeEditor,
+  TransactionCategoryEditor,
+  TransactionAccountEditor,
+  TransactionAmountEditor,
+  TransactionTagsEditor,
+} from '../components/data/TransactionFieldEditors';
+import {
   listTransactions as apiListTransactions,
   bulkDeleteTransactions,
   bulkUpdateTransactions,
   exportTransactionsCSV,
   dedupeCandidates,
   computeHash,
+  subscribeTransactions,
 } from '../lib/api-data';
 import { supabase } from '../lib/supabase';
 import { getCurrentUserId } from '../lib/session';
 import { useToast } from '../context/ToastContext';
+import Modal from '../components/Modal';
+import { useTransactionInlineEditing } from '../hooks/useTransactionInlineEditing';
 
 const TAB_KEYS = ['transactions', 'categories', 'debts', 'goals'];
 const TAB_LABELS = {
@@ -47,17 +59,67 @@ const DEFAULT_FILTER = {
   pageSize: 20,
 };
 
-function buildColumns(tab: string) {
+function buildTransactionColumns(editing: any) {
+  return [
+    {
+      id: 'date',
+      label: 'Tanggal',
+      sortable: true,
+      sortField: 'date',
+      render: (row) => <TransactionDateEditor row={row} editing={editing} />, 
+      display: (row) => editing?.formatValue(row, 'date'),
+    },
+    {
+      id: 'title',
+      label: 'Catatan',
+      className: 'truncate',
+      render: (row) => <TransactionTitleEditor row={row} editing={editing} />, 
+      display: (row) => editing?.formatValue(row, 'title'),
+    },
+    {
+      id: 'type',
+      label: 'Tipe',
+      className: 'capitalize',
+      render: (row) => <TransactionTypeEditor row={row} editing={editing} />, 
+      display: (row) => editing?.formatValue(row, 'type'),
+    },
+    {
+      id: 'category',
+      label: 'Kategori',
+      className: 'truncate',
+      render: (row) => <TransactionCategoryEditor row={row} editing={editing} />, 
+      display: (row) => editing?.formatValue(row, 'category'),
+    },
+    {
+      id: 'account',
+      label: 'Akun',
+      className: 'truncate',
+      render: (row) => <TransactionAccountEditor row={row} editing={editing} />, 
+      display: (row) => editing?.formatValue(row, 'account'),
+    },
+    {
+      id: 'amount',
+      label: 'Nominal',
+      align: 'right',
+      sortable: true,
+      sortField: 'amount',
+      render: (row) => <TransactionAmountEditor row={row} editing={editing} />, 
+      display: (row) => editing?.formatValue(row, 'amount'),
+    },
+    {
+      id: 'tags',
+      label: 'Tag',
+      className: 'truncate',
+      render: (row) => <TransactionTagsEditor row={row} editing={editing} />, 
+      display: (row) => editing?.formatValue(row, 'tags'),
+    },
+  ];
+}
+
+function buildColumns(tab: string, editing?: any) {
   switch (tab) {
     case 'transactions':
-      return [
-        { id: 'date', label: 'Tanggal', accessor: (row) => new Date(row.date).toLocaleDateString('id-ID'), sortable: true, sortField: 'date' },
-        { id: 'title', label: 'Catatan', accessor: (row) => row.title || row.notes || '-', className: 'truncate' },
-        { id: 'type', label: 'Tipe', accessor: (row) => row.type, className: 'capitalize' },
-        { id: 'category', label: 'Kategori', accessor: (row) => row.category?.name || '-', className: 'truncate' },
-        { id: 'account', label: 'Akun', accessor: (row) => row.account?.name || '-', className: 'truncate' },
-        { id: 'amount', label: 'Nominal', accessor: (row) => Number(row.amount || 0).toLocaleString('id-ID'), align: 'right', sortable: true, sortField: 'amount' },
-      ];
+      return buildTransactionColumns(editing);
     case 'categories':
       return [
         { id: 'name', label: 'Nama', accessor: (row) => row.name, className: 'truncate', sortable: true, sortField: 'name' },
@@ -336,6 +398,35 @@ export default function DataPage() {
     }
   }, [dataState.transactions.rows, activeTab]);
 
+  const transactionEditing = useTransactionInlineEditing({
+    rows: dataState.transactions.rows || [],
+    categories,
+    accounts,
+    addToast,
+  });
+  const { applyRealtimeUpsert, applyRealtimeDelete } = transactionEditing;
+
+  useEffect(() => {
+    if (activeTab !== 'transactions') return undefined;
+    if (import.meta.env.VITE_ENABLE_REALTIME !== 'true') return undefined;
+    let unsub = () => {};
+    let active = true;
+    subscribeTransactions(
+      (row) => applyRealtimeUpsert(row),
+      (id) => applyRealtimeDelete(id),
+    ).then((cleanup) => {
+      if (!active) {
+        cleanup?.();
+        return;
+      }
+      unsub = cleanup || (() => {});
+    });
+    return () => {
+      active = false;
+      unsub?.();
+    };
+  }, [activeTab, applyRealtimeDelete, applyRealtimeUpsert]);
+
   const handleFilterChange = (tab, key, value) => {
     setFilters((prev) => {
       const next = { ...prev };
@@ -347,8 +438,11 @@ export default function DataPage() {
     });
   };
 
-  const columns = useMemo(() => buildColumns(activeTab), [activeTab]);
-  const rows = dataState[activeTab]?.rows || [];
+  const columns = useMemo(
+    () => buildColumns(activeTab, activeTab === 'transactions' ? transactionEditing : undefined),
+    [activeTab, transactionEditing],
+  );
+  const rows = activeTab === 'transactions' ? transactionEditing.rows : dataState[activeTab]?.rows || [];
   const total = dataState[activeTab]?.total || 0;
   const page = filters[activeTab]?.page || 1;
   const pageSize = filters[activeTab]?.pageSize || 20;
@@ -617,6 +711,7 @@ export default function DataPage() {
               selectedIds={selected}
               onToggleSelect={toggleRow}
               loading={dataState[activeTab].loading}
+              editing={activeTab === 'transactions' ? transactionEditing : undefined}
               onAction={(action, row) => {
                 if (action === 'delete' && activeTab === 'transactions') {
                   bulkDeleteTransactions([row.id])
@@ -715,6 +810,53 @@ export default function DataPage() {
             }}
           />
         </div>
+      )}
+
+      {activeTab === 'transactions' && transactionEditing.undoState && (
+        <div className="pointer-events-none fixed bottom-6 left-1/2 z-40 flex w-full max-w-sm -translate-x-1/2 justify-center">
+          <div
+            className="pointer-events-auto flex w-full items-center justify-between rounded-2xl bg-foreground px-4 py-3 text-sm text-background shadow-lg"
+            role="status"
+            aria-live="polite"
+          >
+            <span>Perubahan disimpan • Undo</span>
+            <button
+              type="button"
+              className="rounded-full bg-background/10 px-3 py-1 text-xs font-semibold text-background hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background"
+              onClick={transactionEditing.onUndo}
+            >
+              Undo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'transactions' && transactionEditing.conflict && (
+        <Modal
+          open
+          title="Data berubah"
+          onClose={transactionEditing.resolveConflictWithLatest}
+        >
+          <p className="text-sm text-muted-foreground">
+            Data transaksi ini telah diperbarui di tempat lain. Ambil versi terbaru atau timpa dengan perubahan Anda.
+          </p>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-full border border-border px-4 py-2 text-sm"
+              onClick={transactionEditing.resolveConflictWithLatest}
+            >
+              Ambil Terbaru
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-full bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground hover:bg-destructive/90"
+              onClick={transactionEditing.resolveConflictForce}
+            >
+              Timpa
+            </button>
+          </div>
+        </Modal>
       )}
 
       <BackupRestore
