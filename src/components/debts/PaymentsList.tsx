@@ -31,13 +31,13 @@ export default function PaymentsList({ payments, onDelete, deletingId }: Payment
         return (
           <li
             key={payment.id}
-            className="flex items-start justify-between gap-3 rounded-2xl border border-border/70 bg-surface-1/80 px-4 py-3 shadow-sm"
+            className="flex min-w-0 items-start justify-between gap-3 rounded-2xl border border-border/70 bg-surface-1/80 px-4 py-3 shadow-sm"
           >
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text">{amountLabel}</p>
               <p className="text-xs text-muted">{dateLabel}</p>
               {payment.notes ? (
-                <p className="mt-2 truncate text-sm text-text/80" title={payment.notes}>
+                <p className="mt-2 break-words text-sm text-text/80" title={payment.notes}>
                   {payment.notes}
                 </p>
               ) : null}
