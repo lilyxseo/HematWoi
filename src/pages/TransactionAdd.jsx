@@ -11,7 +11,6 @@ import {
   Repeat,
   Save,
   Sparkles,
-  Tag as TagIcon,
   Upload,
 } from "lucide-react";
 import Page from "../layout/Page";
@@ -23,14 +22,7 @@ import CurrencyInput from "../components/ui/CurrencyInput";
 import Input from "../components/ui/Input";
 import Select from "../components/ui/Select";
 import Textarea from "../components/ui/Textarea";
-import {
-  addTag,
-  listAccounts,
-  listCategories,
-  listMerchants,
-  listTags,
-  saveMerchant,
-} from "../lib/api";
+import { listAccounts, listCategories, listMerchants, saveMerchant } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 
 const TEMPLATE_KEY = "hw:txTemplates";
@@ -95,10 +87,6 @@ export default function TransactionAdd({ onAdd }) {
   const [categories, setCategories] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [merchants, setMerchants] = useState([]);
-  const [tags, setTags] = useState([]);
-  const [selectedTags, setSelectedTags] = useState([]);
-  const [tagInput, setTagInput] = useState("");
-  const [tagSaving, setTagSaving] = useState(false);
   const [templates, setTemplates] = useState(() => templateStorage([]));
   const [templateName, setTemplateName] = useState("");
   const offline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -107,16 +95,14 @@ export default function TransactionAdd({ onAdd }) {
     async function loadMasterData() {
       setLoading(true);
       try {
-        const [catRows, accountRows, merchantRows, tagRows] = await Promise.all([
+        const [catRows, accountRows, merchantRows] = await Promise.all([
           listCategories(),
           listAccounts(),
           listMerchants(),
-          listTags(),
         ]);
         setCategories(catRows);
         setAccounts(accountRows);
         setMerchants(merchantRows);
-        setTags(tagRows);
         if (accountRows.length) {
           setAccountId(accountRows[0].id);
           setAccountName(accountRows[0].name);
@@ -184,8 +170,6 @@ export default function TransactionAdd({ onAdd }) {
     [merchants],
   );
 
-  const tagOptions = useMemo(() => tags.map((t) => ({ value: t.id, label: t.name })), [tags]);
-
   const presetAmounts = [25000, 50000, 100000, 200000, 500000];
 
   const repeatLabels = {
@@ -214,7 +198,6 @@ export default function TransactionAdd({ onAdd }) {
     setRepeat(template.repeat || "none");
     setPending(Boolean(template.pending));
     setAttachments(template.attachments?.length ? template.attachments : [{ id: nextId(), url: "" }]);
-    setSelectedTags(Array.isArray(template.tags) ? template.tags : []);
   };
 
   const resetForm = () => {
@@ -224,34 +207,10 @@ export default function TransactionAdd({ onAdd }) {
     setRepeat("none");
     setPending(false);
     setAttachments([{ id: nextId(), url: "" }]);
-    setSelectedTags([]);
     setMerchantId("");
     setMerchantName("");
     setMerchantInput("");
     setTime(defaultTime());
-  };
-
-  const handleAddTag = async () => {
-    const name = tagInput.trim();
-    if (!name) return;
-    setTagSaving(true);
-    try {
-      const saved = await addTag({ name });
-      setTags((prev) => [...prev, saved].sort((a, b) => a.name.localeCompare(b.name)));
-      setSelectedTags((prev) => Array.from(new Set([...prev, saved.id])));
-      setTagInput("");
-      addToast("Tag berhasil ditambahkan", "success");
-    } catch (err) {
-      addToast(`Gagal menambah tag: ${err.message}`, "error");
-    } finally {
-      setTagSaving(false);
-    }
-  };
-
-  const handleToggleTag = (tagId) => {
-    setSelectedTags((prev) =>
-      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId],
-    );
   };
 
   const handleAddAttachmentRow = () => {
@@ -313,7 +272,6 @@ export default function TransactionAdd({ onAdd }) {
       repeat,
       pending,
       attachments,
-      tags: selectedTags,
     };
     setTemplates((prev) => [...prev, entry]);
     setTemplateName("");
@@ -323,14 +281,6 @@ export default function TransactionAdd({ onAdd }) {
   const handleRemoveTemplate = (id) => {
     setTemplates((prev) => prev.filter((tpl) => tpl.id !== id));
   };
-
-  const selectedTagNames = useMemo(
-    () =>
-      selectedTags
-        .map((id) => tagOptions.find((opt) => opt.value === id)?.label)
-        .filter(Boolean),
-    [selectedTags, tagOptions],
-  );
 
   const receiptsPayload = attachments
     .map((item) => ({
@@ -356,7 +306,6 @@ export default function TransactionAdd({ onAdd }) {
     { label: "Akun", value: accountName || "-" },
     isTransfer() ? { label: "Ke Akun", value: toAccountName || "-" } : null,
     { label: "Merchant", value: merchantName || "-" },
-    { label: "Tag", value: selectedTagNames.join(", ") || "-" },
     { label: "Status", value: pending ? "Menunggu konfirmasi" : "Selesai" },
     repeat !== "none" ? { label: "Pengulangan", value: repeatLabels[repeat] } : null,
   ].filter(Boolean);
@@ -394,8 +343,6 @@ export default function TransactionAdd({ onAdd }) {
         title: title || null,
         note: combinedNote,
         notes: combinedNote,
-        tags: selectedTags,
-        tag_labels: selectedTagNames,
         receipts: receiptsPayload,
       };
       await onAdd(payload);
@@ -544,7 +491,7 @@ export default function TransactionAdd({ onAdd }) {
         <Card>
           <CardHeader
             title="Rincian Tambahan"
-            subtext="Perkaya catatan dengan merchant, judul, catatan serta label-tag agar mudah dicari."
+            subtext="Perkaya catatan dengan merchant, judul, dan catatan agar mudah dilacak."
           />
           <CardBody className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -584,39 +531,6 @@ export default function TransactionAdd({ onAdd }) {
               onChange={(e) => setNote(e.target.value)}
               placeholder="Tambahkan detail penting, nomor invoice, dsb"
             />
-            <div className="space-y-2">
-              <span className="flex items-center gap-2 text-sm font-medium">
-                <TagIcon className="h-4 w-4" /> Tag
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {tagOptions.map((tag) => (
-                  <button
-                    key={tag.value}
-                    type="button"
-                    className={`rounded-full border px-3 py-1 text-xs ${
-                      selectedTags.includes(tag.value)
-                        ? "bg-brand-var text-brand-foreground border-brand-var"
-                        : "bg-surface-1"
-                    }`}
-                    onClick={() => handleToggleTag(tag.value)}
-                  >
-                    {tag.label}
-                  </button>
-                ))}
-                {tagOptions.length === 0 && <span className="text-xs text-muted">Belum ada tag. Tambahkan dari kolom di bawah.</span>}
-              </div>
-              <div className="flex gap-2">
-                <Input
-                  label="Tag baru"
-                  value={tagInput}
-                  onChange={(e) => setTagInput(e.target.value)}
-                  placeholder="Contoh: proyek, kantor"
-                />
-                <button type="button" className="btn" onClick={handleAddTag} disabled={tagSaving}>
-                  {tagSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <label className="text-sm font-medium flex items-center gap-2">

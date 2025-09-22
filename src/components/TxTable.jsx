@@ -53,14 +53,13 @@ export default function TxTable({ items = [], onRemove, onUpdate, loading }) {
               <th className="p-2">Tanggal</th>
               <th className="p-2">Catatan</th>
               <th className="p-2">Akun</th>
-              <th className="p-2">Tags</th>
               <th className="p-2">Jumlah</th>
             </tr>
           </thead>
           <tbody>
             {Array.from({ length: 5 }).map((_, i) => (
               <tr key={i} className="even:bg-surface-1">
-                {Array.from({ length: 6 }).map((_, j) => (
+                {Array.from({ length: 5 }).map((_, j) => (
                   <td key={j} className="p-2">
                     <div className="h-4 w-full rounded bg-surface-3" />
                   </td>
@@ -88,7 +87,6 @@ export default function TxTable({ items = [], onRemove, onUpdate, loading }) {
               <th className="p-2">Tanggal</th>
               <th className="p-2">Catatan</th>
               <th className="p-2">Akun</th>
-              <th className="p-2">Tags</th>
               <th className="p-2 text-right">Jumlah</th>
               <th className="p-2 sticky right-0 bg-surface-1" />
             </tr>

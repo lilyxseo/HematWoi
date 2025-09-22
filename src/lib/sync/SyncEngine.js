@@ -49,11 +49,9 @@ const USER_SCOPED_TABLES = new Set([
   "subscriptions",
   "goals",
   "challenges",
-  "transaction_tags",
   "receipts",
   "accounts",
   "merchants",
-  "tags",
 ]);
 
 const TRANSACTION_COLUMNS = new Set([

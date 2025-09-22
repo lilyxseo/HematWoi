@@ -23,7 +23,6 @@ import {
   deleteTransaction,
   listAccounts,
   listMerchants,
-  listTags,
   listTransactions,
   updateTransaction,
 } from "../lib/api";
@@ -397,14 +396,13 @@ export default function Transactions() {
 
   const handleBulkExport = useCallback(() => {
     if (!selectedItems.length) return;
-    const lines = ["date,type,category_name,amount,title,notes,tags"];
+    const lines = ["date,type,category_name,amount,title,notes"];
     selectedItems.forEach((item) => {
       const categoryName = item.category || categoriesById.get(item.category_id)?.name || "";
       const title = (item.title || "").replaceAll('"', '""');
       const notes = (item.notes ?? item.note ?? "").replaceAll('"', '""');
-      const tags = Array.isArray(item.tags) ? item.tags.join("|") : "";
       lines.push(
-        `${toDateInput(item.date)},${item.type},"${categoryName}",${Number(item.amount ?? 0)},"${title}","${notes}","${tags}"`,
+        `${toDateInput(item.date)},${item.type},"${categoryName}",${Number(item.amount ?? 0)},"${title}","${notes}"`,
       );
     });
     const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -440,14 +438,13 @@ export default function Transactions() {
         if (!chunkRows || chunkRows.length < pageSize) break;
         page += 1;
       }
-      const lines = ["date,type,category_name,amount,title,notes,tags"];
+      const lines = ["date,type,category_name,amount,title,notes"];
       rows.forEach((item) => {
         const categoryName = item.category || categoriesById.get(item.category_id)?.name || "";
         const title = (item.title || "").replaceAll('"', '""');
         const notes = (item.notes ?? item.note ?? "").replaceAll('"', '""');
-        const tags = Array.isArray(item.tags) ? item.tags.join("|") : "";
         lines.push(
-          `${toDateInput(item.date)},${item.type},"${categoryName}",${Number(item.amount ?? 0)},"${title}","${notes}","${tags}"`,
+          `${toDateInput(item.date)},${item.type},"${categoryName}",${Number(item.amount ?? 0)},"${title}","${notes}"`,
         );
       });
       const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -1310,9 +1307,6 @@ function TransactionsTable({
                 <th scope="col" className="min-w-[160px] px-4 py-3 text-left">
                   Akun
                 </th>
-                <th scope="col" className="min-w-[160px] px-4 py-3 text-left">
-                  Tags
-                </th>
                 <th scope="col" className="min-w-[120px] px-4 py-3 text-right">
                   Jumlah
                 </th>
@@ -1356,12 +1350,6 @@ function TransactionsTable({
                     <td className="min-w-[160px] px-4 py-3 align-middle text-left">
                       <div className="h-3.5 w-[120px] animate-pulse rounded bg-white/10" />
                     </td>
-                    <td className="min-w-[160px] px-4 py-3 align-middle text-left">
-                      <div className="flex items-center justify-start gap-2">
-                        <div className="h-3 w-14 animate-pulse rounded-full bg-white/10" />
-                        <div className="h-3 w-10 animate-pulse rounded-full bg-white/10" />
-                      </div>
-                    </td>
                     <td className="min-w-[120px] px-4 py-3 align-middle text-right">
                       <div className="ml-auto h-3.5 w-20 animate-pulse rounded bg-white/10" />
                     </td>
@@ -1375,7 +1363,7 @@ function TransactionsTable({
                 ))}
               {items.length > 0 && loading && (
                 <tr className="border-b border-white/5">
-                  <td colSpan={8} className="px-4 py-4">
+                  <td colSpan={7} className="px-4 py-4">
                     <div className="flex items-center justify-center gap-2 text-xs text-white/60">
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                       Memuat transaksi...
@@ -1505,10 +1493,6 @@ function TransactionItem({
   const categoryLabel = item.category || item.category_name || "(Tidak ada kategori)";
   const noteValue = item.notes ?? item.note ?? "";
   const accountLabel = item.account || "-";
-  const tags = Array.isArray(item.tags) ? item.tags.filter(Boolean) : [];
-  const visibleTags = tags.slice(0, 2);
-  const extraTags = Math.max(tags.length - visibleTags.length, 0);
-  const tagsTitle = tags.join(", ");
   const amountClass = clsx(
     "text-right text-sm font-semibold tabular-nums",
     item.type === "income"
@@ -1715,23 +1699,6 @@ function TransactionItem({
             <span className="truncate" title={accountLabel}>
               {accountLabel}
             </span>
-            <span aria-hidden="true" className="text-white/30">
-              |
-            </span>
-            {tags.length ? (
-              <div className="flex flex-wrap items-center gap-1" title={tagsTitle}>
-                {visibleTags.map((tag) => (
-                  <span key={tag} className="max-w-[120px] truncate rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/70">
-                    {tag}
-                  </span>
-                ))}
-                {extraTags > 0 && (
-                  <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-white/60">+{extraTags}</span>
-                )}
-              </div>
-            ) : (
-              <span className="text-white/40">Tanpa tag</span>
-            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-3">
@@ -1821,22 +1788,6 @@ function TransactionItem({
           {accountLabel}
         </span>
       </td>
-      <td className="min-w-[160px] px-4 py-3 align-middle text-left">
-        {tags.length ? (
-          <div className="flex flex-wrap items-center gap-1" title={tagsTitle}>
-            {visibleTags.map((tag) => (
-              <span key={tag} className="max-w-[96px] truncate rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/70">
-                {tag}
-              </span>
-            ))}
-            {extraTags > 0 && (
-              <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs text-white/60">+{extraTags}</span>
-            )}
-          </div>
-        ) : (
-          <span className="text-white/40">-</span>
-        )}
-      </td>
       <td className="min-w-[120px] px-4 py-3 align-middle text-right">
         {editing ? (
           <input
@@ -1894,7 +1845,6 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [merchants, setMerchants] = useState([]);
-  const [tags, setTags] = useState([]);
   const [type, setType] = useState(initialData?.type || "expense");
   const [amount, setAmount] = useState(() => String(initialData?.amount ?? 0));
   const [date, setDate] = useState(() => toDateInput(initialData?.date) || new Date().toISOString().slice(0, 10));
@@ -1903,17 +1853,15 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
   const [notes, setNotes] = useState(initialData?.notes ?? initialData?.note ?? "");
   const [accountId, setAccountId] = useState(initialData?.account_id || "");
   const [merchantId, setMerchantId] = useState(initialData?.merchant_id || "");
-  const [selectedTags, setSelectedTags] = useState(() => (Array.isArray(initialData?.tag_ids) ? initialData.tag_ids : []));
   const [receiptUrl, setReceiptUrl] = useState(initialData?.receipt_url || "");
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    Promise.all([listAccounts(), listMerchants(), listTags()])
-      .then(([accountRows, merchantRows, tagRows]) => {
+    Promise.all([listAccounts(), listMerchants()])
+      .then(([accountRows, merchantRows]) => {
         setAccounts(accountRows || []);
         setMerchants(merchantRows || []);
-        setTags(tagRows || []);
         if (!isEdit && accountRows?.length && !accountId) {
           setAccountId(accountRows[0].id);
         }
@@ -1936,7 +1884,6 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
     setNotes(initialData.notes ?? initialData.note ?? "");
     setAccountId(initialData.account_id || "");
     setMerchantId(initialData.merchant_id || "");
-    setSelectedTags(Array.isArray(initialData.tag_ids) ? initialData.tag_ids : []);
     setReceiptUrl(initialData.receipt_url || "");
   }, [open, initialData]);
 
@@ -1966,7 +1913,6 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
         notes,
         account_id: accountId || null,
         merchant_id: merchantId || null,
-        tags: selectedTags,
         receipt_url: receiptUrl || null,
       };
       if (isEdit) {
@@ -2097,24 +2043,6 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
             />
           </label>
           <label className="flex flex-col gap-2 text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Tags</span>
-            <select
-              multiple
-              value={selectedTags}
-              onChange={(event) => {
-                const values = Array.from(event.target.selectedOptions).map((option) => option.value);
-                setSelectedTags(values);
-              }}
-              className="min-h-[96px] rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            >
-              {tags.map((tag) => (
-                <option key={tag.id} value={tag.id}>
-                  {tag.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-2 text-sm">
             <span className="text-xs font-semibold uppercase tracking-wide text-white/60">URL Struk</span>
             <input
               type="url"
@@ -2153,7 +2081,6 @@ function ImportCSVDialog({ open, onClose, categories, onImported, addToast }) {
   const [validRows, setValidRows] = useState([]);
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [tags, setTags] = useState([]);
 
   const categoriesByName = useMemo(() => {
     const map = new Map();
@@ -2164,24 +2091,6 @@ function ImportCSVDialog({ open, onClose, categories, onImported, addToast }) {
     return map;
   }, [categories]);
 
-  const tagsByName = useMemo(() => {
-    const map = new Map();
-    (tags || []).forEach((tag) => {
-      if (!tag?.name) return;
-      map.set(tag.name.trim().toLowerCase(), tag.id);
-    });
-    return map;
-  }, [tags]);
-
-  useEffect(() => {
-    if (!open) return;
-    listTags()
-      .then((rows) => setTags(rows || []))
-      .catch((err) => {
-        console.error(err);
-        addToast(err?.message || "Gagal memuat data tag", "error");
-      });
-  }, [open, addToast]);
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
@@ -2221,22 +2130,6 @@ function ImportCSVDialog({ open, onClose, categories, onImported, addToast }) {
         }
         const title = row.title || row.judul || "";
         const notes = row.notes || row.note || "";
-        const tagNames = (row.tags || "")
-          .split(/[|;,]/)
-          .map((tag) => tag.trim())
-          .filter(Boolean);
-        const tagIds = [];
-        let tagError = false;
-        tagNames.forEach((tagName) => {
-          const tagId = tagsByName.get(tagName.toLowerCase());
-          if (!tagId) {
-            issues.push(`Baris ${line}: tag '${tagName}' tidak ditemukan`);
-            tagError = true;
-          } else {
-            tagIds.push(tagId);
-          }
-        });
-        if (tagError) return;
         valid.push({
           type,
           date,
@@ -2244,10 +2137,9 @@ function ImportCSVDialog({ open, onClose, categories, onImported, addToast }) {
           category_id: categoryId,
           title,
           notes,
-          tags: tagIds,
         });
         if (preview.length < 10) {
-          preview.push({ type, date, amount, category: row.category || row.category_name, title, notes, tags: tagNames });
+          preview.push({ type, date, amount, category: row.category || row.category_name, title, notes });
         }
       });
       setPreviewRows(preview);

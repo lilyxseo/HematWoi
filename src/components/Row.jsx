@@ -87,18 +87,6 @@ export default function Row({ item, onRemove, onUpdate }) {
         )}
       </td>
       <td className="p-2">{item.account || "-"}</td>
-      <td className="p-2">
-        {item.tags?.length
-          ? item.tags.map((tag) => (
-              <span
-                key={tag}
-                className="mr-1 rounded-full bg-surface-3 px-2 py-0.5 text-xs"
-              >
-                {tag}
-              </span>
-            ))
-          : "-"}
-      </td>
       <td
         className={`p-2 text-right tabular-nums ${
           item.type === "income" ? "text-success" : "text-danger"
