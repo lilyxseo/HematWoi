@@ -53,7 +53,7 @@ export default function PaymentDrawer({
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayIso());
   const [notes, setNotes] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<{ amount?: string; date?: string }>({});
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -104,7 +104,7 @@ export default function PaymentDrawer({
       setAmount('');
       setDate(todayIso());
       setNotes('');
-      setError(null);
+      setErrors({});
     }
   }, [open, debt?.id]);
 
@@ -127,18 +127,39 @@ export default function PaymentDrawer({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsedAmount = parseDecimal(amount);
+    const trimmedDate = date?.trim() ?? '';
+    const nextErrors: { amount?: string; date?: string } = {};
+
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-      setError('Masukkan nominal lebih dari 0.');
+      nextErrors.amount = 'Masukkan nominal lebih dari 0.';
+    }
+
+    const parsedDate = trimmedDate ? new Date(trimmedDate) : null;
+    if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
+      nextErrors.date = 'Pilih tanggal pembayaran yang valid.';
+    }
+
+    if (nextErrors.amount || nextErrors.date) {
+      setErrors(nextErrors);
       return;
     }
-    setError(null);
-    await onSubmit({
-      amount: parsedAmount,
-      date: date || todayIso(),
-      notes: notes.trim() ? notes.trim() : null,
-    });
-    setAmount('');
-    setNotes('');
+
+    setErrors({});
+
+    try {
+      await onSubmit({
+        amount: parsedAmount,
+        date: trimmedDate || todayIso(),
+        notes: notes.trim() ? notes.trim() : null,
+      });
+      setAmount('');
+      setNotes('');
+    } catch (submitError) {
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('[HW][PaymentDrawer] submit', submitError);
+      }
+    }
   };
 
   if (!open || !debt) return null;
@@ -152,131 +173,140 @@ export default function PaymentDrawer({
       />
       <div
         ref={panelRef}
-        className="fixed inset-y-0 right-0 z-[70] h-[100dvh] w-full bg-card shadow-2xl sm:w-[480px] md:w-[520px]"
+        className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[480px] md:w-[520px] h-[100dvh] bg-card shadow-2xl flex flex-col"
         role="dialog"
         aria-modal="true"
-        onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex h-full min-w-0 flex-col overflow-hidden">
-          <div
-            className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain"
-            style={{ scrollbarGutter: 'stable' }}
-          >
-            <header className="sticky top-0 z-10 shrink-0 border-b border-border/60 bg-card/95 px-4 py-3 backdrop-blur">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">Catat Pembayaran</p>
-                  <h2 className="mt-1 truncate text-lg font-semibold text-text">{debt.title}</h2>
-                  <p className="text-sm text-muted">
-                    {debt.party_name} • {dateFormatter.format(new Date(debt.date))}
-                  </p>
-                </div>
-                <button
-                  ref={closeButtonRef}
-                  type="button"
-                  onClick={onClose}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                  aria-label="Tutup panel pembayaran"
-                >
-                  <X className="h-5 w-5" aria-hidden="true" />
-                </button>
-              </div>
-            </header>
-
-            <div className="flex-1 min-h-0 space-y-4 px-4 py-4 touch-manipulation">
-              <section className="grid min-w-0 gap-3 rounded-2xl border border-border/60 bg-surface-1/80 p-4 sm:grid-cols-2">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Tagihan</p>
-                  <p className="mt-1 text-lg font-semibold text-text tabular-nums">{remainingLabel}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">Total Terbayar</p>
-                  <p className="mt-1 text-lg font-semibold text-text tabular-nums">{totalPaidLabel}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">Status</p>
-                  <p className="mt-1 text-sm font-medium text-text">
-                    {debt.status === 'paid' ? 'Lunas' : debt.status === 'overdue' ? 'Jatuh Tempo' : 'Berjalan'}
-                  </p>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">Jatuh Tempo</p>
-                  <p className="mt-1 text-sm text-text/80">
-                    {debt.due_date ? dateFormatter.format(new Date(debt.due_date)) : '-'}
-                  </p>
-                </div>
-              </section>
-
-              <form id="payment-form" onSubmit={handleSubmit} className="space-y-3">
-                <div className="flex flex-col gap-1 text-sm font-medium text-text">
-                  <label htmlFor="payment-amount">Nominal pembayaran</label>
-                  <input
-                    id="payment-amount"
-                    value={amount}
-                    onChange={(event) => setAmount(event.target.value)}
-                    inputMode="decimal"
-                    placeholder="Masukkan nominal"
-                    className="h-[40px] rounded-xl border border-border bg-surface-1 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                  />
-                  {error ? <span className="text-xs text-danger">{error}</span> : null}
-                </div>
-
-                <div className="flex flex-col gap-1 text-sm font-medium text-text">
-                  <label htmlFor="payment-date">Tanggal pembayaran</label>
-                  <input
-                    id="payment-date"
-                    type="date"
-                    value={date}
-                    onChange={(event) => setDate(event.target.value)}
-                    className="h-[40px] rounded-xl border border-border bg-surface-1 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1 text-sm font-medium text-text">
-                  <label htmlFor="payment-notes">Catatan</label>
-                  <textarea
-                    id="payment-notes"
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                    rows={3}
-                    className="min-h-[96px] rounded-xl border border-border bg-surface-1 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                    placeholder="Catatan (opsional)"
-                  />
-                </div>
-              </form>
-
-              <section className="min-h-[160px] min-w-0">
-                {loading ? (
-                  <p className="rounded-2xl border border-dashed border-border/70 bg-surface-1/40 px-4 py-6 text-center text-sm text-muted">
-                    Memuat riwayat pembayaran…
-                  </p>
-                ) : (
-                  <PaymentsList payments={payments} onDelete={onDeletePayment} deletingId={deletingId} />
-                )}
-              </section>
+        <header className="sticky top-0 shrink-0 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
+          <div className="flex items-start justify-between gap-3 sm:gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Catat Pembayaran</p>
+              <h2 className="mt-1 break-words text-lg font-semibold text-text">{debt.title}</h2>
+              <p className="break-words text-sm text-muted">
+                {debt.party_name} • {dateFormatter.format(new Date(debt.date))}
+              </p>
             </div>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border bg-surface-1 text-text transition hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-ring)]"
+              aria-label="Tutup panel pembayaran"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </div>
+        </header>
 
-            <footer className="sticky bottom-0 z-10 shrink-0 border-t border-border/60 bg-card/95 px-4 py-3 pt-2 backdrop-blur pb-[env(safe-area-inset-bottom)]">
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="inline-flex h-[42px] items-center justify-center rounded-xl border border-border bg-surface-1 px-5 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                >
-                  Tutup
-                </button>
-                <button
-                  type="submit"
-                  form="payment-form"
-                  disabled={Boolean(submitting)}
-                  className="inline-flex h-[42px] items-center justify-center rounded-xl bg-brand px-6 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {submitting ? 'Menyimpan…' : 'Catat Pembayaran'}
-                </button>
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-gutter:stable]">
+          <div className="min-w-0 space-y-4 sm:space-y-5">
+            <section className="grid min-w-0 grid-cols-2 gap-3 rounded-2xl border p-3 sm:gap-4 sm:p-4">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Tagihan</p>
+                <p className="mt-1 text-lg font-semibold text-text tabular-nums">{remainingLabel}</p>
               </div>
-            </footer>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Total Terbayar</p>
+                <p className="mt-1 text-lg font-semibold text-text tabular-nums">{totalPaidLabel}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Status</p>
+                <p className="mt-1 text-sm font-medium text-text">
+                  {debt.status === 'paid' ? 'Lunas' : debt.status === 'overdue' ? 'Jatuh Tempo' : 'Berjalan'}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Jatuh Tempo</p>
+                <p className="mt-1 break-words text-sm text-text/80">
+                  {debt.due_date ? dateFormatter.format(new Date(debt.due_date)) : '-'}
+                </p>
+              </div>
+            </section>
+
+            <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
+              <div className="min-w-0 flex flex-col gap-1 text-sm font-medium text-text">
+                <label htmlFor="payment-amount">Nominal pembayaran</label>
+                <input
+                  id="payment-amount"
+                  type="text"
+                  value={amount}
+                  onChange={(event) => {
+                    setAmount(event.target.value);
+                    if (errors.amount) {
+                      setErrors((prev) => ({ ...prev, amount: undefined }));
+                    }
+                  }}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
+                  placeholder="Masukkan nominal"
+                  className="w-full h-[44px] rounded-xl bg-muted/20 border border-border px-3 text-sm focus:outline-none focus:ring-2 ring-primary"
+                />
+                {errors.amount ? <span className="mt-1 text-xs text-rose-300">{errors.amount}</span> : null}
+              </div>
+
+              <div className="min-w-0 flex flex-col gap-1 text-sm font-medium text-text">
+                <label htmlFor="payment-date">Tanggal pembayaran</label>
+                <input
+                  id="payment-date"
+                  type="date"
+                  value={date}
+                  onChange={(event) => {
+                    setDate(event.target.value);
+                    if (errors.date) {
+                      setErrors((prev) => ({ ...prev, date: undefined }));
+                    }
+                  }}
+                  className="w-full h-[44px] rounded-xl bg-muted/20 border border-border px-3 text-sm focus:outline-none focus:ring-2 ring-primary"
+                />
+                {errors.date ? <span className="mt-1 text-xs text-rose-300">{errors.date}</span> : null}
+              </div>
+
+              <div className="min-w-0 flex flex-col gap-1 text-sm font-medium text-text">
+                <label htmlFor="payment-notes">Catatan</label>
+                <textarea
+                  id="payment-notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  rows={3}
+                  placeholder="Catatan (opsional)"
+                  className="w-full min-h-[96px] rounded-xl bg-muted/20 border border-border p-3 text-sm focus:outline-none focus:ring-2 ring-primary"
+                />
+              </div>
+            </form>
+
+            <section className="min-h-[160px] min-w-0">
+              {loading ? (
+                <p className="rounded-2xl border border-dashed border-border/70 bg-surface-1/40 px-4 py-6 text-center text-sm text-muted">
+                  Memuat riwayat pembayaran…
+                </p>
+              ) : (
+                <PaymentsList payments={payments} onDelete={onDeletePayment} deletingId={deletingId} />
+              )}
+            </section>
           </div>
         </div>
+
+        <footer className="sticky bottom-0 shrink-0 border-t border-border bg-card/95 px-4 pt-2 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-border bg-surface-1 px-5 text-sm font-medium text-text transition hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-ring)] sm:w-auto"
+            >
+              Tutup
+            </button>
+            <button
+              type="submit"
+              form="payment-form"
+              disabled={Boolean(submitting)}
+              aria-busy={Boolean(submitting)}
+              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-brand px-6 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            >
+              {submitting ? 'Menyimpan…' : 'Catat Pembayaran'}
+            </button>
+          </div>
+        </footer>
       </div>
     </>,
     document.body,

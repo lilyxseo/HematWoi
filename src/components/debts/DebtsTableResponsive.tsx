@@ -109,9 +109,9 @@ export default function DebtsTableResponsive({
 
   return (
     <div className="min-w-0 space-y-4">
-      <div className="hidden sm:block">
-        <div className="rounded-2xl border border-border bg-card/80 shadow-sm">
-          <div className="-mx-3 px-3 md:mx-0 md:px-0 overflow-x-auto">
+      <div className="hidden min-w-0 sm:block">
+        <div className="min-w-0 rounded-2xl border border-border bg-card/80 shadow-sm">
+          <div className="-mx-3 md:mx-0 px-3 md:px-0 overflow-x-auto">
             <table className="table-auto md:table-fixed w-full text-sm">
               <thead className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
                 <tr>
