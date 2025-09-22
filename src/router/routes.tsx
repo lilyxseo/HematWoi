@@ -24,7 +24,7 @@ function loadComponent(path: string) {
     case '/categories':
       return lazy(() => import('../pages/Categories'));
     case '/data':
-      return lazy(() => import('../pages/DataToolsPage'));
+      return lazy(() => import('../pages/DataPage'));
     case '/subscriptions':
       return lazy(() => import('../pages/Subscriptions'));
     case '/settings':

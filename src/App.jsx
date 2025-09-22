@@ -17,7 +17,7 @@ import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
 import DebtsPage from "./pages/Debts";
 import Categories from "./pages/Categories";
-import DataToolsPage from "./pages/DataToolsPage";
+import DataPage from "./pages/DataPage";
 import TransactionAdd from "./pages/TransactionAdd";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
@@ -906,93 +906,6 @@ function AppShell({ prefs, setPrefs }) {
     return { income, expense, balance: income - expense };
   }, [filtered]);
 
-  function handleExport() {
-    const payload = { txs: data.txs, cat: data.cat, budgets: data.budgets };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "hematwoi-data.json";
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-  }
-
-  function handleImportJSON(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const parsed = JSON.parse(e.target.result);
-        if (
-          typeof parsed !== "object" ||
-          !parsed ||
-          !("txs" in parsed) ||
-          !("cat" in parsed) ||
-          !("budgets" in parsed)
-        ) {
-          throw new Error("invalid");
-        }
-        const incomingBudgets = Array.isArray(parsed.budgets)
-          ? parsed.budgets
-              .map((item) => normalizeBudgetRecord(item))
-              .filter(Boolean)
-          : [];
-        setData((d) => ({
-          txs: Array.isArray(parsed.txs) ? [...parsed.txs, ...d.txs] : d.txs,
-          cat: parsed.cat || d.cat,
-          budgets: incomingBudgets.length
-            ? [...incomingBudgets, ...d.budgets]
-            : d.budgets,
-        }));
-      } catch {
-        alert("File JSON tidak valid");
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  function handleImportCSV(file) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const txt = String(e.target.result || "");
-      const lines = txt
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean);
-      if (!lines.length) return;
-
-      let start = 0;
-      const header = lines[0].toLowerCase();
-      if (
-        header.includes("date") &&
-        header.includes("type") &&
-        header.includes("category")
-      ) {
-        start = 1;
-      }
-
-      const txs = [];
-      for (let i = start; i < lines.length; i++) {
-        const cols = lines[i].split(",").map((c) => c.trim());
-        if (cols.length < 5) continue;
-        const [date, type, category, note, amountStr] = cols;
-        if (!date || !type || !category || amountStr == null) continue;
-        const amount = Number(amountStr);
-        if (Number.isNaN(amount)) continue;
-        txs.push({ id: uid(), date, type, category, note, amount });
-      }
-
-      if (txs.length) {
-        txs.forEach(triggerMoneyTalk);
-        setData((d) => ({ ...d, txs: [...txs, ...d.txs] }));
-      }
-    };
-    reader.readAsText(file);
-  }
-
   return (
     <CategoryProvider catMeta={catMeta}>
       <MainLayout
@@ -1080,11 +993,7 @@ function AppShell({ prefs, setPrefs }) {
             <Route
               path="/data"
               element={
-                <DataToolsPage
-                  onExport={handleExport}
-                  onImportJSON={handleImportJSON}
-                  onImportCSV={handleImportCSV}
-                />
+                <DataPage />
               }
             />
             <Route
