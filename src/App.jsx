@@ -748,87 +748,6 @@ function AppShell({ prefs, setPrefs }) {
     }
   };
 
-  const addBudget = async ({ category, month, amount_planned, amount }) => {
-    if (!data.cat.expense.includes(category)) return;
-    const m = String(month).slice(0, 7);
-    const categoryId = catMap[category] ?? null;
-    if (useCloud && sessionUser && !categoryId) return;
-    if (data.budgets.some((b) => b.category === category && b.month === m))
-      return;
-
-    const plannedValue = Number(amount_planned ?? amount ?? 0);
-    const normalizedPlanned = Number.isFinite(plannedValue)
-      ? plannedValue
-      : 0;
-
-    if (useCloud && sessionUser) {
-      try {
-        const { data: row, error } = await supabase
-          .from("budgets")
-          .insert({
-            user_id: sessionUser.id,
-            category_id: categoryId,
-            month: `${m}-01`,
-            amount_planned: normalizedPlanned,
-          })
-          .select("id, month, amount_planned, carryover_enabled, notes, category_id")
-          .single();
-        if (error) throw error;
-        const categoryLabel =
-          (row?.category_id && categoryNameById(row.category_id)) ||
-          category ||
-          row?.category ||
-          row?.category_name ||
-          "Tanpa kategori";
-        const mapped = normalizeBudgetRecord(row, {
-          category: categoryLabel,
-        });
-        setData((d) => ({
-          ...d,
-          budgets: mapped ? [...d.budgets, mapped] : d.budgets,
-        }));
-      } catch (e) {
-        addToast(`Gagal menambah budget: ${e.message}`, "error");
-      }
-    } else {
-      const offlineBudget = normalizeBudgetRecord(
-        {
-          id: uid(),
-          category,
-          category_id: categoryId,
-          month: m,
-          amount_planned: normalizedPlanned,
-          carryover_enabled: false,
-          notes: null,
-        },
-        { category }
-      );
-      setData((d) => ({
-        ...d,
-        budgets: [
-          ...d.budgets,
-          ...(offlineBudget ? [offlineBudget] : []),
-        ],
-      }));
-    }
-  };
-
-  const removeBudget = async (id) => {
-    if (useCloud && sessionUser) {
-      try {
-        await supabase
-          .from("budgets")
-          .delete()
-          .eq("id", id)
-          .eq("user_id", sessionUser.id);
-      } catch (e) {
-        addToast(`Gagal menghapus budget: ${e.message}`, "error");
-        return;
-      }
-    }
-    setData((d) => ({ ...d, budgets: d.budgets.filter((b) => b.id !== id) }));
-  };
-
   useEffect(() => {
     const subs = loadSubscriptions();
     const upcoming = findUpcoming(subs);
@@ -962,9 +881,6 @@ function AppShell({ prefs, setPrefs }) {
               element={
                 <Budgets
                   currentMonth={currentMonth}
-                  data={data}
-                  onAdd={addBudget}
-                  onRemove={removeBudget}
                 />
               }
             />
