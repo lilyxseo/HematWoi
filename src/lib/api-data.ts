@@ -1,5 +1,9 @@
 import { supabase } from './supabase';
-import { listTransactions as legacyListTransactions, getTransactionsSummary as legacySummary } from './api';
+import {
+  listTransactions as legacyListTransactions,
+  getTransactionsSummary as legacySummary,
+  mapTransactionRow,
+} from './api';
 import { getCurrentUserId } from './session';
 
 interface ListTransactionParams {
@@ -16,6 +20,28 @@ interface ListTransactionParams {
 interface BulkUpdateParams {
   ids: string[];
   patch: Record<string, unknown>;
+}
+
+type TransactionType = 'income' | 'expense' | 'transfer';
+
+type TransactionPatchPayload = Partial<{
+  date: string;
+  title: string | null;
+  notes: string | null;
+  type: TransactionType;
+  amount: number;
+  account_id: string | null;
+  category_id: string | null;
+  tags: string | null;
+}>;
+
+interface PatchOptions {
+  prev?: Record<string, any> | null;
+  force?: boolean;
+}
+
+interface PatchResult {
+  next: Record<string, any>;
 }
 
 interface CsvParseResult {
@@ -204,6 +230,167 @@ function normalizeDate(value: string | undefined) {
 
 function safeTrim(value: string | undefined) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function sanitizeTransactionPatch(payload: TransactionPatchPayload) {
+  const sanitized: Record<string, unknown> = {};
+  Object.entries(payload).forEach(([key, value]) => {
+    if (value === undefined) return;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      sanitized[key] = trimmed === '' ? null : trimmed;
+      return;
+    }
+    sanitized[key] = value;
+  });
+  return sanitized;
+}
+
+async function fetchTransactionById(id: string, userId: string) {
+  const columns = `
+    id,
+    user_id,
+    date,
+    type,
+    amount,
+    title,
+    notes,
+    account_id,
+    to_account_id,
+    category_id,
+    merchant_id,
+    parent_id,
+    transfer_group_id,
+    receipt_url,
+    rev,
+    inserted_at,
+    updated_at,
+    tags,
+    account:account_id (*),
+    to_account:to_account_id (*),
+    category:category_id (*),
+    merchant:merchant_id (*)
+  `;
+  const { data, error } = await supabase
+    .from('transactions')
+    .select(columns)
+    .eq('user_id', userId)
+    .eq('id', id)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error('Transaksi tidak ditemukan');
+  return mapTransactionRow(data);
+}
+
+export async function patchTransaction(
+  id: string,
+  payload: TransactionPatchPayload,
+  options: PatchOptions = {},
+): Promise<PatchResult> {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      throw new Error('User belum masuk');
+    }
+    const sanitized = sanitizeTransactionPatch(payload);
+    if (Object.keys(sanitized).length === 0) {
+      const latest = options.prev ? mapTransactionRow(options.prev) : await fetchTransactionById(id, userId);
+      return { next: latest };
+    }
+    const updatePayload = {
+      ...sanitized,
+      updated_at: new Date().toISOString(),
+    };
+    let query = supabase
+      .from('transactions')
+      .update(updatePayload)
+      .eq('user_id', userId)
+      .eq('id', id)
+      .select(
+        `id, user_id, date, type, amount, title, notes, account_id, to_account_id, category_id, merchant_id, parent_id, transfer_group_id, receipt_url, rev, inserted_at, updated_at, tags, account:account_id (*), to_account:to_account_id (*), category:category_id (*), merchant:merchant_id (*)`,
+      )
+      .single();
+    if (!options.force && options.prev?.updated_at) {
+      query = query.eq('updated_at', options.prev.updated_at);
+    }
+    const { data, error } = await query;
+    if (error) {
+      if (!options.force && error.code === 'PGRST116') {
+        const latest = await fetchTransactionById(id, userId);
+        const conflict = new Error('Data telah diubah di tempat lain');
+        (conflict as any).code = 'conflict';
+        (conflict as any).latest = latest;
+        throw conflict;
+      }
+      throw error;
+    }
+    if (!data) {
+      if (!options.force && options.prev?.updated_at) {
+        const latest = await fetchTransactionById(id, userId);
+        const conflict = new Error('Data telah diubah di tempat lain');
+        (conflict as any).code = 'conflict';
+        (conflict as any).latest = latest;
+        throw conflict;
+      }
+      throw new Error('Transaksi tidak ditemukan');
+    }
+    return { next: mapTransactionRow(data) };
+  } catch (error) {
+    if ((error as any)?.code === 'conflict') {
+      throw error;
+    }
+    logDevError('patchTransaction', error);
+    throw wrapError('Tidak bisa menyimpan perubahan', error);
+  }
+}
+
+export async function subscribeTransactions(
+  onUpsert: (row: Record<string, any>) => void,
+  onDelete: (id: string) => void,
+) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return () => {};
+    }
+    const channel = supabase
+      .channel(`transactions-inline-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.new) {
+            onUpsert(mapTransactionRow(payload.new));
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.new) {
+            onUpsert(mapTransactionRow(payload.new));
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'transactions', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.old?.id) {
+            onDelete(payload.old.id);
+          }
+        },
+      );
+    await channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (error) {
+    logDevError('subscribeTransactions', error);
+    return () => {};
+  }
 }
 
 export async function listTransactions(params: ListTransactionParams = {}) {
