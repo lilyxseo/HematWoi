@@ -26,19 +26,15 @@ const PRESETS = {
 function ModalShell({ open, title, onClose, children }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
-      <div className="flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-border bg-background shadow-xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-9 items-center justify-center rounded-full border border-border px-3 text-sm"
-          >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+      <div className="card flex h-full w-full max-w-4xl flex-col overflow-hidden p-0">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-6 py-4">
+          <h2 className="text-lg font-semibold text-text">{title}</h2>
+          <button type="button" onClick={onClose} className="btn btn-ghost btn-sm">
             Tutup
           </button>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6">{children}</div>
+        <div className="drawer-body px-6 py-6">{children}</div>
       </div>
     </div>
   );
@@ -47,20 +43,20 @@ function ModalShell({ open, title, onClose, children }) {
 function StatusBadge({ status }) {
   if (status === 'ok') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+      <span className="inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/15 px-2 py-0.5 text-[11px] font-semibold text-success">
         <CheckCircle2 className="h-3 w-3" /> OK
       </span>
     );
   }
   if (status === 'warning') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
+      <span className="inline-flex items-center gap-1 rounded-full border border-warning/30 bg-warning/15 px-2 py-0.5 text-[11px] font-semibold text-warning">
         <TriangleAlert className="h-3 w-3" /> Warning
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+    <span className="inline-flex items-center gap-1 rounded-full border border-danger/30 bg-danger/15 px-2 py-0.5 text-[11px] font-semibold text-danger">
       <TriangleAlert className="h-3 w-3" /> Error
     </span>
   );

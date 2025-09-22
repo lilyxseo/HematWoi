@@ -1,45 +1,56 @@
 import { useId } from "react";
 
-export default function CurrencyInput({ label = "Jumlah", value, onChangeNumber, ...props }) {
+export default function CurrencyInput({
+  label = "Jumlah",
+  value,
+  onChangeNumber,
+  helper,
+  error,
+  ...props
+}) {
   const id = useId();
   const formatter = new Intl.NumberFormat("id-ID");
   const display = value ? formatter.format(value) : "";
 
-  const handleChange = (e) => {
-    const raw = e.target.value.replace(/[^0-9]/g, "");
+  const handleChange = (event) => {
+    const raw = event.target.value.replace(/[^0-9]/g, "");
     const num = Number(raw || 0);
     onChangeNumber(num);
   };
 
-  const handleKeyDown = (e) => {
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
+  const handleKeyDown = (event) => {
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
       onChangeNumber((value || 0) + 1000);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
       onChangeNumber(Math.max(0, (value || 0) - 1000));
     }
   };
 
   return (
-    <div className="relative">
-      <input
-        id={id}
-        value={display}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        inputMode="numeric"
-        placeholder=" "
-        {...props}
-        className="peer w-full rounded-xl border border-border bg-surface-1 px-3 pt-5 pb-2 text-sm text-text focus:outline-none focus:ring-2"
-        style={{ '--tw-ring-color': 'var(--brand)' }}
-      />
-      <label
-        htmlFor={id}
-        className="absolute left-3 top-2 text-xs text-muted transition-all peer-placeholder-shown:top-3 peer-placeholder-shown:text-sm peer-focus:top-2 peer-focus:text-xs peer-focus:text-[var(--brand)]"
-      >
-        {label}
-      </label>
+    <div className="space-y-1.5">
+      <div className="relative">
+        <input
+          id={id}
+          value={display}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          inputMode="numeric"
+          placeholder=" "
+          aria-invalid={Boolean(error)}
+          {...props}
+          className="peer min-h-[44px] w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 pb-1 pt-4 text-right text-sm text-text tabular-nums transition-colors placeholder:text-transparent focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        <label
+          htmlFor={id}
+          className="pointer-events-none absolute left-3 top-2 text-xs font-medium text-muted transition-all peer-placeholder-shown:top-3 peer-placeholder-shown:text-sm peer-placeholder-shown:text-muted peer-focus:top-1.5 peer-focus:text-xs peer-focus:text-primary"
+        >
+          {label}
+        </label>
+      </div>
+      {helper ? <p className="form-helper">{helper}</p> : null}
+      {error ? <p className="form-error flex items-center gap-1">{error}</p> : null}
     </div>
   );
 }

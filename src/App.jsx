@@ -316,23 +316,37 @@ function AppShell({ prefs, setPrefs }) {
   }, [theme, brand]);
 
   useEffect(() => {
+    const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
     const root = document.documentElement;
-    root.style.setProperty('--brand-h', brand.h);
-    root.style.setProperty('--brand-s', brand.s + '%');
-    root.style.setProperty('--brand-l', brand.l + '%');
+    root.style.setProperty('--brand-h', String(brand.h));
+    root.style.setProperty('--brand-s', `${brand.s}%`);
+    root.style.setProperty('--brand-l', `${brand.l}%`);
+
+    const currentTheme = root.getAttribute('data-theme') ?? 'light';
+    const isDark = currentTheme === 'dark';
+
+    const hoverLightness = clamp(brand.l + (isDark ? 6 : -7), isDark ? 18 : 8, isDark ? 96 : 92);
+    const activeLightness = clamp(brand.l + (isDark ? 10 : -12), isDark ? 15 : 6, isDark ? 98 : 88);
+    const softLightness = clamp(isDark ? brand.l / 2 : brand.l + 32, isDark ? 18 : 70, isDark ? 42 : 96);
+    const ringLightness = clamp(brand.l + (isDark ? 4 : -14), 0, 100);
+
+    root.style.setProperty('--color-primary-hover', `${brand.h} ${brand.s}% ${hoverLightness}%`);
+    root.style.setProperty('--color-primary-active', `${brand.h} ${brand.s}% ${activeLightness}%`);
+    root.style.setProperty('--color-primary-soft', `${brand.h} ${brand.s}% ${softLightness}%`);
+    root.style.setProperty('--brand-soft', `hsl(${brand.h} ${brand.s}% ${softLightness}%)`);
+    root.style.setProperty('--brand-ring', `hsl(${brand.h} ${brand.s}% ${ringLightness}%)`);
+    root.style.setProperty('--brand', `hsl(${brand.h} ${brand.s}% ${brand.l}%)`);
+
+    const useDarkForeground = brand.l > 65;
+    root.style.setProperty(
+      '--color-primary-foreground',
+      useDarkForeground ? '0 0% 10%' : '0 0% 100%'
+    );
     root.style.setProperty(
       '--brand-foreground',
-      brand.l > 50 ? '#000000' : '#ffffff'
+      useDarkForeground ? '#0b1220' : '#ffffff'
     );
-    root.style.setProperty(
-      '--brand-soft',
-      `hsl(${brand.h} ${brand.s}% ${Math.min(95, brand.l + 40)}%)`
-    );
-    root.style.setProperty(
-      '--brand-ring',
-      `hsl(${brand.h} ${brand.s}% ${Math.max(0, brand.l - 20)}%)`
-    );
-  }, [brand]);
+  }, [brand, theme]);
 
   useEffect(() => {
     const preset = BRAND_PRESETS[prefs.accent];

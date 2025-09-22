@@ -4,8 +4,7 @@ export default function Card({ className = "", children }) {
   return (
     <div
       className={clsx(
-        "card relative isolate overflow-hidden text-sm text-text/90 dark:text-slate-200/90",
-        "supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-white/5",
+        "card relative isolate overflow-hidden text-sm text-text",
         className
       )}
     >
@@ -29,12 +28,12 @@ export function CardHeader({
     >
       <div className="min-w-0 flex-1">
         {title && (
-          <h3 className="text-lg font-semibold text-text dark:text-slate-100">
+          <h3 className="text-lg font-semibold text-text">
             {title}
           </h3>
         )}
         {subtext && (
-          <p className="text-sm text-muted/90 dark:text-slate-300/80">
+          <p className="text-sm text-muted">
             {subtext}
           </p>
         )}
@@ -52,7 +51,7 @@ export function CardFooter({ className = "", children }) {
   return (
     <div
       className={clsx(
-        "mt-4 border-t border-white/10 pt-4 dark:border-white/10",
+        "mt-4 border-t border-border-subtle pt-4",
         className
       )}
     >

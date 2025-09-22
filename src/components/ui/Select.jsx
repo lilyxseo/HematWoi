@@ -1,18 +1,29 @@
 import { useId } from "react";
 
-export default function Select({ label, options = [], value, onChange, placeholder = "Pilih", ...props }) {
+export default function Select({
+  label,
+  options = [],
+  value,
+  onChange,
+  placeholder = "Pilih",
+  helper,
+  error,
+  ...props
+}) {
   const id = useId();
   return (
-    <label className="block text-sm space-y-1">
-      <span>{label}</span>
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="form-label">
+        {label}
+      </label>
       <select
         id={id}
         value={value}
         onChange={onChange}
+        aria-invalid={Boolean(error)}
+        className="form-control appearance-none pr-10"
         {...props}
-        className="w-full rounded-xl border border-border bg-surface-1 px-3 py-2 text-text focus:outline-none focus:ring-2"
-        style={{ '--tw-ring-color': 'var(--brand)' }}
-        >
+      >
         <option value="" disabled>
           {placeholder}
         </option>
@@ -26,6 +37,8 @@ export default function Select({ label, options = [], value, onChange, placehold
           );
         })}
       </select>
-    </label>
+      {helper ? <p className="form-helper">{helper}</p> : null}
+      {error ? <p className="form-error flex items-center gap-1">{error}</p> : null}
+    </div>
   );
 }

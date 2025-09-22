@@ -166,18 +166,14 @@ export default function PaymentDrawer({
 
   return createPortal(
     <>
-      <div
-        className="fixed inset-0 z-[60] bg-black/40 backdrop-blur supports-[backdrop-filter]:bg-black/30"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className="drawer-overlay" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
-        className="fixed inset-y-0 right-0 z-[70] w-full sm:w-[480px] md:w-[520px] h-[100dvh] bg-card shadow-2xl flex flex-col"
+        className="drawer-panel w-full max-w-[100%] sm:max-w-[480px] md:max-w-[520px]"
         role="dialog"
         aria-modal="true"
       >
-        <header className="sticky top-0 shrink-0 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
+        <header className="drawer-header">
           <div className="flex items-start justify-between gap-3 sm:gap-4">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Catat Pembayaran</p>
@@ -190,7 +186,7 @@ export default function PaymentDrawer({
               ref={closeButtonRef}
               type="button"
               onClick={onClose}
-              className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-border bg-surface-1 text-text transition hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-ring)]"
+              className="btn btn-ghost btn-sm h-10 w-10 flex-shrink-0 rounded-full"
               aria-label="Tutup panel pembayaran"
             >
               <X className="h-5 w-5" aria-hidden="true" />
@@ -198,9 +194,9 @@ export default function PaymentDrawer({
           </div>
         </header>
 
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 [scrollbar-gutter:stable]">
-          <div className="min-w-0 space-y-4 sm:space-y-5">
-            <section className="grid min-w-0 grid-cols-2 gap-3 rounded-2xl border p-3 sm:gap-4 sm:p-4">
+        <div className="drawer-body">
+          <div className="min-w-0 space-y-5">
+            <section className="grid min-w-0 grid-cols-2 gap-3 rounded-3xl border border-border-subtle bg-surface-alt/80 p-4 shadow-sm sm:gap-4">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Tagihan</p>
                 <p className="mt-1 text-lg font-semibold text-text tabular-nums">{remainingLabel}</p>
@@ -224,8 +220,10 @@ export default function PaymentDrawer({
             </section>
 
             <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
-              <div className="min-w-0 flex flex-col gap-1 text-sm font-medium text-text">
-                <label htmlFor="payment-amount">Nominal pembayaran</label>
+              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                <label htmlFor="payment-amount" className="form-label">
+                  Nominal pembayaran
+                </label>
                 <input
                   id="payment-amount"
                   type="text"
@@ -240,13 +238,15 @@ export default function PaymentDrawer({
                   pattern="[0-9]*"
                   autoComplete="off"
                   placeholder="Masukkan nominal"
-                  className="w-full h-[44px] rounded-xl bg-muted/20 border border-border px-3 text-sm focus:outline-none focus:ring-2 ring-primary"
+                  className="input text-right tabular-nums"
                 />
-                {errors.amount ? <span className="mt-1 text-xs text-rose-300">{errors.amount}</span> : null}
+                {errors.amount ? <span className="form-error">{errors.amount}</span> : null}
               </div>
 
-              <div className="min-w-0 flex flex-col gap-1 text-sm font-medium text-text">
-                <label htmlFor="payment-date">Tanggal pembayaran</label>
+              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                <label htmlFor="payment-date" className="form-label">
+                  Tanggal pembayaran
+                </label>
                 <input
                   id="payment-date"
                   type="date"
@@ -257,27 +257,29 @@ export default function PaymentDrawer({
                       setErrors((prev) => ({ ...prev, date: undefined }));
                     }
                   }}
-                  className="w-full h-[44px] rounded-xl bg-muted/20 border border-border px-3 text-sm focus:outline-none focus:ring-2 ring-primary"
+                  className="input"
                 />
-                {errors.date ? <span className="mt-1 text-xs text-rose-300">{errors.date}</span> : null}
+                {errors.date ? <span className="form-error">{errors.date}</span> : null}
               </div>
 
-              <div className="min-w-0 flex flex-col gap-1 text-sm font-medium text-text">
-                <label htmlFor="payment-notes">Catatan</label>
+              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                <label htmlFor="payment-notes" className="form-label">
+                  Catatan
+                </label>
                 <textarea
                   id="payment-notes"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   rows={3}
                   placeholder="Catatan (opsional)"
-                  className="w-full min-h-[96px] rounded-xl bg-muted/20 border border-border p-3 text-sm focus:outline-none focus:ring-2 ring-primary"
+                  className="form-control"
                 />
               </div>
             </form>
 
             <section className="min-h-[160px] min-w-0">
               {loading ? (
-                <p className="rounded-2xl border border-dashed border-border/70 bg-surface-1/40 px-4 py-6 text-center text-sm text-muted">
+                <p className="rounded-3xl border border-dashed border-border-subtle/80 bg-surface-alt/60 px-4 py-6 text-center text-sm text-muted">
                   Memuat riwayat pembayaran…
                 </p>
               ) : (
@@ -287,12 +289,12 @@ export default function PaymentDrawer({
           </div>
         </div>
 
-        <footer className="sticky bottom-0 shrink-0 border-t border-border bg-card/95 px-4 pt-2 pb-[env(safe-area-inset-bottom)] backdrop-blur">
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
+        <footer className="drawer-footer">
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-border bg-surface-1 px-5 text-sm font-medium text-text transition hover:bg-border/60 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-ring)] sm:w-auto"
+              className="btn btn-secondary w-full sm:w-auto"
             >
               Tutup
             </button>
@@ -301,7 +303,7 @@ export default function PaymentDrawer({
               form="payment-form"
               disabled={Boolean(submitting)}
               aria-busy={Boolean(submitting)}
-              className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl bg-brand px-6 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              className="btn btn-primary w-full sm:w-auto"
             >
               {submitting ? 'Menyimpan…' : 'Catat Pembayaran'}
             </button>

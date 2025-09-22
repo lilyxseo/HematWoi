@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import clsx from 'clsx';
 import { supabase } from '../lib/supabase';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -56,13 +57,13 @@ export default function AuthPage() {
     <div className="max-w-md mx-auto p-4 space-y-4">
       <div className="flex gap-2">
         <button
-          className={`flex-1 py-2 rounded ${tab === 'login' ? 'bg-brand text-brand-foreground' : 'border border-border bg-surface-2'}`}
+          className={clsx('btn flex-1', tab === 'login' ? 'btn-primary' : 'btn-secondary')}
           onClick={() => setTab('login')}
         >
           Login
         </button>
         <button
-          className={`flex-1 py-2 rounded ${tab === 'register' ? 'bg-brand text-brand-foreground' : 'border border-border bg-surface-2'}`}
+          className={clsx('btn flex-1', tab === 'register' ? 'btn-primary' : 'btn-secondary')}
           onClick={() => setTab('register')}
         >
           Register
@@ -87,10 +88,7 @@ export default function AuthPage() {
             required
             minLength={8}
           />
-          <button
-            disabled={loading}
-            className="w-full btn btn-primary disabled:opacity-50"
-          >
+          <button disabled={loading} className="btn btn-primary w-full">
             {loading ? '...' : 'Login'}
           </button>
         </form>
@@ -130,10 +128,7 @@ export default function AuthPage() {
             required
             minLength={8}
           />
-          <button
-            disabled={loading}
-            className="w-full btn btn-primary disabled:opacity-50"
-          >
+          <button disabled={loading} className="btn btn-primary w-full">
             {loading ? '...' : 'Register'}
           </button>
         </form>
