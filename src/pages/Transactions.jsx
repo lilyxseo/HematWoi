@@ -3,9 +3,12 @@ import { createPortal } from "react-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
+  ArrowRight,
+  ArrowRightLeft,
   ChevronDown,
   Check,
   Download,
+  Inbox,
   Loader2,
   Paperclip,
   Pencil,
@@ -33,6 +36,7 @@ import { parseCSV } from "../lib/statement";
 const TYPE_LABELS = {
   income: "Pemasukan",
   expense: "Pengeluaran",
+  transfer: "Transfer",
 };
 
 const SORT_LABELS = {
@@ -74,6 +78,27 @@ function formatIDR(value) {
   return formatCurrency(Number(value ?? 0), "IDR");
 }
 
+const TRANSACTION_DATE_FORMATTER =
+  typeof Intl !== "undefined"
+    ? new Intl.DateTimeFormat("id-ID", {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+
+function formatTransactionDate(value) {
+  if (!value) return "";
+  try {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return String(value);
+    return TRANSACTION_DATE_FORMATTER ? TRANSACTION_DATE_FORMATTER.format(date) : String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function chunk(arr, size) {
   const result = [];
   for (let i = 0; i < arr.length; i += size) {
@@ -104,11 +129,15 @@ export default function Transactions() {
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkEditMode, setBulkEditMode] = useState(null);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
+  const [editTarget, setEditTarget] = useState(null);
   const filterBarRef = useRef(null);
   const filterPanelId = useId();
   const [filterBarHeight, setFilterBarHeight] = useState(0);
   const searchInputRef = useRef(null);
+  const lastSelectedIdRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(filter.search);
   const [filterBarStuck, setFilterBarStuck] = useState(false);
   const [tableVariant, setTableVariant] = useState(() => detectTableVariant());
@@ -291,16 +320,6 @@ export default function Transactions() {
     return map;
   }, [categories]);
 
-  const categoriesByType = useMemo(() => {
-    const map = { income: [], expense: [] };
-    (categories || []).forEach((cat) => {
-      const type = (cat.type || "expense").toLowerCase();
-      if (!map[type]) map[type] = [];
-      map[type].push(cat);
-    });
-    return map;
-  }, [categories]);
-
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.has(item.id)),
     [items, selectedIds],
@@ -335,19 +354,54 @@ export default function Transactions() {
     return chips;
   }, [filter, categoriesById]);
 
-  const toggleSelect = useCallback((id) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const toggleSelect = useCallback(
+    (id, event) => {
+      let desiredState = null;
+      const isShiftKey = Boolean(event?.shiftKey ?? event?.nativeEvent?.shiftKey);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        const currentlySelected = next.has(id);
+        desiredState = event?.target?.checked ?? !currentlySelected;
+        if (!items.length) {
+          if (desiredState) next.add(id);
+          else next.delete(id);
+          return next;
+        }
+        if (isShiftKey && lastSelectedIdRef.current) {
+          const ids = items.map((item) => item.id);
+          const currentIndex = ids.indexOf(id);
+          const lastIndex = ids.indexOf(lastSelectedIdRef.current);
+          if (currentIndex !== -1 && lastIndex !== -1) {
+            const [startIndex, endIndex] =
+              currentIndex < lastIndex ? [currentIndex, lastIndex] : [lastIndex, currentIndex];
+            for (let index = startIndex; index <= endIndex; index += 1) {
+              const targetId = ids[index];
+              if (desiredState) next.add(targetId);
+              else next.delete(targetId);
+            }
+            return next;
+          }
+        }
+        if (desiredState) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+      if (desiredState !== null) {
+        lastSelectedIdRef.current = id;
+      }
+    },
+    [items],
+  );
 
   const toggleSelectAll = useCallback(() => {
     setSelectedIds(() => {
-      if (allSelected) return new Set();
-      return new Set(items.map((item) => item.id));
+      if (allSelected) {
+        lastSelectedIdRef.current = null;
+        return new Set();
+      }
+      const ids = items.map((item) => item.id);
+      lastSelectedIdRef.current = ids[ids.length - 1] ?? null;
+      return new Set(ids);
     });
   }, [allSelected, items]);
 
@@ -391,21 +445,6 @@ export default function Transactions() {
     });
   }, [setFilter, setSearchTerm]);
 
-  const handleUpdateRow = useCallback(
-    async (id, patch) => {
-      try {
-        await updateTransaction(id, patch);
-        addToast("Transaksi diperbarui", "success");
-        refresh({ keepPage: true });
-      } catch (err) {
-        console.error(err);
-        addToast(err?.message || "Gagal memperbarui transaksi", "error");
-        throw err;
-      }
-    },
-    [addToast, refresh],
-  );
-
   const handleDelete = useCallback(
     async (id) => {
       const confirmed = window.confirm("Hapus transaksi ini?");
@@ -433,6 +472,7 @@ export default function Transactions() {
       }
       addToast("Transaksi terpilih dihapus", "success");
       setSelectedIds(new Set());
+      lastSelectedIdRef.current = null;
       refresh();
     } catch (err) {
       console.error(err);
@@ -442,26 +482,29 @@ export default function Transactions() {
     }
   }, [addToast, refresh, selectedItems]);
 
-  const handleBulkExport = useCallback(() => {
-    if (!selectedItems.length) return;
-    const lines = ["date,type,category_name,amount,title,notes"];
-    selectedItems.forEach((item) => {
-      const categoryName = item.category || categoriesById.get(item.category_id)?.name || "";
-      const title = (item.title || "").replaceAll('"', '""');
-      const notes = (item.notes ?? item.note ?? "").replaceAll('"', '""');
-      lines.push(
-        `${toDateInput(item.date)},${item.type},"${categoryName}",${Number(item.amount ?? 0)},"${title}","${notes}"`,
-      );
-    });
-    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `transactions-selected-${Date.now()}.csv`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-    addToast("Export transaksi terpilih berhasil", "success");
-  }, [addToast, categoriesById, selectedItems]);
+  const handleBulkUpdateField = useCallback(
+    async (field, value) => {
+      if (!selectedItems.length || value == null) return;
+      setBulkUpdating(true);
+      try {
+        for (const item of selectedItems) {
+          await updateTransaction(item.id, { [field]: value });
+        }
+        const label = field === "category_id" ? "Kategori" : "Akun";
+        addToast(`${label} transaksi diperbarui`, "success");
+        setSelectedIds(new Set());
+        lastSelectedIdRef.current = null;
+        refresh({ keepPage: true });
+      } catch (err) {
+        console.error(err);
+        addToast(err?.message || "Gagal memperbarui transaksi terpilih", "error");
+      } finally {
+        setBulkUpdating(false);
+        setBulkEditMode(null);
+      }
+    },
+    [addToast, refresh, selectedItems],
+  );
 
   const handleExport = useCallback(async () => {
     if (exporting) return;
@@ -529,9 +572,11 @@ export default function Transactions() {
   const handleFormSuccess = useCallback(() => {
     refresh();
     setSelectedIds(new Set());
+    lastSelectedIdRef.current = null;
   }, [refresh]);
 
   const tableStickyTop = `calc(var(--app-header-height, var(--app-topbar-h, 64px)) + ${filterBarHeight}px + 16px)`;
+  const selectionToolbarOffset = tableStickyTop ? `calc(${tableStickyTop} + 12px)` : "16px";
   const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
   const activeFilterCount = activeChips.length;
 
@@ -540,13 +585,17 @@ export default function Transactions() {
     setFilterPanelOpen((prev) => !prev);
   };
 
+  const handleEditTransaction = useCallback((item) => {
+    setEditTarget(item);
+  }, []);
+
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Transaksi</h1>
-            <p className="text-sm text-white/60">{PAGE_DESCRIPTION}</p>
+            <h1 className="text-2xl font-semibold text-text">Transaksi</h1>
+            <p className="text-sm text-muted">{PAGE_DESCRIPTION}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -629,23 +678,20 @@ export default function Transactions() {
               WebkitBackdropFilter: "blur(6px)",
             }}
           >
-            <TransactionsFilterBar
-              filter={filter}
-              categories={categories}
-              searchTerm={searchTerm}
-              onSearchChange={setSearchTerm}
-              onFilterChange={setFilter}
-              searchInputRef={searchInputRef}
-              onOpenAdd={() => setAddOpen(true)}
-            />
-            {activeChips.length > 0 && (
-              <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
-            )}
-          </div>
+          <TransactionsFilterBar
+            filter={filter}
+            categories={categories}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            onFilterChange={setFilter}
+            searchInputRef={searchInputRef}
+            onOpenAdd={() => setAddOpen(true)}
+          />
         </div>
+      </div>
 
-        {showSyncBadge && (
-          <div className="flex items-center justify-between rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+      {showSyncBadge && (
+        <div className="flex items-center justify-between rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
               <span>
@@ -666,38 +712,64 @@ export default function Transactions() {
           </div>
         )}
 
-        <SummaryCards summary={summary} loading={loading && items.length === 0} />
+      <SummaryCards summary={summary} loading={loading && items.length === 0} />
 
-        {selectedIds.size > 0 && (
-          <BulkActionsBar
-            count={selectedIds.size}
-            onClear={() => setSelectedIds(new Set())}
-            onDelete={handleBulkDelete}
-            onExport={handleBulkExport}
-            deleting={bulkDeleting}
-          />
-        )}
+      {activeChips.length > 0 && (
+        <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
+      )}
 
-        <TransactionsTable
-          items={items}
-          loading={loading}
-          error={error}
-          onRetry={() => refresh({ keepPage: true })}
-          onLoadMore={loadMore}
-          hasMore={hasMore}
-          onToggleSelect={toggleSelect}
-          onToggleSelectAll={toggleSelectAll}
-          allSelected={allSelected}
-          selectedIds={selectedIds}
-          onUpdate={handleUpdateRow}
-          onDelete={handleDelete}
-          categoriesByType={categoriesByType}
-          tableStickyTop={tableStickyTop}
-          variant={tableVariant}
-          onResetFilters={handleResetFilters}
-          total={total}
+      {selectedIds.size > 0 && (
+        <SelectionToolbar
+          count={selectedIds.size}
+          onClear={() => {
+            setSelectedIds(new Set());
+            lastSelectedIdRef.current = null;
+          }}
+          onDelete={handleBulkDelete}
+          onEditCategory={() => setBulkEditMode("category")}
+          onEditAccount={() => setBulkEditMode("account")}
+          deleting={bulkDeleting}
+          updating={bulkUpdating}
+          topOffset={selectionToolbarOffset}
         />
-      </div>
+      )}
+
+      <TransactionsTable
+        items={items}
+        loading={loading}
+        error={error}
+        onRetry={() => refresh({ keepPage: true })}
+        onLoadMore={loadMore}
+        hasMore={hasMore}
+        onToggleSelect={toggleSelect}
+        onToggleSelectAll={toggleSelectAll}
+        allSelected={allSelected}
+        selectedIds={selectedIds}
+        onDelete={handleDelete}
+        onEdit={handleEditTransaction}
+        tableStickyTop={tableStickyTop}
+        variant={tableVariant}
+        onResetFilters={handleResetFilters}
+        total={total}
+        onOpenAdd={() => setAddOpen(true)}
+      />
+
+      {bulkEditMode && (
+        <BulkEditDialog
+          open={Boolean(bulkEditMode)}
+          mode={bulkEditMode}
+          onClose={() => {
+            if (!bulkUpdating) setBulkEditMode(null);
+          }}
+          onSubmit={(selectedValue) => {
+            const field = bulkEditMode === "category" ? "category_id" : "account_id";
+            handleBulkUpdateField(field, selectedValue);
+          }}
+          categories={categories}
+          submitting={bulkUpdating}
+          addToast={addToast}
+        />
+      )}
 
       {addOpen && (
         <TransactionFormDialog
@@ -706,6 +778,21 @@ export default function Transactions() {
           mode="create"
           categories={categories}
           onSuccess={handleFormSuccess}
+          addToast={addToast}
+        />
+      )}
+
+      {editTarget && (
+        <TransactionFormDialog
+          open={Boolean(editTarget)}
+          onClose={() => setEditTarget(null)}
+          mode="edit"
+          initialData={editTarget}
+          categories={categories}
+          onSuccess={() => {
+            refresh({ keepPage: true });
+            setEditTarget(null);
+          }}
           addToast={addToast}
         />
       )}
@@ -722,6 +809,7 @@ export default function Transactions() {
           addToast={addToast}
         />
       )}
+      </div>
     </main>
   );
 }
@@ -1211,17 +1299,19 @@ function CustomRangePopover({ anchorRef, period, onChange, onClose }) {
 }
 
 function ActiveFilterChips({ chips, onRemove }) {
+  if (!chips?.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-slate-900/40 px-4 py-3">
+    <div className="flex flex-wrap items-center gap-2">
       {chips.map((chip) => (
         <button
           key={chip.key}
           type="button"
           onClick={() => onRemove(chip)}
-          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white hover:bg-white/20 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          className="group inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:bg-brand/5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          aria-label={`Hapus filter ${chip.label}`}
         >
-          <span>{chip.label}</span>
-          <X className="h-3.5 w-3.5" />
+          <span className="truncate">{chip.label}</span>
+          <X className="h-3.5 w-3.5 transition group-hover:text-brand" aria-hidden="true" />
         </button>
       ))}
     </div>
@@ -1234,22 +1324,19 @@ function SummaryCards({ summary, loading }) {
       key: "income",
       title: "Pemasukan",
       value: summary?.income ?? 0,
-      accent: "text-emerald-400",
-      bg: "bg-emerald-500/10",
+      accent: "text-success",
     },
     {
       key: "expense",
       title: "Pengeluaran",
       value: summary?.expense ?? 0,
-      accent: "text-rose-400",
-      bg: "bg-rose-500/10",
+      accent: "text-danger",
     },
     {
       key: "net",
       title: "Net",
       value: summary?.net ?? 0,
-      accent: "text-sky-400",
-      bg: "bg-sky-500/10",
+      accent: "text-info",
     },
   ];
 
@@ -1258,11 +1345,11 @@ function SummaryCards({ summary, loading }) {
       {cards.map((card) => (
         <div
           key={card.key}
-          className="rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur"
+          className="rounded-2xl border border-border bg-surface-1/90 p-5 shadow-sm"
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-white/60">{card.title}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{card.title}</p>
           {loading ? (
-            <div className="mt-3 h-6 w-32 animate-pulse rounded bg-white/10" />
+            <div className="mt-3 h-6 w-32 animate-pulse rounded-full bg-border/60" />
           ) : (
             <p className={clsx("mt-2 text-2xl font-semibold", card.accent)}>{formatIDR(card.value)}</p>
           )}
@@ -1272,39 +1359,69 @@ function SummaryCards({ summary, loading }) {
   );
 }
 
-function BulkActionsBar({ count, onClear, onDelete, onExport, deleting }) {
+function SelectionToolbar({
+  count,
+  onClear,
+  onDelete,
+  onEditCategory,
+  onEditAccount,
+  deleting,
+  updating,
+  topOffset,
+}) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/80 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-2">
-        <span className="rounded-full bg-brand/20 px-3 py-1 text-xs font-semibold text-brand">{count} dipilih</span>
-        <button
-          type="button"
-          onClick={onClear}
-          className="text-xs font-medium text-white/70 hover:text-white"
-        >
-          Hapus pilihan
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={onExport}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-        >
-          <Download className="h-3.5 w-3.5" /> Export terpilih
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting}
-          className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Hapus terpilih
-        </button>
+    <div
+      className="pointer-events-none sticky bottom-4 z-30 md:bottom-auto md:top-0 md:sticky"
+      style={topOffset ? { top: topOffset } : undefined}
+      aria-live="polite"
+    >
+      <div className="pointer-events-auto mx-auto flex w-full max-w-[720px] flex-col gap-3 rounded-2xl border border-border bg-surface/95 p-4 shadow-lg shadow-black/5 md:flex-row md:items-center md:justify-between md:px-6">
+        <div className="flex flex-1 flex-wrap items-center gap-3">
+          <span className="inline-flex items-center gap-2 rounded-full bg-brand/10 px-3 py-1 text-sm font-semibold text-brand">
+            {count} dipilih
+          </span>
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-sm font-medium text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          >
+            Batal
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onEditCategory}
+            disabled={updating}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}
+            Ubah kategori
+          </button>
+          <button
+            type="button"
+            onClick={onEditAccount}
+            disabled={updating}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />}
+            Ubah akun
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={deleting}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:bg-[color:var(--color-danger-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {deleting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+            Hapus
+          </button>
+        </div>
       </div>
     </div>
   );
 }
+
 function TransactionsTable({
   items,
   loading,
@@ -1316,34 +1433,29 @@ function TransactionsTable({
   onToggleSelectAll,
   allSelected,
   selectedIds,
-  onUpdate,
   onDelete,
-  categoriesByType,
+  onEdit,
   tableStickyTop,
   total,
   variant = "table",
   onResetFilters = () => {},
+  onOpenAdd = () => {},
 }) {
   const isCardVariant = variant === "card";
+  const isInitialLoading = loading && items.length === 0;
   const isFetchingMore = loading && items.length > 0;
-  const start = items.length > 0 ? 1 : 0;
-  const end = items.length;
-  const scrollVariables = useMemo(() => {
-    if (!tableStickyTop) return undefined;
-    return {
-      "--app-header-offset": tableStickyTop,
-      "--header-and-filter-height": tableStickyTop,
-    };
-  }, [tableStickyTop]);
+  const displayStart = items.length > 0 ? 1 : 0;
+  const displayEnd = items.length;
+  const stickyHeaderStyle = tableStickyTop ? { top: tableStickyTop } : undefined;
 
-  if (error && items.length === 0) {
+  if (error && !items.length) {
     return (
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-white/70">
-        <p className="mb-3 text-sm">Gagal memuat data transaksi.</p>
+      <div className="rounded-2xl border border-danger/30 bg-danger/10 p-6 text-center">
+        <p className="mb-3 text-sm font-medium text-danger">Gagal memuat data transaksi.</p>
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          className="inline-flex h-11 items-center justify-center rounded-2xl border border-danger/40 bg-white/80 px-4 text-sm font-semibold text-danger transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)]"
         >
           Coba lagi
         </button>
@@ -1351,204 +1463,126 @@ function TransactionsTable({
     );
   }
 
-  if (!loading && items.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-white/15 bg-white/5 px-6 py-16 text-center text-white/70">
-        <span className="rounded-full bg-white/10 p-3">
-          <Plus className="h-6 w-6" aria-hidden="true" />
-        </span>
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-white">Tidak ada transaksi</h2>
-          <p className="text-sm text-white/60">Atur ulang filter atau tambahkan transaksi baru untuk mulai melihat data.</p>
-        </div>
-        <button
-          type="button"
-          onClick={onResetFilters}
-          className="rounded-full border border-white/20 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-        >
-          Reset filter
-        </button>
-      </div>
-    );
+  if (!loading && !items.length) {
+    return <EmptyTransactionsState onResetFilters={onResetFilters} onOpenAdd={onOpenAdd} />;
   }
 
-  const tableContent = (
-    <div className="min-w-0 overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur">
-      <div
-        className="min-w-0 max-h-[calc(100vh-var(--header-and-filter-height,280px))] overflow-y-auto"
-        style={scrollVariables}
-      >
-        <div className="min-w-0 overflow-x-auto -mx-3 px-3 md:mx-0 md:px-0">
-          <table className="w-full table-auto text-sm text-white/80 md:table-fixed">
-            <thead className="sticky top-0 z-10 bg-background/95 text-white/60 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-              <tr className="text-xs font-semibold uppercase tracking-wide">
-                <th scope="col" className="w-12 px-4 py-3 text-center">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={onToggleSelectAll}
-                    className="mx-auto h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                    aria-label="Pilih semua"
-                  />
-                </th>
-                <th scope="col" className="min-w-[140px] px-4 py-3 text-left">
-                  Kategori
-                </th>
-                <th scope="col" className="min-w-[120px] px-4 py-3 text-left">
-                  Tanggal
-                </th>
-                <th scope="col" className="min-w-[200px] px-4 py-3 text-left">
-                  Catatan
-                </th>
-                <th scope="col" className="min-w-[160px] px-4 py-3 text-left">
-                  Akun
-                </th>
-                <th scope="col" className="min-w-[120px] px-4 py-3 text-right">
-                  Jumlah
-                </th>
-                <th scope="col" className="w-[120px] px-4 py-3 text-center">
-                  Aksi
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <TransactionItem
-                  key={item.id}
-                  item={item}
-                  variant="table"
-                  isSelected={selectedIds.has(item.id)}
-                  onToggleSelect={() => onToggleSelect(item.id)}
-                  onUpdate={onUpdate}
-                  onDelete={() => onDelete(item.id)}
-                  categoriesByType={categoriesByType}
-                />
-              ))}
-              {items.length === 0 &&
-                loading &&
-                Array.from({ length: 6 }).map((_, index) => (
-                  <tr
-                    key={`tx-skeleton-${index}`}
-                    className="border-b border-white/5 odd:bg-muted/30"
-                  >
-                    <td className="w-12 px-4 py-3 align-middle text-center">
-                      <div className="mx-auto h-4 w-4 animate-pulse rounded bg-white/10" />
-                    </td>
-                    <td className="min-w-[140px] px-4 py-3 align-middle text-left">
-                      <div className="h-3.5 w-[160px] animate-pulse rounded bg-white/10" />
-                    </td>
-                    <td className="min-w-[120px] px-4 py-3 align-middle text-left">
-                      <div className="h-3.5 w-[90px] animate-pulse rounded bg-white/10" />
-                    </td>
-                    <td className="min-w-[200px] px-4 py-3 align-middle text-left">
-                      <div className="h-3.5 w-full max-w-[260px] animate-pulse rounded bg-white/10" />
-                    </td>
-                    <td className="min-w-[160px] px-4 py-3 align-middle text-left">
-                      <div className="h-3.5 w-[120px] animate-pulse rounded bg-white/10" />
-                    </td>
-                    <td className="min-w-[120px] px-4 py-3 align-middle text-right">
-                      <div className="ml-auto h-3.5 w-20 animate-pulse rounded bg-white/10" />
-                    </td>
-                    <td className="w-[120px] px-4 py-3 align-middle text-center">
-                      <div className="mx-auto flex max-w-[96px] justify-center gap-2">
-                        <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
-                        <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              {items.length > 0 && loading && (
-                <tr className="border-b border-white/5">
-                  <td colSpan={7} className="px-4 py-4">
-                    <div className="flex items-center justify-center gap-2 text-xs text-white/60">
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                      Memuat transaksi...
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-
-  const cardContent = (
-    <div className="space-y-3">
-      {items.length > 0 && (
-        <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={onToggleSelectAll}
-            className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            aria-label="Pilih semua transaksi"
-          />
-          <span>Pilih semua</span>
-        </label>
-      )}
-      {(items.length === 0 && loading
-        ? Array.from({ length: 4 }).map((_, index) => (
-            <div key={`tx-card-skeleton-${index}`} className="tx-card">
-              <div className="flex items-start gap-3">
-                <div className="h-4 w-4 animate-pulse rounded bg-white/10" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3.5 w-32 animate-pulse rounded bg-white/10" />
-                  <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-                </div>
-              </div>
-              <div className="h-3.5 w-full animate-pulse rounded bg-white/10" />
-              <div className="flex items-center justify-between gap-3">
-                <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
-                <div className="flex gap-2">
-                  <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
-                  <div className="h-8 w-8 animate-pulse rounded-full bg-white/10" />
-                </div>
-              </div>
-            </div>
-          ))
-        : items.map((item) => (
-            <TransactionItem
-              key={item.id}
-              item={item}
-              variant="card"
-              isSelected={selectedIds.has(item.id)}
-              onToggleSelect={() => onToggleSelect(item.id)}
-              onUpdate={onUpdate}
-              onDelete={() => onDelete(item.id)}
-              categoriesByType={categoriesByType}
-            />
-          )))}
-      {items.length > 0 && loading && (
-        <div className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-white/10 bg-white/5 px-4 py-3 text-xs text-white/60">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          Memuat transaksi...
-        </div>
-      )}
-    </div>
-  );
-
   return (
-    <div className="space-y-4">
-      {isCardVariant ? cardContent : tableContent}
-      <div className="flex flex-col gap-3 text-sm text-white/60 sm:flex-row sm:items-center sm:justify-between">
-        <span>
-          Menampilkan {start}-{end} dari {total}
-        </span>
-        <div className="flex items-center gap-2">
-          {hasMore && (
-            <button
-              type="button"
-              onClick={onLoadMore}
-              disabled={isFetchingMore}
-              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isFetchingMore ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />} Muat lebih
-            </button>
-          )}
-        </div>
+    <section className="space-y-4">
+      <div className={clsx("rounded-2xl border border-border bg-surface shadow-sm", isCardVariant ? "p-3" : "") }>
+        {isCardVariant ? (
+          <div className="flex flex-col gap-3">
+            {items.map((item) => (
+              <TransactionItem
+                key={item.id}
+                item={item}
+                variant="card"
+                isSelected={selectedIds.has(item.id)}
+                onToggleSelect={(event) => onToggleSelect(item.id, event)}
+                onDelete={() => onDelete(item.id)}
+                onEdit={() => onEdit(item)}
+              />
+            ))}
+            {isInitialLoading &&
+              Array.from({ length: 6 }).map((_, index) => <TransactionSkeletonCard key={`card-skeleton-${index}`} />)}
+            {isFetchingMore &&
+              !isInitialLoading &&
+              Array.from({ length: 2 }).map((_, index) => <TransactionSkeletonCard key={`card-fetch-${index}`} />)}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full table-fixed border-separate border-spacing-0" aria-label="Daftar transaksi">
+              <thead
+                className="sticky top-0 z-10 border-b border-border/70 bg-surface-1/95 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur"
+                style={stickyHeaderStyle}
+              >
+                <tr>
+                  <th scope="col" className="w-12 px-3 py-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={onToggleSelectAll}
+                      className="h-4 w-4 rounded border-border/70 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                      aria-label="Pilih semua transaksi"
+                    />
+                  </th>
+                  <th scope="col" className="min-w-[200px] px-3 py-3 text-left">Kategori</th>
+                  <th scope="col" className="min-w-[160px] px-3 py-3 text-left">Tanggal</th>
+                  <th scope="col" className="min-w-[240px] px-3 py-3 text-left">Catatan</th>
+                  <th scope="col" className="min-w-[180px] px-3 py-3 text-left">Akun</th>
+                  <th scope="col" className="min-w-[200px] px-3 py-3 text-left">Tags</th>
+                  <th scope="col" className="min-w-[140px] px-3 py-3 text-right">Jumlah</th>
+                  <th scope="col" className="w-[120px] px-3 py-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <TransactionItem
+                    key={item.id}
+                    item={item}
+                    variant="table"
+                    isSelected={selectedIds.has(item.id)}
+                    onToggleSelect={(event) => onToggleSelect(item.id, event)}
+                    onDelete={() => onDelete(item.id)}
+                    onEdit={() => onEdit(item)}
+                  />
+                ))}
+                {isInitialLoading &&
+                  Array.from({ length: 6 }).map((_, index) => <TransactionSkeletonRow key={`row-skeleton-${index}`} />)}
+                {isFetchingMore &&
+                  !isInitialLoading &&
+                  Array.from({ length: 2 }).map((_, index) => <TransactionSkeletonRow key={`row-fetch-${index}`} />)}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+        <span>
+          {total
+            ? `Menampilkan ${displayStart || 0}–${displayEnd} dari ${total}`
+            : `Menampilkan ${displayEnd} transaksi`}
+        </span>
+        {hasMore ? (
+          <button
+            type="button"
+            onClick={onLoadMore}
+            disabled={isFetchingMore}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isFetchingMore && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {isFetchingMore ? "Memuat…" : "Muat lagi"}
+          </button>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function TransactionSkeletonRow() {
+  return (
+    <tr className="border-b border-border/60 last:border-b-0">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <td key={index} className="px-3 py-3 align-middle">
+          <div className="h-4 w-full animate-pulse rounded-full bg-border/60" />
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+function TransactionSkeletonCard() {
+  return (
+    <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="h-4 w-32 animate-pulse rounded-full bg-border/60" />
+        <div className="h-5 w-20 animate-pulse rounded-full bg-border/60" />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="h-4 w-full animate-pulse rounded-full bg-border/60" />
+        <div className="h-4 w-full animate-pulse rounded-full bg-border/60" />
+      </div>
+      <div className="mt-4 h-12 w-full animate-pulse rounded-2xl bg-border/60" />
     </div>
   );
 }
@@ -1558,260 +1592,119 @@ function TransactionItem({
   variant = "table",
   isSelected,
   onToggleSelect,
-  onUpdate,
   onDelete,
-  categoriesByType,
+  onEdit,
 }) {
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState(() => ({
-    date: toDateInput(item.date),
-    category_id: item.category_id || "",
-    notes: item.notes ?? item.note ?? "",
-    amount: String(item.amount ?? 0),
-  }));
-
-  useEffect(() => {
-    setDraft({
-      date: toDateInput(item.date),
-      category_id: item.category_id || "",
-      notes: item.notes ?? item.note ?? "",
-      amount: String(item.amount ?? 0),
-    });
-  }, [item]);
-
-  const categoryOptions = useMemo(() => {
-    const list = categoriesByType[item.type] || [];
-    return list.length ? list : categoriesByType.expense || [];
-  }, [categoriesByType, item.type]);
-
-  const amountNumber = Number(draft.amount.replace(/[^0-9.,-]/g, "").replace(/,/g, "."));
-  const categoryLabel = item.category || item.category_name || "(Tidak ada kategori)";
-  const noteValue = item.notes ?? item.note ?? "";
-  const accountLabel = item.account || "-";
-  const amountClass = clsx(
-    "text-right text-sm font-semibold tabular-nums",
+  const amountTone =
     item.type === "income"
       ? "text-success"
       : item.type === "transfer"
         ? "text-info"
-        : "text-danger",
-  );
-  const hasAttachments = Boolean(item.receipt_url) || (Array.isArray(item.receipts) && item.receipts.length > 0);
-  const attachmentHref = item.receipt_url;
+        : "text-danger";
+  const amountClass = clsx("text-right text-sm font-semibold tabular-nums", amountTone);
+  const amountCardClass = clsx("text-lg font-semibold tabular-nums", amountTone);
+  const note = item.notes ?? item.note ?? item.title ?? "";
+  const noteDisplay = note.trim() ? note.trim() : "—";
+  const formattedDate = formatTransactionDate(item.date);
   const dateValue = toDateInput(item.date);
-  const categoryInputId = `category-${item.id}`;
-  const dateInputId = `date-${item.id}`;
-
-  const handleSave = async () => {
-    if (!draft.category_id) {
-      alert("Kategori wajib dipilih");
-      return;
-    }
-    if (!draft.date) {
-      alert("Tanggal tidak valid");
-      return;
-    }
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      alert("Nominal harus lebih besar dari 0");
-      return;
-    }
-    setSaving(true);
-    try {
-      await onUpdate(item.id, {
-        category_id: draft.category_id,
-        date: draft.date,
-        notes: draft.notes,
-        amount: amountNumber,
-      });
-      setEditing(false);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditing(false);
-    setDraft({
-      date: toDateInput(item.date),
-      category_id: item.category_id || "",
-      notes: item.notes ?? item.note ?? "",
-      amount: String(item.amount ?? 0),
-    });
-  };
-
-  const handleKeyDown = (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      handleSave();
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      handleCancel();
-    }
-  };
+  const categoryName = item.category || "(Tanpa kategori)";
+  const tags = useMemo(() => parseTags(item.tags), [item.tags]);
+  const hasAttachments = Boolean(item.receipt_url) || (Array.isArray(item.receipts) && item.receipts.length > 0);
 
   const selectionCheckbox = (
     <input
       type="checkbox"
       checked={isSelected}
       onChange={onToggleSelect}
-      className="h-4 w-4 rounded border-white/30 bg-transparent text-brand focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+      className="h-4 w-4 rounded border-border/70 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
       aria-label="Pilih transaksi"
     />
   );
 
-  const amountInputClass = clsx(
-    "h-[40px] rounded-lg border border-white/15 bg-white/10 px-3 text-right text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60",
-    variant === "card" ? "min-w-[160px]" : "w-32",
-  );
-
-  const renderActions = () => (
-    <div
-      className={clsx(
-        "flex items-center gap-2",
-        variant === "card" ? "justify-end" : "justify-center",
-      )}
-    >
-      {hasAttachments && attachmentHref && (
-        <a
-          href={attachmentHref}
-          target="_blank"
-          rel="noreferrer"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          aria-label="Lihat lampiran"
-        >
-          <Paperclip className="h-4 w-4" aria-hidden="true" />
-        </a>
-      )}
-      {editing ? (
-        <>
+  if (variant === "card") {
+    return (
+      <article
+        className={clsx(
+          "rounded-2xl border border-border bg-surface/90 p-4 shadow-sm transition-colors",
+          isSelected && "border-brand/40 bg-brand/5 ring-2 ring-brand/40",
+        )}
+        onDoubleClick={onEdit}
+      >
+        <div className="flex items-start gap-3">
+          <div className="pt-1">{selectionCheckbox}</div>
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={item.category_color ? { backgroundColor: item.category_color } : undefined}
+                  aria-hidden="true"
+                />
+                <p className="text-sm font-semibold text-text" title={categoryName}>
+                  {categoryName}
+                </p>
+                {hasAttachments && <Paperclip className="h-4 w-4 text-muted" aria-hidden="true" />}
+              </div>
+              <span className={clsx("text-right", amountCardClass)}>{formatIDR(item.amount)}</span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 text-sm text-muted sm:grid-cols-2">
+              <div>
+                <p className="text-xs uppercase tracking-wide">Tanggal</p>
+                <p className="font-medium text-text">
+                  <time dateTime={dateValue}>{formattedDate}</time>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide">Akun</p>
+                <p className="font-medium text-text">
+                  {item.type === "transfer" ? (
+                    <span className="flex items-center gap-1">
+                      <span className="truncate">{item.account || "—"}</span>
+                      <ArrowRight className="h-4 w-4 text-muted" aria-hidden="true" />
+                      <span className="truncate">{item.to_account || "—"}</span>
+                    </span>
+                  ) : (
+                    <span className="truncate">{item.account || "—"}</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <p className="line-clamp-2 text-sm text-muted" title={noteDisplay}>
+              {noteDisplay}
+            </p>
+            {tags.length > 0 && (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-text"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500 text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Simpan perubahan"
-          >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Check className="h-4 w-4" aria-hidden="true" />}
-          </button>
-          <button
-            type="button"
-            onClick={handleCancel}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            aria-label="Batalkan edit"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            onClick={onEdit}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
             aria-label="Edit transaksi"
           >
             <Pencil className="h-4 w-4" aria-hidden="true" />
+            Edit
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/5 text-white/70 hover:bg-rose-500/30 focus-visible:outline-none focus-visible:ring focus-visible:ring-rose-300"
+            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-danger/40 bg-danger/10 px-4 text-sm font-medium text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)]"
             aria-label="Hapus transaksi"
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Hapus
           </button>
-        </>
-      )}
-    </div>
-  );
-
-  if (variant === "card") {
-    return (
-      <article className={clsx("tx-card", isSelected && "border-brand ring-2 ring-brand/60")}>
-        <div className="flex items-start gap-3">
-          <div className="pt-0.5">{selectionCheckbox}</div>
-          <div className="min-w-0 flex-1 space-y-2">
-            {editing ? (
-              <>
-                <label className="sr-only" htmlFor={categoryInputId}>
-                  Kategori
-                </label>
-                <select
-                  id={categoryInputId}
-                  value={draft.category_id}
-                  onChange={(event) => setDraft((prev) => ({ ...prev, category_id: event.target.value }))}
-                  className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                >
-                  <option value="">Pilih kategori</option>
-                  {categoryOptions.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
-                <label className="sr-only" htmlFor={dateInputId}>
-                  Tanggal
-                </label>
-                <input
-                  id={dateInputId}
-                  type="date"
-                  value={draft.date}
-                  onChange={(event) => setDraft((prev) => ({ ...prev, date: event.target.value }))}
-                  onKeyDown={handleKeyDown}
-                  className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                />
-              </>
-            ) : (
-              <>
-                <p className="truncate font-semibold text-white" title={categoryLabel}>
-                  {categoryLabel}
-                </p>
-                <p className="flex items-center gap-1 text-xs text-white/50" title={dateValue}>
-                  <time dateTime={dateValue}>{dateValue}</time>
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="min-w-0 text-sm text-white/70">
-          {editing ? (
-            <textarea
-              value={draft.notes}
-              onChange={(event) => setDraft((prev) => ({ ...prev, notes: event.target.value }))}
-              onKeyDown={handleKeyDown}
-              rows={3}
-              className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            />
-          ) : (
-            <p className="text-white/70 line-clamp-2" title={noteValue || "Tidak ada catatan"}>
-              {noteValue || "Tidak ada catatan"}
-            </p>
-          )}
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/50">
-            <span className="truncate" title={accountLabel}>
-              {accountLabel}
-            </span>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          {editing ? (
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={draft.amount}
-              onChange={(event) => setDraft((prev) => ({ ...prev, amount: event.target.value }))}
-              onKeyDown={handleKeyDown}
-              className={amountInputClass}
-            />
-          ) : (
-            <span className={amountClass}>{formatIDR(item.amount)}</span>
-          )}
-          {renderActions()}
         </div>
       </article>
     );
@@ -1820,89 +1713,244 @@ function TransactionItem({
   return (
     <tr
       className={clsx(
-        "border-b border-white/5 transition-colors odd:bg-muted/30 hover:bg-muted/50 focus-within:bg-muted/40 last:border-b-0",
-        isSelected && "bg-brand/15 hover:bg-brand/20 focus-within:bg-brand/20",
+        "border-b border-border/60 last:border-b-0 transition-colors",
+        isSelected
+          ? "bg-brand/10 shadow-[inset_0_0_0_1px_hsl(var(--color-primary)/0.35)]"
+          : "hover:bg-surface-2/60",
       )}
+      onDoubleClick={onEdit}
     >
-      <td className="w-12 px-4 py-3 align-middle text-center">
+      <td className="px-3 py-3 align-middle">
         <div className="flex items-center justify-center">{selectionCheckbox}</div>
       </td>
-      <td className="min-w-[140px] px-4 py-3 align-middle text-left">
-        {editing ? (
-          <select
-            id={categoryInputId}
-            value={draft.category_id}
-            onChange={(event) => setDraft((prev) => ({ ...prev, category_id: event.target.value }))}
-            className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          >
-            <option value="">Pilih kategori</option>
-            {categoryOptions.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <div className="flex min-w-0 items-center gap-2" title={categoryLabel}>
-            <span className="min-w-0 truncate font-semibold text-white">{categoryLabel}</span>
+      <td className="px-3 py-3 align-middle">
+        <div className="flex items-center gap-3">
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={item.category_color ? { backgroundColor: item.category_color } : undefined}
+            aria-hidden="true"
+          />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-text" title={categoryName}>
+              {categoryName}
+            </p>
+            <p className="text-xs uppercase tracking-wide text-muted">{TYPE_LABELS[item.type] || item.type}</p>
           </div>
-        )}
+        </div>
       </td>
-      <td className="min-w-[120px] px-4 py-3 align-middle text-left">
-        {editing ? (
-          <input
-            id={dateInputId}
-            type="date"
-            value={draft.date}
-            onChange={(event) => setDraft((prev) => ({ ...prev, date: event.target.value }))}
-            onKeyDown={handleKeyDown}
-            className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          />
+      <td className="px-3 py-3 align-middle text-sm text-muted">
+        <time dateTime={dateValue}>{formattedDate}</time>
+      </td>
+      <td className="px-3 py-3 align-middle">
+        <div className="flex items-start gap-2">
+          <p className="line-clamp-2 text-sm text-text" title={noteDisplay}>
+            {noteDisplay}
+          </p>
+          {hasAttachments && <Paperclip className="mt-0.5 h-4 w-4 text-muted" aria-hidden="true" />}
+        </div>
+      </td>
+      <td className="px-3 py-3 align-middle text-sm text-text">
+        {item.type === "transfer" ? (
+          <div className="flex flex-wrap items-center gap-1">
+            <span className="truncate">{item.account || "—"}</span>
+            <ArrowRight className="h-4 w-4 text-muted" aria-hidden="true" />
+            <span className="truncate">{item.to_account || "—"}</span>
+          </div>
         ) : (
-          <time dateTime={dateValue} className="text-white/70">
-            {dateValue}
-          </time>
+          <span className="truncate">{item.account || "—"}</span>
         )}
       </td>
-      <td className="min-w-[200px] px-4 py-3 align-middle text-left">
-        {editing ? (
-          <textarea
-            value={draft.notes}
-            onChange={(event) => setDraft((prev) => ({ ...prev, notes: event.target.value }))}
-            onKeyDown={handleKeyDown}
-            rows={2}
-            className="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          />
+      <td className="px-3 py-3 align-middle">
+        {tags.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {tags.map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-text"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
         ) : (
-          <span className="block text-white/70 line-clamp-2" title={noteValue || "Tidak ada catatan"}>
-            {noteValue || "-"}
-          </span>
+          <span className="text-sm text-muted">—</span>
         )}
       </td>
-      <td className="min-w-[160px] px-4 py-3 align-middle text-left">
-        <span className="block truncate text-white/70" title={accountLabel}>
-          {accountLabel}
-        </span>
+      <td className="px-3 py-3 align-middle">
+        <span className={clsx("block", amountClass)}>{formatIDR(item.amount)}</span>
       </td>
-      <td className="min-w-[120px] px-4 py-3 align-middle text-right">
-        {editing ? (
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={draft.amount}
-            onChange={(event) => setDraft((prev) => ({ ...prev, amount: event.target.value }))}
-            onKeyDown={handleKeyDown}
-            className={amountInputClass}
-          />
-        ) : (
-          <span className={amountClass}>{formatIDR(item.amount)}</span>
-        )}
+      <td className="px-3 py-3 align-middle">
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-muted transition hover:border-brand/40 hover:bg-brand/5 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            aria-label="Edit transaksi"
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)]"
+            aria-label="Hapus transaksi"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
       </td>
-      <td className="w-[120px] px-4 py-3 align-middle text-center">{renderActions()}</td>
     </tr>
   );
 }
+
+function EmptyTransactionsState({ onResetFilters, onOpenAdd }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-surface/80 px-6 py-16 text-center">
+      <span className="rounded-full bg-brand/10 p-3 text-brand">
+        <Inbox className="h-6 w-6" aria-hidden="true" />
+      </span>
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-text">Belum ada transaksi sesuai filter</h2>
+        <p className="text-sm text-muted">Coba atur ulang filter atau tambahkan transaksi baru.</p>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onResetFilters}
+          className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        >
+          Reset filter
+        </button>
+        <button
+          type="button"
+          onClick={onOpenAdd}
+          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Tambah Transaksi
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function parseTags(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((tag) => String(tag).trim())
+      .filter(Boolean);
+  }
+  return String(value)
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function BulkEditDialog({
+  open,
+  mode,
+  onClose,
+  onSubmit,
+  categories,
+  submitting = false,
+  addToast = () => {},
+}) {
+  const [value, setValue] = useState("");
+  const [options, setOptions] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setValue("");
+      setOptions([]);
+      setLoading(false);
+      return;
+    }
+    if (mode === "category") {
+      setOptions((categories || []).map((cat) => ({ id: cat.id, name: cat.name || "(Tanpa kategori)" })));
+      setLoading(false);
+    } else if (mode === "account") {
+      setLoading(true);
+      listAccounts()
+        .then((rows) => {
+          setOptions((rows || []).map((account) => ({ id: account.id, name: account.name || "(Tanpa nama)" })));
+        })
+        .catch((err) => {
+          console.error(err);
+          addToast(err?.message || "Gagal memuat akun", "error");
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [open, mode, categories, addToast]);
+
+  useEffect(() => {
+    if (!open || !options.length) return;
+    if (!options.some((option) => option.id === value)) {
+      setValue(options[0]?.id || "");
+    }
+  }, [open, options, value]);
+
+  if (!open) return null;
+
+  const title = mode === "category" ? "Ubah kategori transaksi" : "Ubah akun transaksi";
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    if (!value) {
+      addToast("Silakan pilih opsi", "warning");
+      return;
+    }
+    onSubmit(value);
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title={title}>
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="h-6 w-6 animate-spin text-white" aria-hidden="true" />
+        </div>
+      ) : (
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <label className="flex flex-col gap-2 text-sm text-white/80">
+            <span>{mode === "category" ? "Pilih kategori" : "Pilih akun"}</span>
+            <select
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+              className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            >
+              <option value="">{mode === "category" ? "Pilih kategori" : "Pilih akun"}</option>
+              {options.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !value}
+              className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Terapkan"}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+
+
 function Modal({ open, onClose, title, children }) {
   useEffect(() => {
     if (!open) return undefined;

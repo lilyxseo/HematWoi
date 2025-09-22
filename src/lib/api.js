@@ -174,6 +174,11 @@ export function mapTransactionRow(tx = {}) {
     tx.category_name ??
     tx.category ??
     null;
+  const categoryColor =
+    tx.category?.color ??
+    tx.categories?.color ??
+    tx.category_color ??
+    null;
   const categoryId =
     tx.category_id ??
     tx.category?.id ??
@@ -250,6 +255,7 @@ export function mapTransactionRow(tx = {}) {
     to_account_id: toAccountId,
     category: categoryName,
     category_id: categoryId,
+    category_color: categoryColor,
     merchant: merchantName,
     merchant_id: merchantId,
     receipts,
