@@ -34,6 +34,8 @@ export default function DataCardList({
   loading,
   editing,
 }) {
+  if (!Array.isArray(rows)) return null;
+
   const hidden = hiddenColumns || new Set();
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [sheet, setSheet] = useState<{ rowId: string; field: string } | null>(null);

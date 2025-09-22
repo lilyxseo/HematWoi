@@ -17,6 +17,7 @@ import ImportModal from '../components/data/ImportModal';
 import BackupRestore from '../components/data/BackupRestore';
 import DedupTool from '../components/data/DedupTool';
 import NormalizeCategories from '../components/data/NormalizeCategories';
+import ErrorBoundary from '../components/system/ErrorBoundary';
 import {
   TransactionDateEditor,
   TransactionTitleEditor,
@@ -248,7 +249,7 @@ function toFilename(entity: string, extension: string) {
   return `hematwoi-${entity}-${stamp}.${extension}`;
 }
 
-export default function DataPage() {
+function DataPageContent() {
   const [activeTab, setActiveTab] = useState('transactions');
   const [filters, setFilters] = useState(() => {
     const base = TAB_KEYS.reduce((acc, key) => {
@@ -703,41 +704,49 @@ export default function DataPage() {
               {dataState[activeTab].error}
             </div>
           )}
-          {isMobile ? (
-            <DataCardList
-              rows={rows}
-              columns={columns}
-              hiddenColumns={hidden}
-              selectedIds={selected}
-              onToggleSelect={toggleRow}
-              loading={dataState[activeTab].loading}
-              editing={activeTab === 'transactions' ? transactionEditing : undefined}
-              onAction={(action, row) => {
-                if (action === 'delete' && activeTab === 'transactions') {
-                  bulkDeleteTransactions([row.id])
-                    .then(() => {
-                      addToast({ title: 'Transaksi dihapus', status: 'success' });
-                      refreshCurrentTab();
-                    })
-                    .catch((err) => {
-                      addToast({ title: 'Gagal menghapus', status: 'error', description: err.message });
-                    });
-                }
-              }}
-            />
-          ) : (
-            <DataTable
-              columns={columns}
-              rows={rows}
-              hiddenColumns={hidden}
-              selectedIds={selected}
-              onToggleSelect={toggleRow}
-              onToggleAll={toggleAll}
-              sort={filters[activeTab].sort}
-              onSortChange={(value) => handleFilterChange(activeTab, 'sort', value)}
-              loading={dataState[activeTab].loading}
-            />
-          )}
+          <ErrorBoundary
+            fallback={
+              <div className="rounded-2xl border border-border bg-muted/20 p-4 text-center text-sm text-muted-foreground">
+                Tidak dapat menampilkan data.
+              </div>
+            }
+          >
+            {isMobile ? (
+              <DataCardList
+                rows={rows}
+                columns={columns}
+                hiddenColumns={hidden}
+                selectedIds={selected}
+                onToggleSelect={toggleRow}
+                loading={dataState[activeTab].loading}
+                editing={activeTab === 'transactions' ? transactionEditing : undefined}
+                onAction={(action, row) => {
+                  if (action === 'delete' && activeTab === 'transactions') {
+                    bulkDeleteTransactions([row.id])
+                      .then(() => {
+                        addToast({ title: 'Transaksi dihapus', status: 'success' });
+                        refreshCurrentTab();
+                      })
+                      .catch((err) => {
+                        addToast({ title: 'Gagal menghapus', status: 'error', description: err.message });
+                      });
+                  }
+                }}
+              />
+            ) : (
+              <DataTable
+                columns={columns}
+                rows={rows}
+                hiddenColumns={hidden}
+                selectedIds={selected}
+                onToggleSelect={toggleRow}
+                onToggleAll={toggleAll}
+                sort={filters[activeTab].sort}
+                onSortChange={(value) => handleFilterChange(activeTab, 'sort', value)}
+                loading={dataState[activeTab].loading}
+              />
+            )}
+          </ErrorBoundary>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
               Menampilkan {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} dari {total}
@@ -877,6 +886,14 @@ export default function DataPage() {
         userId={userId}
       />
     </main>
+  );
+}
+
+export default function DataPage() {
+  return (
+    <ErrorBoundary>
+      <DataPageContent />
+    </ErrorBoundary>
   );
 }
 

@@ -25,14 +25,21 @@ interface BulkUpdateParams {
 type TransactionType = 'income' | 'expense' | 'transfer';
 
 type TransactionPatchPayload = Partial<{
-  date: string;
+  date: string | Date | null;
   title: string | null;
   notes: string | null;
   type: TransactionType;
-  amount: number;
+  amount: number | string | null;
   account_id: string | null;
+  to_account_id: string | null;
   category_id: string | null;
-  tags: string | null;
+  merchant_id: string | null;
+  parent_id: string | null;
+  transfer_group_id: string | null;
+  receipt_url: string | null;
+  tags: string | string[] | null;
+  rate: number | string | null;
+  quantity: number | string | null;
 }>;
 
 interface PatchOptions {
@@ -232,17 +239,191 @@ function safeTrim(value: string | undefined) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function sanitizeTransactionPatch(payload: TransactionPatchPayload) {
-  const sanitized: Record<string, unknown> = {};
-  Object.entries(payload).forEach(([key, value]) => {
-    if (value === undefined) return;
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      sanitized[key] = trimmed === '' ? null : trimmed;
-      return;
+const TRANSACTION_ALLOWED_FIELDS = new Set([
+  'date',
+  'title',
+  'notes',
+  'type',
+  'amount',
+  'account_id',
+  'to_account_id',
+  'category_id',
+  'merchant_id',
+  'parent_id',
+  'transfer_group_id',
+  'receipt_url',
+  'tags',
+  'rate',
+  'quantity',
+]);
+
+const TRANSACTION_NOT_NULL_FIELDS = new Set(['date', 'type', 'amount']);
+const TRANSACTION_NUMERIC_FIELDS = new Set(['amount', 'rate', 'quantity']);
+const TRANSACTION_TYPE_OPTIONS = new Set<TransactionType>(['income', 'expense', 'transfer']);
+const TRANSACTION_ID_FIELDS = new Set([
+  'account_id',
+  'to_account_id',
+  'category_id',
+  'merchant_id',
+  'parent_id',
+  'transfer_group_id',
+]);
+
+function normalizePatchDate(value: unknown): string | null {
+  if (value == null || value === '') {
+    return null;
+  }
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
     }
-    sanitized[key] = value;
-  });
+    return new Date(value.getTime()).toISOString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const local = new Date(`${trimmed}T00:00`);
+      if (Number.isNaN(local.getTime())) {
+        return null;
+      }
+      const normalized = new Date(local.getTime() - local.getTimezoneOffset() * 60 * 1000);
+      return normalized.toISOString();
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed.toISOString();
+  }
+  return null;
+}
+
+function isSameValue(nextValue: unknown, prevValue: unknown): boolean {
+  if (nextValue === prevValue) return true;
+  if (nextValue == null && prevValue == null) return true;
+  if (typeof nextValue === 'number' && typeof prevValue === 'string') {
+    const parsed = Number(prevValue);
+    return Number.isFinite(parsed) && parsed === nextValue;
+  }
+  if (typeof nextValue === 'string' && typeof prevValue === 'number') {
+    const parsed = Number(nextValue);
+    return Number.isFinite(parsed) && parsed === prevValue;
+  }
+  return false;
+}
+
+export function sanitizePatch(
+  patch: TransactionPatchPayload | Record<string, unknown> | null | undefined,
+  prev?: Record<string, any> | null,
+) {
+  const source = patch && typeof patch === 'object' ? patch : {};
+  const previous = prev ?? {};
+  const sanitized: Record<string, unknown> = {};
+
+  for (const [key, rawValue] of Object.entries(source)) {
+    if (!TRANSACTION_ALLOWED_FIELDS.has(key)) continue;
+    if (rawValue === undefined) continue;
+
+    let nextValue: unknown = rawValue;
+
+    if (TRANSACTION_NUMERIC_FIELDS.has(key)) {
+      if (rawValue === '' || rawValue === null) {
+        continue;
+      }
+      const candidate =
+        typeof rawValue === 'number'
+          ? rawValue
+          : typeof rawValue === 'string'
+          ? Number(rawValue.trim())
+          : Number(rawValue);
+      if (!Number.isFinite(candidate)) {
+        continue;
+      }
+      nextValue = candidate;
+    } else if (key === 'type') {
+      if (typeof rawValue !== 'string') {
+        continue;
+      }
+      const normalized = rawValue.trim().toLowerCase();
+      if (!TRANSACTION_TYPE_OPTIONS.has(normalized as TransactionType)) {
+        continue;
+      }
+      nextValue = normalized as TransactionType;
+    } else if (key === 'tags') {
+      if (rawValue == null || rawValue === '') {
+        nextValue = null;
+      } else if (Array.isArray(rawValue)) {
+        const normalized = rawValue
+          .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
+          .filter(Boolean);
+        if (!normalized.length) {
+          nextValue = null;
+        } else {
+          nextValue = Array.from(new Set(normalized)).join(',');
+        }
+      } else if (typeof rawValue === 'string') {
+        const normalized = rawValue
+          .split(',')
+          .map((tag) => tag.trim())
+          .filter(Boolean);
+        if (!normalized.length) {
+          nextValue = null;
+        } else {
+          nextValue = Array.from(new Set(normalized)).join(',');
+        }
+      } else {
+        continue;
+      }
+    } else if (TRANSACTION_ID_FIELDS.has(key)) {
+      if (rawValue === null) {
+        nextValue = null;
+      } else if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim();
+        if (!trimmed) {
+          continue;
+        }
+        nextValue = trimmed;
+      }
+    } else if (key === 'date') {
+      if (rawValue === null || rawValue === '') {
+        if (TRANSACTION_NOT_NULL_FIELDS.has(key)) {
+          continue;
+        }
+        nextValue = null;
+      } else {
+        const iso = normalizePatchDate(rawValue);
+        if (!iso) {
+          throw new Error('Tanggal tidak valid');
+        }
+        nextValue = iso;
+      }
+    } else if (rawValue === null) {
+      if (TRANSACTION_NOT_NULL_FIELDS.has(key)) {
+        continue;
+      }
+      nextValue = null;
+    } else if (typeof rawValue === 'string') {
+      const trimmed = rawValue.trim();
+      if (!trimmed) {
+        if (TRANSACTION_NOT_NULL_FIELDS.has(key)) {
+          continue;
+        }
+        nextValue = null;
+      } else {
+        nextValue = trimmed;
+      }
+    }
+
+    if (isSameValue(nextValue, previous[key])) {
+      continue;
+    }
+
+    sanitized[key] = nextValue;
+  }
+
   return sanitized;
 }
 
@@ -293,28 +474,35 @@ export async function patchTransaction(
     if (!userId) {
       throw new Error('User belum masuk');
     }
-    const sanitized = sanitizeTransactionPatch(payload);
-    if (Object.keys(sanitized).length === 0) {
-      const latest = options.prev ? mapTransactionRow(options.prev) : await fetchTransactionById(id, userId);
+    const basePrev = options.prev ? { ...options.prev } : null;
+    const sanitized = sanitizePatch(payload, basePrev || undefined);
+    if (!sanitized || Object.keys(sanitized).length === 0) {
+      if (basePrev) {
+        return { next: basePrev };
+      }
+      const latest = await fetchTransactionById(id, userId);
       return { next: latest };
     }
+
     const updatePayload = {
       ...sanitized,
       updated_at: new Date().toISOString(),
     };
+
     let query = supabase
       .from('transactions')
       .update(updatePayload)
       .eq('user_id', userId)
       .eq('id', id)
-      .select(
-        `id, user_id, date, type, amount, title, notes, account_id, to_account_id, category_id, merchant_id, parent_id, transfer_group_id, receipt_url, rev, inserted_at, updated_at, tags, account:account_id (*), to_account:to_account_id (*), category:category_id (*), merchant:merchant_id (*)`,
-      )
+      .select('id, updated_at')
       .single();
+
     if (!options.force && options.prev?.updated_at) {
       query = query.eq('updated_at', options.prev.updated_at);
     }
+
     const { data, error } = await query;
+
     if (error) {
       if (!options.force && error.code === 'PGRST116') {
         const latest = await fetchTransactionById(id, userId);
@@ -325,23 +513,32 @@ export async function patchTransaction(
       }
       throw error;
     }
+
     if (!data) {
-      if (!options.force && options.prev?.updated_at) {
-        const latest = await fetchTransactionById(id, userId);
-        const conflict = new Error('Data telah diubah di tempat lain');
-        (conflict as any).code = 'conflict';
-        (conflict as any).latest = latest;
-        throw conflict;
-      }
       throw new Error('Transaksi tidak ditemukan');
     }
-    return { next: mapTransactionRow(data) };
+
+    const baseRow = basePrev || (await fetchTransactionById(id, userId));
+    const next = {
+      ...baseRow,
+      ...sanitized,
+      updated_at: data.updated_at ?? updatePayload.updated_at,
+      id: data.id ?? id,
+    };
+
+    return { next };
   } catch (error) {
     if ((error as any)?.code === 'conflict') {
       throw error;
     }
-    logDevError('patchTransaction', error);
-    throw wrapError('Tidak bisa menyimpan perubahan', error);
+    if (import.meta.env.DEV) {
+      console.error('[HW][data-patch]', error);
+    }
+    const message = error instanceof Error ? error.message : 'Tidak bisa menyimpan perubahan';
+    if (typeof message === 'string' && message.toLowerCase().includes('tanggal')) {
+      throw new Error(message);
+    }
+    throw new Error('Tidak bisa menyimpan perubahan');
   }
 }
 
