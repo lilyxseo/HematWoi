@@ -52,6 +52,8 @@ export default function DataTable({
   onSortChange,
   loading,
 }) {
+  if (!Array.isArray(rows)) return null;
+
   const hidden = hiddenColumns || new Set();
   const isAllSelected = rows.length > 0 && rows.every((row) => selectedIds?.has(row.id));
   const isIndeterminate = rows.some((row) => selectedIds?.has(row.id)) && !isAllSelected;

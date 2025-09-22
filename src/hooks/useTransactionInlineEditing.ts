@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { patchTransaction } from '../lib/api-data';
+import { patchTransaction, sanitizePatch } from '../lib/api-data';
 
 const FIELD_LABELS = {
   date: 'Tanggal',
@@ -341,15 +341,30 @@ export function useTransactionInlineEditing({ rows, categories, accounts, addToa
         return;
       }
 
+      let sanitizedPayload: Record<string, unknown> | null = null;
+      try {
+        sanitizedPayload = sanitizePatch(patch, baseRow);
+      } catch (sanitizeError) {
+        const friendly = sanitizeError instanceof Error ? sanitizeError.message : 'Tidak bisa menyimpan';
+        setStatus(rowId, field, { state: 'error', message: friendly });
+        return;
+      }
+
+      if (!sanitizedPayload || Object.keys(sanitizedPayload).length === 0) {
+        setStatus(rowId, field, { state: 'idle' });
+        return;
+      }
+
       setStatus(rowId, field, { state: 'saving' });
       optimisticRef.current.set(rowId, { ...(optimisticRef.current.get(rowId) || {}), ...optimistic });
       setDisplayRows((prev) => prev.map((row) => (row.id === rowId ? { ...row, ...optimistic } : row)));
 
       try {
-        const { next } = await patchTransaction(rowId, patch, { prev: baseRow, force: options.force });
+        const { next } = await patchTransaction(rowId, sanitizedPayload, { prev: baseRow, force: options.force });
+        const mergedNext = { ...baseRow, ...optimistic, ...next };
         optimisticRef.current.delete(rowId);
-        baseMapRef.current.set(rowId, next);
-        setDisplayRows((prev) => prev.map((row) => (row.id === rowId ? { ...row, ...next } : row)));
+        baseMapRef.current.set(rowId, mergedNext);
+        setDisplayRows((prev) => prev.map((row) => (row.id === rowId ? mergedNext : row)));
         setStatus(rowId, field, { state: 'saved' });
         window.setTimeout(() => {
           const currentStatus = getStatus(rowId, field);
@@ -372,7 +387,7 @@ export function useTransactionInlineEditing({ rows, categories, accounts, addToa
         }
       }
     },
-    [addToast, getStatus, scheduleUndo, setStatus],
+    [addToast, getStatus, sanitizePatch, scheduleUndo, setStatus],
   );
 
   const queueUpdate = useCallback(
