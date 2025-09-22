@@ -105,7 +105,6 @@ export default function GoalCard({
   const dailySuggestion = calculateDailySuggestion(goal);
   const weeklySuggestion = dailySuggestion != null ? dailySuggestion * 7 : null;
   const averagePerDay = calculateAveragePerDay(goal);
-  const onTrack = dailySuggestion == null || averagePerDay + 1e-3 >= dailySuggestion;
   const overdue = goal.due_date ? daysLeft != null && daysLeft < 0 && goal.status !== 'achieved' : false;
   const milestoneDots = computeMilestoneDots(goal);
 
@@ -187,17 +186,6 @@ export default function GoalCard({
                 );
               })}
             </div>
-            {goal.status === 'active' ? (
-              <span
-                className={`absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide shadow ${
-                  onTrack
-                    ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-300'
-                    : 'bg-rose-500/20 text-rose-500 dark:text-rose-300'
-                }`}
-              >
-                {onTrack ? 'On track' : 'Off track'}
-              </span>
-            ) : null}
           </div>
         </div>
 
@@ -251,19 +239,6 @@ export default function GoalCard({
             </div>
           ) : null}
 
-          {goal.milestones.length ? (
-            <div className="flex flex-wrap gap-2 text-xs">
-              {goal.milestones.map((milestone, index) => (
-                <span
-                  key={`${goal.id}-milestone-chip-${index}`}
-                  className="inline-flex items-center gap-1 rounded-full bg-surface-2/70 px-3 py-1 font-semibold uppercase tracking-wide text-muted"
-                >
-                  {milestone.label}
-                  <span className="text-[11px] text-text/70">{Math.round((milestone.amount / goal.target_amount) * 100)}%</span>
-                </span>
-              ))}
-            </div>
-          ) : null}
         </div>
       </div>
 
