@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 describe('useRepo', () => {
-  it('returns cloud repo by default', () => {
+  it('returns online repo by default', () => {
     const wrapper = ({ children }: any) => <DataProvider>{children}</DataProvider>;
     const { result } = renderHook(() => useRepo(), { wrapper });
     expect(result.current).toBeInstanceOf(CloudRepo);

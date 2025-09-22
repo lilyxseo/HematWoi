@@ -2,12 +2,17 @@ import { createContext, useContext, useEffect, useState } from "react";
 import * as apiOnline from "../lib/api.online";
 import * as apiLocal from "../lib/api.local";
 
+const STORAGE_KEY = "hw:connectionMode";
+
 const ModeContext = createContext(null);
 
 export function ModeProvider({ children }) {
   const [mode, setMode] = useState(() => {
     try {
-      return localStorage.getItem("hw:mode") || "online";
+      const stored =
+        localStorage.getItem(STORAGE_KEY) || localStorage.getItem("hw:mode");
+      if (stored === "cloud") return "online";
+      return stored || "online";
     } catch {
       return "online";
     }
@@ -15,6 +20,7 @@ export function ModeProvider({ children }) {
 
   useEffect(() => {
     try {
+      localStorage.setItem(STORAGE_KEY, mode);
       localStorage.setItem("hw:mode", mode);
     } catch {
       /* ignore */

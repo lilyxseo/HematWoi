@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
 import clsx from 'clsx';
 import { supabase } from '../lib/supabase';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 export default function AuthPage() {
   const navigate = useNavigate();
-  const location = useLocation();
   const [tab, setTab] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,7 +16,7 @@ export default function AuthPage() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        navigate('/dashboard');
+        navigate('/', { replace: true });
       }
     });
   }, [navigate]);
@@ -27,10 +26,10 @@ export default function AuthPage() {
     setLoading(true);
     setError('');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) setError(error.message);
-    else {
-      const from = location.state?.from?.pathname || '/dashboard';
-      navigate(from);
+    if (error) {
+      setError(error.message);
+    } else {
+      navigate('/', { replace: true });
     }
     setLoading(false);
   };

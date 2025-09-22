@@ -141,10 +141,10 @@ export default function SettingsPage() {
           label="Mode"
           value={mode}
           options={[
-            { value: 'cloud', label: 'Cloud' },
+            { value: 'online', label: 'Online' },
             { value: 'local', label: 'Local' },
           ]}
-          onChange={(v) => setMode(v as 'cloud' | 'local')}
+          onChange={(v) => setMode(v as 'online' | 'local')}
         />
         {mode === 'local' && (
           <DangerZone>
