@@ -106,9 +106,8 @@ export default function QuoteBoard() {
         setError(null);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        console.error('[HW][quotes] gagal memuat QuoteBoard', err);
         setSignals(null);
         setQuotes(generateQuotes(null));
         setError('Tidak bisa memuat data terbaru.');

@@ -1,587 +1,272 @@
-const IDR = new Intl.NumberFormat('id-ID');
-const MONTH_FORMAT = new Intl.DateTimeFormat('id-ID', { month: 'long' });
-const SHORT_DATE_FORMAT = new Intl.DateTimeFormat('id-ID', {
-  day: '2-digit',
-  month: 'short',
-});
+import { supabase } from './supabase';
 
-const LARGE_TX_THRESHOLD = 500_000;
-const LOW_BALANCE_THRESHOLD = 50_000;
-const UPCOMING_SUB_WINDOW_DAYS = 7;
+const IDR = new Intl.NumberFormat('id-ID');
+const PCT = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 });
+const MONTH_FORMAT = new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' });
+
+const LARGE_TRANSACTION_THRESHOLD = 500_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-const HIGHLIGHT_KEYS = new Set([
-  'total',
-  'amount',
-  'pct',
-  'left',
-  'streak',
-  'count',
-  'goal',
-]);
-
-interface TransactionLike {
-  id?: string;
-  date?: string;
-  type?: string;
-  amount?: number;
-  merchant?: string | null;
-  title?: string | null;
-  notes?: string | null;
-  category?: string | null;
-  category_id?: string | null;
-  account?: string | null;
+export interface WeeklyRepeatSignal {
+  merchant: string;
+  count: number;
+  total: number;
 }
 
-interface BudgetLike {
-  id?: string;
-  name?: string | null;
-  planned?: number;
-  rollover_in?: number;
-  activity?: {
-    actual?: number;
-  } | null;
-  category_id?: string | null;
-  category_name?: string | null;
-  label?: string | null;
-  actual?: number;
-  spent?: number;
+export interface BudgetStatusSignal {
+  category: string;
+  pct: number;
 }
 
-interface GoalLike {
-  id?: string;
-  title?: string;
-  name?: string;
-  status?: string;
-  target_amount?: number;
-  saved_amount?: number;
+export interface LargeTransactionSignal {
+  merchant: string;
+  amount: number;
 }
 
-interface SubscriptionLike {
-  id?: string;
-  name?: string;
-  vendor?: string | null;
-  amount?: number;
-  next_due_date?: string | null;
-  due_date?: string | null;
-  anchor_date?: string | null;
+export interface NetCashflowSignal {
+  month: string;
+  amount: number;
 }
 
-interface AccountLike {
-  id?: string;
-  name?: string;
-  balance?: number;
+export interface WeeklyTopCategorySignal {
+  category: string;
+  total: number;
 }
 
 export interface DashboardSignals {
-  weeklyRepeats: Array<{
-    merchant: string;
-    count: number;
-    total: number;
-  }>;
-  nearBudget: Array<{
-    category: string;
-    pct: number;
-  }>;
-  overBudget: Array<{
-    category: string;
-    pct: number;
-  }>;
-  largeTx?: {
-    merchant: string;
-    amount: number;
-  } | null;
-  streak: number;
-  noSpendToday: boolean;
-  goalTop?: {
-    goal: string;
-    pct: number;
-    amountLeft: number;
-  } | null;
-  upcomingSub?: {
-    merchant: string;
-    amount: number;
-    date: Date;
-  } | null;
-  roundUp?: {
-    amount: number;
-    goal?: string;
-  } | null;
-  weeklyTop?: {
-    category: string;
-    total: number;
-  } | null;
-  quietCats: Array<{
-    category: string;
-    pct: number;
-  }>;
-  netMonth?: {
-    amount: number;
-    monthLabel: string;
-  } | null;
-  lowBalance?: {
-    account: string;
-    left: number;
-  } | null;
-  lastExpense?: {
-    merchant?: string;
-    amount?: number;
-  } | null;
+  weeklyRepeats: WeeklyRepeatSignal[];
+  largeTransactions: LargeTransactionSignal[];
+  netCashflow: NetCashflowSignal | null;
+  weeklyTopCategory: WeeklyTopCategorySignal | null;
+  overBudget: BudgetStatusSignal[];
+  nearBudget: BudgetStatusSignal[];
 }
 
 export interface QuoteResult {
-  group: string;
+  group: QuoteGroup;
   text: string;
   template: string;
   vars: Record<string, string>;
 }
 
-const FALLBACK_SIGNALS: DashboardSignals = {
+export interface QuoteEnginePayload {
+  fetchedAt: number;
+  signals: DashboardSignals;
+}
+
+type QuoteGroup =
+  | 'over-budget'
+  | 'near-budget'
+  | 'weekly-repeats'
+  | 'large-transaction'
+  | 'net-cashflow'
+  | 'weekly-top'
+  | 'fallback';
+
+interface QuoteCandidate {
+  group: QuoteGroup;
+  vars: Record<string, string>;
+  uniqueKey?: string;
+}
+
+interface QueryConfig {
+  limit?: number;
+  orderBy?: { column: string; ascending?: boolean };
+}
+
+const EMPTY_SIGNALS: DashboardSignals = {
   weeklyRepeats: [],
-  nearBudget: [],
+  largeTransactions: [],
+  netCashflow: null,
+  weeklyTopCategory: null,
   overBudget: [],
-  largeTx: null,
-  streak: 0,
-  noSpendToday: false,
-  goalTop: null,
-  upcomingSub: null,
-  roundUp: null,
-  weeklyTop: null,
-  quietCats: [],
-  netMonth: null,
-  lowBalance: null,
-  lastExpense: null,
+  nearBudget: [],
 };
 
-function startOfWeek(date: Date): Date {
-  const clone = new Date(date);
-  const day = clone.getDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  clone.setDate(clone.getDate() + diff);
-  clone.setHours(0, 0, 0, 0);
-  return clone;
+const TEMPLATE_GROUPS: Record<QuoteGroup, string[]> = {
+  'over-budget': [
+    '{category} udah lewat target ({pct}). Saatnya rem darurat! 🚑',
+    'Alert! {category} nyentuh {pct}. Yuk cek pos lain buat nutupin.',
+    'Over budget di {category}: {pct}. Mau revisi rencananya?',
+  ],
+  'near-budget': [
+    '{category} sudah {pct}. Mau ganti ke mode hemat dulu? 🛑',
+    'Hampir penuh nih {category} ({pct}). Kita tahan bentar yuk.',
+    'Si merah udah vilain {category} ({pct}). Gas remnya ya.',
+  ],
+  'weekly-repeats': [
+    'Minggu ini ketemu {merchant} {count}× (Rp {total}). Ada diskon spesial apa tuh?',
+    '{merchant} nongol {count}× minggu ini, total Rp {total}. Worth it kah?',
+    '{merchant} jadi langganan {count}× dengan total Rp {total}.',
+  ],
+  'large-transaction': [
+    'Ada transaksi jumbo Rp {amount}. Perlu cek lagi nggak?',
+    'Gesek besar Rp {amount} terdeteksi. Mau ditandai khusus?',
+    'Rp {amount} langsung meluncur keluar. Masih on track?',
+  ],
+  'net-cashflow': [
+    'Arus kas {month} sebesar {amount}. Mau langsung parkirkan? 📈',
+    '{month} ditutup dengan net {amount}. Strategi lanjut?',
+    'Cashflow bulan {month}: {amount}. Saatnya atur aksi lanjut.',
+  ],
+  'weekly-top': [
+    'Kategori teratas minggu ini: {category} (Rp {total}).',
+    '{category} memimpin minggu ini dengan Rp {total}. Mau dikurangi?',
+    'Belanja terbanyak minggu ini jatuh ke {category}: Rp {total}.',
+  ],
+  fallback: [
+    'Dompet lagi santai. Yuk catat transaksi biar aku bisa kasih insight seru! 😄',
+    'Belum ada data baru nih. Cobain catat transaksi dulu ya supaya aku bisa kasih quote cerdas.',
+  ],
+};
+
+const PRIORITY_ORDER: QuoteGroup[] = [
+  'over-budget',
+  'near-budget',
+  'weekly-repeats',
+  'large-transaction',
+  'net-cashflow',
+  'weekly-top',
+];
+
+const highlightKeys = new Set(['total', 'amount', 'pct', 'count']);
+
+function cloneEmptySignals(): DashboardSignals {
+  return {
+    weeklyRepeats: [],
+    largeTransactions: [],
+    netCashflow: null,
+    weeklyTopCategory: null,
+    overBudget: [],
+    nearBudget: [],
+  };
 }
 
-function startOfMonth(date: Date): Date {
-  const clone = new Date(date);
-  clone.setDate(1);
-  clone.setHours(0, 0, 0, 0);
-  return clone;
+function formatCurrency(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  return IDR.format(Math.round(Math.abs(value)));
 }
 
-function endOfMonth(date: Date): Date {
-  const start = startOfMonth(date);
-  return new Date(start.getFullYear(), start.getMonth() + 1, 1);
+function formatSignedCurrency(value: number): string {
+  if (!Number.isFinite(value)) return 'Rp 0';
+  const formatted = IDR.format(Math.round(Math.abs(value)));
+  return value < 0 ? `-Rp ${formatted}` : `Rp ${formatted}`;
 }
 
-function parseDate(value?: string | null): Date | null {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date;
+function formatCount(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  return IDR.format(Math.round(Math.max(value, 0)));
 }
 
-function formatNumber(value: number | undefined | null): string {
-  if (!value) return '0';
-  return IDR.format(Math.round(value));
+function formatPct(value: number): string {
+  if (!Number.isFinite(value)) return '0%';
+  return `${PCT.format(Math.round(value))}%`;
 }
 
-function normalizeName(...candidates: Array<string | null | undefined>): string {
-  for (const candidate of candidates) {
-    if (candidate && String(candidate).trim()) {
-      return String(candidate).trim();
+function parseNumber(row: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const raw = row[key];
+    if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+    if (typeof raw === 'string') {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed)) return parsed;
     }
   }
-  return 'Item ini';
+  return null;
 }
 
-function sanitizeBudgetName(budget: BudgetLike): string {
-  return normalizeName(
-    budget.name,
-    budget.label,
-    budget.category_name,
-    budget.category_id ? `Kategori ${budget.category_id.slice(0, 4)}` : null,
-  );
+function parseString(row: Record<string, unknown>, keys: string[], fallback: string): string {
+  for (const key of keys) {
+    const raw = row[key];
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      if (trimmed) return trimmed;
+    }
+  }
+  return fallback;
 }
 
-function calculateBudgetActual(budget: BudgetLike): number {
-  if (typeof budget.activity?.actual === 'number') return budget.activity.actual;
-  if (typeof budget.actual === 'number') return budget.actual;
-  if (typeof budget.spent === 'number') return budget.spent;
-  return 0;
+function parseMonthLabel(row: Record<string, unknown>, keys: string[]): string | null {
+  for (const key of keys) {
+    const raw = row[key];
+    if (!raw) continue;
+    if (raw instanceof Date) {
+      return MONTH_FORMAT.format(raw);
+    }
+    if (typeof raw === 'number') {
+      const date = new Date(raw);
+      if (!Number.isNaN(date.getTime())) return MONTH_FORMAT.format(date);
+    }
+    if (typeof raw === 'string') {
+      const value = raw.trim();
+      if (!value) continue;
+      const iso = value.length === 7 ? `${value}-01` : value;
+      const date = new Date(iso);
+      if (!Number.isNaN(date.getTime())) {
+        return MONTH_FORMAT.format(date);
+      }
+    }
+  }
+  return null;
 }
 
-function calculateBudgetPlanned(budget: BudgetLike): number {
-  const planned = typeof budget.planned === 'number' ? budget.planned : 0;
-  const rollover = typeof budget.rollover_in === 'number' ? budget.rollover_in : 0;
-  return planned + rollover;
+function extractTimestamp(row: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const raw = row[key];
+    if (!raw) continue;
+    if (raw instanceof Date) {
+      return raw.getTime();
+    }
+    if (typeof raw === 'number') {
+      const date = new Date(raw);
+      if (!Number.isNaN(date.getTime())) return date.getTime();
+    }
+    if (typeof raw === 'string') {
+      const value = raw.trim();
+      if (!value) continue;
+      const iso = value.length === 7 ? `${value}-01` : value;
+      const date = new Date(iso);
+      if (!Number.isNaN(date.getTime())) {
+        return date.getTime();
+      }
+    }
+  }
+  return null;
+}
+
+async function selectRows(view: string, config: QueryConfig = {}): Promise<Record<string, unknown>[]> {
+  const client: any = supabase as any;
+  if (!client || typeof client.from !== 'function') {
+    return [];
+  }
+  let query = client.from(view).select('*');
+  if (config.orderBy) {
+    query = query.order(config.orderBy.column, {
+      ascending: config.orderBy.ascending ?? false,
+      nullsFirst: false,
+    });
+  }
+  if (config.limit) {
+    query = query.limit(config.limit);
+  }
+  const { data, error } = await query;
+  if (error) {
+    throw error;
+  }
+  return Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
 }
 
 function uniqueKey(value: string): string {
   return value.toLowerCase();
 }
 
-function computeRoundUp(amount: number): number {
-  if (!Number.isFinite(amount) || amount <= 0) return 0;
-  const rounded = Math.ceil(amount / 1000) * 1000;
-  const diff = rounded - amount;
-  if (diff <= 0 || diff >= 1000) return 0;
-  return diff;
-}
-
-export function fillTemplate(template: string, vars: Record<string, string | number>): string {
+function fillTemplate(template: string, vars: Record<string, string>): string {
   if (!template) return '';
   return template.replace(/\{(\w+)\}/g, (_, key: string) => {
     const value = vars[key];
-    if (value == null) return `{${key}}`;
-    return String(value);
+    return value != null ? String(value) : `{${key}}`;
   });
 }
-
-export function getDashboardSignals({
-  fromTx = [],
-  budgets = [],
-  goals = [],
-  subs = [],
-  accounts = [],
-}: {
-  fromTx?: TransactionLike[];
-  budgets?: BudgetLike[];
-  goals?: GoalLike[];
-  subs?: SubscriptionLike[];
-  accounts?: AccountLike[];
-}): DashboardSignals {
-  if (!Array.isArray(fromTx)) {
-    return { ...FALLBACK_SIGNALS };
-  }
-
-  const now = new Date();
-  const weekStart = startOfWeek(now);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
-  const monthStart = startOfMonth(now);
-  const nextMonthStart = endOfMonth(now);
-
-  const txs = fromTx
-    .map((tx) => {
-      const dateObj = parseDate(tx.date);
-      return dateObj
-        ? {
-            ...tx,
-            dateObj,
-          }
-        : null;
-    })
-    .filter((tx): tx is TransactionLike & { dateObj: Date } => Boolean(tx));
-
-  const monthTxs = txs.filter(
-    (tx) => tx.dateObj >= monthStart && tx.dateObj < nextMonthStart,
-  );
-  const weekTxs = txs.filter((tx) => tx.dateObj >= weekStart && tx.dateObj < weekEnd);
-  const weekExpenses = weekTxs.filter((tx) => tx.type === 'expense');
-  const monthExpenses = monthTxs.filter((tx) => tx.type === 'expense');
-  const monthIncomes = monthTxs.filter((tx) => tx.type === 'income');
-
-  const weeklyRepeatMap = new Map<string, { merchant: string; count: number; total: number }>();
-  for (const tx of weekExpenses) {
-    const merchant = normalizeName(tx.merchant, tx.title, tx.notes);
-    const key = uniqueKey(merchant);
-    if (!weeklyRepeatMap.has(key)) {
-      weeklyRepeatMap.set(key, { merchant, count: 0, total: 0 });
-    }
-    const entry = weeklyRepeatMap.get(key)!;
-    entry.count += 1;
-    entry.total += Math.abs(Number(tx.amount ?? 0));
-  }
-  const weeklyRepeats = Array.from(weeklyRepeatMap.values())
-    .filter((entry) => entry.count >= 2)
-    .sort((a, b) => b.total - a.total);
-
-  const budgetSignals = Array.isArray(budgets)
-    ? budgets.map((budget) => {
-        const planned = calculateBudgetPlanned(budget);
-        const actual = calculateBudgetActual(budget);
-        const pct = planned > 0 ? (actual / planned) * 100 : 0;
-        return {
-          category: sanitizeBudgetName(budget),
-          pct: Number.isFinite(pct) ? pct : 0,
-        };
-      })
-    : [];
-
-  const overBudget = budgetSignals
-    .filter((budget) => budget.pct >= 100)
-    .sort((a, b) => b.pct - a.pct);
-  const nearBudget = budgetSignals
-    .filter((budget) => budget.pct >= 80 && budget.pct < 100)
-    .sort((a, b) => b.pct - a.pct);
-  const quietCats = budgetSignals
-    .filter((budget) => budget.pct > 0 && budget.pct < 20)
-    .sort((a, b) => a.pct - b.pct);
-
-  const largeTx = monthExpenses
-    .filter((tx) => Math.abs(Number(tx.amount ?? 0)) >= LARGE_TX_THRESHOLD)
-    .sort((a, b) => Math.abs(Number(b.amount ?? 0)) - Math.abs(Number(a.amount ?? 0)))[0];
-
-  const dateKeys = new Set<string>();
-  for (const tx of txs) {
-    const key = tx.dateObj.toDateString();
-    dateKeys.add(key);
-  }
-  let streak = 0;
-  while (true) {
-    const probe = new Date(now);
-    probe.setDate(now.getDate() - streak);
-    if (!dateKeys.has(probe.toDateString())) break;
-    streak += 1;
-  }
-
-  const todayKey = now.toDateString();
-  const noSpendToday = !monthExpenses.some((tx) => tx.dateObj.toDateString() === todayKey);
-
-  const goalCandidates = Array.isArray(goals)
-    ? goals
-        .map((goal) => {
-          const title = normalizeName(goal.title, goal.name, 'Goal');
-          const target = Number(goal.target_amount ?? 0);
-          const saved = Number(goal.saved_amount ?? 0);
-          const pct = target > 0 ? (saved / target) * 100 : 0;
-          const amountLeft = Math.max(target - saved, 0);
-          const status = goal.status ?? 'active';
-          return {
-            goal: title,
-            pct: Number.isFinite(pct) ? pct : 0,
-            amountLeft,
-            status,
-          };
-        })
-        .filter((goal) => goal.status !== 'archived')
-    : [];
-  const goalTop = goalCandidates
-    .filter((goal) => goal.pct > 0 || goal.amountLeft > 0)
-    .sort((a, b) => b.pct - a.pct)[0];
-
-  const upcomingCandidates = Array.isArray(subs)
-    ? subs
-        .map((sub) => {
-          const due = parseDate(sub.next_due_date ?? sub.due_date ?? sub.anchor_date);
-          if (!due) return null;
-          const merchant = normalizeName(sub.name, sub.vendor);
-          const amount = Math.abs(Number(sub.amount ?? 0));
-          return { merchant, amount, date: due };
-        })
-        .filter((item): item is { merchant: string; amount: number; date: Date } => Boolean(item))
-    : [];
-  const upcomingWindowEnd = new Date(now);
-  upcomingWindowEnd.setDate(now.getDate() + UPCOMING_SUB_WINDOW_DAYS);
-  const upcomingSub = upcomingCandidates
-    .filter((item) => item.date >= now && item.date <= upcomingWindowEnd)
-    .sort((a, b) => a.date.getTime() - b.date.getTime())[0];
-
-  const latestExpense = monthExpenses
-    .slice()
-    .sort((a, b) => b.dateObj.getTime() - a.dateObj.getTime())[0];
-  const roundUp = latestExpense
-    ? (() => {
-        const remainder = computeRoundUp(Math.abs(Number(latestExpense.amount ?? 0)));
-        if (remainder >= 100) {
-          return {
-            amount: remainder,
-            goal: goalTop?.goal,
-          };
-        }
-        return null;
-      })()
-    : null;
-
-  const weeklyCategoryMap = new Map<string, { label: string; total: number }>();
-  for (const tx of weekExpenses) {
-    const category = normalizeName(tx.category, tx.notes, 'Pengeluaran');
-    const key = uniqueKey(category);
-    const prev = weeklyCategoryMap.get(key);
-    if (prev) {
-      prev.total += Math.abs(Number(tx.amount ?? 0));
-    } else {
-      weeklyCategoryMap.set(key, {
-        label: category,
-        total: Math.abs(Number(tx.amount ?? 0)),
-      });
-    }
-  }
-  let weeklyTop: DashboardSignals['weeklyTop'] = null;
-  for (const entry of weeklyCategoryMap.values()) {
-    if (!weeklyTop || entry.total > weeklyTop.total) {
-      weeklyTop = {
-        category: entry.label,
-        total: entry.total,
-      };
-    }
-  }
-
-  const incomeTotal = monthIncomes.reduce((sum, tx) => sum + Math.abs(Number(tx.amount ?? 0)), 0);
-  const expenseTotal = monthExpenses.reduce(
-    (sum, tx) => sum + Math.abs(Number(tx.amount ?? 0)),
-    0,
-  );
-  const netMonth = {
-    amount: incomeTotal - expenseTotal,
-    monthLabel: MONTH_FORMAT.format(now),
-  };
-
-  const lowBalanceCandidate = Array.isArray(accounts)
-    ? accounts
-        .map((account) => ({
-          account: normalizeName(account.name, 'Akun'),
-          left: Number(account.balance ?? 0),
-        }))
-        .filter((account) => account.left > 0 && account.left < LOW_BALANCE_THRESHOLD)
-        .sort((a, b) => a.left - b.left)[0]
-    : null;
-
-  const lastExpense = latestExpense
-    ? {
-        merchant: normalizeName(
-          latestExpense.merchant,
-          latestExpense.title,
-          latestExpense.notes,
-        ),
-        amount: Math.abs(Number(latestExpense.amount ?? 0)),
-      }
-    : null;
-
-  return {
-    weeklyRepeats,
-    nearBudget,
-    overBudget,
-    largeTx: largeTx
-      ? {
-          merchant: normalizeName(largeTx.merchant, largeTx.title, largeTx.notes),
-          amount: Math.abs(Number(largeTx.amount ?? 0)),
-        }
-      : null,
-    streak,
-    noSpendToday,
-    goalTop: goalTop
-      ? {
-          goal: goalTop.goal,
-          pct: goalTop.pct,
-          amountLeft: goalTop.amountLeft,
-        }
-      : null,
-    upcomingSub: upcomingSub ?? null,
-    roundUp,
-    weeklyTop,
-    quietCats,
-    netMonth,
-    lowBalance: lowBalanceCandidate ?? null,
-    lastExpense,
-  };
-}
-
-const TEMPLATE_GROUPS = {
-  'weekly-repeats': [
-    'Minggu ini ketemu {merchant} {count}×. Dompet: tolong… (total Rp {total}).',
-    '{merchant} lagi {count}×? Kamu fans garis keras ya 😆 (total Rp {total}).',
-    'Radar cemilan bunyi! {merchant} muncul {count}×, total Rp {total}.',
-    'Boba itu manis, cicilan nggak. {merchant} {count}×, Rp {total} 👀.',
-    'Kita dukung—asal nabung juga. {merchant} {count}× (Rp {total}).',
-  ],
-  'near-budget': [
-    'Kategori {category} sudah {pct}%. Remnya dicoba dulu, ya 🛑',
-    '{category} tinggal dikit lagi. Aku pasang mode hemat? 😉',
-    "Dompet bisik: 'pelan-pelan di {category}' ({pct}%).",
-    'Check engine: {category} {pct}%. Pit stop dulu?',
-  ],
-  'over-budget': [
-    'Waduh, {category} tembus {pct}%. Kita susun misi penyelamatan? 🚑',
-    '{category} sudah lewat garis finish ({pct}%). Gas tabungannya pelan2 dulu.',
-    'Alarm dompet: {category} over budget. Mau aku bantu cari pos pengganti?',
-    'Overtime di {category} nih. Kita evaluasi bareng?',
-  ],
-  'large-transaction': [
-    'Transaksi jumbo Rp {amount}. Perlu dipecah (split) biar rapi?',
-    'Wuih, Rp {amount} sekali gesek. Ini belanja bahagia atau upgrade hidup? 😄',
-    'Rp {amount} terdeteksi. Simpen nota ya—biar histori kinclong.',
-    'Belanja besar masuk. Mau tandai sebagai one-off?',
-  ],
-  streak: [
-    'Kamu catat {streak} hari berturut-turut. Konsisten parah! 💪',
-    'Mantap! {streak} hari non-stop. Dompet auto sayang.',
-    'Nyaris jadi atlet pencatat: {streak} hari. Keep it rolling!',
-    'Streak {streak} hari! Aku kasih confetti virtual 🎉',
-  ],
-  'no-spend': [
-    'Hari ini nggak belanja. Dompet tepuk tangan 👏',
-    'No-spend day! Mari rayakan dengan… tidak belanja lagi 😁',
-    'Kosong belanja, penuh bahagia. Nice!',
-    'Dompet istirahat. Kamu hebat.',
-  ],
-  goal: [
-    'Goal {goal} sudah {pct}%. Dikit lagi, ayo sprint! 🏁',
-    'Kabar baik! {goal} tembus {pct}%. Mau auto-transfer Rp {amount}?',
-    '{goal} tercapai! 🎉 Bikin goal baru atau upgrade target?',
-    'Progres {goal} sehat ({pct}%). Aku jaga ritmenya ya.',
-  ],
-  subscription: [
-    'Inget ya, {merchant} bakal tagih Rp {amount} {date}. Masih kepake?',
-    'Langganan {merchant} datang {date}. Pause dulu atau lanjut?',
-    'Reminder: {merchant} (Rp {amount}). Mau auto-siapkan dana?',
-    'Tagihan {merchant} sebentar lagi. Biar aman, parkir duitnya?',
-  ],
-  'round-up': [
-    'Receh Rp {amount} nganggur. Aku sweep ke tabungan?',
-    'Biar estetik, bulatkan transaksi—lebihkan Rp {amount} ke {goal}?',
-    'Ada sisa Rp {amount}. Auto-nabungkan?',
-  ],
-  'weekly-summary': [
-    'Minggu ini top spend: {category} (Rp {total}). Mau batasin minggu depan?',
-    'Saldo mingguan aman. Aku siapin challenge mini hemat?',
-    'Highlights minggu ini siap! Spoiler: {merchant} sering lewat 😜',
-    'Rekap beres. Kita bikin rencana pekanan bareng?',
-  ],
-  'quiet-category': [
-    '{category} sepi bulan ini. Mau kecilkan anggarannya?',
-    'Budget {category} nganggur. Pindahin ke {goal}?',
-    '{category} adem ayem. Geser dikit ke tabungan?',
-  ],
-  'net-cashflow': [
-    'Net {month}: Rp {amount}. Dompet senyum simpul 😌',
-    'Arus kas {month} aman. Mau lock in ke {goal}?',
-    'Bulan ini cuan Rp {amount}. Saatnya celebrate murah meriah?',
-  ],
-  'low-balance': [
-    'Saldo akun {account} tinggal Rp {left}. Isi bensin dikit?',
-    '{account} menipis (Rp {left}). Transfer dari akun lain?',
-  ],
-  fallback: [
-    '{merchant} memanggil… dompet menangis—tapi bahagia.',
-    'Minum boba: +10 joy, -Rp {amount} balance. Worth it?',
-    'Kopi itu perlu, over-budget tidak. Santuy ya ☕',
-  ],
-};
-
-interface QuoteCandidate {
-  group: keyof typeof TEMPLATE_GROUPS;
-  templateVars: Record<string, string>;
-  uniqueKey?: string;
-}
-
-const PRIORITY_ORDER: Array<keyof typeof TEMPLATE_GROUPS> = [
-  'over-budget',
-  'near-budget',
-  'weekly-repeats',
-  'large-transaction',
-  'low-balance',
-  'subscription',
-  'net-cashflow',
-  'weekly-summary',
-  'streak',
-  'no-spend',
-  'quiet-category',
-  'round-up',
-  'goal',
-  'fallback',
-];
 
 function pickRandom<T>(items: T[], rng: () => number): T {
   if (!items.length) {
@@ -591,147 +276,61 @@ function pickRandom<T>(items: T[], rng: () => number): T {
   return items[Math.max(0, Math.min(items.length - 1, index))];
 }
 
-function buildCandidates(signals: DashboardSignals): Record<string, QuoteCandidate[]> {
-  const monthName = MONTH_FORMAT.format(new Date());
-  const candidates: Record<string, QuoteCandidate[]> = {
+function buildCandidates(signals: DashboardSignals): Record<QuoteGroup, QuoteCandidate[]> {
+  const candidates: Record<QuoteGroup, QuoteCandidate[]> = {
     'over-budget': signals.overBudget.map((item) => ({
       group: 'over-budget',
       uniqueKey: uniqueKey(item.category),
-      templateVars: {
+      vars: {
         category: item.category,
-        pct: formatNumber(Math.round(item.pct)),
+        pct: formatPct(item.pct),
       },
     })),
     'near-budget': signals.nearBudget.map((item) => ({
       group: 'near-budget',
       uniqueKey: uniqueKey(item.category),
-      templateVars: {
+      vars: {
         category: item.category,
-        pct: formatNumber(Math.round(item.pct)),
+        pct: formatPct(item.pct),
       },
     })),
     'weekly-repeats': signals.weeklyRepeats.map((item) => ({
       group: 'weekly-repeats',
       uniqueKey: uniqueKey(item.merchant),
-      templateVars: {
+      vars: {
         merchant: item.merchant,
-        count: formatNumber(item.count),
-        total: formatNumber(item.total),
+        count: formatCount(item.count),
+        total: formatCurrency(item.total),
       },
     })),
-    'large-transaction': signals.largeTx
-      ? [
-          {
-            group: 'large-transaction',
-            uniqueKey: uniqueKey(signals.largeTx.merchant),
-            templateVars: {
-              merchant: signals.largeTx.merchant,
-              amount: formatNumber(signals.largeTx.amount),
-            },
-          },
-        ]
-      : [],
-    streak:
-      signals.streak >= 2
-        ? [
-            {
-              group: 'streak',
-              uniqueKey: 'streak',
-              templateVars: { streak: formatNumber(signals.streak) },
-            },
-          ]
-        : [],
-    'no-spend': signals.noSpendToday
-      ? [
-          {
-            group: 'no-spend',
-            uniqueKey: 'no-spend',
-            templateVars: {},
-          },
-        ]
-      : [],
-    goal:
-      signals.goalTop && (signals.goalTop.pct >= 10 || signals.goalTop.amountLeft > 0)
-        ? [
-            {
-              group: 'goal',
-              uniqueKey: uniqueKey(signals.goalTop.goal),
-              templateVars: {
-                goal: signals.goalTop.goal,
-                pct: formatNumber(Math.round(signals.goalTop.pct)),
-                amount: formatNumber(Math.max(0, Math.round(signals.goalTop.amountLeft))),
-              },
-            },
-          ]
-        : [],
-    subscription: signals.upcomingSub
-      ? [
-          {
-            group: 'subscription',
-            uniqueKey: uniqueKey(signals.upcomingSub.merchant),
-            templateVars: {
-              merchant: signals.upcomingSub.merchant,
-              amount: formatNumber(signals.upcomingSub.amount),
-              date: SHORT_DATE_FORMAT.format(signals.upcomingSub.date),
-            },
-          },
-        ]
-      : [],
-    'round-up': signals.roundUp
-      ? [
-          {
-            group: 'round-up',
-            uniqueKey: 'round-up',
-            templateVars: {
-              amount: formatNumber(signals.roundUp.amount),
-              goal: signals.roundUp.goal ?? 'tabungan',
-            },
-          },
-        ]
-      : [],
-    'weekly-summary': signals.weeklyTop
-      ? [
-          {
-            group: 'weekly-summary',
-            uniqueKey: uniqueKey(signals.weeklyTop.category),
-            templateVars: {
-              category: signals.weeklyTop.category,
-              total: formatNumber(signals.weeklyTop.total),
-              merchant: signals.weeklyRepeats[0]?.merchant ?? signals.weeklyTop.category,
-            },
-          },
-        ]
-      : [],
-    'quiet-category': signals.quietCats.map((item) => ({
-      group: 'quiet-category',
-      uniqueKey: uniqueKey(item.category),
-      templateVars: {
-        category: item.category,
-        goal: signals.goalTop?.goal ?? 'tabungan',
-        pct: formatNumber(Math.round(item.pct)),
+    'large-transaction': signals.largeTransactions.map((item, index) => ({
+      group: 'large-transaction',
+      uniqueKey: uniqueKey(`${item.merchant}-${index}`),
+      vars: {
+        merchant: item.merchant,
+        amount: formatCurrency(item.amount),
       },
     })),
-    'net-cashflow': signals.netMonth && Math.abs(signals.netMonth.amount) >= 1000
+    'net-cashflow': signals.netCashflow
       ? [
           {
             group: 'net-cashflow',
             uniqueKey: 'net-cashflow',
-            templateVars: {
-              month: signals.netMonth.monthLabel ?? monthName,
-              amount: formatNumber(Math.round(signals.netMonth.amount)),
-              goal: signals.goalTop?.goal ?? 'tabungan',
+            vars: {
+              month: signals.netCashflow.month,
+              amount: formatSignedCurrency(signals.netCashflow.amount),
             },
           },
         ]
       : [],
-    'low-balance': signals.lowBalance
+    'weekly-top': signals.weeklyTopCategory
       ? [
           {
-            group: 'low-balance',
-            uniqueKey: uniqueKey(signals.lowBalance.account),
-            templateVars: {
-              account: signals.lowBalance.account,
-              left: formatNumber(Math.round(signals.lowBalance.left)),
+            group: 'weekly-top',
+            uniqueKey: uniqueKey(signals.weeklyTopCategory.category),
+            vars: {
+              category: signals.weeklyTopCategory.category,
+              total: formatCurrency(signals.weeklyTopCategory.total),
             },
           },
         ]
@@ -740,10 +339,7 @@ function buildCandidates(signals: DashboardSignals): Record<string, QuoteCandida
       {
         group: 'fallback',
         uniqueKey: 'fallback',
-        templateVars: {
-          merchant: signals.lastExpense?.merchant ?? 'boba',
-          amount: formatNumber(Math.max(0, Math.round(signals.lastExpense?.amount ?? 0))),
-        },
+        vars: {},
       },
     ],
   };
@@ -751,17 +347,115 @@ function buildCandidates(signals: DashboardSignals): Record<string, QuoteCandida
   return candidates;
 }
 
+export async function getDashboardSignals(): Promise<DashboardSignals> {
+  try {
+    const [weeklyRepeatsRes, largeTxRes, cashflowRes, weeklyTopRes, budgetStatusRes] =
+      await Promise.allSettled([
+        selectRows('v_tx_weekly_merchant', { limit: 10 }),
+        selectRows('v_tx_large_expenses_month', { limit: 10 }),
+        selectRows('v_tx_monthly_cashflow', { limit: 6 }),
+        selectRows('v_tx_weekly_top_category', { limit: 5 }),
+        selectRows('v_budget_status_month', { limit: 20 }),
+      ]);
+
+    const weeklyRows = weeklyRepeatsRes.status === 'fulfilled' ? weeklyRepeatsRes.value : [];
+    const largeRows = largeTxRes.status === 'fulfilled' ? largeTxRes.value : [];
+    const cashflowRows = cashflowRes.status === 'fulfilled' ? cashflowRes.value : [];
+    const topRows = weeklyTopRes.status === 'fulfilled' ? weeklyTopRes.value : [];
+    const budgetRows = budgetStatusRes.status === 'fulfilled' ? budgetStatusRes.value : [];
+
+    const weeklyRepeats = weeklyRows
+      .map((row) => {
+        const total = parseNumber(row, ['total_amount', 'total', 'sum_amount', 'amount']) ?? 0;
+        const count = parseNumber(row, ['tx_count', 'count', 'frequency']) ?? 0;
+        const merchant = parseString(row, ['merchant', 'merchant_name', 'name', 'title'], 'Merchant');
+        return { merchant, count, total };
+      })
+      .filter((item) => item.count >= 2 && item.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    const largeTransactions = largeRows
+      .map((row) => {
+        const amount = parseNumber(row, ['amount', 'total_amount', 'value']) ?? 0;
+        const merchant = parseString(row, ['merchant', 'merchant_name', 'name', 'notes'], 'Transaksi besar');
+        return { merchant, amount: Math.abs(amount) };
+      })
+      .filter((item) => item.amount >= LARGE_TRANSACTION_THRESHOLD)
+      .sort((a, b) => b.amount - a.amount);
+
+    const cashflowCandidates = cashflowRows
+      .map((row) => ({
+        row,
+        amount: parseNumber(row, ['net_amount', 'net', 'amount', 'total']) ?? null,
+        ts: extractTimestamp(row, ['month', 'period', 'month_start', 'date']),
+      }))
+      .filter((item) => item.amount != null && Number.isFinite(item.amount as number))
+      .sort((a, b) => (b.ts ?? -Infinity) - (a.ts ?? -Infinity));
+
+    const cashflowRow = cashflowCandidates[0];
+    const netCashflow = cashflowRow
+      ? {
+          month:
+            parseMonthLabel(cashflowRow.row, ['month', 'period', 'month_start', 'date']) ??
+            MONTH_FORMAT.format(new Date()),
+          amount: cashflowRow.amount as number,
+        }
+      : null;
+
+    const weeklyTopCandidates = topRows
+      .map((row) => ({
+        row,
+        total: parseNumber(row, ['total_amount', 'total', 'amount']) ?? null,
+      }))
+      .filter((item) => item.total != null && (item.total as number) > 0)
+      .sort((a, b) => (b.total ?? 0) - (a.total ?? 0));
+
+    const weeklyTopRow = weeklyTopCandidates[0];
+    const weeklyTopCategory = weeklyTopRow
+      ? {
+          category: parseString(weeklyTopRow.row, ['category', 'category_name', 'name', 'label'], 'Kategori'),
+          total: weeklyTopRow.total as number,
+        }
+      : null;
+
+    const budgets = budgetRows
+      .map((row) => {
+        const pct = parseNumber(row, ['pct', 'pct_used', 'percent', 'percentage']) ?? 0;
+        const category = parseString(row, ['category', 'category_name', 'name', 'label'], 'Kategori');
+        return { category, pct };
+      })
+      .filter((item) => Number.isFinite(item.pct));
+
+    const overBudget = budgets
+      .filter((item) => item.pct >= 100)
+      .sort((a, b) => b.pct - a.pct);
+
+    const nearBudget = budgets
+      .filter((item) => item.pct >= 80 && item.pct < 100)
+      .sort((a, b) => b.pct - a.pct);
+
+    return {
+      weeklyRepeats,
+      largeTransactions,
+      netCashflow,
+      weeklyTopCategory,
+      overBudget,
+      nearBudget,
+    };
+  } catch {
+    return cloneEmptySignals();
+  }
+}
+
 export function generateQuotes(
-  signals: DashboardSignals,
+  signals: DashboardSignals | null,
   options: { max?: number; random?: () => number } = {},
 ): QuoteResult[] {
   const rng = options.random ?? Math.random;
-  const maxQuotes = options.max ?? 3;
-  if (!signals) {
-    return generateQuotes({ ...FALLBACK_SIGNALS }, options);
-  }
+  const maxQuotes = Math.max(1, options.max ?? 3);
+  const safeSignals = signals ?? EMPTY_SIGNALS;
 
-  const candidates = buildCandidates(signals);
+  const candidates = buildCandidates(safeSignals);
   const usedKeys = new Set<string>();
   const results: QuoteResult[] = [];
 
@@ -776,176 +470,72 @@ export function generateQuotes(
       const templates = TEMPLATE_GROUPS[group];
       if (!templates || !templates.length) continue;
       const template = pickRandom(templates, rng);
-      const text = fillTemplate(template, candidate.templateVars);
+      const text = fillTemplate(template, candidate.vars);
       results.push({
         group,
         text,
         template,
-        vars: candidate.templateVars,
+        vars: candidate.vars,
       });
       if (candidate.uniqueKey) usedKeys.add(candidate.uniqueKey);
     }
   }
 
   if (!results.length) {
-    const template = TEMPLATE_GROUPS.fallback[0];
-    const vars = {
-      merchant: signals.lastExpense?.merchant ?? 'boba',
-      amount: formatNumber(Math.max(0, Math.round(signals.lastExpense?.amount ?? 0))),
-    };
+    const group: QuoteGroup = 'fallback';
+    const templates = TEMPLATE_GROUPS[group];
+    const template = pickRandom(templates, rng);
     results.push({
-      group: 'fallback',
-      text: fillTemplate(template, vars),
+      group,
+      text: template,
       template,
-      vars,
+      vars: {},
     });
   }
 
   return results.slice(0, maxQuotes);
 }
 
-interface QuoteEngineSources {
-  transactions: TransactionLike[];
-  budgets: BudgetLike[];
-  goals: GoalLike[];
-  subscriptions: SubscriptionLike[];
-  accounts: AccountLike[];
-}
-
-interface QuoteEngineCacheEntry {
-  expiresAt: number;
-  value: QuoteEnginePayload;
-}
-
-export interface QuoteEnginePayload {
-  fetchedAt: number;
-  sources: QuoteEngineSources;
-  signals: DashboardSignals;
-}
-
-let quoteEngineCache: QuoteEngineCacheEntry | null = null;
-let inflightPromise: Promise<QuoteEnginePayload> | null = null;
-
-function formatDateInput(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-async function loadSources(): Promise<QuoteEngineSources> {
-  const now = new Date();
-  const monthPreset = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const weekStart = startOfWeek(now);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + UPCOMING_SUB_WINDOW_DAYS);
-
-  const dateFrom = formatDateInput(weekStart);
-  const dateTo = formatDateInput(weekEnd);
-
-  const [transactionsRes, budgetsRes, goalsRes, subsRes, accountsRes] = await Promise.allSettled([
-    import('./api').then(({ listTransactions }) =>
-      listTransactions({ period: { preset: 'month', month: monthPreset }, pageSize: 500, sort: 'date-desc' }),
-    ),
-    import('./api-budgets').then(({ listBudgets }) =>
-      listBudgets({ period: monthPreset, withActivity: true }).catch(() => []),
-    ),
-    import('./api-goals').then(({ listGoals }) =>
-      listGoals({ status: 'active' }).catch(() => ({ items: [] })),
-    ),
-    import('./api-subscriptions').then(({ listSubscriptions }) =>
-      listSubscriptions({ status: 'active', dueFrom: dateFrom, dueTo: dateTo }).catch(() => []),
-    ),
-    import('./api').then(({ listAccounts }) => listAccounts().catch(() => [])),
-  ]);
-
-  const transactions =
-    transactionsRes.status === 'fulfilled'
-      ? Array.isArray((transactionsRes.value as any)?.rows)
-        ? ((transactionsRes.value as any).rows as TransactionLike[])
-        : ((transactionsRes.value as unknown as TransactionLike[]) ?? [])
-      : [];
-
-  const budgets =
-    budgetsRes.status === 'fulfilled'
-      ? (budgetsRes.value as BudgetLike[])
-      : [];
-
-  const goals =
-    goalsRes.status === 'fulfilled'
-      ? ((goalsRes.value as { items?: GoalLike[] }).items ?? [])
-      : [];
-
-  const subscriptions =
-    subsRes.status === 'fulfilled'
-      ? (subsRes.value as SubscriptionLike[])
-      : [];
-
-  const accounts =
-    accountsRes.status === 'fulfilled'
-      ? (accountsRes.value as AccountLike[])
-      : [];
-
-  return { transactions, budgets, goals, subscriptions, accounts };
-}
+let cache: { expiresAt: number; payload: QuoteEnginePayload } | null = null;
+let inflight: Promise<QuoteEnginePayload> | null = null;
 
 export async function loadQuoteEngine({ force = false } = {}): Promise<QuoteEnginePayload> {
   const now = Date.now();
-  if (!force && quoteEngineCache && quoteEngineCache.expiresAt > now) {
-    return quoteEngineCache.value;
+  if (!force && cache && cache.expiresAt > now) {
+    return cache.payload;
   }
-  if (!force && inflightPromise) {
-    return inflightPromise;
+  if (!force && inflight) {
+    return inflight;
   }
 
-  inflightPromise = (async () => {
+  inflight = (async () => {
     try {
-      const sources = await loadSources();
-      const signals = getDashboardSignals({
-        fromTx: sources.transactions,
-        budgets: sources.budgets,
-        goals: sources.goals,
-        subs: sources.subscriptions,
-        accounts: sources.accounts,
-      });
+      const signals = await getDashboardSignals();
       const payload: QuoteEnginePayload = {
         fetchedAt: Date.now(),
-        sources,
         signals,
       };
-      quoteEngineCache = {
+      cache = {
         expiresAt: Date.now() + CACHE_TTL_MS,
-        value: payload,
+        payload,
       };
       return payload;
-    } catch (error) {
-      if (typeof console !== 'undefined') {
-        console.error('[HW][quotes] gagal memuat data quote', error);
-      }
-      const signals = getDashboardSignals({
-        fromTx: [],
-        budgets: [],
-        goals: [],
-        subs: [],
-        accounts: [],
-      });
-      return {
+    } catch {
+      const payload: QuoteEnginePayload = {
         fetchedAt: Date.now(),
-        sources: {
-          transactions: [],
-          budgets: [],
-          goals: [],
-          subscriptions: [],
-          accounts: [],
-        },
-        signals,
+        signals: cloneEmptySignals(),
       };
+      cache = {
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        payload,
+      };
+      return payload;
     } finally {
-      inflightPromise = null;
+      inflight = null;
     }
   })();
 
-  return inflightPromise;
+  return inflight;
 }
 
-export const highlightKeys = HIGHLIGHT_KEYS;
+export { highlightKeys };
