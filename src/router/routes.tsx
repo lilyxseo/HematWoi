@@ -32,7 +32,7 @@ function loadComponent(path: string) {
     case '/profile':
       return lazy(() => import('../pages/Profile'));
     case '/auth':
-      return lazy(() => import('../pages/Auth'));
+      return lazy(() => import('../pages/AuthLogin'));
     default:
       return lazy(() => import('../pages/Dashboard'));
   }

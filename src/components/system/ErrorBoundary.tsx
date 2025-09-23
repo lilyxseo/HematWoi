@@ -10,12 +10,38 @@ type ErrorBoundaryState = {
   message: string;
 };
 
+const defaultMessage = 'Terjadi kesalahan. Silakan coba lagi nanti.';
+
+function DefaultFallback({ message }: { message: string }) {
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 rounded-3xl border border-border-subtle bg-surface px-6 py-10 text-center shadow-sm">
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold text-text">Ups, ada yang salah</h2>
+        <p className="text-sm text-muted" aria-live="polite">
+          {message || defaultMessage}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => {
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        }}
+        className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
+        Muat ulang
+      </button>
+    </div>
+  );
+}
+
 export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
       hasError: false,
-      message: 'Terjadi kesalahan. Silakan muat ulang halaman.',
+      message: defaultMessage,
     };
   }
 
@@ -23,7 +49,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     const message =
       error instanceof Error && error.message
         ? error.message
-        : 'Terjadi kesalahan. Silakan coba lagi nanti.';
+        : defaultMessage;
     return { hasError: true, message };
   }
 
@@ -35,13 +61,10 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   render() {
     if (this.state.hasError) {
-      return (
-        this.props.fallback ?? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
-            {this.state.message}
-          </div>
-        )
-      );
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+      return <DefaultFallback message={this.state.message} />;
     }
 
     return this.props.children;
