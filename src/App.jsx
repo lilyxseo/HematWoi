@@ -82,6 +82,23 @@ const BRAND_PRESETS = {
   rose: { h: 347, s: 77, l: 60 },
 };
 
+function DailyDigestLayer({ transactions }) {
+  const digest = useDailyDigest({ transactions });
+
+  if (!digest.open || !digest.data || !digest.userId) {
+    return null;
+  }
+
+  return (
+    <DailyDigest
+      open={digest.open}
+      data={digest.data}
+      variant={digest.variant}
+      onClose={digest.close}
+    />
+  );
+}
+
 function normalizeBudgetRecord(budget, overrides = {}) {
   if (!budget) return null;
 
@@ -235,11 +252,6 @@ function AppShell({ prefs, setPrefs }) {
   const [sessionUser, setSessionUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
-  const dailyDigest = useDailyDigest({
-    transactions: data.txs,
-    userId: sessionUser?.id ?? null,
-    authReady: sessionChecked,
-  });
   const useCloud = mode === "online";
   const [catMeta, setCatMeta] = useState(() => {
     try {
@@ -965,155 +977,152 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <DailyDigest
-        open={dailyDigest.open}
-        data={dailyDigest.data}
-        variant={dailyDigest.variant}
-        onClose={dailyDigest.close}
-      />
       <BootGate>
-        <Routes>
-          <Route path="/auth" element={<AuthLogin />} />
-          <Route element={<AuthGuard />}>
-            <Route
-              path="/"
-              element={
-                <ProtectedAppContainer
-                  theme={theme}
-                  setTheme={setTheme}
-                  brand={brand}
-                  setBrand={setBrand}
+        <>
+          <DailyDigestLayer transactions={data.txs} />
+          <Routes>
+            <Route path="/auth" element={<AuthLogin />} />
+            <Route element={<AuthGuard />}>
+              <Route
+                path="/"
+                element={
+                  <ProtectedAppContainer
+                    theme={theme}
+                    setTheme={setTheme}
+                    brand={brand}
+                    setBrand={setBrand}
+                  />
+                }
+              >
+                <Route
+                  index
+                  element={
+                    <Dashboard
+                      stats={stats}
+                      monthForReport={
+                        filter.month === "all" ? currentMonth : filter.month
+                      }
+                      txs={data.txs}
+                      budgets={data.budgets}
+                      budgetStatus={data.budgetStatus}
+                      months={months}
+                      challenges={challenges}
+                      prefs={prefs}
+                    />
+                  }
                 />
-              }
-            >
-              <Route
-                index
-                element={
-                  <Dashboard
-                    stats={stats}
-                    monthForReport={
-                      filter.month === "all" ? currentMonth : filter.month
-                    }
-                    txs={data.txs}
-                    budgets={data.budgets}
-                    budgetStatus={data.budgetStatus}
-                    months={months}
-                    challenges={challenges}
-                    prefs={prefs}
-                  />
-                }
-              />
-              <Route
-                path="transactions"
-                element={
-                  <Transactions
-                    months={months}
-                    categories={allCategories}
-                    filter={filter}
-                    setFilter={setFilter}
-                    items={filtered}
-                    onRemove={removeTx}
-                    onUpdate={updateTx}
-                  />
-                }
-              />
-              <Route
-                path="budgets"
-                element={<Budgets currentMonth={currentMonth} />}
-              />
-              <Route path="debts" element={<DebtsPage />} />
-              <Route path="goals" element={<GoalsPage />} />
-              <Route
-                path="challenges"
-                element={
-                  <ChallengesPage
-                    challenges={challenges}
-                    onAdd={addChallenge}
-                    onUpdate={updateChallenge}
-                    onRemove={removeChallenge}
-                    txs={data.txs}
-                  />
-                }
-              />
-              <Route
-                path="categories"
-                element={<Categories cat={data.cat} onSave={saveCategories} />}
-              />
-              <Route
-                path="subscriptions"
-                element={<Subscriptions categories={data.cat} />}
-              />
-              <Route path="data" element={<DataPage />} />
-              <Route
-                path="import"
-                element={
-                  <ImportWizard
-                    txs={data.txs}
-                    onAdd={addTx}
-                    categories={data.cat}
-                    rules={rules}
-                    setRules={setRules}
-                    onCancel={() => navigate("/data")}
-                  />
-                }
-              />
-              <Route
-                path="transaction/add"
-                element={<TransactionAdd onAdd={addTx} />}
-              />
-              <Route
-                path="add"
-                element={<Navigate to="/transaction/add" replace />}
-              />
-              <Route path="settings" element={<SettingsPage />} />
-              <Route
-                path="profile"
-                element={<ProfilePage transactions={data.txs} challenges={challenges} />}
-              />
-              <Route path="dashboard" element={<Navigate to="/" replace />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+                <Route
+                  path="transactions"
+                  element={
+                    <Transactions
+                      months={months}
+                      categories={allCategories}
+                      filter={filter}
+                      setFilter={setFilter}
+                      items={filtered}
+                      onRemove={removeTx}
+                      onUpdate={updateTx}
+                    />
+                  }
+                />
+                <Route
+                  path="budgets"
+                  element={<Budgets currentMonth={currentMonth} />}
+                />
+                <Route path="debts" element={<DebtsPage />} />
+                <Route path="goals" element={<GoalsPage />} />
+                <Route
+                  path="challenges"
+                  element={
+                    <ChallengesPage
+                      challenges={challenges}
+                      onAdd={addChallenge}
+                      onUpdate={updateChallenge}
+                      onRemove={removeChallenge}
+                      txs={data.txs}
+                    />
+                  }
+                />
+                <Route
+                  path="categories"
+                  element={<Categories cat={data.cat} onSave={saveCategories} />}
+                />
+                <Route
+                  path="subscriptions"
+                  element={<Subscriptions categories={data.cat} />}
+                />
+                <Route path="data" element={<DataPage />} />
+                <Route
+                  path="import"
+                  element={
+                    <ImportWizard
+                      txs={data.txs}
+                      onAdd={addTx}
+                      categories={data.cat}
+                      rules={rules}
+                      setRules={setRules}
+                      onCancel={() => navigate("/data")}
+                    />
+                  }
+                />
+                <Route
+                  path="transaction/add"
+                  element={<TransactionAdd onAdd={addTx} />}
+                />
+                <Route
+                  path="add"
+                  element={<Navigate to="/transaction/add" replace />}
+                />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route
+                  path="profile"
+                  element={<ProfilePage transactions={data.txs} challenges={challenges} />}
+                />
+                <Route path="dashboard" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Route>
             </Route>
-          </Route>
-        </Routes>
-        <SettingsPanel
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          value={{ theme, ...prefs }}
-          onChange={(val) => {
-            const {
-              theme: nextTheme,
-              density,
-              defaultMonth,
-              currency,
-              accent,
-              walletSound = false,
-              walletSensitivity = "default",
-              walletShowTips = true,
-              lateMode = "auto",
-              lateModeDay = 24,
-              lateModeBalance = 0.4,
-              moneyTalkEnabled = true,
-              moneyTalkIntensity = "normal",
-              moneyTalkLang = "id",
-            } = val;
-            setTheme(nextTheme);
-            setPrefs({
-              density,
-              defaultMonth,
-              currency,
-              accent,
-              walletSound,
-              walletSensitivity,
-              walletShowTips,
-              lateMode,
-              lateModeDay,
-              lateModeBalance,
-              moneyTalkEnabled,
-              moneyTalkIntensity,
-              moneyTalkLang,
-            });
-          }}
-        />
+          </Routes>
+          <SettingsPanel
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            value={{ theme, ...prefs }}
+            onChange={(val) => {
+              const {
+                theme: nextTheme,
+                density,
+                defaultMonth,
+                currency,
+                accent,
+                walletSound = false,
+                walletSensitivity = "default",
+                walletShowTips = true,
+                lateMode = "auto",
+                lateModeDay = 24,
+                lateModeBalance = 0.4,
+                moneyTalkEnabled = true,
+                moneyTalkIntensity = "normal",
+                moneyTalkLang = "id",
+              } = val;
+              setTheme(nextTheme);
+              setPrefs({
+                density,
+                defaultMonth,
+                currency,
+                accent,
+                walletSound,
+                walletSensitivity,
+                walletShowTips,
+                lateMode,
+                lateModeDay,
+                lateModeBalance,
+                moneyTalkEnabled,
+                moneyTalkIntensity,
+                moneyTalkLang,
+              });
+            }}
+          />
+        </>
       </BootGate>
     </CategoryProvider>
   );
