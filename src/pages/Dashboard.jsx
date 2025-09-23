@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import KpiCards from "../components/KpiCards";
-import QuoteBubble from "../components/QuoteBubble";
+import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
@@ -52,7 +52,7 @@ export default function Dashboard({ stats, txs }) {
         net={stats?.balance || 0}
       />
 
-      <QuoteBubble />
+      <QuoteBoard />
 
       <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
         <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
