@@ -41,9 +41,9 @@ function resolveRedirect(path = '/'): string | undefined {
 }
 
 const ERROR_CODE_MAP: Record<string, string> = {
-  invalid_credentials: 'Email atau kata sandi salah.',
-  invalid_grant: 'Email atau kata sandi salah.',
-  invalid_login_credentials: 'Email atau kata sandi salah.',
+  invalid_credentials: 'Email/username atau kata sandi salah.',
+  invalid_grant: 'Email/username atau kata sandi salah.',
+  invalid_login_credentials: 'Email/username atau kata sandi salah.',
   email_not_confirmed: 'Email belum terverifikasi. Periksa kotak masuk kamu.',
   user_not_found: 'Akun dengan email tersebut tidak ditemukan.',
   provider_disabled: 'Metode masuk ini sedang tidak tersedia.',
@@ -63,7 +63,7 @@ function translateMessage(code?: string | null, raw?: string | null): string | n
   }
   if (!raw) return null;
   const normalized = raw.toLowerCase();
-  if (normalized.includes('invalid login')) return 'Email atau kata sandi salah.';
+  if (normalized.includes('invalid login')) return 'Email/username atau kata sandi salah.';
   if (normalized.includes('password') && normalized.includes('6'))
     return 'Kata sandi minimal 6 karakter.';
   if (normalized.includes('network') || normalized.includes('fetch') || normalized.includes('connection'))
@@ -106,6 +106,48 @@ function normalizeAuthError(error: unknown, fallback = DEFAULT_ERROR): Normalize
   return normalizedError;
 }
 
+function isNetworkError(error: unknown): boolean {
+  const message =
+    typeof error === 'string'
+      ? error
+      : error && typeof error === 'object' && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+        ? String((error as { message?: string }).message)
+        : '';
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('network') ||
+    normalized.includes('fetch') ||
+    normalized.includes('connection') ||
+    normalized.includes('timeout')
+  );
+}
+
+export async function resolveEmailByUsername(username: string): Promise<string | null> {
+  const trimmed = username.trim();
+  if (!trimmed) return null;
+
+  try {
+    const { data, error } = await supabase.rpc('resolve_email_by_username', {
+      username: trimmed,
+    });
+    if (error) throw error;
+    if (!data) return null;
+    if (typeof data === 'string') {
+      return data.trim().toLowerCase() || null;
+    }
+    return null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[HW][auth-login]', error);
+    }
+    if (isNetworkError(error)) {
+      throw new Error('Tidak bisa terhubung. Periksa internet kamu.');
+    }
+    throw new Error('Username tidak ditemukan.');
+  }
+}
+
 export async function getSession(): Promise<Session | null> {
   try {
     const { data, error } = await supabase.auth.getSession();
@@ -122,7 +164,7 @@ export async function signInWithPassword(credentials: SignInWithPasswordCredenti
     if (error) throw error;
     return data;
   } catch (error) {
-    throw normalizeAuthError(error, 'Email atau kata sandi salah.');
+    throw normalizeAuthError(error, 'Email/username atau kata sandi salah.');
   }
 }
 
