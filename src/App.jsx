@@ -26,7 +26,7 @@ import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
-import AuthPage from "./pages/Auth";
+import AuthLogin from "./pages/AuthLogin";
 import ChallengesPage from "./pages/Challenges.jsx";
 import useChallenges from "./hooks/useChallenges.js";
 import AuthGuard from "./components/AuthGuard";
@@ -890,7 +890,7 @@ function AppShell({ prefs, setPrefs }) {
     <CategoryProvider catMeta={catMeta}>
       <BootGate ready={sessionChecked}>
         <Routes>
-          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/auth" element={<AuthLogin />} />
           <Route element={<AuthGuard />}>
             <Route
               path="/"
