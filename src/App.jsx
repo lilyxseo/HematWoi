@@ -916,6 +916,8 @@ function AppShell({ prefs, setPrefs }) {
                     months={months}
                     challenges={challenges}
                     prefs={prefs}
+                    online={useCloud}
+                    sessionUserId={sessionUser?.id ?? null}
                   />
                 }
               />

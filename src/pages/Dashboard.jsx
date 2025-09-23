@@ -4,6 +4,7 @@ import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
+import BudgetStatusHighlights from "../components/dashboard/BudgetStatusHighlights";
 import SectionHeader from "../components/SectionHeader";
 import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
@@ -13,7 +14,7 @@ import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs }) {
+export default function Dashboard({ stats, txs, online, sessionUserId }) {
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
     let count = 0;
@@ -64,6 +65,8 @@ export default function Dashboard({ stats, txs }) {
       </div>
 
       <QuickActions />
+
+      <BudgetStatusHighlights online={online} userId={sessionUserId} />
 
       <section className="space-y-6 sm:space-y-8 lg:space-y-10">
         <SectionHeader title="Analisis Bulanan" />
