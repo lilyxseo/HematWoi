@@ -984,6 +984,7 @@ function AppShell({ prefs, setPrefs }) {
                     txs={data.txs}
                     budgets={data.budgets}
                     budgetStatus={data.budgetStatus}
+                    userId={sessionUser?.id ?? "local"}
                     months={months}
                     challenges={challenges}
                     prefs={prefs}

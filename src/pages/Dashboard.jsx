@@ -5,6 +5,7 @@ import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
 import BudgetStatusHighlights from "../components/BudgetStatusHighlights";
+import WhatIfPlanner from "../components/WhatIfPlanner";
 import SectionHeader from "../components/SectionHeader";
 import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
@@ -14,7 +15,13 @@ import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs, budgetStatus = [] }) {
+export default function Dashboard({
+  stats,
+  txs,
+  budgetStatus = [],
+  budgets = [],
+  userId = null,
+}) {
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
     let count = 0;
@@ -67,6 +74,8 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
       <QuickActions />
 
       <BudgetStatusHighlights items={budgetStatus} />
+
+      <WhatIfPlanner txs={txs} budgets={budgets} userId={userId} />
 
       <section className="space-y-6 sm:space-y-8 lg:space-y-10">
         <SectionHeader title="Analisis Bulanan" />
