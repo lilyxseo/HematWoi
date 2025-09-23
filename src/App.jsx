@@ -141,6 +141,7 @@ function loadInitial() {
         budgets: [],
         goals: [],
         envelopes: [],
+        budgetStatus: [],
       };
     const parsed = JSON.parse(raw);
     return {
@@ -153,6 +154,9 @@ function loadInitial() {
         : [],
       goals: parsed.goals || [],
       envelopes: parsed.envelopes || [],
+      budgetStatus: Array.isArray(parsed.budgetStatus)
+        ? parsed.budgetStatus
+        : [],
     };
   } catch {
     return {
@@ -161,6 +165,7 @@ function loadInitial() {
       budgets: [],
       goals: [],
       envelopes: [],
+      budgetStatus: [],
     };
   }
 }
@@ -599,13 +604,46 @@ function AppShell({ prefs, setPrefs }) {
     }
   }, [sessionUser, categoryNameById, addToast]);
 
+  const fetchBudgetStatusCloud = useCallback(async () => {
+    if (!sessionUser) return;
+    const toNumber = (value) => {
+      const parsed = Number.parseFloat(value ?? 0);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    try {
+      const { data: rows, error } = await supabase
+        .from("v_budget_status_month")
+        .select("category_name, amount_planned, actual, pct")
+        .order("pct", { ascending: false });
+      if (error) throw error;
+      const mapped = (rows || []).map((row) => ({
+        category: row?.category_name || "Tanpa kategori",
+        planned: toNumber(row?.amount_planned),
+        actual: toNumber(row?.actual),
+        pct: toNumber(row?.pct),
+      }));
+      setData((d) => ({ ...d, budgetStatus: mapped }));
+    } catch (e) {
+      console.error("fetch budget status failed", e);
+      setData((d) => ({ ...d, budgetStatus: [] }));
+    }
+  }, [sessionUser]);
+
   useEffect(() => {
     if (useCloud && sessionUser) {
       fetchCategoriesCloud();
       fetchTxsCloud();
       fetchBudgetsCloud();
+      fetchBudgetStatusCloud();
     }
-  }, [useCloud, sessionUser, fetchCategoriesCloud, fetchTxsCloud, fetchBudgetsCloud]);
+  }, [
+    useCloud,
+    sessionUser,
+    fetchCategoriesCloud,
+    fetchTxsCloud,
+    fetchBudgetsCloud,
+    fetchBudgetStatusCloud,
+  ]);
 
   const triggerMoneyTalk = (tx) => {
     const category = tx.category;
@@ -913,6 +951,7 @@ function AppShell({ prefs, setPrefs }) {
                     }
                     txs={data.txs}
                     budgets={data.budgets}
+                    budgetStatus={data.budgetStatus}
                     months={months}
                     challenges={challenges}
                     prefs={prefs}
