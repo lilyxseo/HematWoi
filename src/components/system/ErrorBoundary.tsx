@@ -1,46 +1,59 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
-type ErrorBoundaryProps = {
+interface ErrorBoundaryProps {
   children: ReactNode;
-  fallback?: ReactNode;
-};
+}
 
-type ErrorBoundaryState = {
+interface ErrorBoundaryState {
   hasError: boolean;
-  message: string;
-};
+  error?: Error | null;
+}
 
-export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      message: 'Terjadi kesalahan. Silakan muat ulang halaman.',
-    };
+export default class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
+  state: ErrorBoundaryState = {
+    hasError: false,
+    error: null,
+  };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
   }
 
-  static getDerivedStateFromError(error: unknown): ErrorBoundaryState {
-    const message =
-      error instanceof Error && error.message
-        ? error.message
-        : 'Terjadi kesalahan. Silakan coba lagi nanti.';
-    return { hasError: true, message };
-  }
-
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, info: ErrorInfo) {
     if (import.meta.env.DEV) {
-      console.error('[HW][ErrorBoundary]', error, errorInfo);
+      console.error('[HW][ErrorBoundary]', error, info);
     }
   }
+
+  private handleReload = () => {
+    this.setState({ hasError: false, error: null });
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  };
 
   render() {
     if (this.state.hasError) {
       return (
-        this.props.fallback ?? (
-          <div className="p-6 text-center text-sm text-muted-foreground">
-            {this.state.message}
+        <div className="flex min-h-screen flex-col items-center justify-center bg-surface-alt px-6 py-12 text-center text-text">
+          <div className="max-w-md space-y-4">
+            <h1 className="text-2xl font-semibold">Terjadi kesalahan</h1>
+            <p className="text-sm text-muted">
+              Ups, ada sesuatu yang tidak berjalan semestinya. Silakan muat ulang
+              halaman ini dan coba lagi.
+            </p>
+            <button
+              type="button"
+              onClick={this.handleReload}
+              className="btn btn-primary w-full sm:w-auto"
+            >
+              Muat ulang
+            </button>
           </div>
-        )
+        </div>
       );
     }
 
