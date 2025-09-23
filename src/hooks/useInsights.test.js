@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
-import { aggregateInsights } from "./useInsights";
+import { aggregateDashboardAnalytics } from "./useDashboardAnalytics";
 
-describe("aggregateInsights", () => {
+describe("aggregateDashboardAnalytics", () => {
   beforeAll(() => {
     vi.setSystemTime(new Date("2024-06-15"));
   });
@@ -28,7 +28,7 @@ describe("aggregateInsights", () => {
   ];
 
   it("calculates kpis", () => {
-    const res = aggregateInsights(txs);
+    const res = aggregateDashboardAnalytics(txs);
     expect(res.kpis.income).toBe(1000);
     expect(res.kpis.expense).toBe(900);
     expect(res.kpis.net).toBe(100);
@@ -36,13 +36,13 @@ describe("aggregateInsights", () => {
   });
 
   it("builds 6 month trend", () => {
-    const res = aggregateInsights(txs);
+    const res = aggregateDashboardAnalytics(txs);
     expect(res.trend).toHaveLength(6);
     expect(res.trend[5]).toEqual({ month: "2024-06", net: 100 });
   });
 
   it("aggregates categories", () => {
-    const res = aggregateInsights(txs);
+    const res = aggregateDashboardAnalytics(txs);
     const food = res.categories.find((c) => c.name === "Food");
     const transport = res.categories.find((c) => c.name === "Transport");
     expect(food.value).toBe(600);
@@ -50,7 +50,7 @@ describe("aggregateInsights", () => {
   });
 
   it("lists top spends", () => {
-    const res = aggregateInsights(txs);
+    const res = aggregateDashboardAnalytics(txs);
     expect(res.topSpends.map((t) => t.amount)).toEqual([400, 300, 200]);
   });
 });
