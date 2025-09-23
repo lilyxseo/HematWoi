@@ -67,7 +67,7 @@ function translateMessage(code?: string | null, raw?: string | null): string | n
   if (normalized.includes('password') && normalized.includes('6'))
     return 'Kata sandi minimal 6 karakter.';
   if (normalized.includes('network') || normalized.includes('fetch') || normalized.includes('connection'))
-    return 'Periksa koneksi internet kamu.';
+    return 'Periksa koneksi internet.';
   if (normalized.includes('otp') && normalized.includes('expired'))
     return 'Kode OTP sudah kedaluwarsa. Kirim ulang tautan.';
   if (normalized.includes('otp') && normalized.includes('invalid'))
@@ -129,7 +129,7 @@ export async function resolveEmailByUsername(username: string): Promise<string |
 
   try {
     const { data, error } = await supabase.rpc('resolve_email_by_username', {
-      username: trimmed,
+      username_input: trimmed,
     });
     if (error) throw error;
     if (!data) return null;
@@ -142,9 +142,9 @@ export async function resolveEmailByUsername(username: string): Promise<string |
       console.error('[HW][auth-login]', error);
     }
     if (isNetworkError(error)) {
-      throw new Error('Tidak bisa terhubung. Periksa internet kamu.');
+      throw new Error('Periksa koneksi internet.');
     }
-    throw new Error('Username tidak ditemukan.');
+    throw new Error('Username atau email tidak ditemukan.');
   }
 }
 
