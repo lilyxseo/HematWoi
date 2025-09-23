@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import type { DailyDigestData } from "../hooks/useDailyDigest";
@@ -44,6 +45,15 @@ export default function DailyDigest({ open, data, variant = "modal", onClose }: 
   const [displayMode, setDisplayMode] = useState<"modal" | "banner">(variant);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const okButtonRef = useRef<HTMLButtonElement | null>(null);
+  const handleBackdropPointerDown = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        event.preventDefault();
+        onClose();
+      }
+    },
+    [onClose],
+  );
 
   useEffect(() => {
     if (!open) {
@@ -217,6 +227,7 @@ export default function DailyDigest({ open, data, variant = "modal", onClose }: 
       role="dialog"
       aria-modal="true"
       aria-labelledby="daily-digest-title"
+      onMouseDown={handleBackdropPointerDown}
     >
       <div
         ref={modalRef}

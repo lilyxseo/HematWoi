@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 const TIMEZONE = "Asia/Jakarta";
 const STORAGE_PREFIX = "hw:digest:last:";
@@ -52,18 +53,21 @@ export interface DailyDigestData {
   yesterdayDate: string;
 }
 
-export interface UseDailyDigestOptions {
-  transactions?: DigestTransaction[] | null;
-  userId?: string | null;
-  authReady: boolean;
-}
-
 export interface UseDailyDigestResult {
   open: boolean;
   data: DailyDigestData | null;
   close: () => void;
   markSeen: () => void;
   variant: "modal" | "banner";
+  userId: string | null;
+}
+
+export interface UseDailyDigestOptions {
+  transactions?: DigestTransaction[] | null;
+}
+
+export function todayJakarta(): string {
+  return DATE_FORMATTER.format(new Date());
 }
 
 function formatDateInZone(date: Date): string {
@@ -136,7 +140,10 @@ function buildSummary(
   average7Day: number,
   suggestion: string,
 ): { comparison: string; summary: string } {
-  const spendSentence = `Kemarin kamu belanja ${formatCurrency(totalSpent)} di ${transactionCount} transaksi.`;
+  const spendSentence =
+    transactionCount === 0
+      ? "Kemarin belum ada transaksi yang terekam."
+      : `Kemarin kamu belanja ${formatCurrency(totalSpent)} di ${transactionCount} transaksi.`;
   let comparisonSentence: string;
   if (average7Day > 0) {
     if (diffDirection === "flat") {
@@ -218,7 +225,9 @@ function computeDigest(
   let suggestion = "Tetap pantau pengeluaran kecil ya 😉";
   const highlightChoices = topCategories.length ? topCategories : topMerchants;
   const highlightLabel = summarizeHighlights(highlightChoices);
-  if (highlightLabel) {
+  if (transactionCount === 0) {
+    suggestion = "Yuk catat pengeluaran biar laporan makin akurat 😉";
+  } else if (highlightLabel) {
     suggestion = diffDirection === "down"
       ? `Mantap! Pertahankan kontrol di ${highlightLabel} ya 😉`
       : `Coba hemat di ${highlightLabel} ya 😉`;
@@ -269,46 +278,115 @@ const DEFAULT_STATE: DigestState = {
 
 export default function useDailyDigest({
   transactions,
-  userId,
-  authReady,
 }: UseDailyDigestOptions): UseDailyDigestResult {
   const [{ open, data, today }, setState] = useState<DigestState>(DEFAULT_STATE);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
 
   const storageKey = useMemo(
-    () => `${STORAGE_PREFIX}${userId ? userId : "anon"}`,
+    () => (userId ? `${STORAGE_PREFIX}${userId}` : null),
     [userId],
   );
 
+  const evaluateDigest = useCallback(
+    (currentUid: string) => {
+      if (!currentUid) return;
+      if (typeof window === "undefined") return;
+
+      const todayLocal = todayJakarta();
+      let lastShown = "";
+      try {
+        lastShown = window.localStorage.getItem(`${STORAGE_PREFIX}${currentUid}`) || "";
+      } catch {
+        lastShown = "";
+      }
+
+      if (lastShown === todayLocal) {
+        setState({ open: false, data: null, today: todayLocal });
+        return;
+      }
+
+      const digest = computeDigest(transactions ?? [], todayLocal);
+      setState({ open: true, data: digest, today: todayLocal });
+    },
+    [transactions],
+  );
+
+  const evaluateDigestRef = useRef(evaluateDigest);
   useEffect(() => {
-    if (!authReady) return;
-    if (typeof window === "undefined") return;
+    evaluateDigestRef.current = evaluateDigest;
+  }, [evaluateDigest]);
 
-    const todayLocal = formatDateInZone(new Date());
-    let lastShown = "";
-    try {
-      lastShown = window.localStorage.getItem(storageKey) || "";
-    } catch {
-      lastShown = "";
-    }
+  useEffect(() => {
+    let active = true;
 
-    if (lastShown === todayLocal) {
-      setState({ open: false, data: null, today: todayLocal });
-      return;
-    }
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        const session = data.session ?? null;
+        const uid = session?.user?.id ?? null;
+        setUserId(uid);
+        setSessionReady(true);
+        if (uid) {
+          evaluateDigestRef.current(uid);
+        } else {
+          setState(DEFAULT_STATE);
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setUserId(null);
+        setSessionReady(true);
+        setState(DEFAULT_STATE);
+      });
 
-    const digest = computeDigest(transactions ?? [], todayLocal);
-    setState({ open: true, data: digest, today: todayLocal });
-  }, [authReady, storageKey, transactions]);
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+
+      if (event === "SIGNED_OUT") {
+        setUserId(null);
+        setState(DEFAULT_STATE);
+        return;
+      }
+
+      if (event === "SIGNED_IN") {
+        const uid = session?.user?.id ?? null;
+        setUserId(uid);
+        if (uid) {
+          evaluateDigestRef.current(uid);
+        } else {
+          setState(DEFAULT_STATE);
+        }
+        return;
+      }
+
+      const uid = session?.user?.id ?? null;
+      setUserId(uid);
+    });
+
+    return () => {
+      active = false;
+      subscription.subscription?.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    if (!userId) return;
+    evaluateDigest(userId);
+  }, [sessionReady, userId, evaluateDigest]);
 
   const markSeen = useCallback(() => {
+    setState((prev) => ({ ...prev, open: false }));
+    if (!storageKey) return;
     if (typeof window === "undefined") return;
-    const targetDate = today || formatDateInZone(new Date());
+    const targetDate = today || todayJakarta();
     try {
       window.localStorage.setItem(storageKey, targetDate);
     } catch {
       /* ignore */
     }
-    setState((prev) => ({ ...prev, open: false }));
   }, [storageKey, today]);
 
   const close = useCallback(() => {
@@ -321,5 +399,6 @@ export default function useDailyDigest({
     close,
     markSeen,
     variant: "modal",
+    userId,
   };
 }
