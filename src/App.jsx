@@ -186,7 +186,7 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
       <div className="flex min-h-full flex-col">
         <SyncBanner />
         <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-          <Outlet />
+          <Outlet context={{ theme, setTheme }} />
         </div>
       </div>
     </MainLayout>
@@ -982,10 +982,7 @@ function AppShell({ prefs, setPrefs }) {
                 element={<Navigate to="/transaction/add" replace />}
               />
               <Route path="settings" element={<SettingsPage />} />
-              <Route
-                path="profile"
-                element={<ProfilePage transactions={data.txs} challenges={challenges} />}
-              />
+              <Route path="profile" element={<ProfilePage />} />
               <Route path="dashboard" element={<Navigate to="/" replace />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
