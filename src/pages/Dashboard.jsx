@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import KpiCards from "../components/KpiCards";
-import QuoteBubble from "../components/QuoteBubble";
+import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
@@ -13,7 +13,7 @@ import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs }) {
+export default function Dashboard({ stats, txs, budgets = [], goals = [], subscriptions = [], accounts = [] }) {
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
     let count = 0;
@@ -52,7 +52,13 @@ export default function Dashboard({ stats, txs }) {
         net={stats?.balance || 0}
       />
 
-      <QuoteBubble />
+      <QuoteBoard
+        transactions={txs}
+        budgets={budgets}
+        goals={goals}
+        subscriptions={subscriptions}
+        accounts={accounts}
+      />
 
       <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
         <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
