@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  getTransactionsSummary,
-  listCategories,
-  listTransactions,
-} from "../lib/api";
+import { getTransactionsSummary, listCategories } from "../lib/api";
+import { listTransactions } from "../lib/api-transactions";
 
 const PAGE_SIZE = 50;
 
