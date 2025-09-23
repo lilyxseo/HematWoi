@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Routes,
   Route,
@@ -13,7 +13,7 @@ import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
 import DailyDigest from "./components/DailyDigest";
 import SyncBanner from "./components/SyncBanner";
-import BootGate from "./guards/BootGate";
+import BootGate from "./components/BootGate";
 
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
@@ -54,8 +54,6 @@ import MoneyTalkProvider, {
 } from "./context/MoneyTalkContext.jsx";
 import { ModeProvider, useMode } from "./hooks/useMode";
 import useDailyDigest from "./hooks/useDailyDigest";
-import useLastRouteTracker from "./hooks/useLastRouteTracker";
-import { normalizeRoute, readLastRoute } from "./lib/lastRoute";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -297,14 +295,7 @@ function AppShell({ prefs, setPrefs }) {
   window.__hw_prefs = prefs;
 
   const navigate = useNavigate();
-  const location = useLocation();
-  const locationRef = useRef(location);
 
-  useEffect(() => {
-    locationRef.current = location;
-  }, [location]);
-
-  useLastRouteTracker(sessionUser?.id ?? null);
 
   const handleProfileSyncError = useCallback(
     (error, context) => {
@@ -374,35 +365,13 @@ function AppShell({ prefs, setPrefs }) {
           /* ignore */
         }
         setMode("online");
-
-        const userId = session?.user?.id;
-        const stored = userId ? readLastRoute(userId) : null;
-        const currentLocation = locationRef.current;
-        const currentFull = currentLocation
-          ? normalizeRoute(
-              `${currentLocation.pathname}${currentLocation.search}${currentLocation.hash}`
-            )
-          : typeof window !== "undefined"
-          ? normalizeRoute(
-              `${window.location.pathname}${window.location.search}${window.location.hash}`
-            )
-          : null;
-
-        if (stored) {
-          const target = normalizeRoute(stored);
-          if (target && target !== currentFull) {
-            navigate(stored, { replace: true });
-          }
-        } else if (currentFull !== normalizeRoute("/")) {
-          navigate("/", { replace: true });
-        }
       }
     });
     return () => {
       isMounted = false;
       sub.subscription?.unsubscribe();
     };
-  }, [navigate, setMode]);
+  }, [setMode]);
 
   useEffect(() => {
     if (sessionChecked && !sessionUser && mode === "online") {
