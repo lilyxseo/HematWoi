@@ -3,6 +3,7 @@ import { supabase } from "./supabase";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
+import { removeTransaction as removeTransactionRpc } from "./api-transactions";
 
 function sanitizeIlike(value = "") {
   return String(value).replace(/[%_]/g, (m) => `\\${m}`);
@@ -600,13 +601,20 @@ export async function updateTransaction(id, patch = {}) {
 export async function deleteTransaction(id) {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Pengguna belum masuk");
-  const now = new Date().toISOString();
-  await upsert("transactions", {
-    id,
-    user_id: userId,
-    deleted_at: now,
-    updated_at: now,
-  });
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    const now = new Date().toISOString();
+    await upsert("transactions", {
+      id,
+      user_id: userId,
+      deleted_at: now,
+      updated_at: now,
+    });
+    return;
+  }
+  const success = await removeTransactionRpc(id);
+  if (!success) {
+    throw new Error("Gagal menghapus. Cek koneksi lalu coba lagi.");
+  }
 }
 
 // -- CATEGORIES ----------------------------------------

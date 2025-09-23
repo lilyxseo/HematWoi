@@ -23,12 +23,17 @@ import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
 import {
   addTransaction,
-  deleteTransaction,
   listAccounts,
   listMerchants,
   listTransactions,
   updateTransaction,
 } from "../lib/api";
+import {
+  removeTransaction,
+  removeTransactionsBulk,
+  undoDeleteTransaction,
+  undoDeleteTransactions,
+} from "../lib/api-transactions";
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
@@ -125,10 +130,18 @@ export default function Transactions() {
   const { addToast } = useToast();
   const online = useNetworkStatus();
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [hiddenIds, setHiddenIds] = useState(() => new Set());
+  const [confirmState, setConfirmState] = useState({
+    open: false,
+    ids: [],
+    mode: "single",
+    loading: false,
+    meta: null,
+  });
+  const [undoPrompt, setUndoPrompt] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkEditMode, setBulkEditMode] = useState(null);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
@@ -138,6 +151,7 @@ export default function Transactions() {
   const [filterBarHeight, setFilterBarHeight] = useState(0);
   const searchInputRef = useRef(null);
   const lastSelectedIdRef = useRef(null);
+  const undoTimerRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(filter.search);
   const [filterBarStuck, setFilterBarStuck] = useState(false);
   const [tableVariant, setTableVariant] = useState(() => detectTableVariant());
@@ -161,6 +175,28 @@ export default function Transactions() {
   useEffect(() => {
     setSearchTerm(filter.search);
   }, [filter.search]);
+
+  const visibleItems = useMemo(
+    () => items.filter((item) => !hiddenIds.has(item.id)),
+    [items, hiddenIds],
+  );
+
+  useEffect(() => {
+    setHiddenIds((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(items.map((item) => item.id));
+      let changed = false;
+      const next = new Set();
+      prev.forEach((id) => {
+        if (present.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [items]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -291,12 +327,12 @@ export default function Transactions() {
   useEffect(() => {
     setSelectedIds((prev) => {
       const next = new Set();
-      items.forEach((item) => {
+      visibleItems.forEach((item) => {
         if (prev.has(item.id)) next.add(item.id);
       });
       return next;
     });
-  }, [items]);
+  }, [visibleItems]);
 
   useEffect(() => {
     const trimmedTerm = searchTerm.trim();
@@ -321,11 +357,11 @@ export default function Transactions() {
   }, [categories]);
 
   const selectedItems = useMemo(
-    () => items.filter((item) => selectedIds.has(item.id)),
-    [items, selectedIds],
+    () => visibleItems.filter((item) => selectedIds.has(item.id)),
+    [visibleItems, selectedIds],
   );
 
-  const allSelected = items.length > 0 && items.every((item) => selectedIds.has(item.id));
+  const allSelected = visibleItems.length > 0 && visibleItems.every((item) => selectedIds.has(item.id));
 
   const activeChips = useMemo(() => {
     const chips = [];
@@ -362,13 +398,13 @@ export default function Transactions() {
         const next = new Set(prev);
         const currentlySelected = next.has(id);
         desiredState = event?.target?.checked ?? !currentlySelected;
-        if (!items.length) {
+        if (!visibleItems.length) {
           if (desiredState) next.add(id);
           else next.delete(id);
           return next;
         }
         if (isShiftKey && lastSelectedIdRef.current) {
-          const ids = items.map((item) => item.id);
+          const ids = visibleItems.map((item) => item.id);
           const currentIndex = ids.indexOf(id);
           const lastIndex = ids.indexOf(lastSelectedIdRef.current);
           if (currentIndex !== -1 && lastIndex !== -1) {
@@ -390,7 +426,7 @@ export default function Transactions() {
         lastSelectedIdRef.current = id;
       }
     },
-    [items],
+    [visibleItems],
   );
 
   const toggleSelectAll = useCallback(() => {
@@ -399,11 +435,15 @@ export default function Transactions() {
         lastSelectedIdRef.current = null;
         return new Set();
       }
-      const ids = items.map((item) => item.id);
+      if (!visibleItems.length) {
+        lastSelectedIdRef.current = null;
+        return new Set();
+      }
+      const ids = visibleItems.map((item) => item.id);
       lastSelectedIdRef.current = ids[ids.length - 1] ?? null;
       return new Set(ids);
     });
-  }, [allSelected, items]);
+  }, [allSelected, visibleItems]);
 
   const handleRemoveChip = useCallback(
     (chip) => {
@@ -445,42 +485,153 @@ export default function Transactions() {
     });
   }, [setFilter, setSearchTerm]);
 
-  const handleDelete = useCallback(
-    async (id) => {
-      const confirmed = window.confirm("Hapus transaksi ini?");
-      if (!confirmed) return;
-      try {
-        await deleteTransaction(id);
-        addToast("Transaksi dihapus", "success");
-        refresh();
-      } catch (err) {
-        console.error(err);
-        addToast(err?.message || "Gagal menghapus transaksi", "error");
-      }
+  const resetConfirmState = useCallback(() => {
+    setConfirmState({ open: false, ids: [], mode: "single", loading: false, meta: null });
+  }, []);
+
+  const handleCancelDelete = useCallback(() => {
+    if (confirmState.loading) return;
+    resetConfirmState();
+  }, [confirmState.loading, resetConfirmState]);
+
+  const openDeleteDialog = useCallback(
+    (ids, mode, meta = null) => {
+      setConfirmState({ open: true, ids, mode, loading: false, meta });
     },
-    [addToast, refresh],
+    [],
   );
 
-  const handleBulkDelete = useCallback(async () => {
+  const handleRequestDelete = useCallback(
+    (id) => {
+      if (!id) return;
+      const target = items.find((item) => item.id === id) || null;
+      openDeleteDialog([id], "single", target);
+    },
+    [items, openDeleteDialog],
+  );
+
+  const handleRequestBulkDelete = useCallback(() => {
     if (!selectedItems.length) return;
-    const confirmed = window.confirm(`Hapus ${selectedItems.length} transaksi terpilih?`);
-    if (!confirmed) return;
-    setBulkDeleting(true);
-    try {
-      for (const item of selectedItems) {
-        await deleteTransaction(item.id);
+    const ids = selectedItems.map((item) => item.id);
+    openDeleteDialog(ids, "bulk", { count: ids.length });
+  }, [openDeleteDialog, selectedItems]);
+
+  const showUndoSnackbar = useCallback(
+    (ids, mode, meta = null) => {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
       }
-      addToast("Transaksi terpilih dihapus", "success");
-      setSelectedIds(new Set());
-      lastSelectedIdRef.current = null;
-      refresh();
+      const unique = Array.from(new Set((ids || []).filter(Boolean)));
+      if (!unique.length) return;
+      setUndoPrompt({ ids: unique, mode, meta });
+      undoTimerRef.current = setTimeout(() => {
+        setUndoPrompt(null);
+        undoTimerRef.current = null;
+      }, 6000);
+    },
+    [],
+  );
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!confirmState.ids.length) {
+      resetConfirmState();
+      return;
+    }
+    const ids = Array.from(new Set(confirmState.ids.filter(Boolean)));
+    if (!ids.length) {
+      resetConfirmState();
+      return;
+    }
+    const mode = confirmState.mode;
+    const meta = confirmState.meta;
+    const previousSelected = new Set(selectedIds);
+    setConfirmState((prev) => ({ ...prev, loading: true }));
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+    try {
+      if (mode === "single") {
+        const success = await removeTransaction(ids[0]);
+        if (!success) {
+          throw new Error("Gagal menghapus. Cek koneksi lalu coba lagi.");
+        }
+      } else {
+        const affected = await removeTransactionsBulk(ids);
+        if (!affected) {
+          throw new Error("Gagal menghapus. Cek koneksi lalu coba lagi.");
+        }
+      }
+      showUndoSnackbar(ids, mode, meta);
+      resetConfirmState();
+      refresh({ keepPage: true });
+    } catch (err) {
+      setHiddenIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      setSelectedIds(previousSelected);
+      setConfirmState((prev) => ({ ...prev, loading: false }));
+      console.error(err);
+      addToast(err?.message || "Gagal menghapus. Cek koneksi lalu coba lagi.", "error");
+    }
+  }, [
+    confirmState,
+    selectedIds,
+    showUndoSnackbar,
+    resetConfirmState,
+    refresh,
+    addToast,
+  ]);
+
+  const handleUndoAction = useCallback(async () => {
+    if (!undoPrompt?.ids?.length) return;
+    const prompt = undoPrompt;
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoPrompt(null);
+    try {
+      if (prompt.mode === "single") {
+        const success = await undoDeleteTransaction(prompt.ids[0]);
+        if (!success) {
+          throw new Error("Gagal mengurungkan. Silakan refresh.");
+        }
+      } else {
+        const restored = await undoDeleteTransactions(prompt.ids);
+        if (!restored) {
+          throw new Error("Gagal mengurungkan. Silakan refresh.");
+        }
+      }
+      setHiddenIds((prev) => {
+        const next = new Set(prev);
+        prompt.ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      addToast("Penghapusan dibatalkan", "success");
+      refresh({ keepPage: true });
     } catch (err) {
       console.error(err);
-      addToast(err?.message || "Gagal menghapus beberapa transaksi", "error");
-    } finally {
-      setBulkDeleting(false);
+      addToast(err?.message || "Gagal mengurungkan. Silakan refresh.", "error");
+      refresh({ keepPage: true });
     }
-  }, [addToast, refresh, selectedItems]);
+  }, [undoPrompt, addToast, refresh]);
+
+  const handleDismissUndo = useCallback(() => {
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+    setUndoPrompt(null);
+  }, []);
 
   const handleBulkUpdateField = useCallback(
     async (field, value) => {
@@ -577,6 +728,7 @@ export default function Transactions() {
 
   const tableStickyTop = `calc(var(--app-header-height, var(--app-topbar-h, 64px)) + ${filterBarHeight}px + 16px)`;
   const selectionToolbarOffset = tableStickyTop ? `calc(${tableStickyTop} + 12px)` : "16px";
+  const bulkDeletionInProgress = confirmState.loading && confirmState.mode === "bulk";
   const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
   const activeFilterCount = activeChips.length;
 
@@ -587,6 +739,14 @@ export default function Transactions() {
 
   const handleEditTransaction = useCallback((item) => {
     setEditTarget(item);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+      }
+    };
   }, []);
 
   return (
@@ -725,17 +885,17 @@ export default function Transactions() {
             setSelectedIds(new Set());
             lastSelectedIdRef.current = null;
           }}
-          onDelete={handleBulkDelete}
+          onDelete={handleRequestBulkDelete}
           onEditCategory={() => setBulkEditMode("category")}
           onEditAccount={() => setBulkEditMode("account")}
-          deleting={bulkDeleting}
+          deleting={bulkDeletionInProgress}
           updating={bulkUpdating}
           topOffset={selectionToolbarOffset}
         />
       )}
 
       <TransactionsTable
-        items={items}
+        items={visibleItems}
         loading={loading}
         error={error}
         onRetry={() => refresh({ keepPage: true })}
@@ -745,7 +905,7 @@ export default function Transactions() {
         onToggleSelectAll={toggleSelectAll}
         allSelected={allSelected}
         selectedIds={selectedIds}
-        onDelete={handleDelete}
+        onDelete={handleRequestDelete}
         onEdit={handleEditTransaction}
         tableStickyTop={tableStickyTop}
         variant={tableVariant}
@@ -753,6 +913,18 @@ export default function Transactions() {
         total={total}
         onOpenAdd={() => setAddOpen(true)}
       />
+
+      <ConfirmDeleteDialog
+        open={confirmState.open}
+        mode={confirmState.mode}
+        count={confirmState.ids.length}
+        meta={confirmState.meta}
+        loading={confirmState.loading}
+        onCancel={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <UndoSnackbar prompt={undoPrompt} onUndo={handleUndoAction} onClose={handleDismissUndo} />
 
       {bulkEditMode && (
         <BulkEditDialog
@@ -1415,6 +1587,89 @@ function SelectionToolbar({
           >
             {deleting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
             Hapus
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDeleteDialog({ open, mode, count, meta, loading, onCancel, onConfirm }) {
+  if (!open) return null;
+  const isBulk = mode === "bulk";
+  const title = isBulk ? `Hapus ${count} transaksi?` : "Hapus transaksi ini?";
+  const description = isBulk
+    ? `Hapus ${count} transaksi terpilih? Tindakan dapat diurungkan selama 6 detik.`
+    : "Hapus transaksi ini? Tindakan dapat diurungkan selama 6 detik.";
+  const primaryLabel = loading ? "Menghapus…" : "Hapus";
+  return (
+    <Modal open={open} onClose={loading ? () => {} : onCancel} title={title}>
+      <div className="space-y-6">
+        {!isBulk && meta ? (
+          <div className="rounded-2xl border border-border-subtle bg-surface-2/80 p-4 text-sm text-muted">
+            <p className="text-base font-semibold text-text">
+              {meta.title || meta.notes || meta.note || "(Tanpa judul)"}
+            </p>
+            <p className="mt-1 text-sm text-muted">
+              {formatTransactionDate(meta.date)} · {formatIDR(meta.amount)}
+            </p>
+          </div>
+        ) : null}
+        <p className="text-sm text-muted">{description}</p>
+        <div className="flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Batal
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:bg-[color:var(--color-danger-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
+            {primaryLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function UndoSnackbar({ prompt, onUndo, onClose }) {
+  if (!prompt) return null;
+  const count = prompt.ids?.length ?? 0;
+  const message = prompt.mode === "bulk" ? `${count} transaksi dihapus` : "Transaksi dihapus";
+  return (
+    <div className="fixed bottom-4 left-1/2 z-40 w-full max-w-[min(640px,calc(100%-2rem))] -translate-x-1/2 px-4 md:bottom-auto md:top-4">
+      <div
+        className="flex flex-wrap items-center gap-3 rounded-2xl bg-surface/95 px-4 py-3 text-sm text-text shadow-lg"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex-1 text-sm font-medium text-text">
+          {message} — Urungkan?
+          <span className="ml-1 text-xs text-muted">(6 detik)</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onUndo}
+            className="inline-flex h-11 items-center justify-center rounded-2xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+          >
+            Urungkan
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-muted transition hover:border-brand/40 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            aria-label="Tutup notifikasi"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
       </div>
