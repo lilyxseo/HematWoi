@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Routes,
   Route,
@@ -52,6 +52,8 @@ import MoneyTalkProvider, {
   useMoneyTalk,
 } from "./context/MoneyTalkContext.jsx";
 import { ModeProvider, useMode } from "./hooks/useMode";
+import useLastRouteTracker from "./hooks/useLastRouteTracker";
+import { normalizeRoute, readLastRoute } from "./lib/lastRoute";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -276,6 +278,14 @@ function AppShell({ prefs, setPrefs }) {
   window.__hw_prefs = prefs;
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const locationRef = useRef(location);
+
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  useLastRouteTracker(sessionUser?.id ?? null);
 
   const handleProfileSyncError = useCallback(
     (error, context) => {
@@ -312,10 +322,11 @@ function AppShell({ prefs, setPrefs }) {
   useEffect(() => {
     let isMounted = true;
     supabase.auth
-      .getUser()
+      .getSession()
       .then(({ data }) => {
         if (!isMounted) return;
-        if (data.user) {
+        const session = data.session ?? null;
+        if (session?.user) {
           try {
             localStorage.setItem("hw:connectionMode", "online");
             localStorage.setItem("hw:mode", "online");
@@ -324,7 +335,7 @@ function AppShell({ prefs, setPrefs }) {
           }
           setMode("online");
         }
-        setSessionUser(data.user ?? null);
+        setSessionUser(session?.user ?? null);
         setSessionChecked(true);
       })
       .catch(() => {
@@ -344,7 +355,28 @@ function AppShell({ prefs, setPrefs }) {
           /* ignore */
         }
         setMode("online");
-        navigate("/", { replace: true });
+
+        const userId = session?.user?.id;
+        const stored = userId ? readLastRoute(userId) : null;
+        const currentLocation = locationRef.current;
+        const currentFull = currentLocation
+          ? normalizeRoute(
+              `${currentLocation.pathname}${currentLocation.search}${currentLocation.hash}`
+            )
+          : typeof window !== "undefined"
+          ? normalizeRoute(
+              `${window.location.pathname}${window.location.search}${window.location.hash}`
+            )
+          : null;
+
+        if (stored) {
+          const target = normalizeRoute(stored);
+          if (target && target !== currentFull) {
+            navigate(stored, { replace: true });
+          }
+        } else if (currentFull !== normalizeRoute("/")) {
+          navigate("/", { replace: true });
+        }
       }
     });
     return () => {
@@ -926,7 +958,7 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <BootGate ready={sessionChecked}>
+      <BootGate>
         <Routes>
           <Route path="/auth" element={<AuthLogin />} />
           <Route element={<AuthGuard />}>
