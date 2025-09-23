@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Routes,
   Route,
@@ -34,6 +34,7 @@ import { DataProvider } from "./context/DataContext";
 
 import { supabase } from "./lib/supabase";
 import { playChaChing } from "./lib/walletSound";
+import { isBlacklisted, readLastRoute, writeLastRoute } from "./lib/lastRoute";
 import {
   listTransactions,
   addTransaction as apiAdd,
@@ -275,7 +276,42 @@ function AppShell({ prefs, setPrefs }) {
   const { speak } = useMoneyTalk();
   window.__hw_prefs = prefs;
 
+  const routeLocation = useLocation();
   const navigate = useNavigate();
+  const sessionUserId = sessionUser?.id ?? null;
+  const sessionUserIdRef = useRef(sessionUserId);
+  const currentPath = useMemo(
+    () =>
+      `${routeLocation.pathname}${routeLocation.search}${routeLocation.hash}`,
+    [routeLocation.pathname, routeLocation.search, routeLocation.hash]
+  );
+  const currentPathRef = useRef(currentPath);
+
+  useEffect(() => {
+    sessionUserIdRef.current = sessionUserId;
+  }, [sessionUserId]);
+
+  useEffect(() => {
+    currentPathRef.current = currentPath || "/";
+  }, [currentPath]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (!currentPath || isBlacklisted(currentPath)) return undefined;
+    const timer = window.setTimeout(() => {
+      writeLastRoute(sessionUserIdRef.current, currentPath);
+    }, 150);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [currentPath]);
+
+  useEffect(() => {
+    if (!sessionUserId) return;
+    const path = currentPathRef.current;
+    if (!path || isBlacklisted(path)) return;
+    writeLastRoute(sessionUserId, path);
+  }, [sessionUserId]);
 
   const handleProfileSyncError = useCallback(
     (error, context) => {
@@ -344,7 +380,19 @@ function AppShell({ prefs, setPrefs }) {
           /* ignore */
         }
         setMode("online");
-        navigate("/", { replace: true });
+        const uid = session?.user?.id ?? null;
+        const last = readLastRoute(uid);
+        const currentPath =
+          typeof window === "undefined"
+            ? "/"
+            : `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        if (last) {
+          if (currentPath !== last) {
+            navigate(last, { replace: true });
+          }
+        } else if (currentPath !== "/") {
+          navigate("/", { replace: true });
+        }
       }
     });
     return () => {
