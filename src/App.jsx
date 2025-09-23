@@ -987,6 +987,7 @@ function AppShell({ prefs, setPrefs }) {
                     months={months}
                     challenges={challenges}
                     prefs={prefs}
+                    userId={sessionUser?.id ?? null}
                   />
                 }
               />
