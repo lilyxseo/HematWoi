@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Segmented from "../components/ui/Segmented";
 import CurrencyInput from "../components/ui/CurrencyInput";
 import Input from "../components/ui/Input";
@@ -6,13 +6,9 @@ import Select from "../components/ui/Select";
 import Textarea from "../components/ui/Textarea";
 import Stepper from "../components/ui/Stepper";
 
+const STEPS = ["Tipe & Jumlah", "Tanggal & Kategori", "Catatan", "Konfirmasi"];
+
 export default function AddWizard({ categories, onAdd, onCancel }) {
-  const steps = [
-    "Tipe & Jumlah",
-    "Tanggal & Kategori",
-    "Catatan",
-    "Konfirmasi",
-  ];
   const [step, setStep] = useState(0);
   const [type, setType] = useState("expense");
   const [amount, setAmount] = useState(0);
@@ -30,15 +26,19 @@ export default function AddWizard({ categories, onAdd, onCancel }) {
     minimumFractionDigits: 0,
   });
 
-  const next = () => {
+  const next = useCallback(() => {
     if (step === 0 && amount <= 0) return;
     if (step === 1 && (!date || !category)) return;
-    if (step < steps.length - 1) setStep(step + 1);
-  };
+    if (step < STEPS.length - 1) {
+      setStep((current) => current + 1);
+    }
+  }, [step, amount, date, category]);
 
-  const back = () => {
-    if (step > 0) setStep(step - 1);
-  };
+  const back = useCallback(() => {
+    if (step > 0) {
+      setStep((current) => current - 1);
+    }
+  }, [step]);
 
   const handleSave = () => {
     if (amount <= 0 || !date || !category) return;
@@ -69,7 +69,7 @@ export default function AddWizard({ categories, onAdd, onCancel }) {
 
   return (
     <div className="max-w-lg mx-auto p-4 space-y-4">
-      <Stepper current={step} steps={steps} />
+      <Stepper current={step} steps={STEPS} />
 
       {step === 0 && (
         <div className="space-y-4">
@@ -148,7 +148,7 @@ export default function AddWizard({ categories, onAdd, onCancel }) {
         <button className="btn" onClick={back} disabled={step === 0}>
           Kembali
         </button>
-        {step < steps.length - 1 ? (
+        {step < STEPS.length - 1 ? (
           <button className="btn btn-primary" onClick={next}>
             Lanjut
           </button>

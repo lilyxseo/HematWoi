@@ -1,1 +1,9 @@
-export { listTransactions, addTransaction, updateTransaction, deleteTransaction } from "./api";
+export { addTransaction, updateTransaction } from "./api";
+export {
+  listTransactions,
+  removeTransaction,
+  removeTransactionsBulk,
+  undoDeleteTransaction,
+  undoDeleteTransactions,
+  removeTransaction as deleteTransaction,
+} from "./api-transactions";

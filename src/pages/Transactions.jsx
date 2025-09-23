@@ -23,12 +23,17 @@ import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
 import {
   addTransaction,
-  deleteTransaction,
   listAccounts,
   listMerchants,
-  listTransactions,
   updateTransaction,
 } from "../lib/api";
+import {
+  listTransactions,
+  removeTransaction,
+  removeTransactionsBulk,
+  undoDeleteTransaction,
+  undoDeleteTransactions,
+} from "../lib/api-transactions";
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
@@ -109,7 +114,7 @@ function chunk(arr, size) {
 
 export default function Transactions() {
   const {
-    items,
+    items: queryItems,
     total,
     hasMore,
     loading,
@@ -124,11 +129,11 @@ export default function Transactions() {
   } = useTransactionsQuery();
   const { addToast } = useToast();
   const online = useNetworkStatus();
+  const [items, setItems] = useState(queryItems);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkEditMode, setBulkEditMode] = useState(null);
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
@@ -141,6 +146,12 @@ export default function Transactions() {
   const [searchTerm, setSearchTerm] = useState(filter.search);
   const [filterBarStuck, setFilterBarStuck] = useState(false);
   const [tableVariant, setTableVariant] = useState(() => detectTableVariant());
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
+  const [confirmState, setConfirmState] = useState(null);
+  const undoTimerRef = useRef(null);
+  const undoPayloadRef = useRef(null);
+  const [snackbar, setSnackbar] = useState(null);
+  const [undoLoading, setUndoLoading] = useState(false);
   const [isDesktopFilterView, setIsDesktopFilterView] = useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return false;
@@ -157,6 +168,10 @@ export default function Transactions() {
       return false;
     }
   });
+
+  useEffect(() => {
+    setItems(queryItems);
+  }, [queryItems]);
 
   useEffect(() => {
     setSearchTerm(filter.search);
@@ -199,6 +214,14 @@ export default function Transactions() {
       /* ignore persistence errors */
     }
   }, [filterPanelOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!filterBarRef.current || typeof ResizeObserver === "undefined") return;
@@ -445,42 +468,157 @@ export default function Transactions() {
     });
   }, [setFilter, setSearchTerm]);
 
-  const handleDelete = useCallback(
-    async (id) => {
-      const confirmed = window.confirm("Hapus transaksi ini?");
-      if (!confirmed) return;
-      try {
-        await deleteTransaction(id);
-        addToast("Transaksi dihapus", "success");
-        refresh();
-      } catch (err) {
-        console.error(err);
-        addToast(err?.message || "Gagal menghapus transaksi", "error");
+  const showUndoSnackbar = useCallback((payload) => {
+    if (!payload || !payload.ids?.length) return;
+    if (undoTimerRef.current) {
+      clearTimeout(undoTimerRef.current);
+    }
+    undoPayloadRef.current = payload;
+    setUndoLoading(false);
+    const count = payload.ids.length;
+    const message = count === 1 ? 'Transaksi dihapus — Urungkan?' : `${count} transaksi dihapus — Urungkan?`;
+    setSnackbar({ message, count });
+    undoTimerRef.current = window.setTimeout(() => {
+      undoPayloadRef.current = null;
+      setSnackbar(null);
+    }, 6000);
+  }, []);
+
+  const handleUndoClick = useCallback(async () => {
+    const payload = undoPayloadRef.current;
+    if (!payload || undoLoading) return;
+    setUndoLoading(true);
+    try {
+      if (payload.ids.length === 1) {
+        const success = await undoDeleteTransaction(payload.ids[0]);
+        if (!success) {
+          throw new Error('Gagal mengurungkan. Silakan refresh.');
+        }
+      } else {
+        const restored = await undoDeleteTransactions(payload.ids);
+        if (restored < payload.ids.length) {
+          throw new Error('Gagal mengurungkan. Silakan refresh.');
+        }
       }
+      setItems((prev) => {
+        const next = prev.slice();
+        payload.records
+          .slice()
+          .sort((a, b) => a.index - b.index)
+          .forEach(({ item, index }) => {
+            const insertIndex = Math.min(index, next.length);
+            next.splice(insertIndex, 0, item);
+          });
+        return next;
+      });
+      addToast(
+        payload.ids.length === 1 ? 'Transaksi dipulihkan' : `${payload.ids.length} transaksi dipulihkan`,
+        'success',
+      );
+      refresh({ keepPage: true });
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : 'Gagal mengurungkan. Silakan refresh.',
+        'error',
+      );
+    } finally {
+      if (undoTimerRef.current) {
+        clearTimeout(undoTimerRef.current);
+        undoTimerRef.current = null;
+      }
+      undoPayloadRef.current = null;
+      setSnackbar(null);
+      setUndoLoading(false);
+    }
+  }, [addToast, refresh, undoLoading]);
+
+  const handleRequestDelete = useCallback(
+    (id) => {
+      if (deleteInProgress) return;
+      const target = items.find((item) => item.id === id);
+      if (!target) return;
+      setConfirmState({
+        type: 'single',
+        ids: [id],
+      });
     },
-    [addToast, refresh],
+    [deleteInProgress, items],
   );
 
-  const handleBulkDelete = useCallback(async () => {
-    if (!selectedItems.length) return;
-    const confirmed = window.confirm(`Hapus ${selectedItems.length} transaksi terpilih?`);
-    if (!confirmed) return;
-    setBulkDeleting(true);
-    try {
-      for (const item of selectedItems) {
-        await deleteTransaction(item.id);
-      }
-      addToast("Transaksi terpilih dihapus", "success");
-      setSelectedIds(new Set());
-      lastSelectedIdRef.current = null;
-      refresh();
-    } catch (err) {
-      console.error(err);
-      addToast(err?.message || "Gagal menghapus beberapa transaksi", "error");
-    } finally {
-      setBulkDeleting(false);
+  const handleRequestBulkDelete = useCallback(() => {
+    if (deleteInProgress || !selectedItems.length) return;
+    setConfirmState({
+      type: 'bulk',
+      ids: selectedItems.map((item) => item.id),
+    });
+  }, [deleteInProgress, selectedItems]);
+
+  const handleCloseConfirm = useCallback(() => {
+    if (deleteInProgress) return;
+    setConfirmState(null);
+  }, [deleteInProgress]);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!confirmState || deleteInProgress) return;
+    const ids = confirmState.ids;
+    const idSet = new Set(ids);
+    const prevItems = items.slice();
+    const prevSelected = new Set(selectedIds);
+    const removalRecords = prevItems
+      .map((item, index) => (idSet.has(item.id) ? { id: item.id, item, index } : null))
+      .filter(Boolean);
+    if (!removalRecords.length) {
+      setConfirmState(null);
+      return;
     }
-  }, [addToast, refresh, selectedItems]);
+    setDeleteInProgress(true);
+    setItems(prevItems.filter((item) => !idSet.has(item.id)));
+    const nextSelected = new Set(prevSelected);
+    ids.forEach((id) => nextSelected.delete(id));
+    setSelectedIds(nextSelected);
+
+    try {
+      if (ids.length === 1) {
+        const success = await removeTransaction(ids[0]);
+        if (!success) {
+          throw new Error('Gagal menghapus. Cek koneksi lalu coba lagi.');
+        }
+      } else {
+        const deletedCount = await removeTransactionsBulk(ids);
+        if (deletedCount < ids.length) {
+          throw new Error('Gagal menghapus. Cek koneksi lalu coba lagi.');
+        }
+      }
+      lastSelectedIdRef.current = null;
+      refresh({ keepPage: true });
+      showUndoSnackbar({
+        ids,
+        records: removalRecords.map((record) => ({
+          id: record.id,
+          item: record.item,
+          index: record.index,
+        })),
+      });
+    } catch (error) {
+      setItems(prevItems);
+      setSelectedIds(prevSelected);
+      addToast(
+        error instanceof Error ? error.message : 'Gagal menghapus. Cek koneksi lalu coba lagi.',
+        'error',
+      );
+    } finally {
+      setConfirmState(null);
+      setDeleteInProgress(false);
+    }
+  }, [
+    confirmState,
+    deleteInProgress,
+    items,
+    selectedIds,
+    refresh,
+    showUndoSnackbar,
+    addToast,
+  ]);
 
   const handleBulkUpdateField = useCallback(
     async (field, value) => {
@@ -725,10 +863,10 @@ export default function Transactions() {
             setSelectedIds(new Set());
             lastSelectedIdRef.current = null;
           }}
-          onDelete={handleBulkDelete}
+          onDelete={handleRequestBulkDelete}
           onEditCategory={() => setBulkEditMode("category")}
           onEditAccount={() => setBulkEditMode("account")}
-          deleting={bulkDeleting}
+          deleting={deleteInProgress}
           updating={bulkUpdating}
           topOffset={selectionToolbarOffset}
         />
@@ -745,14 +883,54 @@ export default function Transactions() {
         onToggleSelectAll={toggleSelectAll}
         allSelected={allSelected}
         selectedIds={selectedIds}
-        onDelete={handleDelete}
+        onDelete={handleRequestDelete}
         onEdit={handleEditTransaction}
         tableStickyTop={tableStickyTop}
         variant={tableVariant}
         onResetFilters={handleResetFilters}
         total={total}
         onOpenAdd={() => setAddOpen(true)}
+        deleteDisabled={deleteInProgress}
       />
+
+      {confirmState && (
+        <Modal open={Boolean(confirmState)} onClose={handleCloseConfirm} title="Konfirmasi Hapus">
+          <div className="space-y-4 text-white">
+            <p className="text-sm text-white/80">
+              {confirmState.ids.length === 1
+                ? 'Hapus transaksi ini? Tindakan dapat diurungkan selama 6 detik.'
+                : `Hapus ${confirmState.ids.length} transaksi? Tindakan dapat diurungkan selama 6 detik.`}
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={handleCloseConfirm}
+                disabled={deleteInProgress}
+                className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleteInProgress}
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:bg-[color:var(--color-danger-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {deleteInProgress ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : 'Hapus'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {snackbar && (
+        <UndoSnackbar
+          open
+          message={snackbar.message}
+          onUndo={handleUndoClick}
+          loading={undoLoading}
+        />
+      )}
 
       {bulkEditMode && (
         <BulkEditDialog
@@ -1440,6 +1618,7 @@ function TransactionsTable({
   variant = "table",
   onResetFilters = () => {},
   onOpenAdd = () => {},
+  deleteDisabled = false,
 }) {
   const isCardVariant = variant === "card";
   const isInitialLoading = loading && items.length === 0;
@@ -1481,6 +1660,7 @@ function TransactionsTable({
                 onToggleSelect={(event) => onToggleSelect(item.id, event)}
                 onDelete={() => onDelete(item.id)}
                 onEdit={() => onEdit(item)}
+                deleteDisabled={deleteDisabled}
               />
             ))}
             {isInitialLoading &&
@@ -1525,6 +1705,7 @@ function TransactionsTable({
                     onToggleSelect={(event) => onToggleSelect(item.id, event)}
                     onDelete={() => onDelete(item.id)}
                     onEdit={() => onEdit(item)}
+                    deleteDisabled={deleteDisabled}
                   />
                 ))}
                 {isInitialLoading &&
@@ -1556,6 +1737,30 @@ function TransactionsTable({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function UndoSnackbar({ open, message, onUndo, loading }) {
+  if (!open) return null;
+  return createPortal(
+    <div
+      className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 sm:bottom-6"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex w-full max-w-sm items-center gap-3 rounded-2xl border border-border bg-surface/95 px-4 py-3 text-sm text-text shadow-lg shadow-black/20">
+        <span className="flex-1">{message}</span>
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={loading}
+          className="inline-flex h-11 items-center justify-center rounded-xl border border-brand/50 px-4 text-sm font-semibold text-brand transition hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : 'Urungkan'}
+        </button>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -1594,6 +1799,7 @@ function TransactionItem({
   onToggleSelect,
   onDelete,
   onEdit,
+  deleteDisabled = false,
 }) {
   const amountTone =
     item.type === "income"
@@ -1699,7 +1905,8 @@ function TransactionItem({
           <button
             type="button"
             onClick={onDelete}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-danger/40 bg-danger/10 px-4 text-sm font-medium text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)]"
+            disabled={deleteDisabled}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-danger/40 bg-danger/10 px-4 text-sm font-medium text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="Hapus transaksi"
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -1792,7 +1999,8 @@ function TransactionItem({
           <button
             type="button"
             onClick={onDelete}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)]"
+            disabled={deleteDisabled}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="Hapus transaksi"
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />

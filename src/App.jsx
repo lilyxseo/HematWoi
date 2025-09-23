@@ -38,10 +38,10 @@ import {
   listTransactions,
   addTransaction as apiAdd,
   updateTransaction as apiUpdate,
-  deleteTransaction as apiDelete,
   upsertCategories,
   listCategories as apiListCategories,
 } from "./lib/api";
+import { removeTransaction as apiDelete } from "./lib/api-transactions";
 
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
