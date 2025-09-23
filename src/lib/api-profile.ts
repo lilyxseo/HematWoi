@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import type { BadgeRecord } from './achievements';
 
 const isDevelopment = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ||
@@ -20,6 +21,21 @@ function wrapError(scope: string, error: unknown, fallback: string): never {
     throw wrapped;
   }
   throw new Error(fallback);
+}
+
+function parseAchievements(value: unknown): BadgeRecord[] {
+  if (!Array.isArray(value)) return [];
+  const results: BadgeRecord[] = [];
+  for (const item of value as Array<Record<string, unknown>>) {
+    if (!item || typeof item !== 'object') continue;
+    const code = typeof item.code === 'string' ? item.code : null;
+    const title = typeof item.title === 'string' ? item.title : null;
+    const earnedAt = typeof item.earned_at === 'string' ? item.earned_at : null;
+    if (code && title && earnedAt) {
+      results.push({ code, title, earned_at: earnedAt });
+    }
+  }
+  return results;
 }
 
 export type ThemeMode = 'system' | 'light' | 'dark';
@@ -45,6 +61,7 @@ export interface UserProfile {
   notifications: ProfileNotifications;
   created_at: string;
   updated_at: string;
+  achievements: BadgeRecord[];
 }
 
 export interface SessionInfo {
@@ -121,6 +138,7 @@ async function requireUser() {
 }
 
 async function mapProfileRow(row: any): Promise<UserProfile> {
+  const achievements = parseAchievements(row.achievements);
   return {
     id: row.id,
     full_name: row.full_name ?? null,
@@ -140,6 +158,7 @@ async function mapProfileRow(row: any): Promise<UserProfile> {
     },
     created_at: row.created_at ?? new Date().toISOString(),
     updated_at: row.updated_at ?? new Date().toISOString(),
+    achievements,
   };
 }
 
@@ -181,6 +200,7 @@ export async function getProfile(): Promise<UserProfile> {
           bill_due: true,
           goal_reminder: true,
         },
+        achievements: [],
       };
       const { data: inserted, error: insertError } = await supabase
         .from('user_profiles')

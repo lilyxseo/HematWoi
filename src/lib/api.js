@@ -3,6 +3,7 @@ import { supabase } from "./supabase";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
+import { evaluateCurrentUserBadges } from "./achievements";
 
 function sanitizeIlike(value = "") {
   return String(value).replace(/[%_]/g, (m) => `\\${m}`);
@@ -574,6 +575,11 @@ export async function addTransaction(input = {}) {
     await syncTransactionReceipts(saved.id, input.receipts, userId);
   } catch (err) {
     console.error("Failed to sync related data for transaction", err);
+  }
+  try {
+    await evaluateCurrentUserBadges();
+  } catch {
+    /* ignore badge evaluation errors */
   }
   return mapTransactionRow(saved);
 }

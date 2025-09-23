@@ -5,6 +5,7 @@ import {
   mapTransactionRow,
 } from './api';
 import { getCurrentUserId } from './session';
+import { evaluateCurrentUserBadges } from './achievements';
 
 interface ListTransactionParams {
   q?: string;
@@ -880,6 +881,13 @@ export async function insertTransactionsChunked(
     }
     if (failed > 0) {
       throw new Error(`Sebagian data gagal diimpor (${failed} baris)`);
+    }
+    if (inserted > 0) {
+      try {
+        await evaluateCurrentUserBadges({ importedCount: inserted });
+      } catch {
+        /* ignore badge evaluation errors */
+      }
     }
     return { inserted, failed };
   } catch (error) {
