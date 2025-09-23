@@ -12,6 +12,7 @@ import {
 import {
   getAvailableSocialProviders,
   resetPassword,
+  resolveEmailByUsername,
   signInWithMagicLink,
   signInWithPassword,
   signInWithProvider,
@@ -20,8 +21,8 @@ import {
 import SocialButtons from './SocialButtons';
 
 type LoginCardProps = {
-  defaultEmail?: string;
-  onSuccess?: (email: string) => void;
+  defaultIdentifier?: string;
+  onSuccess?: (identifier: string) => void;
 };
 
 type TabKey = 'password' | 'magic';
@@ -34,7 +35,20 @@ type StatusState = {
 
 const MIN_PASSWORD_LENGTH = 6;
 const MAGIC_LINK_COOLDOWN = 45; // seconds
+const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,30}$/;
 const GENERIC_ERROR = 'Terjadi kesalahan. Silakan coba lagi nanti.';
+
+function normalizeIdentifier(value: string) {
+  return value.trim();
+}
+
+function isLikelyEmail(value: string) {
+  return value.includes('@');
+}
+
+function isUsernameValid(value: string) {
+  return USERNAME_PATTERN.test(value);
+}
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
@@ -130,14 +144,14 @@ function PasswordInput({ error, hint, ...props }: Omit<InputProps, 'trailing'>) 
   );
 }
 
-export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardProps) {
+export default function LoginCard({ defaultIdentifier = '', onSuccess }: LoginCardProps) {
   const [tab, setTab] = useState<TabKey>('password');
   const [mode, setMode] = useState<ModeKey>('login');
-  const [email, setEmail] = useState(defaultEmail);
+  const [identifier, setIdentifier] = useState(defaultIdentifier);
   const [password, setPassword] = useState('');
-  const [rememberEmail, setRememberEmail] = useState(() => Boolean(defaultEmail));
+  const [rememberIdentifier, setRememberIdentifier] = useState(() => Boolean(defaultIdentifier));
   const [status, setStatus] = useState<StatusState>(null);
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [identifierError, setIdentifierError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [otpValue, setOtpValue] = useState('');
   const [otpError, setOtpError] = useState<string | null>(null);
@@ -155,11 +169,11 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
   const otpGuardRef = useRef(0);
 
   useEffect(() => {
-    setEmail(defaultEmail);
-    if (defaultEmail) {
-      setRememberEmail(true);
+    setIdentifier(defaultIdentifier);
+    if (defaultIdentifier) {
+      setRememberIdentifier(true);
     }
-  }, [defaultEmail]);
+  }, [defaultIdentifier]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -170,7 +184,7 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
   }, [cooldown]);
 
   const resetFieldErrors = () => {
-    setEmailError(null);
+    setIdentifierError(null);
     setPasswordError(null);
     setOtpError(null);
   };
@@ -187,7 +201,7 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
     }
   };
 
-  const persistEmailPreference = (value: string, shouldRemember: boolean) => {
+  const persistIdentifierPreference = (value: string, shouldRemember: boolean) => {
     try {
       if (shouldRemember) {
         localStorage.setItem('hw:lastEmail', value);
@@ -209,10 +223,23 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
     resetFieldErrors();
     setStatus(null);
 
-    const normalizedEmail = normalizeEmail(email);
-    const validEmail = isEmailValid(normalizedEmail);
-    if (!validEmail) {
-      setEmailError('Masukkan email yang valid.');
+    const trimmedIdentifier = normalizeIdentifier(identifier);
+    if (!trimmedIdentifier) {
+      setIdentifierError('Masukkan email atau username.');
+      return;
+    }
+
+    const looksLikeEmail = isLikelyEmail(trimmedIdentifier);
+    const normalizedEmail = looksLikeEmail ? normalizeEmail(trimmedIdentifier) : '';
+    const requiresEmail = mode === 'reset' || tab === 'magic';
+
+    if ((requiresEmail || looksLikeEmail) && !isEmailValid(normalizedEmail)) {
+      setIdentifierError('Masukkan email yang valid.');
+      return;
+    }
+
+    if (!looksLikeEmail && mode !== 'reset' && tab === 'password' && !isUsernameValid(trimmedIdentifier)) {
+      setIdentifierError('Username hanya boleh huruf, angka, atau underscore (3-30 karakter).');
       return;
     }
 
@@ -245,10 +272,20 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
 
     try {
       if (tab === 'password') {
-        await signInWithPassword({ email: normalizedEmail, password });
-        persistEmailPreference(normalizedEmail, rememberEmail);
+        let emailForSignIn = normalizedEmail;
+        if (!looksLikeEmail) {
+          const resolvedEmail = await resolveEmailByUsername(trimmedIdentifier);
+          if (!resolvedEmail) {
+            throw new Error('Username atau email tidak ditemukan.');
+          }
+          emailForSignIn = normalizeEmail(resolvedEmail);
+        }
+
+        await signInWithPassword({ email: emailForSignIn, password });
+        const rememberedValue = looksLikeEmail ? emailForSignIn : trimmedIdentifier;
+        persistIdentifierPreference(rememberedValue, rememberIdentifier);
         setStatus({ type: 'success', message: 'Berhasil masuk. Mengalihkan…' });
-        onSuccess?.(normalizedEmail);
+        onSuccess?.(emailForSignIn);
       } else {
         if (magicState === 'sent' && cooldown > 0) {
           setStatus({
@@ -268,6 +305,11 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : GENERIC_ERROR;
+      if (tab === 'password' && !looksLikeEmail) {
+        if (message === 'Username atau email tidak ditemukan.' || message === 'Username tidak ditemukan.') {
+          setIdentifierError(message);
+        }
+      }
       setStatus({ type: 'error', message });
     } finally {
       setIsSubmitting(false);
@@ -284,9 +326,10 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
     resetFieldErrors();
     setStatus(null);
 
-    const normalizedEmail = normalizeEmail(email);
-    if (!isEmailValid(normalizedEmail)) {
-      setEmailError('Masukkan email yang valid.');
+    const trimmedIdentifier = normalizeIdentifier(identifier);
+    const normalizedEmail = normalizeEmail(trimmedIdentifier);
+    if (!isLikelyEmail(trimmedIdentifier) || !isEmailValid(normalizedEmail)) {
+      setIdentifierError('Masukkan email yang valid.');
       return;
     }
 
@@ -299,7 +342,7 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
     setIsOtpSubmitting(true);
     try {
       await verifyOtp({ email: normalizedEmail, token });
-      persistEmailPreference(normalizedEmail, rememberEmail);
+      persistIdentifierPreference(normalizedEmail, rememberIdentifier);
       setStatus({ type: 'success', message: 'Kode OTP terverifikasi. Mengalihkan…' });
       onSuccess?.(normalizedEmail);
     } catch (error) {
@@ -406,20 +449,26 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
 
         <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <TextInput
-            label="Email"
-            type="email"
-            name="email"
-            inputMode="email"
-            autoComplete="email"
-            placeholder="nama@email.com"
-            value={email}
-            onChange={(event: ChangeEvent<HTMLInputElement>) => setEmail(event.target.value)}
+            label="Email atau Username"
+            type="text"
+            name="identifier"
+            inputMode="text"
+            autoComplete="username"
+            placeholder="Email atau Username"
+            value={identifier}
+            onChange={(event: ChangeEvent<HTMLInputElement>) => setIdentifier(event.target.value)}
             onBlur={() => {
-              if (email && !isEmailValid(email)) {
-                setEmailError('Masukkan email yang valid.');
+              const trimmed = normalizeIdentifier(identifier);
+              if (!trimmed) return;
+              if (isLikelyEmail(trimmed)) {
+                if (!isEmailValid(trimmed)) {
+                  setIdentifierError('Masukkan email yang valid.');
+                }
+              } else if (!isUsernameValid(trimmed)) {
+                setIdentifierError('Username hanya boleh huruf, angka, atau underscore (3-30 karakter).');
               }
             }}
-            error={emailError}
+            error={identifierError}
             required
           />
 
@@ -446,6 +495,7 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
             type="submit"
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-70"
             disabled={isActionDisabled}
+            aria-busy={isSubmitting}
           >
             {isSubmitting ? (
               <span
@@ -464,8 +514,8 @@ export default function LoginCard({ defaultEmail = '', onSuccess }: LoginCardPro
                 id={rememberLabelId}
                 type="checkbox"
                 className="h-4 w-4 rounded border-border-subtle text-primary focus:ring-primary/45"
-                checked={rememberEmail}
-                onChange={(event) => setRememberEmail(event.target.checked)}
+                checked={rememberIdentifier}
+                onChange={(event) => setRememberIdentifier(event.target.checked)}
               />
               Ingat saya
             </label>
