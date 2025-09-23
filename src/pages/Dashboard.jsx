@@ -1,8 +1,7 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useState } from "react";
 import KpiCards from "../components/KpiCards";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
-import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
 import BudgetStatusHighlights from "../components/BudgetStatusHighlights";
 import SectionHeader from "../components/SectionHeader";
@@ -12,26 +11,68 @@ import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
+import BadgesPanel from "../components/BadgesPanel";
+import { evaluateBadges, fetchUserAchievements } from "../lib/achievements";
+import { getCurrentUserId } from "../lib/session";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
-  const streak = useMemo(() => {
-    const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
-    let count = 0;
-    const today = new Date();
-    while (
-      dates.has(
-        new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - count
-        ).toDateString()
-      )
-    ) {
-      count++;
+  const [achievements, setAchievements] = useState([]);
+
+  const loadAchievements = useCallback(async (signal) => {
+    try {
+      const userId = await getCurrentUserId().catch(() => null);
+      if (!userId) {
+        if (!signal?.cancelled) {
+          setAchievements([]);
+        }
+        return;
+      }
+      const list = await fetchUserAchievements(userId);
+      if (!signal?.cancelled) {
+        setAchievements(list);
+      }
+    } catch {
+      if (!signal?.cancelled) {
+        setAchievements([]);
+      }
     }
-    return count;
-  }, [txs]);
+  }, []);
+
+  useEffect(() => {
+    const state = { cancelled: false };
+    loadAchievements(state);
+    return () => {
+      state.cancelled = true;
+    };
+  }, [loadAchievements]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+    const state = { cancelled: false };
+    (async () => {
+      try {
+        const userId = await getCurrentUserId().catch(() => null);
+        if (!userId) return;
+        const todayKey = new Date().toISOString().slice(0, 10);
+        const storageKey = `hw:lastBadgeEval:${userId}`;
+        const lastRun = window.localStorage.getItem(storageKey);
+        if (lastRun === todayKey) {
+          return;
+        }
+        await evaluateBadges(userId);
+        window.localStorage.setItem(storageKey, todayKey);
+        await loadAchievements(state);
+      } catch {
+        // ignore failure so dashboard stays responsive
+      }
+    })();
+    return () => {
+      state.cancelled = true;
+    };
+  }, [loadAchievements]);
 
   const insights = useInsights(txs);
   const savingsTarget = stats?.savingsTarget || 1_000_000;
@@ -57,11 +98,7 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
 
       <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
         <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
-        <AchievementBadges
-          stats={stats}
-          streak={streak}
-          target={savingsTarget}
-        />
+        <BadgesPanel achievements={achievements} />
       </div>
 
       <QuickActions />

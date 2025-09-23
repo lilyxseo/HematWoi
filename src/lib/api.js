@@ -3,6 +3,7 @@ import { supabase } from "./supabase";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
+import { evaluateBadges } from "./achievements";
 
 function sanitizeIlike(value = "") {
   return String(value).replace(/[%_]/g, (m) => `\\${m}`);
@@ -575,7 +576,13 @@ export async function addTransaction(input = {}) {
   } catch (err) {
     console.error("Failed to sync related data for transaction", err);
   }
-  return mapTransactionRow(saved);
+  const mapped = mapTransactionRow(saved);
+  try {
+    await evaluateBadges(userId);
+  } catch {
+    // keep failures silent to avoid breaking the main flow
+  }
+  return mapped;
 }
 
 /** Update transaksi by id */
