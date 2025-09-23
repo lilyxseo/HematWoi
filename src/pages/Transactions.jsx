@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -21,12 +22,7 @@ import {
 import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
-import {
-  addTransaction,
-  listAccounts,
-  listMerchants,
-  updateTransaction,
-} from "../lib/api";
+import { addTransaction, listAccounts, listMerchants, updateTransaction } from "../lib/api";
 import {
   listTransactions,
   removeTransaction,
@@ -129,9 +125,9 @@ export default function Transactions() {
   } = useTransactionsQuery();
   const { addToast } = useToast();
   const online = useNetworkStatus();
+  const navigate = useNavigate();
   const [items, setItems] = useState(queryItems);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
-  const [addOpen, setAddOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [bulkEditMode, setBulkEditMode] = useState(null);
@@ -285,7 +281,7 @@ export default function Transactions() {
       const isTyping = tagName === "INPUT" || tagName === "TEXTAREA" || target?.isContentEditable;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "t") {
         event.preventDefault();
-        setAddOpen(true);
+        handleNavigateToAdd();
         return;
       }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "i") {
@@ -707,11 +703,9 @@ export default function Transactions() {
   const offlineMode = !online;
   const showSyncBadge = offlineMode || queueCount > 0;
 
-  const handleFormSuccess = useCallback(() => {
-    refresh();
-    setSelectedIds(new Set());
-    lastSelectedIdRef.current = null;
-  }, [refresh]);
+  const handleNavigateToAdd = useCallback(() => {
+    navigate("/transaction/add");
+  }, [navigate]);
 
   const tableStickyTop = `calc(var(--app-header-height, var(--app-topbar-h, 64px)) + ${filterBarHeight}px + 16px)`;
   const selectionToolbarOffset = tableStickyTop ? `calc(${tableStickyTop} + 12px)` : "16px";
@@ -738,7 +732,7 @@ export default function Transactions() {
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => setAddOpen(true)}
+              onClick={handleNavigateToAdd}
               className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
               aria-label="Tambah transaksi (Ctrl+T)"
             >
@@ -823,7 +817,7 @@ export default function Transactions() {
             onSearchChange={setSearchTerm}
             onFilterChange={setFilter}
             searchInputRef={searchInputRef}
-            onOpenAdd={() => setAddOpen(true)}
+            onOpenAdd={handleNavigateToAdd}
           />
         </div>
       </div>
@@ -889,7 +883,7 @@ export default function Transactions() {
         variant={tableVariant}
         onResetFilters={handleResetFilters}
         total={total}
-        onOpenAdd={() => setAddOpen(true)}
+        onOpenAdd={handleNavigateToAdd}
         deleteDisabled={deleteInProgress}
       />
 
@@ -949,26 +943,16 @@ export default function Transactions() {
         />
       )}
 
-      {addOpen && (
-        <TransactionFormDialog
-          open={addOpen}
-          onClose={() => setAddOpen(false)}
-          mode="create"
-          categories={categories}
-          onSuccess={handleFormSuccess}
-          addToast={addToast}
-        />
-      )}
-
       {editTarget && (
         <TransactionFormDialog
           open={Boolean(editTarget)}
           onClose={() => setEditTarget(null)}
-          mode="edit"
           initialData={editTarget}
           categories={categories}
           onSuccess={() => {
             refresh({ keepPage: true });
+            setSelectedIds(new Set());
+            lastSelectedIdRef.current = null;
             setEditTarget(null);
           }}
           addToast={addToast}
@@ -2191,8 +2175,8 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
-function TransactionFormDialog({ open, onClose, mode, initialData, categories, onSuccess, addToast }) {
-  const isEdit = mode === "edit" && initialData;
+function TransactionFormDialog({ open, onClose, initialData, categories, onSuccess, addToast }) {
+  const isEdit = Boolean(initialData);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
@@ -2214,9 +2198,6 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
       .then(([accountRows, merchantRows]) => {
         setAccounts(accountRows || []);
         setMerchants(merchantRows || []);
-        if (!isEdit && accountRows?.length && !accountId) {
-          setAccountId(accountRows[0].id);
-        }
         setLoading(false);
       })
       .catch((err) => {
@@ -2224,7 +2205,7 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
         addToast(err?.message || "Gagal memuat master data", "error");
         setLoading(false);
       });
-  }, [open, isEdit, accountId, addToast]);
+  }, [open, addToast]);
 
   useEffect(() => {
     if (!open || !initialData) return;
@@ -2254,6 +2235,10 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
       addToast("Kategori wajib dipilih", "error");
       return;
     }
+    if (!isEdit) {
+      addToast("Data transaksi tidak ditemukan", "error");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -2267,15 +2252,10 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
         merchant_id: merchantId || null,
         receipt_url: receiptUrl || null,
       };
-      if (isEdit) {
-        await updateTransaction(initialData.id, payload);
-        addToast("Transaksi diperbarui", "success");
-      } else {
-        await addTransaction(payload);
-        addToast("Transaksi ditambahkan", "success");
-      }
-      onSuccess();
-      onClose();
+      await updateTransaction(initialData.id, payload);
+      addToast("Transaksi diperbarui", "success");
+      onSuccess?.();
+      onClose?.();
     } catch (err) {
       console.error(err);
       addToast(err?.message || "Gagal menyimpan transaksi", "error");
@@ -2285,7 +2265,7 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={isEdit ? "Edit Transaksi" : "Tambah Transaksi"}>
+    <Modal open={open} onClose={onClose} title={isEdit ? "Edit Transaksi" : "Transaksi"}>
       {loading ? (
         <div className="flex items-center justify-center py-12 text-white/70">
           <Loader2 className="h-6 w-6 animate-spin" />
@@ -2417,7 +2397,7 @@ function TransactionFormDialog({ open, onClose, mode, initialData, categories, o
               disabled={saving}
               className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : isEdit ? "Simpan Perubahan" : "Tambah"}
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : isEdit ? "Simpan Perubahan" : "Simpan"}
             </button>
           </div>
         </form>
