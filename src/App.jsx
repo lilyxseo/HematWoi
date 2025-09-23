@@ -82,6 +82,24 @@ const BRAND_PRESETS = {
   rose: { h: 347, s: 77, l: 60 },
 };
 
+function DailyDigestOverlay({ transactions }) {
+  const dailyDigest = useDailyDigest({ transactions });
+
+  if (!dailyDigest.open || !dailyDigest.data || !dailyDigest.uid) {
+    return null;
+  }
+
+  return (
+    <DailyDigest
+      open={dailyDigest.open}
+      data={dailyDigest.data}
+      variant={dailyDigest.variant}
+      onClose={dailyDigest.close}
+      uid={dailyDigest.uid}
+    />
+  );
+}
+
 function normalizeBudgetRecord(budget, overrides = {}) {
   if (!budget) return null;
 
@@ -235,11 +253,6 @@ function AppShell({ prefs, setPrefs }) {
   const [sessionUser, setSessionUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
-  const dailyDigest = useDailyDigest({
-    transactions: data.txs,
-    userId: sessionUser?.id ?? null,
-    authReady: sessionChecked,
-  });
   const useCloud = mode === "online";
   const [catMeta, setCatMeta] = useState(() => {
     try {
@@ -965,13 +978,8 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <DailyDigest
-        open={dailyDigest.open}
-        data={dailyDigest.data}
-        variant={dailyDigest.variant}
-        onClose={dailyDigest.close}
-      />
       <BootGate>
+        <DailyDigestOverlay transactions={data.txs} />
         <Routes>
           <Route path="/auth" element={<AuthLogin />} />
           <Route element={<AuthGuard />}>

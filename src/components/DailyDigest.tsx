@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import type { DailyDigestData } from "../hooks/useDailyDigest";
@@ -7,6 +14,7 @@ import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
 interface DailyDigestProps {
   open: boolean;
   data: DailyDigestData | null;
+  uid: string | null;
   variant?: "modal" | "banner";
   onClose: () => void;
 }
@@ -40,7 +48,7 @@ function formatPercentage(direction: DailyDigestData["diffDirection"], value: nu
   return `${direction === "down" ? "-" : "+"}${rounded}%`;
 }
 
-export default function DailyDigest({ open, data, variant = "modal", onClose }: DailyDigestProps) {
+export default function DailyDigest({ open, data, uid, variant = "modal", onClose }: DailyDigestProps) {
   const [displayMode, setDisplayMode] = useState<"modal" | "banner">(variant);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const okButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -110,7 +118,16 @@ export default function DailyDigest({ open, data, variant = "modal", onClose }: 
     return data.topMerchants;
   }, [data]);
 
-  if (!open || !data) return null;
+  const handleOverlayPointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose],
+  );
+
+  if (!open || !data || !uid) return null;
 
   const content = (
     <div className="text-sm text-muted">
@@ -217,10 +234,12 @@ export default function DailyDigest({ open, data, variant = "modal", onClose }: 
       role="dialog"
       aria-modal="true"
       aria-labelledby="daily-digest-title"
+      onPointerDown={handleOverlayPointerDown}
     >
       <div
         ref={modalRef}
         className="mx-auto flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-surface-1/95 p-6 text-text shadow-2xl backdrop-blur md:h-auto md:max-h-[85vh] md:p-8"
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <button
           type="button"
