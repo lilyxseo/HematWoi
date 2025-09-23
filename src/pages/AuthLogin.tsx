@@ -15,8 +15,10 @@ export default function AuthLogin() {
   const location = useLocation();
   const [checking, setChecking] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
-  const [prefilledEmail] = useState(() => {
+  const [prefilledIdentifier] = useState(() => {
     try {
+      const stored = localStorage.getItem('hw:lastIdentifier');
+      if (stored) return stored;
       return localStorage.getItem('hw:lastEmail') ?? '';
     } catch {
       return '';
@@ -106,7 +108,7 @@ export default function AuthLogin() {
                 Masuk untuk menyinkronkan transaksi, meninjau anggaran, dan tetap on-track dengan tujuan finansialmu.
               </p>
             </div>
-            <ul className="w-full max-w-lg space-y-3 text-left text-sm text-text">
+            <ul className="hidden w-full max-w-lg space-y-3 text-left text-sm text-text md:block">
               {heroTips.map((tip) => (
                 <li key={tip} className="flex items-start gap-3 rounded-2xl border border-border-subtle/60 bg-surface px-4 py-3 shadow-sm">
                   <span className="mt-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
@@ -128,7 +130,7 @@ export default function AuthLogin() {
               {checking ? (
                 skeleton
               ) : (
-                <LoginCard defaultEmail={prefilledEmail} onSuccess={handleSuccess} />
+                <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
               )}
             </div>
           </section>

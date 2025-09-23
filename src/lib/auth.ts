@@ -41,9 +41,9 @@ function resolveRedirect(path = '/'): string | undefined {
 }
 
 const ERROR_CODE_MAP: Record<string, string> = {
-  invalid_credentials: 'Email atau kata sandi salah.',
-  invalid_grant: 'Email atau kata sandi salah.',
-  invalid_login_credentials: 'Email atau kata sandi salah.',
+  invalid_credentials: 'Email/username atau kata sandi salah.',
+  invalid_grant: 'Email/username atau kata sandi salah.',
+  invalid_login_credentials: 'Email/username atau kata sandi salah.',
   email_not_confirmed: 'Email belum terverifikasi. Periksa kotak masuk kamu.',
   user_not_found: 'Akun dengan email tersebut tidak ditemukan.',
   provider_disabled: 'Metode masuk ini sedang tidak tersedia.',
@@ -67,7 +67,7 @@ function translateMessage(code?: string | null, raw?: string | null): string | n
   if (normalized.includes('password') && normalized.includes('6'))
     return 'Kata sandi minimal 6 karakter.';
   if (normalized.includes('network') || normalized.includes('fetch') || normalized.includes('connection'))
-    return 'Periksa koneksi internet kamu.';
+    return 'Tidak bisa terhubung. Periksa internet kamu.';
   if (normalized.includes('otp') && normalized.includes('expired'))
     return 'Kode OTP sudah kedaluwarsa. Kirim ulang tautan.';
   if (normalized.includes('otp') && normalized.includes('invalid'))
@@ -97,6 +97,9 @@ function normalizeAuthError(error: unknown, fallback = DEFAULT_ERROR): Normalize
     code = err.code ?? undefined;
     const translated = translateMessage(err.code ?? undefined, err.message ?? undefined);
     message = translated ?? err.message ?? fallback;
+    if (typeof err.status === 'number' && (err.status === 400 || err.status === 401)) {
+      message = 'Email/username atau kata sandi salah.';
+    }
   }
 
   const normalizedError = new Error(message ?? fallback) as NormalizedError;
@@ -122,7 +125,34 @@ export async function signInWithPassword(credentials: SignInWithPasswordCredenti
     if (error) throw error;
     return data;
   } catch (error) {
-    throw normalizeAuthError(error, 'Email atau kata sandi salah.');
+    throw normalizeAuthError(error, 'Email/username atau kata sandi salah.');
+  }
+}
+
+export async function resolveEmailByUsername(username: string): Promise<string | null> {
+  const formatted = username.trim().toLowerCase();
+  if (!formatted) return null;
+  try {
+    const { data, error } = await supabase.rpc('resolve_email_by_username', { username: formatted });
+    if (error) throw error;
+    if (!data) return null;
+    if (typeof data === 'string') {
+      const normalized = data.trim();
+      return normalized ? normalized : null;
+    }
+    if (typeof data === 'object' && data !== null && 'email' in data) {
+      const value = (data as { email?: string | null }).email;
+      if (typeof value === 'string') {
+        const normalized = value.trim();
+        return normalized ? normalized : null;
+      }
+    }
+    return null;
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[HW][auth-login]', error);
+    }
+    throw error;
   }
 }
 
