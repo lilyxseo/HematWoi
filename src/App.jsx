@@ -11,6 +11,7 @@ import {
 import AppSidebar from "./layout/AppSidebar";
 import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
+import DailyDigest from "./components/DailyDigest";
 import SyncBanner from "./components/SyncBanner";
 import BootGate from "./guards/BootGate";
 
@@ -52,6 +53,7 @@ import MoneyTalkProvider, {
   useMoneyTalk,
 } from "./context/MoneyTalkContext.jsx";
 import { ModeProvider, useMode } from "./hooks/useMode";
+import useDailyDigest from "./hooks/useDailyDigest";
 import useLastRouteTracker from "./hooks/useLastRouteTracker";
 import { normalizeRoute, readLastRoute } from "./lib/lastRoute";
 
@@ -233,6 +235,11 @@ function AppShell({ prefs, setPrefs }) {
   const [sessionUser, setSessionUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
+  const dailyDigest = useDailyDigest({
+    transactions: data.txs,
+    userId: sessionUser?.id ?? null,
+    authReady: sessionChecked,
+  });
   const useCloud = mode === "online";
   const [catMeta, setCatMeta] = useState(() => {
     try {
@@ -958,6 +965,12 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
+      <DailyDigest
+        open={dailyDigest.open}
+        data={dailyDigest.data}
+        variant={dailyDigest.variant}
+        onClose={dailyDigest.close}
+      />
       <BootGate>
         <Routes>
           <Route path="/auth" element={<AuthLogin />} />
