@@ -983,6 +983,7 @@ function AppShell({ prefs, setPrefs }) {
                     }
                     txs={data.txs}
                     budgets={data.budgets}
+                    goals={data.goals}
                     budgetStatus={data.budgetStatus}
                     months={months}
                     challenges={challenges}
