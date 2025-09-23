@@ -1,25 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  generateQuotes,
-  highlightKeys,
-  loadQuoteEngine,
-} from '../lib/quoteEngine';
+import { generateQuotes, highlightKeys, loadQuoteEngine } from '../lib/quoteEngine';
 
 const GROUP_META = {
-  'over-budget': { label: 'Anggaran Jebol', emoji: '🚑' },
+  'over-budget': { label: 'Anggaran Jebol', emoji: '🚨' },
   'near-budget': { label: 'Hampir Batas', emoji: '🛑' },
   'weekly-repeats': { label: 'Belanja Berulang', emoji: '🧋' },
   'large-transaction': { label: 'Transaksi Besar', emoji: '💳' },
-  'low-balance': { label: 'Saldo Menipis', emoji: '⛽' },
-  subscription: { label: 'Langganan', emoji: '🔔' },
-  'net-cashflow': { label: 'Arus Kas', emoji: '📈' },
-  'weekly-summary': { label: 'Ringkasan Mingguan', emoji: '📝' },
-  streak: { label: 'Streak Pencatatan', emoji: '🔥' },
-  'no-spend': { label: 'No-Spend Day', emoji: '🙌' },
-  'quiet-category': { label: 'Kategori Sepi', emoji: '🌱' },
-  'round-up': { label: 'Sapu Receh', emoji: '💰' },
-  goal: { label: 'Goal Nabung', emoji: '🎯' },
-  fallback: { label: 'Santai Dulu', emoji: '☕' },
+  'net-cashflow': { label: 'Arus Kas Bulanan', emoji: '📈' },
+  'weekly-top': { label: 'Kategori Top Minggu Ini', emoji: '📝' },
+  fallback: { label: 'Santai Dulu', emoji: '☕️' },
 };
 
 const DEFAULT_META = { label: 'Quote Cerdas', emoji: '💡' };
@@ -64,7 +53,7 @@ function QuoteCard({ quote }) {
   );
 
   return (
-    <article className="min-w-[220px] shrink-0 rounded-3xl border border-border bg-surface shadow-sm p-4 md:min-w-0 md:p-5">
+    <article className="rounded-3xl border border-border bg-surface shadow-sm p-4 sm:p-5">
       <div className="mb-3 flex items-center gap-2 text-sm text-muted">
         <span aria-hidden className="text-xl leading-none">
           {meta.emoji}
@@ -78,7 +67,7 @@ function QuoteCard({ quote }) {
 
 function QuoteSkeleton() {
   return (
-    <div className="min-w-[220px] shrink-0 rounded-3xl border border-border bg-surface shadow-sm p-4 md:min-w-0 md:p-5">
+    <div className="rounded-3xl border border-border bg-surface shadow-sm p-4 sm:p-5">
       <div className="mb-3 h-4 w-24 animate-pulse rounded-full bg-border/70" />
       <div className="space-y-2">
         <div className="h-3.5 w-full animate-pulse rounded-full bg-border/70" />
@@ -106,9 +95,8 @@ export default function QuoteBoard() {
         setError(null);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         if (cancelled) return;
-        console.error('[HW][quotes] gagal memuat QuoteBoard', err);
         setSignals(null);
         setQuotes(generateQuotes(null));
         setError('Tidak bisa memuat data terbaru.');
@@ -126,7 +114,7 @@ export default function QuoteBoard() {
   const cards = useMemo(() => {
     if (loading) {
       return (
-        <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:pb-0 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {[0, 1, 2].map((key) => (
             <QuoteSkeleton key={key} />
           ))}
@@ -135,13 +123,13 @@ export default function QuoteBoard() {
     }
     if (!quotes.length) {
       return (
-        <div className="rounded-3xl border border-border bg-surface shadow-sm p-4 text-sm text-muted md:p-5">
+        <div className="rounded-3xl border border-border bg-surface shadow-sm p-4 text-sm text-muted sm:p-5">
           Belum ada aktivitas yang bisa dianalisis. Coba catat transaksi dulu, ya!
         </div>
       );
     }
     return (
-      <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-2 md:gap-4 md:overflow-visible md:pb-0 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {quotes.map((quote) => (
           <QuoteCard key={`${quote.group}-${quote.text}`} quote={quote} />
         ))}
@@ -157,9 +145,7 @@ export default function QuoteBoard() {
           <p className="text-sm text-muted">Insight singkat dari transaksi teranyar.</p>
         </div>
         <div className="flex items-center gap-3">
-          {error && !loading && (
-            <span className="text-xs text-amber-500">{error}</span>
-          )}
+          {error && !loading && <span className="text-xs text-amber-500">{error}</span>}
           <button
             type="button"
             onClick={handleRefresh}
