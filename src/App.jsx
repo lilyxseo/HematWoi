@@ -27,6 +27,7 @@ import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
+import AccountsPage from "./pages/AccountsPage";
 import AuthLogin from "./pages/AuthLogin";
 import ChallengesPage from "./pages/Challenges.jsx";
 import useChallenges from "./hooks/useChallenges.js";
@@ -1039,6 +1040,7 @@ function AppShell({ prefs, setPrefs }) {
                   path="categories"
                   element={<Categories cat={data.cat} onSave={saveCategories} />}
                 />
+                <Route path="accounts" element={<AccountsPage />} />
                 <Route
                   path="subscriptions"
                   element={<Subscriptions categories={data.cat} />}
