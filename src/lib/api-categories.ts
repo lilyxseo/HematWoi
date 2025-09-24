@@ -18,9 +18,243 @@ export interface CategoryRecord {
 }
 
 const DEFAULT_COLOR = "#64748B";
+const LOCAL_REPO_KEY = "hw:localRepo";
 
 let categorySortColumn: CategorySortColumn | undefined;
 let categoryCreatedColumn: CategoryCreatedColumn | undefined;
+let guestRepoMemory: GuestRepoSnapshot | null = null;
+
+interface GuestCategoryRow {
+  id: string;
+  name: string;
+  type: CategoryType;
+  color?: string;
+  sort_order?: number;
+  created_at?: string | null;
+  inserted_at?: string | null;
+  updated_at?: string | null;
+}
+
+type GuestRepoSnapshot = {
+  categories?: GuestCategoryRow[];
+  [key: string]: unknown;
+};
+
+function hasLocalStorage(): boolean {
+  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+}
+
+function readGuestRepo(): GuestRepoSnapshot {
+  if (guestRepoMemory) {
+    return { ...guestRepoMemory, categories: [...(guestRepoMemory.categories ?? [])] };
+  }
+
+  if (!hasLocalStorage()) {
+    guestRepoMemory = { categories: [] };
+    return { categories: [] };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_REPO_KEY);
+    if (!raw) {
+      guestRepoMemory = { categories: [] };
+      return { categories: [] };
+    }
+    const parsed = JSON.parse(raw) as GuestRepoSnapshot;
+    const categories = Array.isArray(parsed.categories) ? parsed.categories : [];
+    guestRepoMemory = { ...parsed, categories };
+    return { ...guestRepoMemory, categories: [...categories] };
+  } catch (error) {
+    console.error("[HW] Failed to read guest repo", error);
+    guestRepoMemory = { categories: [] };
+    return { categories: [] };
+  }
+}
+
+function writeGuestRepo(next: GuestRepoSnapshot): void {
+  guestRepoMemory = { ...next, categories: [...(next.categories ?? [])] };
+  if (!hasLocalStorage()) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(LOCAL_REPO_KEY, JSON.stringify(guestRepoMemory));
+  } catch (error) {
+    console.error("[HW] Failed to persist guest repo", error);
+  }
+}
+
+function getGuestCategories(): GuestCategoryRow[] {
+  const snapshot = readGuestRepo();
+  return Array.isArray(snapshot.categories) ? snapshot.categories : [];
+}
+
+function setGuestCategories(categories: GuestCategoryRow[]): void {
+  const snapshot = readGuestRepo();
+  writeGuestRepo({ ...snapshot, categories });
+}
+
+function guestNow(): string {
+  return new Date().toISOString();
+}
+
+function normalizeGuestRow(row: GuestCategoryRow, index: number): CategoryRecord {
+  return mapCategoryRow({
+    ...row,
+    sort_order: row.sort_order ?? index,
+    user_id: null,
+  } as Partial<CategoryRecord> & Record<string, unknown>);
+}
+
+function listGuestCategories(): CategoryRecord[] {
+  const rows = getGuestCategories();
+  return sortCategories(rows.map((row, index) => normalizeGuestRow(row, index)));
+}
+
+function assertGuestUniqueName(
+  type: CategoryType,
+  name: string,
+  excludeId?: string
+): void {
+  const rows = getGuestCategories();
+  const normalized = name.toLowerCase();
+  const conflict = rows.find((row) => {
+    if (excludeId && row.id === excludeId) return false;
+    return (
+      normalizeType(row.type) === type &&
+      normalizeName(row.name).toLowerCase() === normalized
+    );
+  });
+  if (conflict) {
+    throw new Error("Nama kategori sudah digunakan pada tipe ini.");
+  }
+}
+
+function createGuestCategory(input: {
+  name: string;
+  type: CategoryType;
+  color: string;
+}): CategoryRecord {
+  const type = normalizeType(input.type);
+  const name = normalizeName(input.name);
+  assertGuestUniqueName(type, name);
+  const color = normalizeColor(input.color);
+  const rows = getGuestCategories();
+  const nextOrder =
+    rows
+      .filter((row) => normalizeType(row.type) === type)
+      .reduce(
+        (max, row) => Math.max(max, normalizeSortOrder(row.sort_order, -1)),
+        -1
+      ) + 1;
+  const now = guestNow();
+  const record: GuestCategoryRow = {
+    id: globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2),
+    name,
+    type,
+    color,
+    sort_order: nextOrder,
+    created_at: now,
+    updated_at: now,
+  };
+  setGuestCategories([...rows, record]);
+  return normalizeGuestRow(record, rows.length);
+}
+
+function updateGuestCategory(
+  id: string,
+  patch: Partial<Pick<CategoryRecord, "name" | "color" | "sort_order">>
+): CategoryRecord {
+  const rows = getGuestCategories();
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) {
+    throw new Error("Kategori tidak ditemukan.");
+  }
+  const existing = rows[index];
+  const next = { ...existing } as GuestCategoryRow;
+  if (typeof patch.name === "string") {
+    const normalized = normalizeName(patch.name);
+    if (!normalized || normalized.length > 60) {
+      throw new Error("Nama kategori harus 1-60 karakter.");
+    }
+    assertGuestUniqueName(normalizeType(existing.type), normalized, id);
+    next.name = normalized;
+  }
+  if (typeof patch.color === "string") {
+    next.color = normalizeColor(patch.color);
+  }
+  if (typeof patch.sort_order === "number") {
+    next.sort_order = normalizeSortOrder(patch.sort_order);
+  }
+  next.updated_at = guestNow();
+  const updatedRows = [...rows];
+  updatedRows[index] = next;
+  setGuestCategories(updatedRows);
+  return normalizeGuestRow(next, index);
+}
+
+function reorderGuestCategoriesLocal(
+  type: CategoryType,
+  orderedIds: string[]
+): void {
+  if (!orderedIds.length) return;
+  const normalizedType = normalizeType(type);
+  const map = new Map(orderedIds.map((id, index) => [id, index]));
+  const rows = getGuestCategories();
+  const now = guestNow();
+  let changed = false;
+  const nextRows = rows.map((row, index) => {
+    if (normalizeType(row.type) !== normalizedType) {
+      return row;
+    }
+    if (!map.has(row.id)) {
+      return row;
+    }
+    const nextOrder = map.get(row.id)!;
+    if (normalizeSortOrder(row.sort_order, index) === nextOrder) {
+      return row;
+    }
+    changed = true;
+    return {
+      ...row,
+      sort_order: nextOrder,
+      updated_at: now,
+    };
+  });
+  if (changed) {
+    setGuestCategories(nextRows);
+  }
+}
+
+function deleteGuestCategory(id: string): void {
+  const rows = getGuestCategories();
+  const index = rows.findIndex((row) => row.id === id);
+  if (index < 0) {
+    return;
+  }
+  const removed = rows[index];
+  const remaining = rows.filter((row) => row.id !== id);
+  const normalizedType = normalizeType(removed.type);
+  const now = guestNow();
+  const typed = remaining
+    .filter((row) => normalizeType(row.type) === normalizedType)
+    .sort(
+      (a, b) =>
+        normalizeSortOrder(a.sort_order) - normalizeSortOrder(b.sort_order)
+    );
+  const orderMap = new Map(typed.map((row, order) => [row.id, order]));
+  const resequenced = remaining.map((row) => {
+    if (normalizeType(row.type) !== normalizedType) {
+      return row;
+    }
+    const nextOrder = orderMap.get(row.id);
+    return {
+      ...row,
+      sort_order: typeof nextOrder === "number" ? nextOrder : 0,
+      updated_at: now,
+    };
+  });
+  setGuestCategories(resequenced);
+}
 
 function getCategorySortColumn(): CategorySortColumn {
   return categorySortColumn ?? "sort_order";
@@ -185,8 +419,18 @@ function sortCategories(rows: CategoryRecord[]): CategoryRecord[] {
 }
 
 export async function listCategories(signal?: AbortSignal): Promise<CategoryRecord[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  let userId: string | null = null;
+  try {
+    userId = await getCurrentUserId();
+  } catch (error) {
+    logDevError("getCurrentUserId", error);
+  }
+
+  if (!userId) {
+    const rows = listGuestCategories();
+    await dbCache.bulkSet("categories", rows);
+    return rows;
+  }
 
   try {
     const sortColumn = getCategorySortColumn();
@@ -262,15 +506,25 @@ export async function createCategory(input: {
   type: CategoryType;
   color: string;
 }): Promise<CategoryRecord> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
-
   const name = normalizeName(input.name);
   if (!name || name.length > 60) {
     throw new Error("Nama kategori harus 1-60 karakter.");
   }
   const type = normalizeType(input.type);
   const color = normalizeColor(input.color);
+
+  let userId: string | null = null;
+  try {
+    userId = await getCurrentUserId();
+  } catch (error) {
+    logDevError("getCurrentUserId", error);
+  }
+
+  if (!userId) {
+    const record = createGuestCategory({ name, type, color });
+    await dbCache.set("categories", record);
+    return record;
+  }
 
   try {
     await assertUniqueName(userId, type, name);
@@ -329,8 +583,18 @@ export async function updateCategory(
   id: string,
   patch: Partial<Pick<CategoryRecord, "name" | "color" | "sort_order">>
 ): Promise<CategoryRecord> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
+  let userId: string | null = null;
+  try {
+    userId = await getCurrentUserId();
+  } catch (error) {
+    logDevError("getCurrentUserId", error);
+  }
+
+  if (!userId) {
+    const record = updateGuestCategory(id, patch);
+    await dbCache.set("categories", record);
+    return record;
+  }
 
   const updates: Record<string, unknown> = {};
   const nextName =
@@ -402,8 +666,19 @@ export async function reorderCategories(
   type: CategoryType,
   orderedIds: string[]
 ): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
+  let userId: string | null = null;
+  try {
+    userId = await getCurrentUserId();
+  } catch (error) {
+    logDevError("getCurrentUserId", error);
+  }
+
+  if (!userId) {
+    reorderGuestCategoriesLocal(type, orderedIds);
+    const rows = listGuestCategories();
+    await dbCache.bulkSet("categories", rows);
+    return;
+  }
   if (!Array.isArray(orderedIds) || !orderedIds.length) return;
 
   const normalizedType = normalizeType(type);
@@ -440,8 +715,20 @@ export async function reorderCategories(
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
+  let userId: string | null = null;
+  try {
+    userId = await getCurrentUserId();
+  } catch (error) {
+    logDevError("getCurrentUserId", error);
+  }
+
+  if (!userId) {
+    deleteGuestCategory(id);
+    const rows = listGuestCategories();
+    await dbCache.bulkSet("categories", rows);
+    await dbCache.remove("categories", id);
+    return;
+  }
 
   try {
     const { error } = await supabase
