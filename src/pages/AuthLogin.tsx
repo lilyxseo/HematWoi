@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
+import { supabase } from '../lib/supabase';
+import { syncGuestToCloud } from '../lib/sync';
 
 const heroTips = [
   'Pantau cash flow harian tanpa ribet.',
@@ -22,6 +24,23 @@ export default function AuthLogin() {
       return '';
     }
   });
+  const syncGuestData = useCallback(async (userId?: string | null) => {
+    if (!userId) return;
+    try {
+      await syncGuestToCloud(supabase, userId);
+    } catch (error) {
+      console.error('[AuthLogin] Gagal memindahkan data tamu ke cloud', error);
+    }
+  }, []);
+  const handleContinueAsGuest = useCallback(() => {
+    try {
+      localStorage.setItem('hw:connectionMode', 'local');
+      localStorage.setItem('hw:mode', 'local');
+    } catch {
+      /* ignore */
+    }
+    navigate('/', { replace: true });
+  }, [navigate]);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,6 +70,7 @@ export default function AuthLogin() {
         } catch {
           /* ignore */
         }
+        void syncGuestData(session.user?.id ?? null);
         if (location.pathname === '/auth') {
           navigate('/', { replace: true });
         }
@@ -61,7 +81,7 @@ export default function AuthLogin() {
       isMounted = false;
       listener?.subscription?.unsubscribe();
     };
-  }, [location.pathname, navigate]);
+  }, [location.pathname, navigate, syncGuestData]);
 
   const skeleton = useMemo(
     () => (
@@ -80,15 +100,24 @@ export default function AuthLogin() {
     []
   );
 
-  const handleSuccess = () => {
+  const handleSuccess = useCallback(async () => {
     try {
       localStorage.setItem('hw:connectionMode', 'online');
       localStorage.setItem('hw:mode', 'online');
     } catch {
       /* ignore */
     }
+    try {
+      const { data } = await supabase.auth.getSession();
+      const uid = data.session?.user?.id ?? null;
+      if (uid) {
+        void syncGuestData(uid);
+      }
+    } catch (error) {
+      console.error('[AuthLogin] Gagal membaca sesi setelah login', error);
+    }
     navigate('/', { replace: true });
-  };
+  }, [navigate, syncGuestData]);
 
   return (
     <ErrorBoundary>
@@ -130,6 +159,23 @@ export default function AuthLogin() {
               ) : (
                 <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
               )}
+              <div className="rounded-3xl border border-border-subtle bg-surface px-5 py-4 shadow-sm">
+                <div className="space-y-3 text-center">
+                  <div>
+                    <p className="text-sm font-semibold text-text">Gunakan tanpa akun</p>
+                    <p className="mt-1 text-xs text-muted">
+                      Data kamu akan disimpan di perangkat ini dan otomatis dipindah ke cloud saat kamu masuk nanti.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleContinueAsGuest}
+                    className="btn btn-secondary w-full"
+                  >
+                    Lanjut sebagai tamu
+                  </button>
+                </div>
+              </div>
             </div>
           </section>
         </div>

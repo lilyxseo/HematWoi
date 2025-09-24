@@ -1,16 +1,37 @@
 import { useEffect, useState } from 'react';
+import { Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Navigate, useLocation, Outlet } from 'react-router-dom';
 
 export default function AuthGuard({ children }) {
-  const [session, setSession] = useState();
-  const location = useLocation();
+  const [ready, setReady] = useState(false);
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) => setSession(sess));
-    return () => sub.subscription.unsubscribe();
+    let active = true;
+
+    supabase.auth
+      .getSession()
+      .catch(() => null)
+      .finally(() => {
+        if (active) {
+          setReady(true);
+        }
+      });
+
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      if (active) {
+        setReady(true);
+      }
+    });
+
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
-  if (session === undefined) return null;
-  if (!session) return <Navigate to="/auth" state={{ from: location }} replace />;
+
+  if (!ready) {
+    return null;
+  }
+
   return children ? children : <Outlet />;
 }
