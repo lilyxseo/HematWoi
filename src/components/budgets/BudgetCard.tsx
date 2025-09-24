@@ -7,6 +7,7 @@ interface BudgetCardProps {
   onEdit: (field: 'planned' | 'rollover_in', value: number) => void;
   onRule: () => void;
   onDelete: () => void;
+  rulesEnabled?: boolean;
 }
 
 function statusLabel(status: BudgetViewModel['status']) {
@@ -26,7 +27,14 @@ function toNumber(value: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-export default function BudgetCard({ budget, onOpenDetail, onEdit, onRule, onDelete }: BudgetCardProps) {
+export default function BudgetCard({
+  budget,
+  onOpenDetail,
+  onEdit,
+  onRule,
+  onDelete,
+  rulesEnabled = true,
+}: BudgetCardProps) {
   const badge = statusLabel(budget.status);
 
   return (
@@ -99,8 +107,18 @@ export default function BudgetCard({ budget, onOpenDetail, onEdit, onRule, onDel
       <div className="grid grid-cols-3 gap-2 text-xs">
         <button
           type="button"
-          className="rounded-2xl border border-border px-3 py-2"
-          onClick={onRule}
+          className={`rounded-2xl border border-border px-3 py-2 ${
+            rulesEnabled ? '' : 'cursor-not-allowed opacity-60'
+          }`}
+          onClick={() => {
+            if (!rulesEnabled) return;
+            onRule();
+          }}
+          disabled={!rulesEnabled}
+          aria-disabled={!rulesEnabled}
+          title={
+            rulesEnabled ? undefined : 'Aturan anggaran belum tersedia di workspace ini'
+          }
         >
           Aturan
         </button>

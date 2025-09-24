@@ -14,6 +14,7 @@ interface BudgetsTableProps {
   onManageRule: (budget: BudgetViewModel) => void;
   onComputeRollover: () => void;
   onApplyRollover: () => void;
+  rulesEnabled?: boolean;
 }
 
 function getProgressColor(status: BudgetViewModel['status']) {
@@ -42,6 +43,7 @@ export default function BudgetsTable({
   onManageRule,
   onComputeRollover,
   onApplyRollover,
+  rulesEnabled = true,
 }: BudgetsTableProps) {
   const handleCommit = (
     budget: BudgetViewModel,
@@ -205,8 +207,20 @@ export default function BudgetsTable({
                     <div className="flex flex-wrap gap-2 text-xs">
                       <button
                         type="button"
-                        className="rounded-xl border border-border px-3 py-1"
-                        onClick={() => onManageRule(budget)}
+                        className={`rounded-xl border border-border px-3 py-1 ${
+                          rulesEnabled ? '' : 'cursor-not-allowed opacity-60'
+                        }`}
+                        onClick={() => {
+                          if (!rulesEnabled) return;
+                          onManageRule(budget);
+                        }}
+                        disabled={!rulesEnabled}
+                        aria-disabled={!rulesEnabled}
+                        title={
+                          rulesEnabled
+                            ? undefined
+                            : 'Aturan anggaran belum tersedia di workspace ini'
+                        }
                       >
                         Atur Aturan
                       </button>

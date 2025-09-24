@@ -41,6 +41,7 @@ import {
   updateTransaction as apiUpdate,
   upsertCategories,
   listCategories as apiListCategories,
+  listBudgetsByMonth,
 } from "./lib/api";
 import { removeTransaction as apiDelete } from "./lib/api-transactions";
 
@@ -566,20 +567,54 @@ function AppShell({ prefs, setPrefs }) {
   const fetchBudgetsCloud = useCallback(async () => {
     try {
       if (!sessionUser) return;
-      const { data: rows, error } = await supabase
+
+      const { data: periodRows, error: periodError } = await supabase
         .from("budgets")
-        .select("id, month, amount_planned, carryover_enabled, notes, category_id")
+        .select("period_month")
         .eq("user_id", sessionUser.id)
-        .order("month", { ascending: false });
-      if (error) throw error;
+        .order("period_month", { ascending: false });
+      if (periodError) throw periodError;
+
+      const months = [];
+      const seen = new Set();
+      (periodRows ?? []).forEach((row) => {
+        const raw = row?.period_month;
+        if (!raw) return;
+        const iso =
+          typeof raw === "string"
+            ? raw
+            : new Date(raw).toISOString().slice(0, 10);
+        if (!iso || seen.has(iso)) return;
+        seen.add(iso);
+        months.push(iso);
+      });
+
+      if (!months.length) {
+        setData((d) => ({ ...d, budgets: [] }));
+        return;
+      }
+
+      const MAX_MONTHS = 24;
+      const limitedMonths = months.slice(0, MAX_MONTHS);
+      const grouped = await Promise.all(
+        limitedMonths.map((monthIso) => listBudgetsByMonth(sessionUser.id, monthIso))
+      );
+      const combined = grouped.flat();
+
+      if (!combined.length) {
+        setData((d) => ({ ...d, budgets: [] }));
+        return;
+      }
+
       const categoriesById = {};
       const missingIds = [];
-      (rows || []).forEach((row) => {
-        if (!row?.category_id) return;
+      combined.forEach((row) => {
+        if (!row.category_id) return;
         if (!categoryNameById(row.category_id)) {
           missingIds.push(row.category_id);
         }
       });
+
       const uniqueMissing = Array.from(new Set(missingIds));
       if (uniqueMissing.length) {
         const { data: catRows, error: catError } = await supabase
@@ -587,14 +622,14 @@ function AppShell({ prefs, setPrefs }) {
           .select("id, name")
           .eq("user_id", sessionUser.id)
           .in("id", uniqueMissing);
-        if (!catError && Array.isArray(catRows)) {
-          catRows.forEach((item) => {
-            if (item?.id && item?.name) {
-              categoriesById[item.id] = item.name;
-            }
-          });
-        }
+        if (catError) throw catError;
+        (catRows ?? []).forEach((item) => {
+          if (item?.id && item?.name) {
+            categoriesById[item.id] = item.name;
+          }
+        });
       }
+
       if (Object.keys(categoriesById).length) {
         setCatMap((prev) => {
           const next = { ...prev };
@@ -604,18 +639,47 @@ function AppShell({ prefs, setPrefs }) {
           return next;
         });
       }
-      const mapped = (rows || [])
+
+      const mapped = combined
         .map((row) => {
-          const categoryLabel =
-            (row?.category_id &&
-              (categoryNameById(row.category_id) ||
-                categoriesById[row.category_id])) ||
-            row?.category ||
-            row?.category_name ||
-            "Tanpa kategori";
-          return normalizeBudgetRecord(row, { category: categoryLabel });
+          const label = row.category_id
+            ? categoryNameById(row.category_id) ||
+              categoriesById[row.category_id] ||
+              "Tanpa kategori"
+            : row.name || "Envelope";
+          return normalizeBudgetRecord(
+            {
+              id: row.id,
+              category_id: row.category_id,
+              month: row.period_month,
+              amount_planned: row.amount_planned,
+              carryover_enabled: row.carry_rule ? row.carry_rule !== "none" : false,
+              notes: row.note ?? null,
+              carry_rule: row.carry_rule ?? "carry-positive",
+              rollover_in: row.rollover_in,
+              rollover_out: row.rollover_out,
+              period_month: row.period_month,
+              name: row.name ?? label,
+            },
+            {
+              category: label,
+              amount_planned: row.amount_planned,
+              month: row.period_month,
+              current_spent: row.current_spent,
+            }
+          );
         })
         .filter(Boolean);
+
+      mapped.sort((a, b) => {
+        const monthA = (a.period_month ?? a.month ?? "").toString();
+        const monthB = (b.period_month ?? b.month ?? "").toString();
+        if (monthA !== monthB) return monthB.localeCompare(monthA);
+        const nameA = (a.category || a.name || "").toLowerCase();
+        const nameB = (b.category || b.name || "").toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+
       setData((d) => ({ ...d, budgets: mapped }));
     } catch (e) {
       console.error("fetch budgets failed", e);

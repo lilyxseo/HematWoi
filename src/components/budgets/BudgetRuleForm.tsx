@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useToast } from '../../context/ToastContext';
-import { deleteRule, upsertRule } from '../../lib/api-budgets';
+import { deleteRule, upsertRule, BudgetRulesUnavailableError } from '../../lib/api-budgets';
 import type { BudgetRuleRecord } from '../../lib/api-budgets';
 import type { BudgetViewModel } from './types';
 
@@ -40,7 +40,11 @@ export default function BudgetRuleForm({ budget, rule, onSaved }: BudgetRuleForm
       addToast('Aturan anggaran tersimpan', 'success');
       onSaved();
     } catch (error) {
-      addToast(`Gagal menyimpan aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      if (error instanceof BudgetRulesUnavailableError) {
+        addToast(error.message, 'warning');
+      } else {
+        addToast(`Gagal menyimpan aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      }
     } finally {
       setLoading(false);
     }
@@ -54,7 +58,11 @@ export default function BudgetRuleForm({ budget, rule, onSaved }: BudgetRuleForm
       addToast('Aturan dihapus', 'success');
       onSaved();
     } catch (error) {
-      addToast(`Gagal menghapus aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      if (error instanceof BudgetRulesUnavailableError) {
+        addToast(error.message, 'warning');
+      } else {
+        addToast(`Gagal menghapus aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      }
     } finally {
       setLoading(false);
     }

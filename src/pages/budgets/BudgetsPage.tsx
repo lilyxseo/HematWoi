@@ -19,6 +19,7 @@ import {
   type CarryRule,
   type BudgetSummary,
   upsertBudget,
+  BudgetRulesUnavailableError,
 } from '../../lib/api-budgets';
 import BudgetsSummary from '../../components/budgets/BudgetsSummary';
 import BudgetsFilterBar, {
@@ -131,6 +132,7 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
   const [summary, setSummary] = useState<BudgetSummary>(DEFAULT_SUMMARY);
   const [loading, setLoading] = useState(false);
   const [rules, setRules] = useState<BudgetRuleRecord[]>([]);
+  const [rulesSupported, setRulesSupported] = useState(true);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [selected, setSelected] = useState<BudgetViewModel | null>(null);
   const [ruleEditing, setRuleEditing] = useState<BudgetRuleRecord | null>(null);
@@ -186,17 +188,31 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
   }, [addToast]);
 
   const refreshRules = async () => {
+    if (!rulesSupported) return;
     try {
       const rows = await listRules();
       setRules(rows);
+      setRulesSupported(true);
     } catch (error) {
-      addToast(`Gagal memuat aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      if (error instanceof BudgetRulesUnavailableError) {
+        setRules([]);
+        setRulesSupported(false);
+      } else {
+        addToast(`Gagal memuat aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      }
     }
   };
 
   useEffect(() => {
     refreshRules();
   }, []);
+
+  useEffect(() => {
+    if (rulesSupported) return;
+    setRuleBudget(null);
+    setRuleEditing(null);
+    setAutoAllocateOpen(false);
+  }, [rulesSupported]);
 
   useEffect(() => {
     let cancelled = false;
@@ -531,8 +547,20 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
             </button>
             <button
               type="button"
-              className="h-11 rounded-2xl border border-border px-4 text-sm font-medium"
-              onClick={() => setAutoAllocateOpen(true)}
+              className={`h-11 rounded-2xl border border-border px-4 text-sm font-medium ${
+                rulesSupported ? '' : 'cursor-not-allowed opacity-60'
+              }`}
+              onClick={() => {
+                if (!rulesSupported) return;
+                setAutoAllocateOpen(true);
+              }}
+              disabled={!rulesSupported}
+              aria-disabled={!rulesSupported}
+              title={
+                rulesSupported
+                  ? undefined
+                  : 'Template otomatis membutuhkan tabel budget_rules di Supabase'
+              }
             >
               Template
             </button>
@@ -566,6 +594,13 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
               onChange={handleImportCsv}
             />
           </div>
+          {!rulesSupported && (
+            <p className="text-xs text-amber-500">
+              Aturan anggaran dan Template otomatis belum tersedia. Tambahkan tabel
+              <code className="mx-1 rounded bg-surface-2 px-1">budget_rules</code> di Supabase untuk
+              mengaktifkan fitur ini.
+            </p>
+          )}
         </div>
         <div className="rounded-2xl border border-border bg-surface-1 p-4 text-sm text-muted">
           {tip}
@@ -615,12 +650,14 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
             onOpenDetail={setSelected}
             onDelete={handleDelete}
             onManageRule={(budget) => {
+              if (!rulesSupported) return;
               const target = rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
               setRuleBudget(budget);
               setRuleEditing(target);
             }}
             onComputeRollover={handleComputeRollover}
             onApplyRollover={handleApplyRollover}
+            rulesEnabled={rulesSupported}
           />
         </div>
         <div className="space-y-4 lg:hidden">
@@ -633,11 +670,13 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
                 handleInlineUpdate(budget.id, { [field]: value } as Partial<BudgetRecord>)
               }
               onRule={() => {
+                if (!rulesSupported) return;
                 const target = rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
                 setRuleBudget(budget);
                 setRuleEditing(target);
               }}
               onDelete={() => handleDelete(budget.id)}
+              rulesEnabled={rulesSupported}
             />
           ))}
         </div>
@@ -666,26 +705,28 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
         />
       </Modal>
 
-      <Modal
-        open={!!ruleBudget}
-        title={ruleEditing?.id ? 'Edit Aturan' : 'Buat Aturan'}
-        onClose={() => {
-          setRuleEditing(null);
-          setRuleBudget(null);
-        }}
-      >
-        {ruleBudget && (
-          <BudgetRuleForm
-            budget={ruleBudget}
-            rule={ruleEditing ?? undefined}
-            onSaved={() => {
-              setRuleEditing(null);
-              setRuleBudget(null);
-              refreshRules();
-            }}
-          />
-        )}
-      </Modal>
+      {rulesSupported && (
+        <Modal
+          open={!!ruleBudget}
+          title={ruleEditing?.id ? 'Edit Aturan' : 'Buat Aturan'}
+          onClose={() => {
+            setRuleEditing(null);
+            setRuleBudget(null);
+          }}
+        >
+          {ruleBudget && (
+            <BudgetRuleForm
+              budget={ruleBudget}
+              rule={ruleEditing ?? undefined}
+              onSaved={() => {
+                setRuleEditing(null);
+                setRuleBudget(null);
+                refreshRules();
+              }}
+            />
+          )}
+        </Modal>
+      )}
 
       <AutoAllocateDialog
         open={autoAllocateOpen}
@@ -697,6 +738,7 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
           const rows = await listBudgets({ period, withActivity: true, sort: filters.sort });
           setBudgets(rows);
         }}
+        rulesEnabled={rulesSupported}
       />
     </Page>
   );

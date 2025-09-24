@@ -130,6 +130,25 @@ function ensureAuth(userId: string | null | undefined) {
   }
 }
 
+export class BudgetRulesUnavailableError extends Error {
+  constructor(message = 'Fitur aturan anggaran belum tersedia') {
+    super(message);
+    this.name = 'BudgetRulesUnavailableError';
+  }
+}
+
+function isMissingBudgetRulesTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string | null; message?: string | null };
+  const code = err.code ?? '';
+  if (code === '42P01' || code === 'PGRST114' || code === 'PGRST116' || code === 'PGRST201') {
+    return true;
+  }
+  const message = (err.message ?? '').toLowerCase();
+  if (!message) return false;
+  return message.includes('budget_rules') && (message.includes('does not exist') || message.includes('not found'));
+}
+
 function mapBudgetRow(row: Record<string, any>): BudgetRecord {
   return {
     id: String(row.id),
@@ -563,9 +582,17 @@ export async function listRules(): Promise<BudgetRuleRecord[]> {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-    if (error) throw error;
+    if (error) {
+      if (isMissingBudgetRulesTable(error)) {
+        throw new BudgetRulesUnavailableError();
+      }
+      throw error;
+    }
     return (data ?? []).map(mapRuleRow);
   } catch (error) {
+    if (error instanceof BudgetRulesUnavailableError) {
+      throw error;
+    }
     logDev(error, 'listRules');
     if (error instanceof Error && error.message) {
       throw new Error(`Gagal memuat aturan: ${error.message}`);
@@ -592,10 +619,18 @@ export async function upsertRule(rule: Partial<BudgetRuleRecord>): Promise<Budge
       .upsert(payload)
       .select('*')
       .maybeSingle();
-    if (error) throw error;
+    if (error) {
+      if (isMissingBudgetRulesTable(error)) {
+        throw new BudgetRulesUnavailableError();
+      }
+      throw error;
+    }
     if (!data) throw new Error('Aturan tidak tersedia');
     return mapRuleRow(data);
   } catch (error) {
+    if (error instanceof BudgetRulesUnavailableError) {
+      throw error;
+    }
     logDev(error, 'upsertRule');
     if (error instanceof Error && error.message) {
       throw new Error(`Gagal menyimpan aturan: ${error.message}`);
@@ -613,8 +648,16 @@ export async function deleteRule(id: UUID): Promise<void> {
       .delete()
       .eq('user_id', userId)
       .eq('id', id);
-    if (error) throw error;
+    if (error) {
+      if (isMissingBudgetRulesTable(error)) {
+        throw new BudgetRulesUnavailableError();
+      }
+      throw error;
+    }
   } catch (error) {
+    if (error instanceof BudgetRulesUnavailableError) {
+      throw error;
+    }
     logDev(error, 'deleteRule');
     if (error instanceof Error && error.message) {
       throw new Error(`Gagal menghapus aturan: ${error.message}`);
