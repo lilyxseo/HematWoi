@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -22,8 +22,15 @@ import CurrencyInput from "../components/ui/CurrencyInput";
 import Input from "../components/ui/Input";
 import Select from "../components/ui/Select";
 import Textarea from "../components/ui/Textarea";
-import { listAccounts, listCategories, listMerchants, saveMerchant } from "../lib/api";
+import {
+  createAccount,
+  listAccounts,
+  listCategories,
+  listMerchants,
+  saveMerchant,
+} from "../lib/api";
 import { useToast } from "../context/ToastContext";
+import AccountFormModal from "../components/accounts/AccountFormModal";
 
 const TEMPLATE_KEY = "hw:txTemplates";
 
@@ -60,6 +67,12 @@ function nextId() {
   return globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
 }
 
+function toErrorMessage(error, fallback) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
+}
+
 export default function TransactionAdd({ onAdd }) {
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -78,6 +91,91 @@ export default function TransactionAdd({ onAdd }) {
   const [merchantId, setMerchantId] = useState("");
   const [merchantName, setMerchantName] = useState("");
   const [merchantInput, setMerchantInput] = useState("");
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [accountModalTarget, setAccountModalTarget] = useState("from");
+  const [accountFormError, setAccountFormError] = useState(null);
+  const [accountSubmitting, setAccountSubmitting] = useState(false);
+
+  const refreshAccounts = useCallback(
+    async ({ selectId, target } = {}) => {
+      try {
+        const rows = await listAccounts();
+        setAccounts(rows);
+
+        if (selectId) {
+          const selected = rows.find((acc) => acc.id === selectId);
+          if (selected) {
+            if (target === "to") {
+              setToAccountId(selected.id);
+              setToAccountName(selected.name || "");
+            } else {
+              setAccountId(selected.id);
+              setAccountName(selected.name || "");
+            }
+          }
+        } else {
+          if (accountId) {
+            const current = rows.find((acc) => acc.id === accountId);
+            if (current) {
+              setAccountName(current.name || "");
+            } else {
+              setAccountId("");
+              setAccountName("");
+            }
+          } else if (rows.length > 0) {
+            setAccountId(rows[0].id);
+            setAccountName(rows[0].name || "");
+          }
+
+          if (toAccountId) {
+            const destination = rows.find((acc) => acc.id === toAccountId);
+            if (destination) {
+              setToAccountName(destination.name || "");
+            } else {
+              setToAccountId("");
+              setToAccountName("");
+            }
+          }
+        }
+
+        return rows;
+      } catch (err) {
+        console.error("Gagal memuat akun", err);
+        throw err;
+      }
+    },
+    [accountId, toAccountId]
+  );
+
+  const handleOpenAccountModal = useCallback((target) => {
+    setAccountModalTarget(target);
+    setAccountFormError(null);
+    setAccountModalOpen(true);
+  }, []);
+
+  const handleCloseAccountModal = useCallback(() => {
+    setAccountModalOpen(false);
+    setAccountFormError(null);
+  }, []);
+
+  const handleCreateAccount = useCallback(
+    async (values) => {
+      setAccountSubmitting(true);
+      setAccountFormError(null);
+      try {
+        const account = await createAccount(values);
+        await refreshAccounts({ selectId: account.id, target: accountModalTarget });
+        setAccountModalOpen(false);
+        addToast("Akun ditambahkan", "success");
+      } catch (error) {
+        console.error("Gagal membuat akun", error);
+        setAccountFormError(toErrorMessage(error, "Gagal menyimpan akun. Coba lagi."));
+      } finally {
+        setAccountSubmitting(false);
+      }
+    },
+    [accountModalTarget, addToast, refreshAccounts]
+  );
   const [merchantSaving, setMerchantSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
@@ -154,11 +252,24 @@ export default function TransactionAdd({ onAdd }) {
     localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates));
   }, [templates]);
 
-  const accountOptions = useMemo(() => accounts.map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" })), [accounts]);
+  const baseAccountOptions = useMemo(
+    () => accounts.map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" })),
+    [accounts],
+  );
+
+  const accountOptions = useMemo(
+    () => [...baseAccountOptions, { value: "__create__", label: "+ Tambah Akun…" }],
+    [baseAccountOptions],
+  );
 
   const toAccountOptions = useMemo(
-    () => accountOptions.filter((opt) => opt.value !== accountId),
-    [accountOptions, accountId],
+    () => baseAccountOptions.filter((opt) => opt.value !== accountId),
+    [baseAccountOptions, accountId],
+  );
+
+  const toAccountSelectOptions = useMemo(
+    () => [...toAccountOptions, { value: "__create__", label: "+ Tambah Akun…" }],
+    [toAccountOptions],
   );
 
   const categoryOptions = useMemo(() => {
@@ -446,6 +557,10 @@ export default function TransactionAdd({ onAdd }) {
                 value={accountId}
                 onChange={(e) => {
                   const val = e.target.value;
+                  if (val === "__create__") {
+                    handleOpenAccountModal("from");
+                    return;
+                  }
                   setAccountId(val);
                   const selected = accounts.find((acc) => acc.id === val);
                   setAccountName(selected?.name || "");
@@ -459,11 +574,15 @@ export default function TransactionAdd({ onAdd }) {
                   value={toAccountId}
                   onChange={(e) => {
                     const val = e.target.value;
+                    if (val === "__create__") {
+                      handleOpenAccountModal("to");
+                      return;
+                    }
                     setToAccountId(val);
                     const selected = accounts.find((acc) => acc.id === val);
                     setToAccountName(selected?.name || "");
                   }}
-                  options={toAccountOptions}
+                  options={toAccountSelectOptions}
                   placeholder="Pilih akun"
                 />
               )}
@@ -660,6 +779,14 @@ export default function TransactionAdd({ onAdd }) {
           </CardFooter>
         </Card>
       </Section>
+      <AccountFormModal
+        open={accountModalOpen}
+        onClose={handleCloseAccountModal}
+        onSubmit={handleCreateAccount}
+        submitting={accountSubmitting}
+        errorMessage={accountFormError}
+        title="Tambah Akun"
+      />
     </Page>
   );
 }
