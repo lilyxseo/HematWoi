@@ -19,16 +19,16 @@ import {
   createSubscription,
   deleteSubscription,
   getMonthlyForecast,
-  listSubscriptions,
-  listUpcoming,
   markPaid,
   skipOnce,
   updateSubscription,
   type SubscriptionChargeRecord,
   type SubscriptionRecord,
 } from '../lib/api-subscriptions';
+import { listSubscriptions as fetchSubscriptionsList, listUpcomingCharges as fetchUpcomingCharges } from '../lib/api';
 import { exportSubscriptionsCsv } from '../lib/subscriptions-csv';
 import { supabase } from '../lib/supabase';
+import { getCurrentUserId } from '../lib/session';
 
 const DEFAULT_FILTERS: SubscriptionFilterState = {
   q: '',
@@ -84,13 +84,116 @@ function computeDueSoon(charges: SubscriptionChargeRecord[]) {
     );
 }
 
+function compareNullableDates(
+  a: string | null | undefined,
+  b: string | null | undefined,
+  ascending: boolean,
+) {
+  if (!a && !b) return 0;
+  if (!a) return ascending ? -1 : 1;
+  if (!b) return ascending ? 1 : -1;
+  if (a === b) return 0;
+  return ascending ? (a < b ? -1 : 1) : (a > b ? -1 : 1);
+}
+
+function applySubscriptionFilters(
+  list: SubscriptionRecord[],
+  filters: SubscriptionFilterState,
+): SubscriptionRecord[] {
+  const searchTerm = filters.q?.trim().toLowerCase() ?? '';
+  const statusFilter = filters.status && filters.status !== 'all' ? filters.status : null;
+  const categoryFilter =
+    filters.categoryId && filters.categoryId !== 'all' ? filters.categoryId : null;
+  const accountFilter = filters.accountId && filters.accountId !== 'all' ? filters.accountId : null;
+  const unitFilter = filters.unit && filters.unit !== 'all' ? filters.unit : null;
+  const dueFrom = filters.dueFrom ?? null;
+  const dueTo = filters.dueTo ?? null;
+  const createdFrom = filters.createdFrom ?? null;
+  const createdTo = filters.createdTo ?? null;
+
+  const filtered = list.filter((item) => {
+    if (statusFilter && item.status !== statusFilter) {
+      return false;
+    }
+    if (categoryFilter && item.category_id !== categoryFilter) {
+      return false;
+    }
+    if (accountFilter && item.account_id !== accountFilter) {
+      return false;
+    }
+    if (unitFilter && item.interval_unit !== unitFilter) {
+      return false;
+    }
+    if (dueFrom) {
+      if (!item.next_due_date || item.next_due_date < dueFrom) {
+        return false;
+      }
+    }
+    if (dueTo) {
+      if (!item.next_due_date || item.next_due_date > dueTo) {
+        return false;
+      }
+    }
+    const createdDate = item.created_at ? item.created_at.slice(0, 10) : null;
+    if (createdFrom && (!createdDate || createdDate < createdFrom)) {
+      return false;
+    }
+    if (createdTo && (!createdDate || createdDate > createdTo)) {
+      return false;
+    }
+    if (searchTerm) {
+      const nameMatch = item.name?.toLowerCase().includes(searchTerm);
+      const vendorMatch = item.vendor?.toLowerCase().includes(searchTerm);
+      if (!nameMatch && !vendorMatch) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const sortKey = filters.sort ?? 'due-asc';
+  const sorted = [...filtered];
+
+  sorted.sort((a, b) => {
+    switch (sortKey) {
+      case 'name-asc':
+        return (a.name ?? '').localeCompare(b.name ?? '');
+      case 'name-desc':
+        return (b.name ?? '').localeCompare(a.name ?? '');
+      case 'amount-asc':
+        return (Number(a.amount) || 0) - (Number(b.amount) || 0);
+      case 'amount-desc':
+        return (Number(b.amount) || 0) - (Number(a.amount) || 0);
+      case 'created-asc': {
+        const aDate = a.created_at ?? '';
+        const bDate = b.created_at ?? '';
+        return aDate.localeCompare(bDate);
+      }
+      case 'created-desc': {
+        const aDate = a.created_at ?? '';
+        const bDate = b.created_at ?? '';
+        return bDate.localeCompare(aDate);
+      }
+      case 'due-desc':
+        return compareNullableDates(a.next_due_date, b.next_due_date, false);
+      case 'due-asc':
+      default:
+        return compareNullableDates(a.next_due_date, b.next_due_date, true);
+    }
+  });
+
+  return sorted;
+}
+
 export default function SubscriptionsPage() {
   const { addToast } = useToast();
   const [filters, setFilters] = useState<SubscriptionFilterState>(DEFAULT_FILTERS);
   const [categories, setCategories] = useState<FilterOption[]>([]);
   const [accounts, setAccounts] = useState<FilterOption[]>([]);
-  const [subscriptions, setSubscriptions] = useState<SubscriptionRecord[]>([]);
+  const [allSubscriptions, setAllSubscriptions] = useState<SubscriptionRecord[]>([]);
+  const [subscriptionsError, setSubscriptionsError] = useState<string | null>(null);
   const [upcomingRaw, setUpcomingRaw] = useState<SubscriptionChargeRecord[]>([]);
+  const [upcomingError, setUpcomingError] = useState<string | null>(null);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [loadingUpcoming, setLoadingUpcoming] = useState(false);
   const [summary, setSummary] = useState(emptySummary);
@@ -136,55 +239,73 @@ export default function SubscriptionsPage() {
     };
   }, [addToast]);
 
+  const loadLists = useCallback(async () => {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      throw new Error('Gagal memuat langganan. Pengguna tidak ditemukan.');
+    }
+    const [subsRes, chargesRes] = await Promise.all([
+      fetchSubscriptionsList(userId),
+      fetchUpcomingCharges(userId),
+    ]);
+    return { subsRes, chargesRes };
+  }, []);
+
   useEffect(() => {
     let active = true;
+    setLoadingSubs(true);
+    setLoadingUpcoming(true);
+    setSubscriptionsError(null);
+    setUpcomingError(null);
 
-    async function fetchSubscriptions() {
-      setLoadingSubs(true);
-      try {
-        const data = await listSubscriptions({
-          q: filters.q,
-          status: filters.status === 'all' ? undefined : filters.status,
-          categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
-          accountId: filters.accountId === 'all' ? undefined : filters.accountId,
-          unit: filters.unit === 'all' ? undefined : filters.unit,
-          dueFrom: filters.dueFrom ?? undefined,
-          dueTo: filters.dueTo ?? undefined,
-          createdFrom: filters.createdFrom ?? undefined,
-          createdTo: filters.createdTo ?? undefined,
-          sort: filters.sort,
-        });
+    loadLists()
+      .then(({ subsRes, chargesRes }) => {
         if (!active) return;
-        setSubscriptions(Array.isArray(data) ? data : []);
-      } catch (error) {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : 'Gagal memuat/simpan. Cek koneksi atau ulangi.';
-        addToast(message, 'danger');
-      } finally {
-        if (active) setLoadingSubs(false);
-      }
-    }
 
-    async function fetchUpcoming() {
-      setLoadingUpcoming(true);
-      try {
-        const dueFrom = filters.dueFrom ?? new Date().toISOString().slice(0, 10);
-        const params = {
-          dueFrom,
-          dueTo: filters.dueTo ?? undefined,
-          includePaid: false,
-        } as const;
-        const data = await listUpcoming(params);
+        if (subsRes.error) {
+          setAllSubscriptions([]);
+          setSubscriptionsError('Gagal memuat langganan. Coba lagi.');
+          addToast('Gagal memuat langganan. Coba lagi.', 'danger');
+        } else {
+          setSubscriptionsError(null);
+          setAllSubscriptions((subsRes.data ?? []) as SubscriptionRecord[]);
+        }
+
+        if (chargesRes.error) {
+          setUpcomingRaw([]);
+          setUpcomingError('Gagal memuat tagihan. Coba lagi.');
+          addToast('Gagal memuat tagihan. Coba lagi.', 'danger');
+        } else {
+          setUpcomingError(null);
+          setUpcomingRaw((chargesRes.data ?? []) as SubscriptionChargeRecord[]);
+        }
+      })
+      .catch((error) => {
         if (!active) return;
-        setUpcomingRaw(Array.isArray(data) ? data : []);
-      } catch (error) {
-        if (!active) return;
-        const message = error instanceof Error ? error.message : 'Gagal memuat tagihan. Cek koneksi atau ulangi.';
+        setAllSubscriptions([]);
+        setUpcomingRaw([]);
+        setSubscriptionsError('Gagal memuat langganan. Coba lagi.');
+        setUpcomingError('Gagal memuat tagihan. Coba lagi.');
+        const message =
+          error instanceof Error && error.message
+            ? error.message
+            : 'Gagal memuat langganan. Coba lagi.';
         addToast(message, 'danger');
-      } finally {
-        if (active) setLoadingUpcoming(false);
-      }
-    }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingSubs(false);
+          setLoadingUpcoming(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [loadLists, addToast]);
+
+  useEffect(() => {
+    let active = true;
 
     async function fetchSummary() {
       setSummaryLoading(true);
@@ -206,14 +327,17 @@ export default function SubscriptionsPage() {
       }
     }
 
-    fetchSubscriptions();
-    fetchUpcoming();
     fetchSummary();
 
     return () => {
       active = false;
     };
   }, [filters, addToast]);
+
+  const filteredSubscriptions = useMemo(
+    () => applySubscriptionFilters(allSubscriptions, filters),
+    [allSubscriptions, filters],
+  );
 
   const upcoming = useMemo(() => {
     if (!Array.isArray(upcomingRaw)) return [];
@@ -224,6 +348,12 @@ export default function SubscriptionsPage() {
       if (filters.categoryId !== 'all' && subscription.category_id !== filters.categoryId) return false;
       if (filters.accountId !== 'all' && subscription.account_id !== filters.accountId) return false;
       if (filters.unit !== 'all' && subscription.interval_unit !== filters.unit) return false;
+      if (filters.dueFrom && charge.due_date < filters.dueFrom) {
+        return false;
+      }
+      if (filters.dueTo && charge.due_date > filters.dueTo) {
+        return false;
+      }
       if (filters.q) {
         const term = filters.q.toLowerCase();
         const matchName = subscription.name?.toLowerCase().includes(term);
@@ -244,11 +374,11 @@ export default function SubscriptionsPage() {
     const dueSoon = computeDueSoon(upcoming);
     setSummary((prev) => ({
       ...prev,
-      totalActive: subscriptions.filter((sub) => sub.status === 'active').length,
+      totalActive: filteredSubscriptions.filter((sub) => sub.status === 'active').length,
       dueSoonCount: dueSoon.count,
       dueSoonAmount: dueSoon.amount,
     }));
-  }, [subscriptions, upcoming]);
+  }, [filteredSubscriptions, upcoming]);
 
   const handleFilterChange = useCallback((next: Partial<SubscriptionFilterState>) => {
     setFilters((prev) => ({ ...prev, ...next }));
@@ -264,14 +394,14 @@ export default function SubscriptionsPage() {
   }, []);
 
   const handleEdit = useCallback((id: string) => {
-    const target = subscriptions.find((item) => item.id === id) ?? null;
+    const target = filteredSubscriptions.find((item) => item.id === id) ?? null;
     if (!target) {
       addToast('Langganan tidak ditemukan', 'danger');
       return;
     }
     setEditing(target);
     setFormOpen(true);
-  }, [subscriptions, addToast]);
+  }, [filteredSubscriptions, addToast]);
 
   const closeForm = useCallback(() => {
     setFormOpen(false);
@@ -280,32 +410,25 @@ export default function SubscriptionsPage() {
 
   const refreshData = useCallback(async () => {
     try {
-      const [subs, charges] = await Promise.all([
-        listSubscriptions({
-          q: filters.q,
-          status: filters.status === 'all' ? undefined : filters.status,
-          categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
-          accountId: filters.accountId === 'all' ? undefined : filters.accountId,
-          unit: filters.unit === 'all' ? undefined : filters.unit,
-          dueFrom: filters.dueFrom ?? undefined,
-          dueTo: filters.dueTo ?? undefined,
-          createdFrom: filters.createdFrom ?? undefined,
-          createdTo: filters.createdTo ?? undefined,
-          sort: filters.sort,
-        }),
-        listUpcoming({
-          dueFrom: filters.dueFrom ?? new Date().toISOString().slice(0, 10),
-          dueTo: filters.dueTo ?? undefined,
-          includePaid: false,
-        }),
-      ]);
-      setSubscriptions(Array.isArray(subs) ? subs : []);
-      setUpcomingRaw(Array.isArray(charges) ? charges : []);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Gagal memuat ulang data. Cek koneksi atau ulangi.';
-      addToast(message, 'danger');
+      const { subsRes, chargesRes } = await loadLists();
+      if (subsRes.error) {
+        setAllSubscriptions([]);
+        setSubscriptionsError('Gagal memuat langganan. Coba lagi.');
+        throw subsRes.error;
+      }
+      if (chargesRes.error) {
+        setUpcomingRaw([]);
+        setUpcomingError('Gagal memuat tagihan. Coba lagi.');
+        throw chargesRes.error;
+      }
+      setSubscriptionsError(null);
+      setUpcomingError(null);
+      setAllSubscriptions((subsRes.data ?? []) as SubscriptionRecord[]);
+      setUpcomingRaw((chargesRes.data ?? []) as SubscriptionChargeRecord[]);
+    } catch (_error) {
+      addToast('Gagal memuat ulang data. Cek koneksi atau ulangi.', 'danger');
     }
-  }, [filters, addToast]);
+  }, [loadLists, addToast]);
 
   const handleFormSubmit = useCallback(
     async (payload: SubscriptionFormSubmitPayload) => {
@@ -499,7 +622,7 @@ export default function SubscriptionsPage() {
   const handleExport = useCallback(async () => {
     try {
       await exportSubscriptionsCsv({
-        subscriptions,
+        subscriptions: filteredSubscriptions,
         charges: upcoming,
         filters,
       });
@@ -508,7 +631,7 @@ export default function SubscriptionsPage() {
       const message = error instanceof Error ? error.message : 'Gagal mengekspor CSV. Cek koneksi atau ulangi.';
       addToast(message, 'danger');
     }
-  }, [subscriptions, upcoming, filters, addToast]);
+  }, [filteredSubscriptions, upcoming, filters, addToast]);
 
   useEffect(() => {
     if (import.meta.env?.VITE_ENABLE_REALTIME !== 'true') {
@@ -582,14 +705,19 @@ export default function SubscriptionsPage() {
                 Memuat langganan…
               </div>
             )}
-            {!loadingSubs && Array.isArray(subscriptions) && subscriptions.length === 0 && (
+            {!loadingSubs && subscriptionsError && (
+              <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-6 text-center text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                {subscriptionsError}
+              </div>
+            )}
+            {!loadingSubs && !subscriptionsError && filteredSubscriptions.length === 0 && (
               <div className="rounded-3xl border border-border-subtle bg-surface px-4 py-6 text-center text-sm text-muted">
                 Belum ada langganan. Tambah langganan pertama Anda.
               </div>
             )}
-            {!loadingSubs && Array.isArray(subscriptions) && subscriptions.length > 0 && (
+            {!loadingSubs && !subscriptionsError && filteredSubscriptions.length > 0 && (
               <div className="grid gap-4">
-                {subscriptions.map((subscription) => (
+                {filteredSubscriptions.map((subscription) => (
                   <SubscriptionCard
                     key={subscription.id}
                     subscription={subscription}
@@ -650,6 +778,11 @@ export default function SubscriptionsPage() {
                     Batalkan
                   </button>
                 </div>
+              </div>
+            )}
+            {!loadingUpcoming && upcomingError && (
+              <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-4 text-center text-sm text-rose-600 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                {upcomingError}
               </div>
             )}
             <UpcomingTable

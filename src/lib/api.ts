@@ -180,3 +180,139 @@ export async function deleteAccount(id: string, userId?: string): Promise<void> 
     throw new Error(toUserMessage('Gagal menghapus akun', error));
   }
 }
+
+export async function listSubscriptions(uid: string) {
+  return supabase
+    .from('subscriptions')
+    .select(
+      `
+      id,
+      user_id,
+      name,
+      vendor,
+      category_id,
+      account_id,
+      amount,
+      currency,
+      interval_unit,
+      interval_count,
+      anchor_date,
+      anchor_day_of_week,
+      start_date,
+      end_date,
+      trial_end,
+      status,
+      reminder_days,
+      tags,
+      color,
+      icon,
+      notes,
+      created_at,
+      updated_at,
+      next_due_date,
+      last_charge_at,
+      total_charges,
+      category:category_id (id, name, color),
+      account:account_id (id, name, type)
+    `,
+    )
+    .eq('user_id', uid)
+    .order('next_due_date', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true });
+}
+
+export async function listUpcomingCharges(uid: string) {
+  return supabase
+    .from('subscription_charges')
+    .select(
+      `
+      id,
+      user_id,
+      subscription_id,
+      due_date,
+      amount,
+      currency,
+      status,
+      paid_at,
+      transaction_id,
+      notes,
+      created_at,
+      updated_at,
+      subscription:subscription_id (
+        id,
+        name,
+        vendor,
+        category_id,
+        account_id,
+        amount,
+        currency,
+        interval_unit,
+        interval_count,
+        status,
+        color,
+        icon
+      )
+    `,
+    )
+    .eq('user_id', uid)
+    .in('status', ['due', 'overdue'])
+    .order('due_date', { ascending: true })
+    .order('created_at', { ascending: true });
+}
+
+type SimpleInterval = 'weekly' | 'monthly' | 'yearly';
+
+function resolveInterval(interval?: SimpleInterval) {
+  switch (interval) {
+    case 'weekly':
+      return { unit: 'week', count: 1 } as const;
+    case 'yearly':
+      return { unit: 'year', count: 1 } as const;
+    case 'monthly':
+    default:
+      return { unit: 'month', count: 1 } as const;
+  }
+}
+
+export async function createSubscription(
+  uid: string,
+  payload: {
+    name: string;
+    amount: number;
+    interval?: SimpleInterval;
+    interval_unit?: 'day' | 'week' | 'month' | 'year';
+    interval_count?: number;
+    next_due_date: string;
+    status?: string;
+    [key: string]: unknown;
+  },
+) {
+  const intervalInfo = resolveInterval(payload.interval);
+  const insertPayload: Record<string, unknown> = {
+    ...payload,
+    user_id: uid,
+    name: payload.name,
+    amount: payload.amount,
+    next_due_date: payload.next_due_date,
+    status: payload.status ?? 'active',
+    interval_unit: payload.interval_unit ?? intervalInfo.unit,
+    interval_count: payload.interval_count ?? intervalInfo.count,
+  };
+
+  delete insertPayload.interval;
+
+  return supabase.from('subscriptions').insert([insertPayload]).select().single();
+}
+
+export async function updateSubscription(id: string, patch: Record<string, any>) {
+  return supabase
+    .from('subscriptions')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single();
+}
+
+export async function deleteSubscription(id: string) {
+  return supabase.from('subscriptions').delete().eq('id', id);
+}
