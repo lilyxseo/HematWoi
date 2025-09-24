@@ -124,14 +124,14 @@ export default function AuthLogin() {
       <main className="min-h-screen bg-surface-alt px-6 py-12 text-text transition-colors sm:py-16">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 lg:flex-row lg:items-center lg:justify-between">
           <section className="flex flex-1 flex-col items-center gap-6 text-center lg:items-start lg:text-left">
-            <div className="inline-flex items-center rounded-full border border-border-subtle bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+            <div className="hidden items-center rounded-full border border-border-subtle bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted md:inline-flex">
               Mode Online
             </div>
             <div className="space-y-4">
               <h1 className="text-3xl font-semibold text-text sm:text-4xl">
                 Selamat datang kembali di HematWoi
               </h1>
-              <p className="max-w-lg text-base text-muted">
+              <p className="hidden max-w-lg text-base text-muted md:block">
                 Masuk untuk menyinkronkan transaksi, meninjau anggaran, dan tetap on-track dengan tujuan finansialmu.
               </p>
             </div>
