@@ -126,6 +126,7 @@ export default function BootGate({ children }: BootGateProps) {
 
   useEffect(() => {
     let active = true;
+    const initialPath = getCurrentPath();
     (async () => {
       try {
         const { data } = await supabase.auth.getSession();
@@ -134,9 +135,14 @@ export default function BootGate({ children }: BootGateProps) {
         const uid = session?.user?.id ?? null;
         currentUserIdRef.current = uid;
         const { target, invalid } = resolveStoredRoute(uid);
-        const restored = attemptRestore(target);
-        if (!restored && invalid) {
-          attemptFallbackToRoot();
+        const currentPath = getCurrentPath();
+        const userNavigated = !samePath(currentPath, initialPath);
+        let restored = false;
+        if (!userNavigated) {
+          restored = attemptRestore(target);
+          if (!restored && invalid) {
+            attemptFallbackToRoot();
+          }
         }
         restoredOnceRef.current = Boolean(session?.user);
       } catch {
@@ -152,7 +158,7 @@ export default function BootGate({ children }: BootGateProps) {
     return () => {
       active = false;
     };
-  }, [attemptFallbackToRoot, attemptRestore, resolveStoredRoute]);
+  }, [attemptFallbackToRoot, attemptRestore, getCurrentPath, resolveStoredRoute]);
 
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(
