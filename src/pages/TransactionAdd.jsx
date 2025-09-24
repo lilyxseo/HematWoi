@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -21,11 +21,14 @@ import Segmented from "../components/ui/Segmented";
 import CurrencyInput from "../components/ui/CurrencyInput";
 import Input from "../components/ui/Input";
 import Select from "../components/ui/Select";
+import AccountFormModal from "../components/accounts/AccountFormModal";
 import Textarea from "../components/ui/Textarea";
-import { listAccounts, listCategories, listMerchants, saveMerchant } from "../lib/api";
+import { listCategories, listMerchants, saveMerchant } from "../lib/api";
+import { createAccount, listAccounts as fetchAccounts } from "../lib/api.ts";
 import { useToast } from "../context/ToastContext";
 
 const TEMPLATE_KEY = "hw:txTemplates";
+const ADD_ACCOUNT_OPTION_VALUE = "__add_account__";
 
 function templateStorage(initial = []) {
   try {
@@ -89,6 +92,10 @@ export default function TransactionAdd({ onAdd }) {
   const [merchants, setMerchants] = useState([]);
   const [templates, setTemplates] = useState(() => templateStorage([]));
   const [templateName, setTemplateName] = useState("");
+  const [accountModalOpen, setAccountModalOpen] = useState(false);
+  const [accountModalBusy, setAccountModalBusy] = useState(false);
+  const [accountModalError, setAccountModalError] = useState("");
+  const [accountModalTarget, setAccountModalTarget] = useState("source");
   const offline = typeof navigator !== "undefined" && !navigator.onLine;
 
   useEffect(() => {
@@ -97,7 +104,7 @@ export default function TransactionAdd({ onAdd }) {
       try {
         const [catRows, accountRows, merchantRows] = await Promise.all([
           listCategories(),
-          listAccounts(),
+          fetchAccounts(),
           listMerchants(),
         ]);
         setCategories(catRows);
@@ -154,12 +161,83 @@ export default function TransactionAdd({ onAdd }) {
     localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates));
   }, [templates]);
 
-  const accountOptions = useMemo(() => accounts.map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" })), [accounts]);
+  const openAccountModal = useCallback((target = "source") => {
+    setAccountModalTarget(target);
+    setAccountModalError("");
+    setAccountModalOpen(true);
+  }, []);
 
-  const toAccountOptions = useMemo(
-    () => accountOptions.filter((opt) => opt.value !== accountId),
-    [accountOptions, accountId],
-  );
+  const closeAccountModal = useCallback(() => {
+    setAccountModalOpen(false);
+    setAccountModalError("");
+    setAccountModalTarget("source");
+  }, []);
+
+  const guardedCloseAccountModal = useCallback(() => {
+    if (!accountModalBusy) {
+      closeAccountModal();
+    }
+  }, [accountModalBusy, closeAccountModal]);
+
+  const handleAccountCreate = async (values) => {
+    setAccountModalBusy(true);
+    setAccountModalError("");
+    try {
+      const created = await createAccount(values);
+      addToast("Akun ditambahkan", "success");
+
+      try {
+        const refreshed = await fetchAccounts();
+        setAccounts(refreshed);
+      } catch {
+        const merged = [...accounts.filter((acc) => acc.id !== created.id), created];
+        merged.sort((a, b) => (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }));
+        setAccounts(merged);
+      }
+
+      const createdName = created.name || "";
+      if (accountModalTarget === "destination") {
+        setToAccountId(created.id);
+        setToAccountName(createdName);
+        if (created.id === accountId) {
+          setAccountName(createdName);
+        }
+      } else {
+        setAccountId(created.id);
+        setAccountName(createdName);
+        if (type === "transfer" && created.id === toAccountId) {
+          setToAccountId("");
+          setToAccountName("");
+        }
+      }
+
+      closeAccountModal();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : typeof err === "string"
+            ? err
+            : "Gagal menambah akun. Silakan coba lagi.";
+      setAccountModalError(message);
+    } finally {
+      setAccountModalBusy(false);
+    }
+  };
+
+  const accountOptions = useMemo(() => {
+    const options = accounts.map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" }));
+    options.push({ value: ADD_ACCOUNT_OPTION_VALUE, label: "+ Tambah Akun…" });
+    return options;
+  }, [accounts]);
+
+  const toAccountOptions = useMemo(() => {
+    const options = accounts
+      .filter((acc) => acc.id !== accountId)
+      .map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" }));
+    options.push({ value: ADD_ACCOUNT_OPTION_VALUE, label: "+ Tambah Akun…" });
+    return options;
+  }, [accounts, accountId]);
 
   const categoryOptions = useMemo(() => {
     return (categoriesByType[type] || []).map((cat) => ({ value: cat.id, label: cat.name }));
@@ -446,6 +524,10 @@ export default function TransactionAdd({ onAdd }) {
                 value={accountId}
                 onChange={(e) => {
                   const val = e.target.value;
+                  if (val === ADD_ACCOUNT_OPTION_VALUE) {
+                    openAccountModal("source");
+                    return;
+                  }
                   setAccountId(val);
                   const selected = accounts.find((acc) => acc.id === val);
                   setAccountName(selected?.name || "");
@@ -459,6 +541,10 @@ export default function TransactionAdd({ onAdd }) {
                   value={toAccountId}
                   onChange={(e) => {
                     const val = e.target.value;
+                    if (val === ADD_ACCOUNT_OPTION_VALUE) {
+                      openAccountModal("destination");
+                      return;
+                    }
                     setToAccountId(val);
                     const selected = accounts.find((acc) => acc.id === val);
                     setToAccountName(selected?.name || "");
@@ -660,6 +746,14 @@ export default function TransactionAdd({ onAdd }) {
           </CardFooter>
         </Card>
       </Section>
+      <AccountFormModal
+        open={accountModalOpen}
+        mode="create"
+        busy={accountModalBusy}
+        error={accountModalError || null}
+        onClose={guardedCloseAccountModal}
+        onSubmit={handleAccountCreate}
+      />
     </Page>
   );
 }
