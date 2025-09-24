@@ -31,7 +31,10 @@ type RouteDraft = RouteAccessRecord;
 
 type UserDraft = UserProfileRecord;
 
-type SidebarItemDraft = Omit<SidebarItemRecord, 'icon_name'> & { icon_name: string };
+type SidebarItemDraft = Omit<SidebarItemRecord, 'icon_name' | 'category'> & {
+  icon_name: string;
+  category: string;
+};
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'access', label: 'Access Control' },
@@ -154,6 +157,7 @@ export default function AdminPage() {
     access_level: 'public' as SidebarItemRecord['access_level'],
     is_enabled: true,
     icon_name: '',
+    category: '',
   });
 
   const [users, setUsers] = useState<UserProfileRecord[]>([]);
@@ -373,7 +377,11 @@ export default function AdminPage() {
 
   const handleStartSidebarEdit = (item: SidebarItemRecord) => {
     setEditingSidebarId(item.id);
-    setSidebarDraft({ ...item, icon_name: (item.icon_name ?? '').toLowerCase() });
+    setSidebarDraft({
+      ...item,
+      icon_name: (item.icon_name ?? '').toLowerCase(),
+      category: (item.category ?? '').trim(),
+    });
   };
 
   const handleCancelSidebarEdit = () => {
@@ -420,6 +428,7 @@ export default function AdminPage() {
     }
 
     const iconValue = sidebarDraft.icon_name.trim().toLowerCase();
+    const categoryValue = sidebarDraft.category.trim();
 
     setSidebarSavingId(editingSidebarId);
     try {
@@ -429,6 +438,7 @@ export default function AdminPage() {
         access_level: sidebarDraft.access_level,
         is_enabled: sidebarDraft.is_enabled,
         icon_name: iconValue ? iconValue : null,
+        category: categoryValue ? categoryValue : null,
       });
 
       setSidebarItems((prev) =>
@@ -519,6 +529,7 @@ export default function AdminPage() {
     const nextPosition =
       sidebarItems.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
     const iconValue = newSidebarItem.icon_name.trim().toLowerCase();
+    const categoryValue = newSidebarItem.category.trim();
 
     setSidebarSavingId('new');
     try {
@@ -529,6 +540,7 @@ export default function AdminPage() {
         is_enabled: newSidebarItem.is_enabled,
         icon_name: iconValue ? iconValue : null,
         position: nextPosition,
+        category: categoryValue ? categoryValue : null,
       });
       await loadSidebarMenu(false);
       setNewSidebarItem({
@@ -537,6 +549,7 @@ export default function AdminPage() {
         access_level: 'public',
         is_enabled: true,
         icon_name: '',
+        category: '',
       });
       addToast('Menu sidebar berhasil ditambahkan', 'success');
     } catch (error) {
@@ -832,7 +845,7 @@ export default function AdminPage() {
             </p>
           </div>
           {sidebarLoading ? (
-            <SkeletonTable rows={4} columns={7} />
+            <SkeletonTable rows={4} columns={8} />
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full table-fixed text-left text-sm">
@@ -841,6 +854,7 @@ export default function AdminPage() {
                     <th className="w-16 pb-3 font-medium">Posisi</th>
                     <th className="w-[18%] pb-3 font-medium">Judul</th>
                     <th className="w-[22%] pb-3 font-medium">Route</th>
+                    <th className="w-[18%] pb-3 font-medium">Kategori</th>
                     <th className="w-[16%] pb-3 font-medium">Level Akses</th>
                     <th className="w-[14%] pb-3 font-medium">Aktif</th>
                     <th className="w-[16%] pb-3 font-medium">Ikon</th>
@@ -855,6 +869,7 @@ export default function AdminPage() {
                     const draft = isEditing && sidebarDraft ? sidebarDraft : null;
                     const titleValue = draft?.title ?? item.title;
                     const routeValue = draft?.route ?? item.route;
+                    const categoryValue = draft?.category ?? (item.category ?? '');
                     const accessValue = draft?.access_level ?? item.access_level;
                     const enabledValue = draft?.is_enabled ?? item.is_enabled;
                     const iconRawValue = draft?.icon_name ?? item.icon_name ?? '';
@@ -870,6 +885,7 @@ export default function AdminPage() {
                       !!draft &&
                       (draft.title.trim() !== item.title ||
                         draft.route.trim() !== item.route ||
+                        draft.category.trim() !== (item.category ?? '').trim() ||
                         draft.access_level !== item.access_level ||
                         draft.is_enabled !== item.is_enabled ||
                         draft.icon_name.trim().toLowerCase() !== iconStoredValue);
@@ -910,6 +926,22 @@ export default function AdminPage() {
                           ) : (
                             <span className="inline-flex min-h-[44px] items-center rounded-2xl bg-surface-2/70 px-3 text-xs font-medium text-muted-foreground">
                               {item.route}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
+                          {isEditing ? (
+                            <input
+                              value={categoryValue}
+                              onChange={(event) =>
+                                handleSidebarDraftChange('category', event.target.value)
+                              }
+                              className={baseInputClass}
+                              placeholder="Menu Utama"
+                            />
+                          ) : (
+                            <span className="block min-h-[44px] text-sm text-foreground">
+                              {item.category?.trim() || '—'}
                             </span>
                           )}
                         </td>
@@ -1068,8 +1100,8 @@ export default function AdminPage() {
             onSubmit={handleCreateSidebarItem}
             className="space-y-4 rounded-2xl border border-dashed border-border/60 bg-surface-1/60 p-4"
           >
-            <div className="grid gap-4 md:grid-cols-6">
-              <div className="md:col-span-2">
+            <div className="grid gap-4 md:grid-cols-12">
+              <div className="md:col-span-4">
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
                   Judul Menu
                 </label>
@@ -1082,7 +1114,7 @@ export default function AdminPage() {
                   placeholder="Misal: Dashboard"
                 />
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-4">
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
                   Route
                 </label>
@@ -1095,7 +1127,20 @@ export default function AdminPage() {
                   placeholder="/dashboard"
                 />
               </div>
-              <div className="md:col-span-1">
+              <div className="md:col-span-4">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Kategori Menu
+                </label>
+                <input
+                  value={newSidebarItem.category}
+                  onChange={(event) =>
+                    setNewSidebarItem((prev) => ({ ...prev, category: event.target.value }))
+                  }
+                  className={baseInputClass}
+                  placeholder="Menu Utama"
+                />
+              </div>
+              <div className="md:col-span-3">
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
                   Level Akses
                 </label>
@@ -1116,7 +1161,7 @@ export default function AdminPage() {
                   ))}
                 </select>
               </div>
-              <div className="md:col-span-1">
+              <div className="md:col-span-3">
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
                   Ikon (opsional)
                 </label>
@@ -1147,7 +1192,7 @@ export default function AdminPage() {
                   </select>
                 </div>
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-6">
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
                   Status
                 </label>
