@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Modal from '../Modal.jsx';
-import { bulkUpsertBudgets, listRules } from '../../lib/api-budgets';
+import { bulkUpsertBudgets, listRules, BudgetRulesUnavailableError } from '../../lib/api-budgets';
 import type { BudgetRuleRecord } from '../../lib/api-budgets';
 import type { BudgetViewModel } from './types';
 import { supabase } from '../../lib/supabase';
@@ -82,7 +82,11 @@ export default function AutoAllocateDialog({ open, onClose, period, budgets, onA
         const rows = await listRules();
         if (!cancelled) setRules(rows.filter((row) => row.active));
       } catch (error) {
-        addToast(`Gagal memuat aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+        if (error instanceof BudgetRulesUnavailableError) {
+          if (!cancelled) setRules([]);
+        } else {
+          addToast(`Gagal memuat aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }

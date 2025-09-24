@@ -5,7 +5,7 @@ interface BudgetCardProps {
   budget: BudgetViewModel;
   onOpenDetail: () => void;
   onEdit: (field: 'planned' | 'rollover_in', value: number) => void;
-  onRule: () => void;
+  onRule?: () => void;
   onDelete: () => void;
 }
 
@@ -97,13 +97,19 @@ export default function BudgetCard({ budget, onOpenDetail, onEdit, onRule, onDel
         />
       </div>
       <div className="grid grid-cols-3 gap-2 text-xs">
-        <button
-          type="button"
-          className="rounded-2xl border border-border px-3 py-2"
-          onClick={onRule}
-        >
-          Aturan
-        </button>
+        {onRule ? (
+          <button
+            type="button"
+            className="rounded-2xl border border-border px-3 py-2"
+            onClick={onRule}
+          >
+            Aturan
+          </button>
+        ) : (
+          <span className="rounded-2xl border border-dashed border-border px-3 py-2 text-muted">
+            Aturan tidak tersedia
+          </span>
+        )}
         <button
           type="button"
           className="rounded-2xl border border-border px-3 py-2"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { supabase } from '../../lib/supabase';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
@@ -14,6 +14,7 @@ import {
   getSummary,
   listBudgets,
   listRules,
+  BudgetRulesUnavailableError,
   type BudgetRecord,
   type BudgetRuleRecord,
   type CarryRule,
@@ -130,6 +131,7 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
   const [views, setViews] = useState<BudgetViewModel[]>([]);
   const [summary, setSummary] = useState<BudgetSummary>(DEFAULT_SUMMARY);
   const [loading, setLoading] = useState(false);
+  const [rulesSupported, setRulesSupported] = useState(true);
   const [rules, setRules] = useState<BudgetRuleRecord[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [selected, setSelected] = useState<BudgetViewModel | null>(null);
@@ -185,18 +187,26 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
     };
   }, [addToast]);
 
-  const refreshRules = async () => {
+  const refreshRules = useCallback(async () => {
+    if (rulesSupported === false) return;
     try {
       const rows = await listRules();
       setRules(rows);
+      setRulesSupported(true);
     } catch (error) {
-      addToast(`Gagal memuat aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      if (error instanceof BudgetRulesUnavailableError) {
+        setRulesSupported(false);
+        setRules([]);
+      } else {
+        addToast(`Gagal memuat aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      }
     }
-  };
+  }, [rulesSupported, addToast]);
 
   useEffect(() => {
+    if (!rulesSupported) return;
     refreshRules();
-  }, []);
+  }, [refreshRules, rulesSupported]);
 
   useEffect(() => {
     let cancelled = false;
@@ -531,8 +541,14 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
             </button>
             <button
               type="button"
-              className="h-11 rounded-2xl border border-border px-4 text-sm font-medium"
-              onClick={() => setAutoAllocateOpen(true)}
+              className={`h-11 rounded-2xl border border-border px-4 text-sm font-medium ${
+                !rulesSupported ? 'cursor-not-allowed opacity-60' : ''
+              }`}
+              onClick={() => {
+                if (!rulesSupported) return;
+                setAutoAllocateOpen(true);
+              }}
+              disabled={!rulesSupported}
             >
               Template
             </button>
@@ -566,6 +582,9 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
               onChange={handleImportCsv}
             />
           </div>
+          {!rulesSupported && (
+            <p className="text-xs text-muted">Aturan anggaran belum tersedia di Supabase Anda.</p>
+          )}
         </div>
         <div className="rounded-2xl border border-border bg-surface-1 p-4 text-sm text-muted">
           {tip}
@@ -614,11 +633,16 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
             onInlineUpdate={handleInlineUpdate}
             onOpenDetail={setSelected}
             onDelete={handleDelete}
-            onManageRule={(budget) => {
-              const target = rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
-              setRuleBudget(budget);
-              setRuleEditing(target);
-            }}
+            onManageRule={
+              rulesSupported
+                ? (budget) => {
+                    const target =
+                      rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
+                    setRuleBudget(budget);
+                    setRuleEditing(target);
+                  }
+                : undefined
+            }
             onComputeRollover={handleComputeRollover}
             onApplyRollover={handleApplyRollover}
           />
@@ -632,11 +656,16 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
               onEdit={(field, value) =>
                 handleInlineUpdate(budget.id, { [field]: value } as Partial<BudgetRecord>)
               }
-              onRule={() => {
-                const target = rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
-                setRuleBudget(budget);
-                setRuleEditing(target);
-              }}
+              onRule={
+                rulesSupported
+                  ? () => {
+                      const target =
+                        rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
+                      setRuleBudget(budget);
+                      setRuleEditing(target);
+                    }
+                  : undefined
+              }
               onDelete={() => handleDelete(budget.id)}
             />
           ))}
@@ -667,14 +696,14 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
       </Modal>
 
       <Modal
-        open={!!ruleBudget}
+        open={rulesSupported && !!ruleBudget}
         title={ruleEditing?.id ? 'Edit Aturan' : 'Buat Aturan'}
         onClose={() => {
           setRuleEditing(null);
           setRuleBudget(null);
         }}
       >
-        {ruleBudget && (
+        {rulesSupported && ruleBudget && (
           <BudgetRuleForm
             budget={ruleBudget}
             rule={ruleEditing ?? undefined}
@@ -688,7 +717,7 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
       </Modal>
 
       <AutoAllocateDialog
-        open={autoAllocateOpen}
+        open={rulesSupported && autoAllocateOpen}
         onClose={() => setAutoAllocateOpen(false)}
         period={period}
         budgets={budgets.map((record) => buildViewModel(record, summary))}

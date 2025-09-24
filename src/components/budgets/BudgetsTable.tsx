@@ -11,7 +11,7 @@ interface BudgetsTableProps {
   ) => void;
   onOpenDetail: (budget: BudgetViewModel) => void;
   onDelete: (id: string) => void;
-  onManageRule: (budget: BudgetViewModel) => void;
+  onManageRule?: (budget: BudgetViewModel) => void;
   onComputeRollover: () => void;
   onApplyRollover: () => void;
 }
@@ -203,13 +203,19 @@ export default function BudgetsTable({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <button
-                        type="button"
-                        className="rounded-xl border border-border px-3 py-1"
-                        onClick={() => onManageRule(budget)}
-                      >
-                        Atur Aturan
-                      </button>
+                      {onManageRule ? (
+                        <button
+                          type="button"
+                          className="rounded-xl border border-border px-3 py-1"
+                          onClick={() => onManageRule(budget)}
+                        >
+                          Atur Aturan
+                        </button>
+                      ) : (
+                        <span className="rounded-xl border border-dashed border-border px-3 py-1 text-muted">
+                          Aturan tidak tersedia
+                        </span>
+                      )}
                       <button
                         type="button"
                         className="rounded-xl border border-border px-3 py-1"

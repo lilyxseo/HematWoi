@@ -34,6 +34,7 @@ import AuthGuard from "./components/AuthGuard";
 import { DataProvider } from "./context/DataContext";
 
 import { supabase } from "./lib/supabase";
+import { listBudgetsByMonth } from "./lib/api.ts";
 import { playChaChing } from "./lib/walletSound";
 import {
   listTransactions,
@@ -105,11 +106,14 @@ function normalizeBudgetRecord(budget, overrides = {}) {
     amount_planned,
     carryover,
     carryover_enabled,
+    current_spent,
     note,
     notes,
     limit,
     cap,
     month,
+    period_month,
+    name,
     ...rest
   } = budget;
 
@@ -137,8 +141,10 @@ function normalizeBudgetRecord(budget, overrides = {}) {
 
   const resolvedNotes = overrideNotes ?? notes ?? note ?? null;
 
-  const monthSource = overrideMonth ?? month;
+  const monthSource = overrideMonth ?? month ?? period_month ?? null;
   const normalizedMonth = monthSource ? String(monthSource).slice(0, 7) : null;
+
+  const resolvedName = name ?? rest?.category ?? rest?.category_name ?? null;
 
   return {
     ...rest,
@@ -147,6 +153,8 @@ function normalizeBudgetRecord(budget, overrides = {}) {
     amount_planned: normalizedPlanned,
     carryover_enabled: normalizedCarryover,
     notes: resolvedNotes,
+    current_spent: Number(current_spent ?? 0),
+    name: resolvedName ?? rest?.name ?? null,
   };
 }
 
@@ -564,29 +572,52 @@ function AppShell({ prefs, setPrefs }) {
   }, []);
 
   const fetchBudgetsCloud = useCallback(async () => {
+    if (!sessionUser) return;
     try {
-      if (!sessionUser) return;
-      const { data: rows, error } = await supabase
-        .from("budgets")
-        .select("id, month, amount_planned, carryover_enabled, notes, category_id")
-        .eq("user_id", sessionUser.id)
-        .order("month", { ascending: false });
-      if (error) throw error;
+      const monthCandidates = new Set(
+        data.txs
+          .map((tx) => String(tx.date ?? '').slice(0, 7))
+          .filter((value) => value && value.length === 7)
+      );
+      monthCandidates.add(currentMonth);
+
+      const monthISOs = Array.from(monthCandidates)
+        .map((label) => {
+          const [yearStr, monthStr] = String(label).split('-');
+          const year = Number.parseInt(yearStr, 10);
+          const monthIndex = Number.parseInt(monthStr, 10) - 1;
+          if (!Number.isFinite(year) || !Number.isFinite(monthIndex)) {
+            return null;
+          }
+          return new Date(Date.UTC(year, monthIndex, 1)).toISOString().slice(0, 10);
+        })
+        .filter(Boolean);
+
+      if (!monthISOs.length) {
+        const now = new Date();
+        monthISOs.push(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10));
+      }
+
+      const monthResponses = await Promise.all(
+        monthISOs.map((iso) => listBudgetsByMonth(sessionUser.id, iso))
+      );
+      const rows = monthResponses.flat();
+
       const categoriesById = {};
-      const missingIds = [];
-      (rows || []).forEach((row) => {
+      const missingIds = new Set();
+      rows.forEach((row) => {
         if (!row?.category_id) return;
         if (!categoryNameById(row.category_id)) {
-          missingIds.push(row.category_id);
+          missingIds.add(row.category_id);
         }
       });
-      const uniqueMissing = Array.from(new Set(missingIds));
-      if (uniqueMissing.length) {
+
+      if (missingIds.size) {
         const { data: catRows, error: catError } = await supabase
-          .from("categories")
-          .select("id, name")
-          .eq("user_id", sessionUser.id)
-          .in("id", uniqueMissing);
+          .from('categories')
+          .select('id, name')
+          .eq('user_id', sessionUser.id)
+          .in('id', Array.from(missingIds));
         if (!catError && Array.isArray(catRows)) {
           catRows.forEach((item) => {
             if (item?.id && item?.name) {
@@ -595,6 +626,7 @@ function AppShell({ prefs, setPrefs }) {
           });
         }
       }
+
       if (Object.keys(categoriesById).length) {
         setCatMap((prev) => {
           const next = { ...prev };
@@ -604,25 +636,31 @@ function AppShell({ prefs, setPrefs }) {
           return next;
         });
       }
-      const mapped = (rows || [])
+
+      const mapped = rows
         .map((row) => {
-          const categoryLabel =
-            (row?.category_id &&
-              (categoryNameById(row.category_id) ||
-                categoriesById[row.category_id])) ||
-            row?.category ||
-            row?.category_name ||
-            "Tanpa kategori";
-          return normalizeBudgetRecord(row, { category: categoryLabel });
+          const categoryLabel = row?.category_id
+            ? categoryNameById(row.category_id) || categoriesById[row.category_id] || row?.name || 'Tanpa kategori'
+            : row?.name || 'Tanpa kategori';
+          return normalizeBudgetRecord(
+            {
+              ...row,
+              month: row?.period_month ? String(row.period_month).slice(0, 7) : null,
+            },
+            { category: categoryLabel }
+          );
         })
         .filter(Boolean);
+
+      mapped.sort((a, b) => String(b?.month ?? '').localeCompare(String(a?.month ?? '')));
+
       setData((d) => ({ ...d, budgets: mapped }));
     } catch (e) {
-      console.error("fetch budgets failed", e);
-      const detail = e?.message ? `: ${e.message}` : "";
-      addToast(`Gagal memuat data anggaran${detail}`, "error");
+      console.error('fetch budgets failed', e);
+      const detail = e?.message ? `: ${e.message}` : '';
+      addToast(`Gagal memuat data anggaran${detail}`, 'error');
     }
-  }, [sessionUser, categoryNameById, addToast]);
+  }, [sessionUser, data.txs, currentMonth, categoryNameById, addToast]);
 
   const fetchBudgetStatusCloud = useCallback(async () => {
     if (!sessionUser) return;

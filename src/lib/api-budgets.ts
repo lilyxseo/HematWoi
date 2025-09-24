@@ -109,6 +109,38 @@ function logDev(error: unknown, scope: string) {
   }
 }
 
+export class BudgetRulesUnavailableError extends Error {
+  constructor(message = 'Budget rules belum tersedia di proyek Supabase Anda') {
+    super(message);
+    this.name = 'BudgetRulesUnavailableError';
+  }
+}
+
+let budgetRulesAvailable: boolean | null = null;
+
+function isMissingTableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: string }).code;
+  if (code === '42P01' || code === 'PGRST116' || code === 'PGRST114') return true;
+  const message = String((error as { message?: string }).message ?? '').toLowerCase();
+  const details = String((error as { details?: string }).details ?? '').toLowerCase();
+  return (
+    message.includes('does not exist') ||
+    message.includes('not exist') ||
+    details.includes('does not exist') ||
+    details.includes('not exist')
+  );
+}
+
+function wrapBudgetError(message: string, error: unknown): Error {
+  if (error instanceof Error) {
+    const wrapped = new Error(`${message}: ${error.message}`);
+    (wrapped as Error & { cause?: unknown }).cause = error;
+    return wrapped;
+  }
+  return new Error(message);
+}
+
 function toISODate(period: string): string {
   if (!period) {
     throw new Error('Periode tidak valid');
@@ -555,6 +587,9 @@ export async function applyRolloverToNext(options: { period: string }): Promise<
 }
 
 export async function listRules(): Promise<BudgetRuleRecord[]> {
+  if (budgetRulesAvailable === false) {
+    throw new BudgetRulesUnavailableError();
+  }
   try {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
@@ -564,17 +599,22 @@ export async function listRules(): Promise<BudgetRuleRecord[]> {
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
     if (error) throw error;
+    budgetRulesAvailable = true;
     return (data ?? []).map(mapRuleRow);
   } catch (error) {
     logDev(error, 'listRules');
-    if (error instanceof Error && error.message) {
-      throw new Error(`Gagal memuat aturan: ${error.message}`);
+    if (isMissingTableError(error)) {
+      budgetRulesAvailable = false;
+      throw new BudgetRulesUnavailableError();
     }
-    throw new Error('Gagal memuat aturan');
+    throw wrapBudgetError('Gagal memuat aturan', error);
   }
 }
 
 export async function upsertRule(rule: Partial<BudgetRuleRecord>): Promise<BudgetRuleRecord> {
+  if (budgetRulesAvailable === false) {
+    throw new BudgetRulesUnavailableError();
+  }
   try {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
@@ -594,17 +634,22 @@ export async function upsertRule(rule: Partial<BudgetRuleRecord>): Promise<Budge
       .maybeSingle();
     if (error) throw error;
     if (!data) throw new Error('Aturan tidak tersedia');
+    budgetRulesAvailable = true;
     return mapRuleRow(data);
   } catch (error) {
     logDev(error, 'upsertRule');
-    if (error instanceof Error && error.message) {
-      throw new Error(`Gagal menyimpan aturan: ${error.message}`);
+    if (isMissingTableError(error)) {
+      budgetRulesAvailable = false;
+      throw new BudgetRulesUnavailableError();
     }
-    throw new Error('Gagal menyimpan aturan');
+    throw wrapBudgetError('Gagal menyimpan aturan', error);
   }
 }
 
 export async function deleteRule(id: UUID): Promise<void> {
+  if (budgetRulesAvailable === false) {
+    throw new BudgetRulesUnavailableError();
+  }
   try {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
@@ -616,10 +661,11 @@ export async function deleteRule(id: UUID): Promise<void> {
     if (error) throw error;
   } catch (error) {
     logDev(error, 'deleteRule');
-    if (error instanceof Error && error.message) {
-      throw new Error(`Gagal menghapus aturan: ${error.message}`);
+    if (isMissingTableError(error)) {
+      budgetRulesAvailable = false;
+      throw new BudgetRulesUnavailableError();
     }
-    throw new Error('Gagal menghapus aturan');
+    throw wrapBudgetError('Gagal menghapus aturan', error);
   }
 }
 
