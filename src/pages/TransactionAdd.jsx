@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  ArrowLeft,
-  CalendarClock,
-  Check,
-  FileText,
-  Loader2,
-  Plus,
-  RefreshCcw,
-  Repeat,
-  Save,
-  Sparkles,
-  Upload,
-} from "lucide-react";
+import { ArrowLeft, CalendarClock, Check, FileText, Loader2, Plus, Repeat, Save, Sparkles } from "lucide-react";
 import Page from "../layout/Page";
 import PageHeader from "../layout/PageHeader";
 import Section from "../layout/Section";
@@ -23,7 +11,7 @@ import Input from "../components/ui/Input";
 import Select from "../components/ui/Select";
 import AccountFormModal from "../components/accounts/AccountFormModal";
 import Textarea from "../components/ui/Textarea";
-import { listCategories, listMerchants, saveMerchant } from "../lib/api";
+import { listCategories } from "../lib/api";
 import { createAccount, listAccounts as fetchAccounts } from "../lib/api.ts";
 import { supabase } from "../lib/supabase.js";
 import { useToast } from "../context/ToastContext";
@@ -79,19 +67,13 @@ export default function TransactionAdd({ onAdd }) {
   const [accountName, setAccountName] = useState("");
   const [toAccountId, setToAccountId] = useState("");
   const [toAccountName, setToAccountName] = useState("");
-  const [merchantId, setMerchantId] = useState("");
-  const [merchantName, setMerchantName] = useState("");
-  const [merchantInput, setMerchantInput] = useState("");
-  const [merchantSaving, setMerchantSaving] = useState(false);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [repeat, setRepeat] = useState("none");
   const [pending, setPending] = useState(false);
-  const [attachments, setAttachments] = useState(() => [{ id: nextId(), url: "" }]);
   const [categories, setCategories] = useState([]);
   const [userId, setUserId] = useState(null);
   const [accounts, setAccounts] = useState([]);
-  const [merchants, setMerchants] = useState([]);
   const [templates, setTemplates] = useState(() => templateStorage([]));
   const [templateName, setTemplateName] = useState("");
   const [accountModalOpen, setAccountModalOpen] = useState(false);
@@ -114,17 +96,12 @@ export default function TransactionAdd({ onAdd }) {
         }
         setUserId(uid);
 
-        const [catRows, accountRows, merchantRows] = await Promise.all([
-          listCategories(),
-          fetchAccounts(uid),
-          listMerchants(),
-        ]);
+        const [catRows, accountRows] = await Promise.all([listCategories(), fetchAccounts(uid)]);
         setCategories(catRows);
         const sortedAccounts = [...accountRows].sort((a, b) =>
           (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }),
         );
         setAccounts(sortedAccounts);
-        setMerchants(merchantRows);
         if (sortedAccounts.length) {
           setAccountId(sortedAccounts[0].id);
           setAccountName(sortedAccounts[0].name);
@@ -272,11 +249,6 @@ export default function TransactionAdd({ onAdd }) {
     return (categoriesByType[type] || []).map((cat) => ({ value: cat.id, label: cat.name }));
   }, [categoriesByType, type]);
 
-  const merchantOptions = useMemo(
-    () => merchants.map((m) => ({ value: m.id, label: m.name || "(Tanpa Nama)" })),
-    [merchants],
-  );
-
   const presetAmounts = [25000, 50000, 100000, 200000, 500000];
 
   const repeatLabels = {
@@ -298,13 +270,10 @@ export default function TransactionAdd({ onAdd }) {
     setAccountName(template.account_name || "");
     setToAccountId(template.to_account_id || "");
     setToAccountName(template.to_account_name || "");
-    setMerchantId(template.merchant_id || "");
-    setMerchantName(template.merchant_name || "");
     setTitle(template.title || "");
     setNote(template.note || "");
     setRepeat(template.repeat || "none");
     setPending(Boolean(template.pending));
-    setAttachments(template.attachments?.length ? template.attachments : [{ id: nextId(), url: "" }]);
   };
 
   const resetForm = () => {
@@ -313,44 +282,7 @@ export default function TransactionAdd({ onAdd }) {
     setNote("");
     setRepeat("none");
     setPending(false);
-    setAttachments([{ id: nextId(), url: "" }]);
-    setMerchantId("");
-    setMerchantName("");
-    setMerchantInput("");
     setTime(defaultTime());
-  };
-
-  const handleAddAttachmentRow = () => {
-    setAttachments((prev) => [...prev, { id: nextId(), url: "" }]);
-  };
-
-  const handleAttachmentChange = (id, field, value) => {
-    setAttachments((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
-  };
-
-  const handleRemoveAttachment = (id) => {
-    setAttachments((prev) => {
-      const filtered = prev.filter((item) => item.id !== id);
-      return filtered.length ? filtered : [{ id: nextId(), url: "" }];
-    });
-  };
-
-  const handleSaveMerchant = async () => {
-    const name = (merchantInput || "").trim();
-    if (!name) return;
-    setMerchantSaving(true);
-    try {
-      const saved = await saveMerchant({ name, category_id: categoryId || null, notes: null });
-      setMerchants((prev) => [...prev, saved].sort((a, b) => a.name.localeCompare(b.name)));
-      setMerchantId(saved.id);
-      setMerchantName(saved.name);
-      setMerchantInput("");
-      addToast("Merchant baru disimpan", "success");
-    } catch (err) {
-      addToast(`Gagal menyimpan merchant: ${err.message}`, "error");
-    } finally {
-      setMerchantSaving(false);
-    }
   };
 
   const handleSaveTemplate = () => {
@@ -372,13 +304,10 @@ export default function TransactionAdd({ onAdd }) {
       account_name: accountName,
       to_account_id: toAccountId,
       to_account_name: toAccountName,
-      merchant_id: merchantId,
-      merchant_name: merchantName,
       title,
       note,
       repeat,
       pending,
-      attachments,
     };
     setTemplates((prev) => [...prev, entry]);
     setTemplateName("");
@@ -388,13 +317,6 @@ export default function TransactionAdd({ onAdd }) {
   const handleRemoveTemplate = (id) => {
     setTemplates((prev) => prev.filter((tpl) => tpl.id !== id));
   };
-
-  const receiptsPayload = attachments
-    .map((item) => ({
-      id: item.id,
-      url: (item.url || "").trim(),
-    }))
-    .filter((item) => item.url);
 
   const canSubmit =
     amount > 0 &&
@@ -412,7 +334,6 @@ export default function TransactionAdd({ onAdd }) {
     { label: "Kategori", value: categoryName || "-" },
     { label: "Akun", value: accountName || "-" },
     isTransfer() ? { label: "Ke Akun", value: toAccountName || "-" } : null,
-    { label: "Merchant", value: merchantName || "-" },
     { label: "Status", value: pending ? "Menunggu konfirmasi" : "Selesai" },
     repeat !== "none" ? { label: "Pengulangan", value: repeatLabels[repeat] } : null,
   ].filter(Boolean);
@@ -445,12 +366,9 @@ export default function TransactionAdd({ onAdd }) {
         account_name: accountName,
         to_account_id: isTransfer() ? toAccountId : null,
         to_account_name: toAccountName,
-        merchant_id: merchantId || null,
-        merchant_name: merchantName,
         title: title || null,
         note: combinedNote,
         notes: combinedNote,
-        receipts: receiptsPayload,
       };
       await onAdd(payload);
       addToast("Transaksi berhasil disimpan", "success");
@@ -498,10 +416,10 @@ export default function TransactionAdd({ onAdd }) {
         <Card>
           <CardHeader
             title="Informasi Utama"
-            subtext="Isi data dasar transaksi. Gunakan tombol preset untuk mempercepat pengisian."
+            subtext="Isi data dasar transaksi dengan cepat dan rapi. Gunakan preset untuk menghemat waktu."
           />
-          <CardBody className="space-y-4">
-            <div className="flex flex-wrap gap-3 items-center justify-between">
+          <CardBody className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <Segmented
                 value={type}
                 onChange={setType}
@@ -516,154 +434,176 @@ export default function TransactionAdd({ onAdd }) {
                   <button
                     key={val}
                     type="button"
-                    className="btn text-xs"
+                    className="btn btn-secondary text-xs"
                     onClick={() => setAmount((prev) => prev + val)}
                   >
                     +{formatCurrency(val)}
                   </button>
                 ))}
-                <button type="button" className="btn text-xs" onClick={() => setAmount(0)}>
+                <button type="button" className="btn btn-secondary text-xs" onClick={() => setAmount(0)}>
                   Reset
                 </button>
               </div>
             </div>
-            <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
             <div className="grid gap-4 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <CurrencyInput
+                  label="Jumlah"
+                  value={amount}
+                  onChangeNumber={setAmount}
+                  helper="Gunakan tombol nominal cepat di atas untuk mengisi lebih cepat."
+                />
+              </div>
               <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
-              <Input type="time" label="Waktu" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs text-muted">
-              <span className="inline-flex items-center gap-1">
-                <CalendarClock className="h-3.5 w-3.5" />
-                Preset:
-              </span>
-              <button type="button" className="btn text-xs" onClick={() => quickDate(0)}>
-                Hari ini
-              </button>
-              <button type="button" className="btn text-xs" onClick={() => quickDate(-1)}>
-                Kemarin
-              </button>
-              <button type="button" className="btn text-xs" onClick={() => quickDate(-7)}>
-                7 hari lalu
-              </button>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <Select
-                label="Akun sumber"
-                value={accountId}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === ADD_ACCOUNT_OPTION_VALUE) {
-                    openAccountModal("source");
-                    return;
-                  }
-                  setAccountId(val);
-                  const selected = accounts.find((acc) => acc.id === val);
-                  setAccountName(selected?.name || "");
-                }}
-                options={accountOptions}
-                placeholder="Pilih akun (opsional)"
+              <Input
+                type="time"
+                label="Waktu"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                helper="Opsional, gunakan jika perlu mencatat waktu spesifik."
               />
-              {isTransfer() && (
+              <div>
                 <Select
-                  label="Akun tujuan"
-                  value={toAccountId}
+                  label="Akun sumber"
+                  value={accountId}
                   onChange={(e) => {
                     const val = e.target.value;
                     if (val === ADD_ACCOUNT_OPTION_VALUE) {
-                      openAccountModal("destination");
+                      openAccountModal("source");
                       return;
                     }
-                    setToAccountId(val);
+                    setAccountId(val);
                     const selected = accounts.find((acc) => acc.id === val);
-                    setToAccountName(selected?.name || "");
+                    setAccountName(selected?.name || "");
                   }}
-                  options={toAccountOptions}
+                  options={accountOptions}
                   placeholder="Pilih akun"
+                  helper="Catat asal dana agar laporan lebih akurat."
                 />
+              </div>
+              {isTransfer() && (
+                <div>
+                  <Select
+                    label="Akun tujuan"
+                    value={toAccountId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === ADD_ACCOUNT_OPTION_VALUE) {
+                        openAccountModal("destination");
+                        return;
+                      }
+                      setToAccountId(val);
+                      const selected = accounts.find((acc) => acc.id === val);
+                      setToAccountName(selected?.name || "");
+                    }}
+                    options={toAccountOptions}
+                    placeholder="Pilih akun"
+                    helper="Pilih tujuan transfer untuk menghindari duplikasi catatan."
+                  />
+                </div>
               )}
+              <div className="md:col-span-2">
+                <Select
+                  label="Kategori"
+                  value={categoryId}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setCategoryId(val);
+                    const selected = categories.find((cat) => cat.id === val);
+                    setCategoryName(selected?.name || "");
+                  }}
+                  options={categoryOptions}
+                  placeholder="Pilih kategori"
+                  helper="Kategori membantu laporan keuangan lebih terstruktur."
+                />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-alt/60 px-3 py-3 text-xs text-muted">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Preset tanggal cepat:
+                </span>
+                <button type="button" className="btn btn-secondary text-xs" onClick={() => quickDate(0)}>
+                  Hari ini
+                </button>
+                <button type="button" className="btn btn-secondary text-xs" onClick={() => quickDate(-1)}>
+                  Kemarin
+                </button>
+                <button type="button" className="btn btn-secondary text-xs" onClick={() => quickDate(-7)}>
+                  7 hari lalu
+                </button>
+              </div>
             </div>
             {accounts.length === 0 && (
               <p className="text-xs text-muted">
                 Belum ada akun tersimpan. Transaksi akan dicatat tanpa informasi akun.
               </p>
             )}
-            <Select
-              label="Kategori"
-              value={categoryId}
-              onChange={(e) => {
-                const val = e.target.value;
-                setCategoryId(val);
-                const selected = categories.find((cat) => cat.id === val);
-                setCategoryName(selected?.name || "");
-              }}
-              options={categoryOptions}
-              placeholder="Pilih kategori"
-            />
           </CardBody>
         </Card>
 
         <Card>
           <CardHeader
             title="Rincian Tambahan"
-            subtext="Perkaya catatan dengan merchant, judul, dan catatan agar mudah dilacak."
+            subtext="Berikan detail singkat agar transaksi mudah dikenali di daftar maupun laporan."
           />
-          <CardBody className="space-y-4">
+          <CardBody className="space-y-6">
             <div className="grid gap-4 md:grid-cols-2">
-              <Select
-                label="Merchant"
-                value={merchantId}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setMerchantId(val);
-                  const selected = merchants.find((m) => m.id === val);
-                  setMerchantName(selected?.name || "");
-                }}
-                options={merchantOptions}
-                placeholder="Pilih merchant"
-              />
-              <div className="space-y-2">
+              <div>
                 <Input
-                  label="Tambah merchant baru"
-                  value={merchantInput}
-                  onChange={(e) => setMerchantInput(e.target.value)}
-                  placeholder="Nama merchant"
+                  label="Judul singkat"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Contoh: Makan siang tim"
+                  helper="Judul akan tampil di daftar transaksi."
                 />
-                <button
-                  type="button"
-                  className="btn btn-secondary w-full"
-                  onClick={handleSaveMerchant}
-                  disabled={merchantSaving}
-                >
-                  {merchantSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Simpan merchant
-                </button>
+              </div>
+              <div className="md:col-span-2">
+                <Textarea
+                  label="Catatan"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Tambahkan detail penting, nomor invoice, dsb"
+                  helper="Gunakan catatan untuk menyimpan konteks tambahan."
+                />
               </div>
             </div>
-            <Input label="Judul singkat" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Contoh: Makan siang tim" />
-            <Textarea
-              label="Catatan"
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Tambahkan detail penting, nomor invoice, dsb"
-            />
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <label className="text-sm font-medium flex items-center gap-2">
-                  <Repeat className="h-4 w-4" /> Penjadwalan
-                </label>
-                <Select
-                  label="Frekuensi"
-                  value={repeat}
-                  onChange={(e) => setRepeat(e.target.value)}
-                  options={[
-                    { value: "none", label: repeatLabels.none },
-                    { value: "weekly", label: repeatLabels.weekly },
-                    { value: "monthly", label: repeatLabels.monthly },
-                    { value: "yearly", label: repeatLabels.yearly },
-                  ]}
-                />
+            <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-alt/60 px-3 py-3 text-xs text-muted">
+              <p className="font-medium text-foreground">Tips:</p>
+              <p className="mt-1">
+                Catatan dan judul membantu saat mencari transaksi ataupun membuat laporan periodik.
+              </p>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Penjadwalan & Status"
+            subtext="Atur pengulangan transaksi serta tandai status penyelesaiannya."
+          />
+          <CardBody className="space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <Repeat className="h-4 w-4" /> Pengulangan otomatis
               </div>
-              <label className="flex items-center gap-2 text-sm mt-6">
+              <Select
+                label="Frekuensi"
+                value={repeat}
+                onChange={(e) => setRepeat(e.target.value)}
+                options={[
+                  { value: "none", label: repeatLabels.none },
+                  { value: "weekly", label: repeatLabels.weekly },
+                  { value: "monthly", label: repeatLabels.monthly },
+                  { value: "yearly", label: repeatLabels.yearly },
+                ]}
+                helper="Pilih pengulangan untuk membuat transaksi tercatat otomatis."
+              />
+            </div>
+            <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 space-y-3">
+              <p className="text-sm font-medium text-foreground">Status transaksi</p>
+              <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   checked={pending}
@@ -672,34 +612,13 @@ export default function TransactionAdd({ onAdd }) {
                 />
                 Tandai sebagai transaksi pending / menunggu konfirmasi
               </label>
+              <p className="text-xs text-muted">
+                Tandai pending untuk transaksi yang belum selesai supaya mudah ditindaklanjuti.
+              </p>
             </div>
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHeader
-            title="Lampiran"
-            subtext="Simpan bukti pembayaran atau tautan invoice untuk referensi cepat."
-          />
-          <CardBody className="space-y-3">
-            {attachments.map((item) => (
-              <div key={item.id} className="flex gap-2">
-                <Input
-                  label="URL bukti transaksi"
-                  value={item.url}
-                  onChange={(e) => handleAttachmentChange(item.id, "url", e.target.value)}
-                  placeholder="https://"
-                />
-                <button type="button" className="btn" onClick={() => handleRemoveAttachment(item.id)}>
-                  <RefreshCcw className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
-            <button type="button" className="btn btn-secondary" onClick={handleAddAttachmentRow}>
-              <Upload className="h-4 w-4" /> Tambah tautan bukti
-            </button>
-          </CardBody>
-        </Card>
 
         <Card>
           <CardHeader
