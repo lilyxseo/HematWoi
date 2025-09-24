@@ -1,119 +1,134 @@
+import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
-import { getCurrentUserId } from './session';
 
 export type AccountType = 'cash' | 'bank' | 'ewallet' | 'other';
 
 export interface AccountRecord {
   id: string;
-  user_id: string;
   name: string;
   type: AccountType;
   currency: string;
   created_at: string | null;
-  updated_at: string | null;
+  user_id?: string;
 }
 
-export interface AccountInput {
+type CreateAccountPayload = {
   name: string;
   type: AccountType;
   currency?: string;
-}
+};
 
-export type AccountPatch = Partial<Pick<AccountInput, 'name' | 'type' | 'currency'>>;
+type UpdateAccountPayload = Partial<{
+  name: string;
+  type: AccountType;
+  currency: string;
+}>;
 
-function ensureAuth(userId: string | null | undefined): asserts userId is string {
-  if (!userId) {
-    throw new Error('Anda harus login untuk mengelola akun.');
+const ACCOUNT_TYPES: readonly AccountType[] = ['cash', 'bank', 'ewallet', 'other'] as const;
+
+function normalizeAccountType(value: unknown): AccountType {
+  if (typeof value === 'string') {
+    const lowered = value.trim().toLowerCase();
+    if (ACCOUNT_TYPES.includes(lowered as AccountType)) {
+      return lowered as AccountType;
+    }
   }
+  return 'other';
 }
 
-function toUserMessage(prefix: string, error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return `${prefix}: ${error.message}`;
+function normalizeCurrency(value: unknown): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) {
+      return trimmed.toUpperCase();
+    }
   }
-  if (typeof error === 'string' && error.trim()) {
-    return `${prefix}: ${error}`;
-  }
-  return `${prefix}. Silakan coba lagi.`;
+  return 'IDR';
 }
 
-function normalizeCurrency(value: string | null | undefined): string {
-  const trimmed = value?.trim();
-  if (!trimmed) return 'IDR';
-  return trimmed.toUpperCase();
-}
-
-function normalizeAccount(row: Record<string, any>, userFallback: string): AccountRecord {
+function normalizeAccount(row: Record<string, any>): AccountRecord {
   return {
     id: String(row.id),
-    user_id: String(row.user_id ?? userFallback),
-    name: (row.name ?? '').toString(),
-    type: (row.type as AccountType) ?? 'other',
+    name: typeof row.name === 'string' ? row.name : '',
+    type: normalizeAccountType(row.type),
     currency: normalizeCurrency(row.currency),
     created_at: row.created_at ?? null,
-    updated_at: row.updated_at ?? null,
+    user_id: row.user_id ? String(row.user_id) : undefined,
   };
 }
 
-export async function listAccounts(userId?: string): Promise<AccountRecord[]> {
-  const authUserId = userId ?? (await getCurrentUserId());
-  ensureAuth(authUserId);
-  try {
-    const { data, error } = await supabase
-      .from('accounts')
-      .select('id, user_id, name, type, currency, created_at, updated_at')
-      .eq('user_id', authUserId)
-      .order('name', { ascending: true });
+type KnownError = Partial<Pick<PostgrestError, 'code' | 'message' | 'details'>>;
 
-    if (error) throw error;
-    return (data ?? []).map((row) => normalizeAccount(row, authUserId));
-  } catch (error) {
-    throw new Error(toUserMessage('Gagal memuat akun', error));
+function toUserMessage(error: unknown, fallback: string): string {
+  if (error && typeof error === 'object') {
+    const typed = error as KnownError;
+    if (typed.code === '23505') {
+      return 'Nama akun sudah digunakan. Silakan gunakan nama lain.';
+    }
+    if (typeof typed.message === 'string' && typed.message.trim()) {
+      return `${fallback.replace(/[:.]?$/, '')}: ${typed.message}`;
+    }
+    if (typeof typed.details === 'string' && typed.details.trim()) {
+      return `${fallback.replace(/[:.]?$/, '')}: ${typed.details}`;
+    }
   }
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+  return fallback;
 }
 
-export async function createAccount(payload: AccountInput, userId?: string): Promise<AccountRecord> {
-  const authUserId = userId ?? (await getCurrentUserId());
-  ensureAuth(authUserId);
+export async function listAccounts(userId: string): Promise<AccountRecord[]> {
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('id,name,type,currency,created_at,user_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
 
-  const name = payload.name?.trim();
+  if (error) {
+    throw new Error(toUserMessage(error, 'Gagal memuat akun.'));
+  }
+
+  return (data ?? []).map((row) => normalizeAccount(row));
+}
+
+export async function createAccount(
+  userId: string,
+  payload: CreateAccountPayload,
+): Promise<AccountRecord> {
+  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
   if (!name) {
     throw new Error('Nama akun wajib diisi.');
   }
 
-  const insertData = {
+  const record = {
+    user_id: userId,
     name,
-    type: payload.type ?? 'other',
+    type: normalizeAccountType(payload.type),
     currency: normalizeCurrency(payload.currency),
-    user_id: authUserId,
   };
 
-  try {
-    const { data, error } = await supabase
-      .from('accounts')
-      .insert(insertData)
-      .select('id, user_id, name, type, currency, created_at, updated_at')
-      .single();
+  const { data, error } = await supabase
+    .from('accounts')
+    .insert([record])
+    .select('id,name,type,currency,created_at,user_id')
+    .single();
 
-    if (error) throw error;
-    if (!data) {
-      throw new Error('Respon server tidak valid.');
-    }
-
-    return normalizeAccount(data, authUserId);
-  } catch (error) {
-    throw new Error(toUserMessage('Gagal menambah akun', error));
+  if (error) {
+    throw new Error(toUserMessage(error, 'Gagal menambah akun.'));
   }
+
+  if (!data) {
+    throw new Error('Gagal menambah akun. Silakan coba lagi.');
+  }
+
+  return normalizeAccount(data);
 }
 
 export async function updateAccount(
   id: string,
-  patch: AccountPatch,
-  userId?: string
+  patch: UpdateAccountPayload,
 ): Promise<AccountRecord> {
-  const authUserId = userId ?? (await getCurrentUserId());
-  ensureAuth(authUserId);
-
   if (!id) {
     throw new Error('ID akun tidak valid.');
   }
@@ -121,7 +136,7 @@ export async function updateAccount(
   const updates: Record<string, any> = {};
 
   if (patch.name !== undefined) {
-    const trimmed = patch.name?.trim();
+    const trimmed = typeof patch.name === 'string' ? patch.name.trim() : '';
     if (!trimmed) {
       throw new Error('Nama akun wajib diisi.');
     }
@@ -129,7 +144,7 @@ export async function updateAccount(
   }
 
   if (patch.type !== undefined) {
-    updates.type = patch.type;
+    updates.type = normalizeAccountType(patch.type);
   }
 
   if (patch.currency !== undefined) {
@@ -140,43 +155,32 @@ export async function updateAccount(
     throw new Error('Tidak ada perubahan untuk disimpan.');
   }
 
-  try {
-    const { data, error } = await supabase
-      .from('accounts')
-      .update(updates)
-      .eq('id', id)
-      .eq('user_id', authUserId)
-      .select('id, user_id, name, type, currency, created_at, updated_at')
-      .single();
+  const { data, error } = await supabase
+    .from('accounts')
+    .update(updates)
+    .eq('id', id)
+    .select('id,name,type,currency,created_at,user_id')
+    .single();
 
-    if (error) throw error;
-    if (!data) {
-      throw new Error('Respon server tidak valid.');
-    }
-
-    return normalizeAccount(data, authUserId);
-  } catch (error) {
-    throw new Error(toUserMessage('Gagal memperbarui akun', error));
+  if (error) {
+    throw new Error(toUserMessage(error, 'Gagal memperbarui akun.'));
   }
+
+  if (!data) {
+    throw new Error('Gagal memperbarui akun. Silakan coba lagi.');
+  }
+
+  return normalizeAccount(data);
 }
 
-export async function deleteAccount(id: string, userId?: string): Promise<void> {
-  const authUserId = userId ?? (await getCurrentUserId());
-  ensureAuth(authUserId);
-
+export async function deleteAccount(id: string): Promise<void> {
   if (!id) {
     throw new Error('ID akun tidak valid.');
   }
 
-  try {
-    const { error } = await supabase
-      .from('accounts')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', authUserId);
+  const { error } = await supabase.from('accounts').delete().eq('id', id);
 
-    if (error) throw error;
-  } catch (error) {
-    throw new Error(toUserMessage('Gagal menghapus akun', error));
+  if (error) {
+    throw new Error(toUserMessage(error, 'Gagal menghapus akun.'));
   }
 }
