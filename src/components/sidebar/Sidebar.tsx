@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
@@ -16,10 +16,10 @@ import {
 import SidebarSection from "./SidebarSection";
 import SidebarItem from "./SidebarItem";
 import Logo from "../Logo";
-import { NAV_ITEMS } from "../../router/nav.config";
 import { supabase } from "../../lib/supabase";
 import { useMode } from "../../hooks/useMode";
 import type { User } from "@supabase/supabase-js";
+import { listSidebarItems } from "../../lib/adminSidebarApi";
 
 const BRAND_SWATCHES = [
   { name: "Blue", h: 211, s: 92, l: 60 },
@@ -29,17 +29,37 @@ const BRAND_SWATCHES = [
   { name: "Rose", h: 347, s: 77, l: 60 },
 ] as const;
 
-const MAIN_PATHS = [
-  "/",
-  "/transactions",
-  "/budgets",
-  "/goals",
-  "/debts",
-  "/categories",
-  "/data",
-  "/subscriptions",
-  "/profile",
-];
+const ICON_EMOJI_MAP: Record<string, string> = {
+  home: "🏠",
+  dashboard: "📊",
+  transactions: "🧾",
+  budgets: "💰",
+  wallet: "👛",
+  goals: "🎯",
+  debts: "📉",
+  categories: "🏷️",
+  data: "📂",
+  subscriptions: "🔁",
+  profile: "👤",
+  settings: "⚙️",
+  admin: "🛠️",
+  report: "📄",
+  reports: "📈",
+  insight: "💡",
+  analytics: "📈",
+  saving: "💾",
+  support: "🆘",
+};
+
+type SidebarAccessRole = "guest" | "user" | "admin";
+
+type SidebarMenuItem = {
+  id: string;
+  title: string;
+  route: string;
+  icon_name: string | null;
+  position: number;
+};
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -69,6 +89,26 @@ function formatEmail(email?: string | null) {
   return email.length > 24 ? `${email.slice(0, 21)}…` : email;
 }
 
+function renderSidebarIcon(name?: string | null) {
+  if (!name) {
+    return <span className="text-lg leading-none">•</span>;
+  }
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) {
+    return <span className="text-lg leading-none">•</span>;
+  }
+  const emoji = ICON_EMOJI_MAP[normalized];
+  if (emoji) {
+    return <span className="text-lg leading-none">{emoji}</span>;
+  }
+  const fallback = normalized.replace(/[^a-z0-9]/g, '').slice(0, 2).toUpperCase();
+  return (
+    <span className="text-[11px] font-semibold uppercase leading-none">
+      {fallback || '•'}
+    </span>
+  );
+}
+
 export default function Sidebar({
   collapsed,
   onToggle,
@@ -82,34 +122,91 @@ export default function Sidebar({
   const navigate = useNavigate();
   const { mode, setMode } = useMode();
   const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<SidebarAccessRole>("guest");
+  const [menuItems, setMenuItems] = useState<SidebarMenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState<string | null>(null);
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
+
+    const syncUser = async (user: User | null) => {
+      if (!active) return;
+      setSessionUser(user ?? null);
+      if (!user) {
+        setUserRole("guest");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!active) return;
+
+      if (error) {
+        setUserRole("user");
+        return;
+      }
+
+      const role = data?.role === "admin" ? "admin" : "user";
+      setUserRole(role);
+    };
+
     supabase.auth.getUser().then(({ data }) => {
-      if (!mounted) return;
-      setSessionUser(data.user ?? null);
+      void syncUser(data.user ?? null);
     });
+
     const { data: subscription } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        setSessionUser(session?.user ?? null);
+        void syncUser(session?.user ?? null);
       }
     );
+
     return () => {
-      mounted = false;
+      active = false;
       subscription.subscription?.unsubscribe?.();
     };
   }, []);
 
-  const mainItems = useMemo(() => {
-    const itemsByPath = new Map(
-      NAV_ITEMS.filter((item) => item.inSidebar).map((item) => [item.path, item])
-    );
-    const ordered = MAIN_PATHS.map((path) => itemsByPath.get(path)).filter(Boolean);
-    const remaining = NAV_ITEMS.filter(
-      (item) => item.inSidebar && !MAIN_PATHS.includes(item.path)
-    );
-    return [...ordered, ...remaining];
-  }, []);
+  const fetchMenuItems = useCallback(
+    async (role: SidebarAccessRole) => {
+      setMenuLoading(true);
+      setMenuError(null);
+      try {
+        const items = await listSidebarItems();
+        const allowedLevels =
+          role === "admin"
+            ? new Set(["public", "user", "admin"])
+            : role === "user"
+            ? new Set(["public", "user"])
+            : new Set(["public"]);
+        const filtered = items
+          .filter((item) => item.is_enabled && allowedLevels.has(item.access_level))
+          .map<SidebarMenuItem>((item) => ({
+            id: item.id,
+            title: item.title?.trim() || item.route,
+            route: item.route,
+            icon_name: item.icon_name ?? null,
+            position: item.position,
+          }))
+          .sort((a, b) => a.position - b.position);
+        setMenuItems(filtered);
+      } catch (_error) {
+        setMenuItems([]);
+        setMenuError("Gagal memuat menu sidebar");
+      } finally {
+        setMenuLoading(false);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void fetchMenuItems(userRole);
+  }, [userRole, fetchMenuItems]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -171,21 +268,37 @@ export default function Sidebar({
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain pb-6">
           <SidebarSection title="Main" collapsed={collapsed}>
-            <ul className="flex flex-col gap-1.5">
-              {mainItems.map((item) =>
-                item ? (
-                  <li key={item.path}>
+            {menuLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className={clsx(
+                      'h-11 w-full rounded-xl bg-border/50',
+                      collapsed && 'mx-auto w-11'
+                    )}
+                  />
+                ))}
+              </div>
+            ) : menuItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/60 bg-surface-2/60 p-3 text-xs text-muted-foreground">
+                {menuError ?? 'Menu sidebar belum dikonfigurasi.'}
+              </div>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {menuItems.map((item) => (
+                  <li key={item.id}>
                     <SidebarItem
-                      to={item.path}
-                      icon={item.icon}
+                      to={item.route}
+                      icon={renderSidebarIcon(item.icon_name)}
                       label={item.title}
                       collapsed={collapsed}
                       onNavigate={onNavigate}
                     />
                   </li>
-                ) : null
-              )}
-            </ul>
+                ))}
+              </ul>
+            )}
           </SidebarSection>
           <SidebarSection title="Preferensi" collapsed={collapsed}>
             <div>

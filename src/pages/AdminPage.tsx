@@ -13,16 +13,28 @@ import {
   type RouteAccessRecord,
   type UserProfileRecord,
 } from '../lib/adminApi';
+import {
+  createSidebarItem,
+  deleteSidebarItem,
+  listSidebarItems,
+  moveSidebarItem,
+  updateSidebarItem,
+  type SidebarAccessLevel,
+  type SidebarItemRecord,
+} from '../lib/adminSidebarApi';
 import { useToast } from '../context/ToastContext.jsx';
 
-type TabKey = 'access' | 'users' | 'settings' | 'audit';
+type TabKey = 'access' | 'sidebar' | 'users' | 'settings' | 'audit';
 
 type RouteDraft = RouteAccessRecord;
 
 type UserDraft = UserProfileRecord;
 
+type SidebarDraft = SidebarItemRecord;
+
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'access', label: 'Access Control' },
+  { key: 'sidebar', label: 'Sidebar Menu' },
   { key: 'users', label: 'Users' },
   { key: 'settings', label: 'App Settings' },
   { key: 'audit', label: 'Audit Log' },
@@ -97,6 +109,12 @@ export default function AdminPage() {
   const [routesLoading, setRoutesLoading] = useState(true);
   const [routeSavingId, setRouteSavingId] = useState<string | null>(null);
 
+  const [sidebarItems, setSidebarItems] = useState<SidebarItemRecord[]>([]);
+  const [sidebarDrafts, setSidebarDrafts] = useState<SidebarDraft[]>([]);
+  const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [sidebarSavingId, setSidebarSavingId] = useState<string | null>(null);
+  const [sidebarMovingId, setSidebarMovingId] = useState<string | null>(null);
+
   const [users, setUsers] = useState<UserProfileRecord[]>([]);
   const [userDrafts, setUserDrafts] = useState<UserDraft[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -106,6 +124,14 @@ export default function AdminPage() {
     route: '',
     access_level: 'public' as RouteAccessRecord['access_level'],
     is_enabled: true,
+  });
+
+  const [newSidebarItem, setNewSidebarItem] = useState({
+    title: '',
+    route: '',
+    access_level: 'public' as SidebarAccessLevel,
+    is_enabled: true,
+    icon_name: '',
   });
 
   const [newUser, setNewUser] = useState({
@@ -130,6 +156,26 @@ export default function AdminPage() {
       addToast('Gagal memuat daftar route', 'error');
     } finally {
       setRoutesLoading(false);
+    }
+  }, [addToast]);
+
+  const normalizeSidebarRoute = useCallback((value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    const withoutLeadingSlash = trimmed.replace(/^\/+/, '');
+    return `/${withoutLeadingSlash}`;
+  }, []);
+
+  const loadSidebarItems = useCallback(async () => {
+    setSidebarLoading(true);
+    try {
+      const items = await listSidebarItems();
+      setSidebarItems(items);
+      setSidebarDrafts(items.map((item) => ({ ...item })));
+    } catch (error) {
+      addToast('Gagal memuat menu sidebar', 'error');
+    } finally {
+      setSidebarLoading(false);
     }
   }, [addToast]);
 
@@ -162,8 +208,9 @@ export default function AdminPage() {
   useEffect(() => {
     void loadRoutes();
     void loadUsers();
+    void loadSidebarItems();
     void loadDescription();
-  }, [loadRoutes, loadUsers, loadDescription]);
+  }, [loadRoutes, loadUsers, loadSidebarItems, loadDescription]);
 
   const handleRouteChange = (
     id: string,
@@ -172,6 +219,32 @@ export default function AdminPage() {
   ) => {
     setRouteDrafts((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const handleSidebarDraftChange = (
+    id: string,
+    field: 'title' | 'route' | 'access_level' | 'is_enabled' | 'icon_name',
+    value: string | boolean
+  ) => {
+    setSidebarDrafts((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        switch (field) {
+          case 'title':
+            return { ...item, title: String(value) };
+          case 'route':
+            return { ...item, route: String(value) };
+          case 'access_level':
+            return { ...item, access_level: value as SidebarAccessLevel };
+          case 'is_enabled':
+            return { ...item, is_enabled: Boolean(value) };
+          case 'icon_name':
+            return { ...item, icon_name: String(value) };
+          default:
+            return item;
+        }
+      })
     );
   };
 
@@ -285,6 +358,162 @@ export default function AdminPage() {
     }
   };
 
+  const handleSaveSidebarItem = async (draft: SidebarDraft) => {
+    const trimmedTitle = draft.title.trim();
+    const normalizedRoute = normalizeSidebarRoute(draft.route);
+    const iconValue = typeof draft.icon_name === 'string' ? draft.icon_name.trim() : '';
+
+    if (!trimmedTitle) {
+      addToast('Judul menu wajib diisi', 'error');
+      return;
+    }
+
+    if (!normalizedRoute) {
+      addToast('Route menu wajib diisi', 'error');
+      return;
+    }
+
+    if (!ACCESS_OPTIONS.some((option) => option.value === draft.access_level)) {
+      addToast('Level akses menu tidak valid', 'error');
+      return;
+    }
+
+    const duplicateRoute = sidebarItems.some(
+      (item) => item.route === normalizedRoute && item.id !== draft.id
+    );
+
+    if (duplicateRoute) {
+      addToast('Route menu sudah digunakan', 'error');
+      return;
+    }
+
+    setSidebarSavingId(draft.id);
+    try {
+      const saved = await updateSidebarItem(draft.id, {
+        title: trimmedTitle,
+        route: normalizedRoute,
+        access_level: draft.access_level,
+        is_enabled: draft.is_enabled,
+        icon_name: iconValue ? iconValue : null,
+      });
+
+      setSidebarItems((prev) => {
+        const exists = prev.some((item) => item.id === saved.id);
+        const updated = exists
+          ? prev.map((item) => (item.id === saved.id ? saved : item))
+          : [...prev, saved];
+        return [...updated].sort((a, b) => a.position - b.position);
+      });
+
+      setSidebarDrafts((prev) => {
+        const exists = prev.some((item) => item.id === saved.id);
+        const updated = exists
+          ? prev.map((item) => (item.id === saved.id ? { ...saved } : item))
+          : [...prev, { ...saved }];
+        return [...updated].sort((a, b) => a.position - b.position);
+      });
+
+      addToast('Menu sidebar diperbarui', 'success');
+    } catch (error) {
+      addToast('Gagal memperbarui menu sidebar', 'error');
+    } finally {
+      setSidebarSavingId(null);
+    }
+  };
+
+  const handleDeleteSidebarItem = async (draft: SidebarDraft) => {
+    const confirmed = window.confirm(`Hapus menu ${draft.title || draft.route}?`);
+    if (!confirmed) return;
+
+    setSidebarSavingId(draft.id);
+    try {
+      await deleteSidebarItem(draft.id);
+      await loadSidebarItems();
+      addToast('Menu sidebar dihapus', 'success');
+    } catch (error) {
+      addToast('Gagal menghapus menu sidebar', 'error');
+    } finally {
+      setSidebarSavingId(null);
+    }
+  };
+
+  const handleAddSidebarItem = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const trimmedTitle = newSidebarItem.title.trim();
+    const normalizedRoute = normalizeSidebarRoute(newSidebarItem.route);
+    const iconValue = newSidebarItem.icon_name.trim();
+
+    if (!trimmedTitle) {
+      addToast('Judul menu wajib diisi', 'error');
+      return;
+    }
+
+    if (!normalizedRoute) {
+      addToast('Route menu wajib diawali dengan /', 'error');
+      return;
+    }
+
+    if (!ACCESS_OPTIONS.some((option) => option.value === newSidebarItem.access_level)) {
+      addToast('Level akses menu tidak valid', 'error');
+      return;
+    }
+
+    const duplicateRoute = sidebarItems.some((item) => item.route === normalizedRoute);
+    if (duplicateRoute) {
+      addToast('Route menu sudah digunakan', 'error');
+      return;
+    }
+
+    setSidebarSavingId('new');
+    try {
+      const maxPosition = sidebarItems.reduce(
+        (max, item) => Math.max(max, item.position ?? 0),
+        0
+      );
+      const created = await createSidebarItem({
+        title: trimmedTitle,
+        route: normalizedRoute,
+        access_level: newSidebarItem.access_level,
+        is_enabled: newSidebarItem.is_enabled,
+        icon_name: iconValue ? iconValue : null,
+        position: maxPosition + 1,
+      });
+
+      setSidebarItems((prev) => [...prev, created].sort((a, b) => a.position - b.position));
+      setSidebarDrafts((prev) => [...prev, { ...created }].sort((a, b) => a.position - b.position));
+
+      setNewSidebarItem({
+        title: '',
+        route: '',
+        access_level: 'public',
+        is_enabled: true,
+        icon_name: '',
+      });
+
+      addToast('Menu sidebar ditambahkan', 'success');
+    } catch (error) {
+      addToast('Gagal menambahkan menu sidebar', 'error');
+    } finally {
+      setSidebarSavingId(null);
+    }
+  };
+
+  const handleMoveSidebarItem = async (id: string, direction: 'up' | 'down') => {
+    setSidebarMovingId(id);
+    try {
+      const updated = await moveSidebarItem(id, direction);
+      if (updated) {
+        setSidebarItems(updated);
+        setSidebarDrafts(updated.map((item) => ({ ...item })));
+      }
+    } catch (error) {
+      addToast('Gagal mengubah urutan menu', 'error');
+    } finally {
+      setSidebarMovingId(null);
+    }
+  };
+
   const handleSaveUser = async (draft: UserDraft) => {
     if (!draft.id) {
       addToast('ID pengguna tidak ditemukan', 'error');
@@ -361,6 +590,11 @@ export default function AdminPage() {
       setSavingDescription(false);
     }
   };
+
+  const sortedSidebarDrafts = useMemo(
+    () => [...sidebarDrafts].sort((a, b) => a.position - b.position),
+    [sidebarDrafts]
+  );
 
   const auditEntries = useMemo(() => {
     const resolveTime = (value: string | null) => {
@@ -689,6 +923,253 @@ export default function AdminPage() {
     </SectionCard>
   );
 
+  const renderSidebarMenu = () => (
+    <SectionCard>
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">Sidebar Menu</h2>
+          <p className="text-sm text-muted-foreground">
+            Kelola item navigasi yang tampil di sidebar aplikasi.
+          </p>
+        </div>
+        {sidebarLoading ? (
+          <SkeletonTable rows={4} columns={7} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full table-fixed text-left text-sm">
+              <thead className="text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="w-20 pb-3 font-medium">Posisi</th>
+                  <th className="w-[18%] pb-3 font-medium">Judul</th>
+                  <th className="w-[20%] pb-3 font-medium">Route</th>
+                  <th className="w-[15%] pb-3 font-medium">Level Akses</th>
+                  <th className="w-[12%] pb-3 font-medium">Aktif</th>
+                  <th className="w-[15%] pb-3 font-medium">Ikon</th>
+                  <th className="pb-3 text-right font-medium">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {sortedSidebarDrafts.map((item, index) => {
+                  const original = sidebarItems.find((sidebar) => sidebar.id === item.id);
+                  const trimmedTitle = item.title.trim();
+                  const normalizedRoute = normalizeSidebarRoute(item.route);
+                  const draftIcon = typeof item.icon_name === 'string' ? item.icon_name.trim() : '';
+                  const originalTitle = original?.title?.trim?.() ?? '';
+                  const originalRoute = original?.route ?? '';
+                  const originalIcon = original?.icon_name ? original.icon_name.trim() : '';
+                  const isDirty =
+                    !original ||
+                    trimmedTitle !== originalTitle ||
+                    normalizedRoute !== originalRoute ||
+                    item.access_level !== original?.access_level ||
+                    item.is_enabled !== original?.is_enabled ||
+                    draftIcon !== originalIcon;
+                  const isSaving = sidebarSavingId === item.id;
+                  const isMoving = sidebarMovingId === item.id;
+                  const isFirst = index === 0;
+                  const isLast = index === sortedSidebarDrafts.length - 1;
+                  return (
+                    <tr key={item.id} className="align-middle">
+                      <td className="py-3 pr-4 font-semibold text-muted-foreground">
+                        {item.position || index + 1}
+                      </td>
+                      <td className="py-3 pr-4">
+                        <input
+                          value={item.title}
+                          onChange={(event) =>
+                            handleSidebarDraftChange(item.id, 'title', event.target.value)
+                          }
+                          className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+                          placeholder="Menu Baru"
+                        />
+                      </td>
+                      <td className="py-3 pr-4">
+                        <input
+                          value={item.route}
+                          onChange={(event) =>
+                            handleSidebarDraftChange(item.id, 'route', event.target.value)
+                          }
+                          className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+                          placeholder="/halaman"
+                        />
+                      </td>
+                      <td className="py-3 pr-4">
+                        <select
+                          value={item.access_level}
+                          onChange={(event) =>
+                            handleSidebarDraftChange(
+                              item.id,
+                              'access_level',
+                              event.target.value as SidebarAccessLevel
+                            )
+                          }
+                          className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+                        >
+                          {ACCESS_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <div className="flex items-center gap-3">
+                          <Switch
+                            checked={item.is_enabled}
+                            onChange={(value) =>
+                              handleSidebarDraftChange(item.id, 'is_enabled', value)
+                            }
+                            label={`Status menu ${item.title || item.route}`}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {item.is_enabled ? 'Aktif' : 'Nonaktif'}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <input
+                          value={item.icon_name ?? ''}
+                          onChange={(event) =>
+                            handleSidebarDraftChange(item.id, 'icon_name', event.target.value)
+                          }
+                          className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+                          placeholder="home"
+                        />
+                      </td>
+                      <td className="py-3 text-right">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSidebarItem(item.id, 'up')}
+                              disabled={isFirst || isSaving || isMoving}
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-base font-semibold text-foreground transition hover:border-brand/60 hover:text-brand disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label={`Naikkan posisi ${item.title || item.route}`}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSidebarItem(item.id, 'down')}
+                              disabled={isLast || isSaving || isMoving}
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-base font-semibold text-foreground transition hover:border-brand/60 hover:text-brand disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label={`Turunkan posisi ${item.title || item.route}`}
+                            >
+                              ↓
+                            </button>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleSaveSidebarItem(item)}
+                              disabled={!isDirty || isSaving}
+                              className={clsx(
+                                'inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-medium transition',
+                                isDirty && !isSaving
+                                  ? 'bg-brand text-white hover:bg-brand/90'
+                                  : 'cursor-not-allowed bg-border text-muted-foreground'
+                              )}
+                            >
+                              {isSaving ? 'Menyimpan…' : 'Simpan'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSidebarItem(item)}
+                              disabled={isSaving || isMoving}
+                              className="inline-flex h-11 items-center justify-center rounded-2xl border border-danger/50 px-4 text-sm font-medium text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-70"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {sortedSidebarDrafts.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
+                      Belum ada menu sidebar.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <form
+          onSubmit={handleAddSidebarItem}
+          className="space-y-4 rounded-2xl border border-dashed border-border/60 bg-surface-1/60 p-4"
+        >
+          <h3 className="text-sm font-semibold text-foreground">Tambah Menu Sidebar</h3>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            <input
+              value={newSidebarItem.title}
+              onChange={(event) =>
+                setNewSidebarItem((prev) => ({ ...prev, title: event.target.value }))
+              }
+              className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+              placeholder="Judul menu"
+            />
+            <input
+              value={newSidebarItem.route}
+              onChange={(event) =>
+                setNewSidebarItem((prev) => ({ ...prev, route: event.target.value }))
+              }
+              className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+              placeholder="/halaman"
+            />
+            <select
+              value={newSidebarItem.access_level}
+              onChange={(event) =>
+                setNewSidebarItem((prev) => ({
+                  ...prev,
+                  access_level: event.target.value as SidebarAccessLevel,
+                }))
+              }
+              className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+            >
+              {ACCESS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <div className="flex h-11 items-center gap-3 rounded-2xl border border-border bg-surface-1 px-4 ring-2 ring-transparent transition focus-within:border-brand focus-within:ring-brand/60">
+              <Switch
+                checked={newSidebarItem.is_enabled}
+                onChange={(value) =>
+                  setNewSidebarItem((prev) => ({ ...prev, is_enabled: value }))
+                }
+                label="Status menu baru"
+              />
+              <span className="text-xs text-muted-foreground">
+                {newSidebarItem.is_enabled ? 'Aktif' : 'Nonaktif'}
+              </span>
+            </div>
+            <input
+              value={newSidebarItem.icon_name}
+              onChange={(event) =>
+                setNewSidebarItem((prev) => ({ ...prev, icon_name: event.target.value }))
+              }
+              className="h-11 w-full rounded-2xl border border-border bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60"
+              placeholder="home"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={sidebarSavingId === 'new'}
+              className="inline-flex h-11 items-center justify-center rounded-2xl bg-brand px-5 text-sm font-medium text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {sidebarSavingId === 'new' ? 'Menyimpan…' : 'Tambah Menu'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </SectionCard>
+  );
+
   const renderSettings = () => (
     <SectionCard>
       <div className="space-y-6">
@@ -804,6 +1285,7 @@ export default function AdminPage() {
         ))}
       </div>
       {activeTab === 'access' && renderAccessControl()}
+      {activeTab === 'sidebar' && renderSidebarMenu()}
       {activeTab === 'users' && renderUsers()}
       {activeTab === 'settings' && renderSettings()}
       {activeTab === 'audit' && renderAuditLog()}
