@@ -21,6 +21,7 @@ import {
   updateSidebarItem as updateSidebarItemApi,
   type SidebarItemRecord,
 } from '../lib/adminSidebarApi';
+import { supabase as supabaseClient } from '../lib/supabase';
 import { useToast } from '../context/ToastContext.jsx';
 
 type TabKey = 'access' | 'sidebar' | 'users' | 'settings' | 'audit';
@@ -497,6 +498,11 @@ export default function AdminPage() {
       return;
     }
 
+    if (!rawRoute.startsWith('/')) {
+      addToast("Route harus diawali '/'", 'error');
+      return;
+    }
+
     if (!ACCESS_OPTIONS.some((option) => option.value === newSidebarItem.access_level)) {
       addToast('Level akses tidak valid', 'error');
       return;
@@ -515,7 +521,7 @@ export default function AdminPage() {
 
     setSidebarSavingId('new');
     try {
-      await createSidebarItem({
+      await createSidebarItem(supabaseClient, {
         title: trimmedTitle,
         route: normalizedRoute,
         access_level: newSidebarItem.access_level,
@@ -533,7 +539,8 @@ export default function AdminPage() {
       });
       addToast('Menu sidebar berhasil ditambahkan', 'success');
     } catch (error) {
-      addToast('Gagal menambahkan menu sidebar', 'error');
+      const message = error instanceof Error ? error.message : 'Gagal menambahkan menu sidebar';
+      addToast(message, 'error');
     } finally {
       setSidebarSavingId(null);
     }
