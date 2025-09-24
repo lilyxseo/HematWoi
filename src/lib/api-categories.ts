@@ -3,6 +3,7 @@ import { dbCache } from "./sync/localdb";
 import { getCurrentUserId } from "./session";
 
 type CategoryType = "income" | "expense";
+type CategorySortColumn = "sort_order" | "order_index";
 
 export interface CategoryRecord {
   id: string;
@@ -16,8 +17,26 @@ export interface CategoryRecord {
 }
 
 const DEFAULT_COLOR = "#64748B";
-const CATEGORY_BASE_COLUMNS =
-  "id, user_id, name, type, sort_order, created_at, updated_at, inserted_at";
+
+let categorySortColumn: CategorySortColumn | undefined;
+
+function getCategorySortColumn(): CategorySortColumn {
+  return categorySortColumn ?? "sort_order";
+}
+
+function getCategoryBaseColumns(): string {
+  const sortColumn = getCategorySortColumn();
+  return [
+    "id",
+    "user_id",
+    "name",
+    "type",
+    sortColumn,
+    "created_at",
+    "updated_at",
+    "inserted_at",
+  ].join(", ");
+}
 
 let categoryColorSupported: boolean | undefined;
 
@@ -26,9 +45,8 @@ function shouldUseCategoryColor(): boolean {
 }
 
 function getCategorySelectColumns(): string {
-  return shouldUseCategoryColor()
-    ? `${CATEGORY_BASE_COLUMNS}, color`
-    : CATEGORY_BASE_COLUMNS;
+  const baseColumns = getCategoryBaseColumns();
+  return shouldUseCategoryColor() ? `${baseColumns}, color` : baseColumns;
 }
 
 function isMissingColumnError(error: unknown, column: string): boolean {
@@ -56,6 +74,19 @@ function isMissingColumnError(error: unknown, column: string): boolean {
 function handleMissingCategoryColor(error: unknown): boolean {
   if (shouldUseCategoryColor() && isMissingColumnError(error, "color")) {
     categoryColorSupported = false;
+    return true;
+  }
+  return false;
+}
+
+function handleMissingCategorySortColumn(error: unknown): boolean {
+  const current = getCategorySortColumn();
+  if (current === "sort_order" && isMissingColumnError(error, "sort_order")) {
+    categorySortColumn = "order_index";
+    return true;
+  }
+  if (current === "order_index" && isMissingColumnError(error, "order_index")) {
+    categorySortColumn = "sort_order";
     return true;
   }
   return false;
@@ -112,13 +143,15 @@ function normalizeName(value: unknown): string {
 }
 
 function mapCategoryRow(row: Partial<CategoryRecord> & Record<string, unknown>): CategoryRecord {
+  const sortValue =
+    typeof row.sort_order !== "undefined" ? row.sort_order : row.order_index;
   return {
     id: String(row.id ?? ""),
     user_id: (typeof row.user_id === "string" ? row.user_id : null) ?? null,
     name: normalizeName(row.name),
     type: normalizeType(row.type),
     color: normalizeColor(row.color),
-    sort_order: normalizeSortOrder(row.sort_order),
+    sort_order: normalizeSortOrder(sortValue),
     created_at: (typeof row.created_at === "string" ? row.created_at : row.inserted_at) ?? null,
     updated_at: (typeof row.updated_at === "string" ? row.updated_at : null),
   };
@@ -140,12 +173,13 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
   if (!userId) return [];
 
   try {
+    const sortColumn = getCategorySortColumn();
     let query = supabase
       .from("categories")
       .select(getCategorySelectColumns())
       .eq("user_id", userId)
       .order("type", { ascending: true })
-      .order("sort_order", { ascending: true })
+      .order(sortColumn, { ascending: true })
       .order("created_at", { ascending: true });
 
     if (signal) {
@@ -159,6 +193,9 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
     return rows;
   } catch (error) {
     if (handleMissingCategoryColor(error)) {
+      return listCategories(signal);
+    }
+    if (handleMissingCategorySortColumn(error)) {
       return listCategories(signal);
     }
     if (signal?.aborted) {
@@ -218,21 +255,25 @@ export async function createCategory(input: {
   try {
     await assertUniqueName(userId, type, name);
 
+    const sortColumn = getCategorySortColumn();
     const { data: orderRows, error: orderError } = await supabase
       .from("categories")
-      .select("sort_order")
+      .select(sortColumn)
       .eq("user_id", userId)
       .eq("type", type)
-      .order("sort_order", { ascending: false })
+      .order(sortColumn, { ascending: false })
       .limit(1);
     if (orderError) throw orderError;
-    const nextOrder = normalizeSortOrder(orderRows?.[0]?.sort_order, -1) + 1;
+    const orderRow = (orderRows?.[0] ?? {}) as Partial<
+      Record<CategorySortColumn, unknown>
+    >;
+    const nextOrder = normalizeSortOrder(orderRow[sortColumn], -1) + 1;
 
     const insertPayload: Record<string, unknown> = {
       user_id: userId,
       name,
       type,
-      sort_order: nextOrder,
+      [sortColumn]: nextOrder,
     };
 
     if (shouldUseCategoryColor()) {
@@ -251,6 +292,9 @@ export async function createCategory(input: {
     return record;
   } catch (error) {
     if (handleMissingCategoryColor(error)) {
+      return createCategory(input);
+    }
+    if (handleMissingCategorySortColumn(error)) {
       return createCategory(input);
     }
     logDevError("createCategory", error);
@@ -280,7 +324,8 @@ export async function updateCategory(
   }
 
   if (patch.sort_order != null) {
-    updates.sort_order = normalizeSortOrder(patch.sort_order);
+    const sortColumn = getCategorySortColumn();
+    updates[sortColumn] = normalizeSortOrder(patch.sort_order);
   }
 
   if (!Object.keys(updates).length) {
@@ -319,6 +364,9 @@ export async function updateCategory(
     if (handleMissingCategoryColor(error)) {
       return updateCategory(id, patch);
     }
+    if (handleMissingCategorySortColumn(error)) {
+      return updateCategory(id, patch);
+    }
     logDevError("updateCategory", error);
     throw toError(error, "Gagal memperbarui kategori.");
   }
@@ -333,11 +381,12 @@ export async function reorderCategories(
   if (!Array.isArray(orderedIds) || !orderedIds.length) return;
 
   const normalizedType = normalizeType(type);
+  const sortColumn = getCategorySortColumn();
   const payload = orderedIds.map((id, index) => ({
     id,
     user_id: userId,
     type: normalizedType,
-    sort_order: index,
+    [sortColumn]: index,
   }));
 
   try {
@@ -351,6 +400,9 @@ export async function reorderCategories(
     }
   } catch (error) {
     if (handleMissingCategoryColor(error)) {
+      return reorderCategories(type, orderedIds);
+    }
+    if (handleMissingCategorySortColumn(error)) {
       return reorderCategories(type, orderedIds);
     }
     logDevError("reorderCategories", error);
