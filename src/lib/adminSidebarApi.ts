@@ -1,5 +1,5 @@
-import type { PostgrestSingleResponse } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import type { PostgrestSingleResponse, SupabaseClient } from '@supabase/supabase-js';
+import { supabase as defaultSupabase } from './supabase';
 
 type SidebarAccessLevel = 'public' | 'user' | 'admin';
 
@@ -18,9 +18,9 @@ export type CreateSidebarItemInput = {
   title: string;
   route: string;
   access_level: SidebarAccessLevel;
-  is_enabled: boolean;
+  is_enabled?: boolean;
   icon_name?: string | null;
-  position: number;
+  position?: number;
 };
 
 export type UpdateSidebarItemInput = Partial<Omit<SidebarItemRecord, 'id'>>;
@@ -62,6 +62,13 @@ function normalizeIcon(value: unknown): string | null {
   return null;
 }
 
+function normalizeRoute(value: string | null | undefined): string {
+  if (!value) return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+}
+
 function mapSidebarRow(row: any): SidebarItemRecord {
   return {
     id:
@@ -81,7 +88,7 @@ function mapSidebarRow(row: any): SidebarItemRecord {
 }
 
 export async function listSidebarItems(): Promise<SidebarItemRecord[]> {
-  const { data, error } = await supabase
+  const { data, error } = await defaultSupabase
     .from('app_sidebar_items')
     .select('id, title, route, access_level, is_enabled, icon_name, position')
     .order('position', { ascending: true });
@@ -94,28 +101,64 @@ export async function listSidebarItems(): Promise<SidebarItemRecord[]> {
 }
 
 export async function createSidebarItem(
-  input: CreateSidebarItemInput
+  client: SupabaseClient,
+  payload: CreateSidebarItemInput
 ): Promise<SidebarItemRecord> {
-  const payload: Record<string, unknown> = {
-    title: input.title,
-    route: input.route,
-    access_level: input.access_level,
-    is_enabled: input.is_enabled,
-    position: input.position,
-    icon_name: normalizeIcon(input.icon_name),
-  };
+  const {
+    data: { user },
+  } = await client.auth.getUser();
 
-  if (input.id) {
-    payload.id = input.id;
+  if (!user) {
+    throw new Error('Harus login');
   }
 
-  const response = await supabase
+  const body = {
+    title: payload.title?.trim(),
+    route: normalizeRoute(payload.route),
+    access_level: payload.access_level,
+    is_enabled: payload.is_enabled ?? true,
+    icon_name: normalizeIcon(payload.icon_name),
+    position: sanitizeNumber(payload.position, 0),
+    user_id: user.id,
+  };
+
+  if (payload.id) {
+    (body as Record<string, unknown>).id = payload.id;
+  }
+
+  if (!body.title) {
+    throw new Error('Judul tidak boleh kosong');
+  }
+
+  if (!body.route?.startsWith('/')) {
+    throw new Error("Route harus diawali '/'");
+  }
+
+  if (!['public', 'user', 'admin'].includes(body.access_level)) {
+    throw new Error('access_level tidak valid');
+  }
+
+  const { data, error } = await client
     .from('app_sidebar_items')
-    .insert(payload)
+    .insert([body])
     .select('id, title, route, access_level, is_enabled, icon_name, position')
     .single();
 
-  const data = ensureResponse(response);
+  if (error) {
+    const msg = String(error.message || error.details || error.hint || error);
+    if (/duplicate key|uniq_sidebar_route/i.test(msg)) {
+      throw new Error('Route sudah ada. Gunakan nama lain.');
+    }
+    if (/policy|RLS|permission/i.test(msg)) {
+      throw new Error('Akses ditolak. Hanya admin yang boleh mengubah menu.');
+    }
+    throw new Error('Gagal menyimpan item sidebar: ' + msg);
+  }
+
+  if (!data) {
+    throw new Error('Gagal menyimpan item sidebar: respons kosong.');
+  }
+
   return mapSidebarRow(data);
 }
 
@@ -144,7 +187,7 @@ export async function updateSidebarItem(
     payload.icon_name = normalizeIcon(patch.icon_name);
   }
 
-  const response = await supabase
+  const response = await defaultSupabase
     .from('app_sidebar_items')
     .update(payload)
     .eq('id', id)
@@ -156,7 +199,7 @@ export async function updateSidebarItem(
 }
 
 export async function deleteSidebarItem(id: string): Promise<void> {
-  const { error } = await supabase.from('app_sidebar_items').delete().eq('id', id);
+  const { error } = await defaultSupabase.from('app_sidebar_items').delete().eq('id', id);
   if (error) {
     throw error;
   }
@@ -166,7 +209,7 @@ export async function moveSidebarItem(
   id: string,
   direction: 'up' | 'down'
 ): Promise<SidebarItemRecord[]> {
-  const { data: current, error: currentError } = await supabase
+  const { data: current, error: currentError } = await defaultSupabase
     .from('app_sidebar_items')
     .select('id, position')
     .eq('id', id)
@@ -180,7 +223,7 @@ export async function moveSidebarItem(
     return listSidebarItems();
   }
 
-  const query = supabase
+  const query = defaultSupabase
     .from('app_sidebar_items')
     .select('id, position')
     .limit(1);
@@ -200,7 +243,7 @@ export async function moveSidebarItem(
     return listSidebarItems();
   }
 
-  const firstUpdate = await supabase
+  const firstUpdate = await defaultSupabase
     .from('app_sidebar_items')
     .update({ position: neighbor.position })
     .eq('id', current.id);
@@ -209,7 +252,7 @@ export async function moveSidebarItem(
     throw firstUpdate.error;
   }
 
-  const secondUpdate = await supabase
+  const secondUpdate = await defaultSupabase
     .from('app_sidebar_items')
     .update({ position: current.position })
     .eq('id', neighbor.id);
