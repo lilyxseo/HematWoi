@@ -31,7 +31,10 @@ type RouteDraft = RouteAccessRecord;
 
 type UserDraft = UserProfileRecord;
 
-type SidebarItemDraft = Omit<SidebarItemRecord, 'icon_name'> & { icon_name: string };
+type SidebarItemDraft = Omit<SidebarItemRecord, 'icon_name' | 'category'> & {
+  icon_name: string;
+  category: string;
+};
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'access', label: 'Access Control' },
@@ -154,6 +157,7 @@ export default function AdminPage() {
     access_level: 'public' as SidebarItemRecord['access_level'],
     is_enabled: true,
     icon_name: '',
+    category: '',
   });
 
   const [users, setUsers] = useState<UserProfileRecord[]>([]);
@@ -373,7 +377,16 @@ export default function AdminPage() {
 
   const handleStartSidebarEdit = (item: SidebarItemRecord) => {
     setEditingSidebarId(item.id);
-    setSidebarDraft({ ...item, icon_name: (item.icon_name ?? '').toLowerCase() });
+    setSidebarDraft({
+      id: item.id,
+      title: item.title,
+      route: item.route,
+      access_level: item.access_level,
+      is_enabled: item.is_enabled,
+      position: item.position,
+      category: item.category ?? '',
+      icon_name: (item.icon_name ?? '').toLowerCase(),
+    });
   };
 
   const handleCancelSidebarEdit = () => {
@@ -420,6 +433,7 @@ export default function AdminPage() {
     }
 
     const iconValue = sidebarDraft.icon_name.trim().toLowerCase();
+    const categoryValue = sidebarDraft.category.trim();
 
     setSidebarSavingId(editingSidebarId);
     try {
@@ -429,6 +443,7 @@ export default function AdminPage() {
         access_level: sidebarDraft.access_level,
         is_enabled: sidebarDraft.is_enabled,
         icon_name: iconValue ? iconValue : null,
+        category: categoryValue ? categoryValue : null,
       });
 
       setSidebarItems((prev) =>
@@ -519,6 +534,7 @@ export default function AdminPage() {
     const nextPosition =
       sidebarItems.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
     const iconValue = newSidebarItem.icon_name.trim().toLowerCase();
+    const categoryValue = newSidebarItem.category.trim();
 
     setSidebarSavingId('new');
     try {
@@ -529,6 +545,7 @@ export default function AdminPage() {
         is_enabled: newSidebarItem.is_enabled,
         icon_name: iconValue ? iconValue : null,
         position: nextPosition,
+        category: categoryValue ? categoryValue : null,
       });
       await loadSidebarMenu(false);
       setNewSidebarItem({
@@ -537,6 +554,7 @@ export default function AdminPage() {
         access_level: 'public',
         is_enabled: true,
         icon_name: '',
+        category: '',
       });
       addToast('Menu sidebar berhasil ditambahkan', 'success');
     } catch (error) {
@@ -832,7 +850,7 @@ export default function AdminPage() {
             </p>
           </div>
           {sidebarLoading ? (
-            <SkeletonTable rows={4} columns={7} />
+            <SkeletonTable rows={4} columns={8} />
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full table-fixed text-left text-sm">
@@ -840,6 +858,7 @@ export default function AdminPage() {
                   <tr>
                     <th className="w-16 pb-3 font-medium">Posisi</th>
                     <th className="w-[18%] pb-3 font-medium">Judul</th>
+                    <th className="w-[18%] pb-3 font-medium">Kategori</th>
                     <th className="w-[22%] pb-3 font-medium">Route</th>
                     <th className="w-[16%] pb-3 font-medium">Level Akses</th>
                     <th className="w-[14%] pb-3 font-medium">Aktif</th>
@@ -855,6 +874,7 @@ export default function AdminPage() {
                     const draft = isEditing && sidebarDraft ? sidebarDraft : null;
                     const titleValue = draft?.title ?? item.title;
                     const routeValue = draft?.route ?? item.route;
+                    const categoryValue = draft?.category ?? item.category ?? '';
                     const accessValue = draft?.access_level ?? item.access_level;
                     const enabledValue = draft?.is_enabled ?? item.is_enabled;
                     const iconRawValue = draft?.icon_name ?? item.icon_name ?? '';
@@ -870,6 +890,7 @@ export default function AdminPage() {
                       !!draft &&
                       (draft.title.trim() !== item.title ||
                         draft.route.trim() !== item.route ||
+                        draft.category.trim() !== (item.category ?? '').trim() ||
                         draft.access_level !== item.access_level ||
                         draft.is_enabled !== item.is_enabled ||
                         draft.icon_name.trim().toLowerCase() !== iconStoredValue);
@@ -894,6 +915,22 @@ export default function AdminPage() {
                           ) : (
                             <span className="block min-h-[44px] text-sm font-medium text-foreground">
                               {item.title || 'Tanpa Judul'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
+                          {isEditing ? (
+                            <input
+                              value={categoryValue}
+                              onChange={(event) =>
+                                handleSidebarDraftChange('category', event.target.value)
+                              }
+                              className={baseInputClass}
+                              placeholder="Misal: Analitik"
+                            />
+                          ) : (
+                            <span className="block min-h-[44px] text-sm text-foreground">
+                              {item.category?.trim() || 'Tanpa Kategori'}
                             </span>
                           )}
                         </td>
@@ -1093,6 +1130,19 @@ export default function AdminPage() {
                   }
                   className={baseInputClass}
                   placeholder="/dashboard"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Kategori (opsional)
+                </label>
+                <input
+                  value={newSidebarItem.category}
+                  onChange={(event) =>
+                    setNewSidebarItem((prev) => ({ ...prev, category: event.target.value }))
+                  }
+                  className={baseInputClass}
+                  placeholder="Misal: Analitik"
                 />
               </div>
               <div className="md:col-span-1">

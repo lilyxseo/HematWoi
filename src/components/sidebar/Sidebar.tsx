@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
@@ -65,6 +65,7 @@ type SidebarMenuEntry = {
   access_level: 'public' | 'user' | 'admin';
   icon_name: string | null;
   position: number;
+  category: string | null;
 };
 
 function normalizeSidebarRoute(path: string): string {
@@ -156,7 +157,7 @@ export default function Sidebar({
 
         let query = supabase
           .from('app_sidebar_items')
-          .select('id, title, route, access_level, icon_name, position, is_enabled')
+          .select('id, title, route, access_level, icon_name, position, is_enabled, category')
           .eq('is_enabled', true)
           .order('position', { ascending: true });
 
@@ -199,6 +200,12 @@ export default function Sidebar({
             typeof row?.position === 'number' && Number.isFinite(row.position)
               ? row.position
               : Number.parseInt(String(row?.position ?? 0), 10) || 0,
+          category:
+            typeof row?.category === 'string'
+              ? row.category
+              : row?.category == null
+                ? null
+                : String(row.category),
         }));
 
         setMenuItems(normalized);
@@ -235,6 +242,29 @@ export default function Sidebar({
     { value: "local", label: "Local", icon: <CloudOff className="h-4 w-4" /> },
     { value: "online", label: "Online", icon: <Cloud className="h-4 w-4" /> },
   ];
+
+  const menuSections = useMemo(() => {
+    if (menuItems.length === 0) {
+      return [] as { key: string; title: string; items: SidebarMenuEntry[] }[];
+    }
+
+    const groups = new Map<string, { key: string; title: string; items: SidebarMenuEntry[] }>();
+
+    for (const item of menuItems) {
+      const rawCategory = (item.category ?? '').trim();
+      const key = rawCategory ? rawCategory.toLocaleLowerCase('id-ID') : '__default__';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          title: rawCategory || 'Main',
+          items: [],
+        });
+      }
+      groups.get(key)?.items.push(item);
+    }
+
+    return Array.from(groups.values());
+  }, [menuItems]);
 
   return (
     <>
@@ -279,51 +309,61 @@ export default function Sidebar({
           ) : null}
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain pb-6">
-          <SidebarSection title="Main" collapsed={collapsed}>
-            <ul className="flex flex-col gap-1.5">
-              {menuLoading
-                ? Array.from({ length: 4 }).map((_, index) => (
-                    <li key={`sidebar-skeleton-${index}`}>
-                      <div
-                        className={clsx(
-                          'h-11 w-full animate-pulse rounded-xl bg-border/60',
-                          collapsed && 'mx-auto w-11 rounded-full'
-                        )}
+          {menuLoading ? (
+            <SidebarSection title="Main" collapsed={collapsed}>
+              <ul className="flex flex-col gap-1.5">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <li key={`sidebar-skeleton-${index}`}>
+                    <div
+                      className={clsx(
+                        'h-11 w-full animate-pulse rounded-xl bg-border/60',
+                        collapsed && 'mx-auto w-11 rounded-full'
+                      )}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </SidebarSection>
+          ) : menuSections.length === 0 ? (
+            <SidebarSection title="Main" collapsed={collapsed}>
+              <ul className="flex flex-col gap-1.5">
+                <li>
+                  <div
+                    className={clsx(
+                      'rounded-2xl border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground',
+                      collapsed && 'text-center'
+                    )}
+                  >
+                    Menu belum tersedia
+                  </div>
+                </li>
+              </ul>
+            </SidebarSection>
+          ) : (
+            menuSections.map((section) => (
+              <SidebarSection key={section.key} title={section.title} collapsed={collapsed}>
+                <ul className="flex flex-col gap-1.5">
+                  {section.items.map((item) => (
+                    <li key={item.id}>
+                      <SidebarItem
+                        to={item.route}
+                        icon={
+                          <Icon
+                            name={item.icon_name}
+                            label={item.title || item.route}
+                            className="w-5 h-5 shrink-0"
+                          />
+                        }
+                        label={item.title || item.route}
+                        collapsed={collapsed}
+                        onNavigate={onNavigate}
                       />
                     </li>
-                  ))
-                : menuItems.length === 0
-                  ? (
-                    <li>
-                      <div
-                        className={clsx(
-                          'rounded-2xl border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground',
-                          collapsed && 'text-center'
-                        )}
-                      >
-                        Menu belum tersedia
-                      </div>
-                    </li>
-                  )
-                  : menuItems.map((item) => (
-                      <li key={item.id}>
-                        <SidebarItem
-                          to={item.route}
-                          icon={
-                            <Icon
-                              name={item.icon_name}
-                              label={item.title || item.route}
-                              className="w-5 h-5 shrink-0"
-                            />
-                          }
-                          label={item.title || item.route}
-                          collapsed={collapsed}
-                          onNavigate={onNavigate}
-                        />
-                      </li>
-                    ))}
-            </ul>
-          </SidebarSection>
+                  ))}
+                </ul>
+              </SidebarSection>
+            ))
+          )}
           <SidebarSection title="Preferensi" collapsed={collapsed}>
             <div>
               <p
