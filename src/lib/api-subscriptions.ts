@@ -233,7 +233,7 @@ function cleanPayload<T extends Record<string, unknown>>(source: T): T {
   return next as T;
 }
 
-function normalizeSubscriptionRow(row: Record<string, any>): SubscriptionRecord {
+export function normalizeSubscriptionRow(row: Record<string, any>): SubscriptionRecord {
   return {
     id: row.id as string,
     user_id: row.user_id as string,
@@ -268,7 +268,7 @@ function normalizeSubscriptionRow(row: Record<string, any>): SubscriptionRecord 
   };
 }
 
-function normalizeChargeRow(row: Record<string, any>): SubscriptionChargeRecord {
+export function normalizeChargeRow(row: Record<string, any>): SubscriptionChargeRecord {
   return {
     id: row.id as string,
     user_id: row.user_id as string,

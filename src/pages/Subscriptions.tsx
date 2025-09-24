@@ -19,16 +19,23 @@ import {
   createSubscription,
   deleteSubscription,
   getMonthlyForecast,
-  listSubscriptions,
-  listUpcoming,
   markPaid,
   skipOnce,
   updateSubscription,
+  normalizeSubscriptionRow,
+  normalizeChargeRow,
   type SubscriptionChargeRecord,
   type SubscriptionRecord,
 } from '../lib/api-subscriptions';
+import {
+  listSubscriptions as fetchSubscriptionsQuery,
+  listUpcomingCharges as fetchUpcomingChargesQuery,
+  type SubscriptionListParams,
+  type UpcomingChargesParams,
+} from '../lib/api';
 import { exportSubscriptionsCsv } from '../lib/subscriptions-csv';
 import { supabase } from '../lib/supabase';
+import { getCurrentUserId } from '../lib/session';
 
 const DEFAULT_FILTERS: SubscriptionFilterState = {
   q: '',
@@ -93,6 +100,8 @@ export default function SubscriptionsPage() {
   const [upcomingRaw, setUpcomingRaw] = useState<SubscriptionChargeRecord[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
   const [loadingUpcoming, setLoadingUpcoming] = useState(false);
+  const [subsError, setSubsError] = useState<string | null>(null);
+  const [upcomingError, setUpcomingError] = useState<string | null>(null);
   const [summary, setSummary] = useState(emptySummary);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -141,8 +150,13 @@ export default function SubscriptionsPage() {
 
     async function fetchSubscriptions() {
       setLoadingSubs(true);
+      setSubsError(null);
       try {
-        const data = await listSubscriptions({
+        const uid = await getCurrentUserId();
+        if (!uid) {
+          throw new Error('Pengguna belum masuk.');
+        }
+        const params: SubscriptionListParams = {
           q: filters.q,
           status: filters.status === 'all' ? undefined : filters.status,
           categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
@@ -153,11 +167,18 @@ export default function SubscriptionsPage() {
           createdFrom: filters.createdFrom ?? undefined,
           createdTo: filters.createdTo ?? undefined,
           sort: filters.sort,
-        });
+        };
+        const { data, error } = await fetchSubscriptionsQuery(uid, params);
         if (!active) return;
-        setSubscriptions(Array.isArray(data) ? data : []);
+        if (error) {
+          setSubsError('Gagal memuat langganan. Coba lagi.');
+          throw error;
+        }
+        const normalized = Array.isArray(data) ? data.map((row) => normalizeSubscriptionRow(row)) : [];
+        setSubscriptions(normalized);
       } catch (error) {
         if (!active) return;
+        setSubsError('Gagal memuat langganan. Coba lagi.');
         const message = error instanceof Error ? error.message : 'Gagal memuat/simpan. Cek koneksi atau ulangi.';
         addToast(message, 'danger');
       } finally {
@@ -167,18 +188,29 @@ export default function SubscriptionsPage() {
 
     async function fetchUpcoming() {
       setLoadingUpcoming(true);
+      setUpcomingError(null);
       try {
+        const uid = await getCurrentUserId();
+        if (!uid) {
+          throw new Error('Pengguna belum masuk.');
+        }
         const dueFrom = filters.dueFrom ?? new Date().toISOString().slice(0, 10);
-        const params = {
+        const params: UpcomingChargesParams = {
           dueFrom,
           dueTo: filters.dueTo ?? undefined,
           includePaid: false,
-        } as const;
-        const data = await listUpcoming(params);
+        };
+        const { data, error } = await fetchUpcomingChargesQuery(uid, params);
         if (!active) return;
-        setUpcomingRaw(Array.isArray(data) ? data : []);
+        if (error) {
+          setUpcomingError('Gagal memuat tagihan. Coba lagi.');
+          throw error;
+        }
+        const normalized = Array.isArray(data) ? data.map((row) => normalizeChargeRow(row)) : [];
+        setUpcomingRaw(normalized);
       } catch (error) {
         if (!active) return;
+        setUpcomingError('Gagal memuat tagihan. Coba lagi.');
         const message = error instanceof Error ? error.message : 'Gagal memuat tagihan. Cek koneksi atau ulangi.';
         addToast(message, 'danger');
       } finally {
@@ -280,27 +312,55 @@ export default function SubscriptionsPage() {
 
   const refreshData = useCallback(async () => {
     try {
-      const [subs, charges] = await Promise.all([
-        listSubscriptions({
-          q: filters.q,
-          status: filters.status === 'all' ? undefined : filters.status,
-          categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
-          accountId: filters.accountId === 'all' ? undefined : filters.accountId,
-          unit: filters.unit === 'all' ? undefined : filters.unit,
-          dueFrom: filters.dueFrom ?? undefined,
-          dueTo: filters.dueTo ?? undefined,
-          createdFrom: filters.createdFrom ?? undefined,
-          createdTo: filters.createdTo ?? undefined,
-          sort: filters.sort,
-        }),
-        listUpcoming({
-          dueFrom: filters.dueFrom ?? new Date().toISOString().slice(0, 10),
-          dueTo: filters.dueTo ?? undefined,
-          includePaid: false,
-        }),
+      const uid = await getCurrentUserId();
+      if (!uid) {
+        throw new Error('Pengguna belum masuk.');
+      }
+      const subsParams: SubscriptionListParams = {
+        q: filters.q,
+        status: filters.status === 'all' ? undefined : filters.status,
+        categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
+        accountId: filters.accountId === 'all' ? undefined : filters.accountId,
+        unit: filters.unit === 'all' ? undefined : filters.unit,
+        dueFrom: filters.dueFrom ?? undefined,
+        dueTo: filters.dueTo ?? undefined,
+        createdFrom: filters.createdFrom ?? undefined,
+        createdTo: filters.createdTo ?? undefined,
+        sort: filters.sort,
+      };
+      const upcomingParams: UpcomingChargesParams = {
+        dueFrom: filters.dueFrom ?? new Date().toISOString().slice(0, 10),
+        dueTo: filters.dueTo ?? undefined,
+        includePaid: false,
+      };
+      const [subsRes, chargesRes] = await Promise.all([
+        fetchSubscriptionsQuery(uid, subsParams),
+        fetchUpcomingChargesQuery(uid, upcomingParams),
       ]);
-      setSubscriptions(Array.isArray(subs) ? subs : []);
-      setUpcomingRaw(Array.isArray(charges) ? charges : []);
+
+      if (subsRes.error) {
+        setSubsError('Gagal memuat langganan. Coba lagi.');
+      } else {
+        setSubsError(null);
+        const normalizedSubs = Array.isArray(subsRes.data)
+          ? subsRes.data.map((row) => normalizeSubscriptionRow(row))
+          : [];
+        setSubscriptions(normalizedSubs);
+      }
+
+      if (chargesRes.error) {
+        setUpcomingError('Gagal memuat tagihan. Coba lagi.');
+      } else {
+        setUpcomingError(null);
+        const normalizedCharges = Array.isArray(chargesRes.data)
+          ? chargesRes.data.map((row) => normalizeChargeRow(row))
+          : [];
+        setUpcomingRaw(normalizedCharges);
+      }
+
+      if (subsRes.error || chargesRes.error) {
+        throw subsRes.error ?? chargesRes.error;
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal memuat ulang data. Cek koneksi atau ulangi.';
       addToast(message, 'danger');
@@ -582,6 +642,11 @@ export default function SubscriptionsPage() {
                 Memuat langganan…
               </div>
             )}
+            {!loadingSubs && subsError && (
+              <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-6 text-center text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                {subsError}
+              </div>
+            )}
             {!loadingSubs && Array.isArray(subscriptions) && subscriptions.length === 0 && (
               <div className="rounded-3xl border border-border-subtle bg-surface px-4 py-6 text-center text-sm text-muted">
                 Belum ada langganan. Tambah langganan pertama Anda.
@@ -650,6 +715,11 @@ export default function SubscriptionsPage() {
                     Batalkan
                   </button>
                 </div>
+              </div>
+            )}
+            {!loadingUpcoming && upcomingError && (
+              <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                {upcomingError}
               </div>
             )}
             <UpcomingTable
