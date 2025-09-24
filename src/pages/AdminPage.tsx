@@ -13,16 +13,27 @@ import {
   type RouteAccessRecord,
   type UserProfileRecord,
 } from '../lib/adminApi';
+import {
+  createSidebarItem,
+  deleteSidebarItem as removeSidebarItem,
+  listSidebarItems as getSidebarItems,
+  moveSidebarItem as moveSidebarItemOrder,
+  updateSidebarItem as updateSidebarItemApi,
+  type SidebarItemRecord,
+} from '../lib/adminSidebarApi';
 import { useToast } from '../context/ToastContext.jsx';
 
-type TabKey = 'access' | 'users' | 'settings' | 'audit';
+type TabKey = 'access' | 'sidebar' | 'users' | 'settings' | 'audit';
 
 type RouteDraft = RouteAccessRecord;
 
 type UserDraft = UserProfileRecord;
 
+type SidebarItemDraft = Omit<SidebarItemRecord, 'icon_name'> & { icon_name: string };
+
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'access', label: 'Access Control' },
+  { key: 'sidebar', label: 'Sidebar Menu' },
   { key: 'users', label: 'Users' },
   { key: 'settings', label: 'App Settings' },
   { key: 'audit', label: 'Audit Log' },
@@ -34,29 +45,62 @@ const ACCESS_OPTIONS = [
   { value: 'admin', label: 'Admin' },
 ] as const;
 
+function normalizeRoutePath(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  let withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  let collapsed = '';
+  let previousWasSlash = false;
+
+  for (const char of withLeadingSlash) {
+    if (char === '/') {
+      if (previousWasSlash) continue;
+      previousWasSlash = true;
+    } else {
+      previousWasSlash = false;
+    }
+    collapsed += char;
+  }
+
+  while (collapsed.length > 1 && collapsed.endsWith('/')) {
+    collapsed = collapsed.slice(0, -1);
+  }
+
+  return collapsed;
+}
+
 function Switch({
   checked,
   onChange,
   id,
   label,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   id?: string;
   label?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       id={id}
-      onClick={() => onChange(!checked)}
+      onClick={() => {
+        if (!disabled) {
+          onChange(!checked);
+        }
+      }}
       className={clsx(
         'relative inline-flex h-6 w-11 items-center rounded-full transition',
-        checked ? 'bg-brand' : 'bg-border'
+        checked ? 'bg-brand' : 'bg-border',
+        disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
       )}
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      aria-disabled={disabled}
+      disabled={disabled}
     >
       <span
         className={clsx(
@@ -97,6 +141,19 @@ export default function AdminPage() {
   const [routesLoading, setRoutesLoading] = useState(true);
   const [routeSavingId, setRouteSavingId] = useState<string | null>(null);
 
+  const [sidebarItems, setSidebarItems] = useState<SidebarItemRecord[]>([]);
+  const [sidebarLoading, setSidebarLoading] = useState(true);
+  const [sidebarSavingId, setSidebarSavingId] = useState<string | null>(null);
+  const [editingSidebarId, setEditingSidebarId] = useState<string | null>(null);
+  const [sidebarDraft, setSidebarDraft] = useState<SidebarItemDraft | null>(null);
+  const [newSidebarItem, setNewSidebarItem] = useState({
+    title: '',
+    route: '',
+    access_level: 'public' as SidebarItemRecord['access_level'],
+    is_enabled: true,
+    icon_name: '',
+  });
+
   const [users, setUsers] = useState<UserProfileRecord[]>([]);
   const [userDrafts, setUserDrafts] = useState<UserDraft[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -133,6 +190,25 @@ export default function AdminPage() {
     }
   }, [addToast]);
 
+  const loadSidebarMenu = useCallback(
+    async (withSkeleton = true) => {
+      if (withSkeleton) {
+        setSidebarLoading(true);
+      }
+      try {
+        const items = await getSidebarItems();
+        setSidebarItems(items);
+        setEditingSidebarId(null);
+        setSidebarDraft(null);
+      } catch (error) {
+        addToast('Gagal memuat menu sidebar', 'error');
+      } finally {
+        setSidebarLoading(false);
+      }
+    },
+    [addToast]
+  );
+
   const loadUsers = useCallback(async () => {
     setUsersLoading(true);
     try {
@@ -161,9 +237,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     void loadRoutes();
+    void loadSidebarMenu();
     void loadUsers();
     void loadDescription();
-  }, [loadRoutes, loadUsers, loadDescription]);
+  }, [loadRoutes, loadSidebarMenu, loadUsers, loadDescription]);
 
   const handleRouteChange = (
     id: string,
@@ -282,6 +359,183 @@ export default function AdminPage() {
       addToast('Gagal menambahkan route baru', 'error');
     } finally {
       setRouteSavingId(null);
+    }
+  };
+
+  const handleSidebarDraftChange = <Field extends keyof SidebarItemDraft>(
+    field: Field,
+    value: SidebarItemDraft[Field]
+  ) => {
+    setSidebarDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const handleStartSidebarEdit = (item: SidebarItemRecord) => {
+    setEditingSidebarId(item.id);
+    setSidebarDraft({ ...item, icon_name: item.icon_name ?? '' });
+  };
+
+  const handleCancelSidebarEdit = () => {
+    setEditingSidebarId(null);
+    setSidebarDraft(null);
+  };
+
+  const handleSaveSidebarItem = async () => {
+    if (!editingSidebarId || !sidebarDraft) {
+      return;
+    }
+
+    const trimmedTitle = sidebarDraft.title.trim();
+    if (!trimmedTitle) {
+      addToast('Judul menu wajib diisi', 'error');
+      return;
+    }
+
+    const rawRoute = sidebarDraft.route.trim();
+    if (!rawRoute) {
+      addToast('Route wajib diisi', 'error');
+      return;
+    }
+
+    if (/\s/.test(rawRoute)) {
+      addToast('Route tidak boleh mengandung spasi', 'error');
+      return;
+    }
+
+    const normalizedRoute = normalizeRoutePath(rawRoute);
+
+    if (
+      sidebarItems.some(
+        (item) => item.route === normalizedRoute && item.id !== editingSidebarId
+      )
+    ) {
+      addToast('Route sudah digunakan', 'error');
+      return;
+    }
+
+    if (!ACCESS_OPTIONS.some((option) => option.value === sidebarDraft.access_level)) {
+      addToast('Level akses tidak valid', 'error');
+      return;
+    }
+
+    const iconValue = sidebarDraft.icon_name.trim();
+
+    setSidebarSavingId(editingSidebarId);
+    try {
+      const updated = await updateSidebarItemApi(editingSidebarId, {
+        title: trimmedTitle,
+        route: normalizedRoute,
+        access_level: sidebarDraft.access_level,
+        is_enabled: sidebarDraft.is_enabled,
+        icon_name: iconValue ? iconValue : null,
+      });
+
+      setSidebarItems((prev) =>
+        [...prev.map((item) => (item.id === updated.id ? updated : item))].sort(
+          (a, b) => a.position - b.position
+        )
+      );
+      setEditingSidebarId(null);
+      setSidebarDraft(null);
+      addToast('Menu sidebar diperbarui', 'success');
+    } catch (error) {
+      addToast('Gagal menyimpan menu sidebar', 'error');
+    } finally {
+      setSidebarSavingId(null);
+    }
+  };
+
+  const handleDeleteSidebarItem = async (item: SidebarItemRecord) => {
+    const confirmDelete = window.confirm(`Hapus menu ${item.title || item.route}?`);
+    if (!confirmDelete) return;
+
+    setSidebarSavingId(item.id);
+    try {
+      await removeSidebarItem(item.id);
+      await loadSidebarMenu(false);
+      addToast('Menu sidebar berhasil dihapus', 'success');
+    } catch (error) {
+      addToast('Gagal menghapus menu sidebar', 'error');
+    } finally {
+      setSidebarSavingId(null);
+    }
+  };
+
+  const handleMoveSidebarItem = async (
+    item: SidebarItemRecord,
+    direction: 'up' | 'down'
+  ) => {
+    setSidebarSavingId(item.id);
+    try {
+      const updatedList = await moveSidebarItemOrder(item.id, direction);
+      setSidebarItems(updatedList);
+      setEditingSidebarId(null);
+      setSidebarDraft(null);
+      addToast('Urutan menu diperbarui', 'success');
+    } catch (error) {
+      addToast('Gagal mengubah urutan menu', 'error');
+    } finally {
+      setSidebarSavingId(null);
+    }
+  };
+
+  const handleCreateSidebarItem = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedTitle = newSidebarItem.title.trim();
+    if (!trimmedTitle) {
+      addToast('Judul menu wajib diisi', 'error');
+      return;
+    }
+
+    const rawRoute = newSidebarItem.route.trim();
+    if (!rawRoute) {
+      addToast('Route wajib diisi', 'error');
+      return;
+    }
+
+    if (/\s/.test(rawRoute)) {
+      addToast('Route tidak boleh mengandung spasi', 'error');
+      return;
+    }
+
+    if (!ACCESS_OPTIONS.some((option) => option.value === newSidebarItem.access_level)) {
+      addToast('Level akses tidak valid', 'error');
+      return;
+    }
+
+    const normalizedRoute = normalizeRoutePath(rawRoute);
+
+    if (sidebarItems.some((item) => item.route === normalizedRoute)) {
+      addToast('Route sudah digunakan', 'error');
+      return;
+    }
+
+    const nextPosition =
+      sidebarItems.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
+    const iconValue = newSidebarItem.icon_name.trim();
+
+    setSidebarSavingId('new');
+    try {
+      await createSidebarItem({
+        title: trimmedTitle,
+        route: normalizedRoute,
+        access_level: newSidebarItem.access_level,
+        is_enabled: newSidebarItem.is_enabled,
+        icon_name: iconValue ? iconValue : null,
+        position: nextPosition,
+      });
+      await loadSidebarMenu(false);
+      setNewSidebarItem({
+        title: '',
+        route: '',
+        access_level: 'public',
+        is_enabled: true,
+        icon_name: '',
+      });
+      addToast('Menu sidebar berhasil ditambahkan', 'success');
+    } catch (error) {
+      addToast('Gagal menambahkan menu sidebar', 'error');
+    } finally {
+      setSidebarSavingId(null);
     }
   };
 
@@ -549,6 +803,340 @@ export default function AdminPage() {
     </SectionCard>
   );
 
+  const renderSidebarMenu = () => {
+    const accessLabel = (value: SidebarItemRecord['access_level']) =>
+      ACCESS_OPTIONS.find((option) => option.value === value)?.label ?? value;
+    const nextPosition =
+      sidebarItems.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
+    const baseInputClass =
+      'h-11 w-full rounded-2xl border border-border/70 bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60';
+
+    return (
+      <SectionCard>
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-lg font-semibold text-foreground">Sidebar Menu</h2>
+            <p className="text-sm text-muted-foreground">
+              Kelola item navigasi yang tampil untuk setiap level akses pengguna.
+            </p>
+          </div>
+          {sidebarLoading ? (
+            <SkeletonTable rows={4} columns={7} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full table-fixed text-left text-sm">
+                <thead className="text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="w-16 pb-3 font-medium">Posisi</th>
+                    <th className="w-[18%] pb-3 font-medium">Judul</th>
+                    <th className="w-[22%] pb-3 font-medium">Route</th>
+                    <th className="w-[16%] pb-3 font-medium">Level Akses</th>
+                    <th className="w-[14%] pb-3 font-medium">Aktif</th>
+                    <th className="w-[16%] pb-3 font-medium">Ikon</th>
+                    <th className="pb-3 text-right font-medium">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60">
+                  {sidebarItems.map((item, index) => {
+                    const isFirst = index === 0;
+                    const isLast = index === sidebarItems.length - 1;
+                    const isEditing = editingSidebarId === item.id;
+                    const draft = isEditing && sidebarDraft ? sidebarDraft : null;
+                    const titleValue = draft?.title ?? item.title;
+                    const routeValue = draft?.route ?? item.route;
+                    const accessValue = draft?.access_level ?? item.access_level;
+                    const enabledValue = draft?.is_enabled ?? item.is_enabled;
+                    const iconValue = draft?.icon_name ?? item.icon_name ?? '';
+                    const isProcessing = sidebarSavingId === item.id;
+                    const isAnotherEditing =
+                      editingSidebarId !== null && editingSidebarId !== item.id;
+                    const disableReorder =
+                      sidebarLoading || sidebarSavingId !== null || editingSidebarId !== null;
+                    const isDirty =
+                      !!draft &&
+                      (draft.title.trim() !== item.title ||
+                        draft.route.trim() !== item.route ||
+                        draft.access_level !== item.access_level ||
+                        draft.is_enabled !== item.is_enabled ||
+                        draft.icon_name.trim() !== (item.icon_name ?? ''));
+
+                    return (
+                      <tr key={item.id} className="align-middle">
+                        <td className="py-3 pr-4">
+                          <span className="inline-flex h-11 items-center text-sm font-semibold text-muted-foreground">
+                            #{item.position}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          {isEditing ? (
+                            <input
+                              value={titleValue}
+                              onChange={(event) =>
+                                handleSidebarDraftChange('title', event.target.value)
+                              }
+                              className={baseInputClass}
+                              placeholder="Dashboard"
+                            />
+                          ) : (
+                            <span className="block min-h-[44px] text-sm font-medium text-foreground">
+                              {item.title || 'Tanpa Judul'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
+                          {isEditing ? (
+                            <input
+                              value={routeValue}
+                              onChange={(event) =>
+                                handleSidebarDraftChange('route', event.target.value)
+                              }
+                              className={baseInputClass}
+                              placeholder="/dashboard"
+                            />
+                          ) : (
+                            <span className="inline-flex min-h-[44px] items-center rounded-2xl bg-surface-2/70 px-3 text-xs font-medium text-muted-foreground">
+                              {item.route}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
+                          {isEditing ? (
+                            <select
+                              value={accessValue}
+                              onChange={(event) =>
+                                handleSidebarDraftChange(
+                                  'access_level',
+                                  event.target.value as SidebarItemRecord['access_level']
+                                )
+                              }
+                              className={baseInputClass}
+                            >
+                              {ACCESS_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="inline-flex min-h-[32px] items-center rounded-full bg-surface-2/60 px-3 text-xs font-medium text-muted-foreground">
+                              {accessLabel(item.access_level)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <div className="flex items-center gap-3">
+                            <Switch
+                              checked={enabledValue}
+                              onChange={(value) => handleSidebarDraftChange('is_enabled', value)}
+                              label={`Status menu ${titleValue || item.route}`}
+                              disabled={!isEditing || isProcessing}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {enabledValue ? 'Aktif' : 'Nonaktif'}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-4">
+                          {isEditing ? (
+                            <input
+                              value={iconValue}
+                              onChange={(event) =>
+                                handleSidebarDraftChange('icon_name', event.target.value)
+                              }
+                              className={baseInputClass}
+                              placeholder="contoh: home"
+                            />
+                          ) : (
+                            <span className="inline-flex min-h-[32px] items-center rounded-full bg-surface-2/60 px-3 text-xs text-muted-foreground">
+                              {item.icon_name || '—'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 text-right">
+                          <div className="flex flex-wrap justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSidebarItem(item, 'up')}
+                              disabled={isFirst || disableReorder}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface-1 text-sm font-semibold transition hover:bg-border/30 disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label={`Pindahkan ${item.title || item.route} ke atas`}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveSidebarItem(item, 'down')}
+                              disabled={isLast || disableReorder}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface-1 text-sm font-semibold transition hover:bg-border/30 disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label={`Pindahkan ${item.title || item.route} ke bawah`}
+                            >
+                              ↓
+                            </button>
+                            {isEditing ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={handleSaveSidebarItem}
+                                  disabled={!isDirty || isProcessing}
+                                  className={clsx(
+                                    'inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition',
+                                    isDirty && !isProcessing
+                                      ? 'bg-brand text-white hover:bg-brand/90'
+                                      : 'cursor-not-allowed bg-border text-muted-foreground'
+                                  )}
+                                >
+                                  {isProcessing ? 'Menyimpan…' : 'Simpan'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelSidebarEdit}
+                                  disabled={isProcessing}
+                                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-muted-foreground transition hover:bg-border/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Batal
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartSidebarEdit(item)}
+                                  disabled={isProcessing || isAnotherEditing || sidebarSavingId === 'new'}
+                                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-foreground transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSidebarItem(item)}
+                                  disabled={isProcessing || sidebarSavingId === 'new'}
+                                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-danger/50 px-4 text-sm font-medium text-danger transition hover:bg-danger/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Hapus
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {sidebarItems.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-sm text-muted-foreground">
+                        Belum ada menu sidebar yang terdaftar.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <form
+            onSubmit={handleCreateSidebarItem}
+            className="space-y-4 rounded-2xl border border-dashed border-border/60 bg-surface-1/60 p-4"
+          >
+            <div className="grid gap-4 md:grid-cols-6">
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Judul Menu
+                </label>
+                <input
+                  value={newSidebarItem.title}
+                  onChange={(event) =>
+                    setNewSidebarItem((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  className={baseInputClass}
+                  placeholder="Misal: Dashboard"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Route
+                </label>
+                <input
+                  value={newSidebarItem.route}
+                  onChange={(event) =>
+                    setNewSidebarItem((prev) => ({ ...prev, route: event.target.value }))
+                  }
+                  className={baseInputClass}
+                  placeholder="/dashboard"
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Level Akses
+                </label>
+                <select
+                  value={newSidebarItem.access_level}
+                  onChange={(event) =>
+                    setNewSidebarItem((prev) => ({
+                      ...prev,
+                      access_level: event.target.value as SidebarItemRecord['access_level'],
+                    }))
+                  }
+                  className={baseInputClass}
+                >
+                  {ACCESS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-1">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Ikon (opsional)
+                </label>
+                <input
+                  value={newSidebarItem.icon_name}
+                  onChange={(event) =>
+                    setNewSidebarItem((prev) => ({ ...prev, icon_name: event.target.value }))
+                  }
+                  className={baseInputClass}
+                  placeholder="home"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Status
+                </label>
+                <div className="flex h-11 items-center justify-between rounded-2xl border border-border/70 bg-surface-1 px-4 ring-2 ring-transparent">
+                  <span className="text-sm text-muted-foreground">{newSidebarItem.is_enabled ? 'Aktif' : 'Nonaktif'}</span>
+                  <Switch
+                    checked={newSidebarItem.is_enabled}
+                    onChange={(value) =>
+                      setNewSidebarItem((prev) => ({ ...prev, is_enabled: value }))
+                    }
+                    label="Status menu baru"
+                    disabled={sidebarSavingId === 'new'}
+                  />
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+                  Posisi
+                </label>
+                <div className="flex h-11 items-center rounded-2xl border border-dashed border-border/70 bg-surface-1 px-4 text-sm text-muted-foreground">
+                  Otomatis #{nextPosition}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={sidebarSavingId === 'new'}
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-brand px-6 text-sm font-semibold text-white transition hover:bg-brand/90 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {sidebarSavingId === 'new' ? 'Menyimpan…' : 'Tambah Menu'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </SectionCard>
+    );
+  };
+
   const renderUsers = () => (
     <SectionCard>
       <div className="space-y-6">
@@ -804,6 +1392,7 @@ export default function AdminPage() {
         ))}
       </div>
       {activeTab === 'access' && renderAccessControl()}
+      {activeTab === 'sidebar' && renderSidebarMenu()}
       {activeTab === 'users' && renderUsers()}
       {activeTab === 'settings' && renderSettings()}
       {activeTab === 'audit' && renderAuditLog()}

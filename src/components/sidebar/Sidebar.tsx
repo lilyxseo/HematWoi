@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
@@ -16,7 +16,6 @@ import {
 import SidebarSection from "./SidebarSection";
 import SidebarItem from "./SidebarItem";
 import Logo from "../Logo";
-import { NAV_ITEMS } from "../../router/nav.config";
 import { supabase } from "../../lib/supabase";
 import { useMode } from "../../hooks/useMode";
 import type { User } from "@supabase/supabase-js";
@@ -28,18 +27,6 @@ const BRAND_SWATCHES = [
   { name: "Amber", h: 38, s: 92, l: 50 },
   { name: "Rose", h: 347, s: 77, l: 60 },
 ] as const;
-
-const MAIN_PATHS = [
-  "/",
-  "/transactions",
-  "/budgets",
-  "/goals",
-  "/debts",
-  "/categories",
-  "/data",
-  "/subscriptions",
-  "/profile",
-];
 
 type ThemeMode = "light" | "dark" | "system";
 
@@ -69,6 +56,85 @@ function formatEmail(email?: string | null) {
   return email.length > 24 ? `${email.slice(0, 21)}…` : email;
 }
 
+const MENU_ICON_EMOJI: Record<string, string> = {
+  home: "🏠",
+  dashboard: "📊",
+  wallets: "👛",
+  wallet: "👛",
+  savings: "💰",
+  saving: "💰",
+  budget: "💰",
+  budgets: "💰",
+  goals: "🎯",
+  goal: "🎯",
+  subscriptions: "🔔",
+  subscription: "🔔",
+  transactions: "💵",
+  transaction: "💵",
+  debts: "📉",
+  debt: "📉",
+  categories: "🗂️",
+  category: "🗂️",
+  report: "📄",
+  reports: "📑",
+  analytics: "📈",
+  graph: "📈",
+  data: "🧾",
+  profile: "👤",
+  account: "👤",
+  settings: "⚙️",
+  insight: "💡",
+  insights: "💡",
+};
+
+type SidebarMenuEntry = {
+  id: string;
+  title: string;
+  route: string;
+  access_level: 'public' | 'user' | 'admin';
+  icon_name: string | null;
+  position: number;
+};
+
+function normalizeSidebarRoute(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) return '/';
+  const withLeading = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  let collapsed = '';
+  let previousSlash = false;
+
+  for (const char of withLeading) {
+    if (char === '/') {
+      if (previousSlash) continue;
+      previousSlash = true;
+    } else {
+      previousSlash = false;
+    }
+    collapsed += char;
+  }
+
+  while (collapsed.length > 1 && collapsed.endsWith('/')) {
+    collapsed = collapsed.slice(0, -1);
+  }
+
+  return collapsed;
+}
+
+function renderMenuIcon(iconName?: string | null) {
+  const key = iconName?.trim().toLowerCase();
+  if (key && MENU_ICON_EMOJI[key]) {
+    return <span className="text-lg leading-none">{MENU_ICON_EMOJI[key]}</span>;
+  }
+  if (key && key.length) {
+    return (
+      <span className="text-[11px] font-semibold uppercase leading-none tracking-wide">
+        {key.slice(0, 2)}
+      </span>
+    );
+  }
+  return <span className="text-lg leading-none">•</span>;
+}
+
 export default function Sidebar({
   collapsed,
   onToggle,
@@ -82,6 +148,8 @@ export default function Sidebar({
   const navigate = useNavigate();
   const { mode, setMode } = useMode();
   const [sessionUser, setSessionUser] = useState<User | null>(null);
+  const [menuItems, setMenuItems] = useState<SidebarMenuEntry[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -100,16 +168,101 @@ export default function Sidebar({
     };
   }, []);
 
-  const mainItems = useMemo(() => {
-    const itemsByPath = new Map(
-      NAV_ITEMS.filter((item) => item.inSidebar).map((item) => [item.path, item])
-    );
-    const ordered = MAIN_PATHS.map((path) => itemsByPath.get(path)).filter(Boolean);
-    const remaining = NAV_ITEMS.filter(
-      (item) => item.inSidebar && !MAIN_PATHS.includes(item.path)
-    );
-    return [...ordered, ...remaining];
-  }, []);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMenuItems = async () => {
+      setMenuLoading(true);
+      try {
+        let role: 'guest' | 'user' | 'admin' = 'guest';
+        if (sessionUser) {
+          const { data: profile, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('role')
+            .eq('id', sessionUser.id)
+            .maybeSingle();
+
+          if (profileError) {
+            throw profileError;
+          }
+
+          role = profile?.role === 'admin' ? 'admin' : 'user';
+        }
+
+        if (cancelled) return;
+
+        const allowedLevels =
+          role === 'admin'
+            ? ['public', 'user', 'admin']
+            : role === 'user'
+              ? ['public', 'user']
+              : ['public'];
+
+        let query = supabase
+          .from('app_sidebar_items')
+          .select('id, title, route, access_level, icon_name, position, is_enabled')
+          .eq('is_enabled', true)
+          .order('position', { ascending: true });
+
+        if (allowedLevels.length === 1) {
+          query = query.eq('access_level', allowedLevels[0]);
+        } else {
+          query = query.in('access_level', allowedLevels);
+        }
+
+        const { data: rows, error: menuError } = await query;
+
+        if (menuError) {
+          throw menuError;
+        }
+
+        if (cancelled) return;
+
+        const normalized = (rows ?? []).map((row) => ({
+          id: String(
+            row?.id ??
+              row?.route ??
+              globalThis.crypto?.randomUUID?.() ??
+              Math.random().toString(36).slice(2)
+          ),
+          title: String(row?.title ?? ''),
+          route: normalizeSidebarRoute(String(row?.route ?? '/')),
+          access_level:
+            row?.access_level === 'admin'
+              ? 'admin'
+              : row?.access_level === 'user'
+                ? 'user'
+                : 'public',
+          icon_name:
+            typeof row?.icon_name === 'string'
+              ? row.icon_name
+              : row?.icon_name == null
+                ? null
+                : String(row.icon_name),
+          position:
+            typeof row?.position === 'number' && Number.isFinite(row.position)
+              ? row.position
+              : Number.parseInt(String(row?.position ?? 0), 10) || 0,
+        }));
+
+        setMenuItems(normalized);
+      } catch (error) {
+        if (!cancelled) {
+          setMenuItems([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setMenuLoading(false);
+        }
+      }
+    };
+
+    void loadMenuItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionUser]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -172,19 +325,41 @@ export default function Sidebar({
         <div className="flex-1 overflow-y-auto overscroll-contain pb-6">
           <SidebarSection title="Main" collapsed={collapsed}>
             <ul className="flex flex-col gap-1.5">
-              {mainItems.map((item) =>
-                item ? (
-                  <li key={item.path}>
-                    <SidebarItem
-                      to={item.path}
-                      icon={item.icon}
-                      label={item.title}
-                      collapsed={collapsed}
-                      onNavigate={onNavigate}
-                    />
-                  </li>
-                ) : null
-              )}
+              {menuLoading
+                ? Array.from({ length: 4 }).map((_, index) => (
+                    <li key={`sidebar-skeleton-${index}`}>
+                      <div
+                        className={clsx(
+                          'h-11 w-full animate-pulse rounded-xl bg-border/60',
+                          collapsed && 'mx-auto w-11 rounded-full'
+                        )}
+                      />
+                    </li>
+                  ))
+                : menuItems.length === 0
+                  ? (
+                    <li>
+                      <div
+                        className={clsx(
+                          'rounded-2xl border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground',
+                          collapsed && 'text-center'
+                        )}
+                      >
+                        Menu belum tersedia
+                      </div>
+                    </li>
+                  )
+                  : menuItems.map((item) => (
+                      <li key={item.id}>
+                        <SidebarItem
+                          to={item.route}
+                          icon={renderMenuIcon(item.icon_name)}
+                          label={item.title || item.route}
+                          collapsed={collapsed}
+                          onNavigate={onNavigate}
+                        />
+                      </li>
+                    ))}
             </ul>
           </SidebarSection>
           <SidebarSection title="Preferensi" collapsed={collapsed}>
