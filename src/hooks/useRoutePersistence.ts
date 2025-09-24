@@ -1,7 +1,13 @@
 import { MutableRefObject, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
+
 import { supabase } from "../lib/supabase";
-import { isBlacklisted, writeLastRoute, buildFullPath } from "../lib/routePersistence";
+import {
+  isBlacklisted,
+  normalizePath,
+  writeGlobalRoute,
+  writeUserRoute,
+} from "../lib/routePersistence";
 
 const DEBOUNCE_MS = 150;
 
@@ -17,63 +23,71 @@ export default function useRoutePersistence(
   const getUserId = options.getUserId;
   const internalSuppressRef = useRef(false);
   const suppressRef = options.suppressNextWriteRef ?? internalSuppressRef;
-  const timerRef = useRef<number>();
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => {
-      if (timerRef.current !== undefined) {
+      if (timerRef.current !== null) {
         window.clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
     };
   }, []);
 
   useEffect(() => {
-    const fullPath = buildFullPath({
-      pathname: location.pathname,
-      search: location.search,
-      hash: location.hash,
-    });
+    if (typeof window === "undefined") {
+      return;
+    }
 
-    if (!fullPath || isBlacklisted(fullPath)) {
-      if (timerRef.current !== undefined) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = undefined;
-      }
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    const pathFromWindow = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const fullPath = normalizePath(pathFromWindow);
+
+    if (isBlacklisted(fullPath)) {
       return;
     }
 
     if (suppressRef.current) {
       suppressRef.current = false;
+      if (import.meta.env?.DEV) {
+        console.debug("Route write skipped after restore");
+      }
       return;
     }
 
-    if (timerRef.current !== undefined) {
-      window.clearTimeout(timerRef.current);
-    }
-
     let cancelled = false;
-    const timeoutId = window.setTimeout(() => {
-      (async () => {
-        if (cancelled) return;
-        let uid = getUserId?.();
-        if (uid === undefined) {
-          try {
-            const { data } = await supabase.auth.getUser();
-            uid = data.user?.id ?? null;
-          } catch {
-            uid = null;
-          }
-        }
-        if (cancelled) return;
-        writeLastRoute(uid ?? null, fullPath);
-      })();
-    }, DEBOUNCE_MS);
 
-    timerRef.current = timeoutId;
+    timerRef.current = window.setTimeout(async () => {
+      if (cancelled) return;
+      writeGlobalRoute(fullPath);
+
+      let uid = getUserId?.();
+      if (uid === undefined) {
+        try {
+          const { data } = await supabase.auth.getUser();
+          uid = data.user?.id ?? null;
+        } catch {
+          uid = null;
+        }
+      }
+
+      if (cancelled) return;
+
+      if (typeof uid === "string" && uid) {
+        writeUserRoute(uid, fullPath);
+      }
+    }, DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
-      window.clearTimeout(timeoutId);
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
     };
   }, [location.pathname, location.search, location.hash, getUserId, suppressRef]);
 

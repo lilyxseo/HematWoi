@@ -1,106 +1,77 @@
 export const LAST_ROUTE_GLOBAL_KEY = "hw:lastRoute:global";
 export const LAST_ROUTE_USER_PREFIX = "hw:lastRoute:uid:";
-export const BLACKLIST = ["/auth", "/logout", "/404"] as const;
+
+const BLACKLIST_PATHS = ["/auth", "/logout", "/404"] as const;
 
 export type NormalizedPath = string;
 
 type NullablePath = string | null | undefined;
 
-type ParsedPath = {
-  pathname: string;
-  search: string;
-  hash: string;
-};
+export function normalizePath(path: string): NormalizedPath {
+  let raw = typeof path === "string" ? path.trim() : "";
+  if (!raw) return "/";
 
-function ensureLeadingSlash(path: string): string {
-  if (!path.startsWith("/")) {
-    return `/${path}`;
+  if (!raw.startsWith("/")) {
+    raw = `/${raw}`;
   }
-  return path;
-}
 
-function parseRawPath(raw: string): ParsedPath | null {
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  let rest = trimmed;
+  let working = raw;
   let hash = "";
   let search = "";
 
-  const hashIndex = rest.indexOf("#");
+  const hashIndex = working.indexOf("#");
   if (hashIndex >= 0) {
-    hash = rest.slice(hashIndex);
-    rest = rest.slice(0, hashIndex);
+    hash = working.slice(hashIndex);
+    working = working.slice(0, hashIndex);
   }
 
-  const searchIndex = rest.indexOf("?");
+  const searchIndex = working.indexOf("?");
   if (searchIndex >= 0) {
-    search = rest.slice(searchIndex);
-    rest = rest.slice(0, searchIndex);
+    search = working.slice(searchIndex);
+    working = working.slice(0, searchIndex);
   }
 
-  let pathname = rest || "/";
-  pathname = ensureLeadingSlash(pathname);
+  let pathname = working || "/";
   if (pathname.length > 1) {
     pathname = pathname.replace(/\/+$/, "");
+    if (!pathname) {
+      pathname = "/";
+    }
   }
 
-  return {
-    pathname: pathname || "/",
-    search,
-    hash,
-  };
-}
-
-export function normalizePath(path: NullablePath): NormalizedPath | null {
-  const parsed = typeof path === "string" ? parseRawPath(path) : null;
-  if (!parsed) return null;
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  return `${pathname}${search}${hash}`;
 }
 
 export function extractPathname(path: NullablePath): string | null {
+  if (typeof path !== "string" || !path.trim()) {
+    return null;
+  }
   const normalized = normalizePath(path);
-  if (!normalized) return null;
-
-  let pathname = normalized;
-  const hashIndex = pathname.indexOf("#");
-  if (hashIndex >= 0) {
-    pathname = pathname.slice(0, hashIndex);
-  }
-  const searchIndex = pathname.indexOf("?");
-  if (searchIndex >= 0) {
-    pathname = pathname.slice(0, searchIndex);
-  }
+  const searchIndex = normalized.indexOf("?");
+  const hashIndex = normalized.indexOf("#");
+  const endIndex =
+    searchIndex >= 0 && hashIndex >= 0
+      ? Math.min(searchIndex, hashIndex)
+      : searchIndex >= 0
+        ? searchIndex
+        : hashIndex >= 0
+          ? hashIndex
+          : normalized.length;
+  const pathname = normalized.slice(0, endIndex);
   return pathname || "/";
 }
 
 export function samePath(a: NullablePath, b: NullablePath): boolean {
-  const normA = normalizePath(a);
-  const normB = normalizePath(b);
-  if (normA === null && normB === null) return true;
-  return normA === normB;
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  return normalizePath(a) === normalizePath(b);
 }
 
 export function isBlacklisted(path: NullablePath): boolean {
   const pathname = extractPathname(path);
-  if (!pathname) return true;
-  return BLACKLIST.some(
-    (blocked) => pathname === blocked || pathname.startsWith(`${blocked}/`)
-  );
-}
-
-export function buildFullPath(input: {
-  pathname: string;
-  search?: string;
-  hash?: string;
-}): NormalizedPath {
-  const search = input.search ?? "";
-  const hash = input.hash ?? "";
-  return (
-    normalizePath(`${input.pathname}${search}${hash}`) ??
-    normalizePath("/") ??
-    "/"
+  if (!pathname) return false;
+  return BLACKLIST_PATHS.some((blocked) =>
+    pathname === blocked || pathname.startsWith(`${blocked}/`)
   );
 }
 
@@ -122,46 +93,54 @@ function writeToStorage(key: string, value: string): void {
   }
 }
 
-export function readLastRoute(uid: NullablePath): NormalizedPath | null {
-  const userId = typeof uid === "string" && uid ? uid : null;
-  if (userId) {
-    const userValue = normalizePath(
-      readFromStorage(`${LAST_ROUTE_USER_PREFIX}${userId}`)
-    );
-    if (userValue && !isBlacklisted(userValue)) {
-      return userValue;
-    }
-  }
+export function getUserStorageKey(uid: string): string {
+  return `${LAST_ROUTE_USER_PREFIX}${uid}`;
+}
 
-  const globalValue = normalizePath(readFromStorage(LAST_ROUTE_GLOBAL_KEY));
-  if (globalValue && !isBlacklisted(globalValue)) {
-    return globalValue;
-  }
-  return null;
+export function readLastRouteForUser(
+  uid: NullablePath
+): NormalizedPath | null {
+  const userId = typeof uid === "string" && uid ? uid : null;
+  if (!userId) return null;
+  const raw = readFromStorage(getUserStorageKey(userId));
+  if (!raw) return null;
+  const normalized = normalizePath(raw);
+  if (isBlacklisted(normalized)) return null;
+  return normalized;
+}
+
+export function readLastRouteGlobal(): NormalizedPath | null {
+  const raw = readFromStorage(LAST_ROUTE_GLOBAL_KEY);
+  if (!raw) return null;
+  const normalized = normalizePath(raw);
+  if (isBlacklisted(normalized)) return null;
+  return normalized;
+}
+
+export function writeGlobalRoute(path: NullablePath): void {
+  if (typeof path !== "string" || !path.trim()) return;
+  const normalized = normalizePath(path);
+  if (isBlacklisted(normalized)) return;
+  writeToStorage(LAST_ROUTE_GLOBAL_KEY, normalized);
+}
+
+export function writeUserRoute(uid: NullablePath, path: NullablePath): void {
+  const userId = typeof uid === "string" && uid ? uid : null;
+  if (!userId || typeof path !== "string" || !path.trim()) return;
+  const normalized = normalizePath(path);
+  if (isBlacklisted(normalized)) return;
+  writeToStorage(getUserStorageKey(userId), normalized);
 }
 
 export function writeLastRoute(uid: NullablePath, path: NullablePath): void {
-  const normalized = normalizePath(path);
-  if (!normalized || isBlacklisted(normalized)) {
-    return;
-  }
-
-  writeToStorage(LAST_ROUTE_GLOBAL_KEY, normalized);
-
-  const userId = typeof uid === "string" && uid ? uid : null;
-  if (userId) {
-    writeToStorage(`${LAST_ROUTE_USER_PREFIX}${userId}`, normalized);
-  }
-}
-
-export function getUserStorageKey(uid: string): string {
-  return `${LAST_ROUTE_USER_PREFIX}${uid}`;
+  writeGlobalRoute(path);
+  writeUserRoute(uid, path);
 }
 
 export function readUserRouteRaw(uid: NullablePath): string | null {
   const userId = typeof uid === "string" && uid ? uid : null;
   if (!userId) return null;
-  return readFromStorage(`${LAST_ROUTE_USER_PREFIX}${userId}`);
+  return readFromStorage(getUserStorageKey(userId));
 }
 
 export function readGlobalRouteRaw(): string | null {

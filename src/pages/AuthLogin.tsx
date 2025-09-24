@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
@@ -11,7 +11,6 @@ const heroTips = [
 ];
 
 export default function AuthLogin() {
-  const navigate = useNavigate();
   const location = useLocation();
   const [checking, setChecking] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -30,7 +29,6 @@ export default function AuthLogin() {
         const session = await getSession();
         if (!isMounted) return;
         if (session) {
-          navigate('/', { replace: true });
           return;
         }
         setChecking(false);
@@ -52,7 +50,7 @@ export default function AuthLogin() {
           /* ignore */
         }
         if (location.pathname === '/auth') {
-          navigate('/', { replace: true });
+          return;
         }
       }
     });
@@ -61,7 +59,7 @@ export default function AuthLogin() {
       isMounted = false;
       listener?.subscription?.unsubscribe();
     };
-  }, [location.pathname, navigate]);
+    }, [location.pathname]);
 
   const skeleton = useMemo(
     () => (
@@ -87,7 +85,7 @@ export default function AuthLogin() {
     } catch {
       /* ignore */
     }
-    navigate('/', { replace: true });
+    // Navigasi ditangani oleh BootGate
   };
 
   return (

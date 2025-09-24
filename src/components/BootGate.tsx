@@ -5,7 +5,7 @@ import useRoutePersistence from "../hooks/useRoutePersistence";
 import { useMode } from "../hooks/useMode";
 import { supabase } from "../lib/supabase";
 import {
-  buildFullPath,
+  extractPathname,
   isBlacklisted,
   normalizePath,
   readGlobalRouteRaw,
@@ -17,160 +17,183 @@ interface BootGateProps {
   children: ReactNode;
 }
 
-const ROOT_PATH = normalizePath("/") ?? "/";
-const AUTH_PATH = normalizePath("/auth");
-const DEFAULT_PATHS = [ROOT_PATH, AUTH_PATH].filter(
-  (value): value is string => typeof value === "string" && value.length > 0
+const ROOT_PATH = normalizePath("/");
+const KNOWN_ROUTE_PATHS = new Set(
+  [
+    "/",
+    "/transactions",
+    "/budgets",
+    "/debts",
+    "/goals",
+    "/challenges",
+    "/categories",
+    "/subscriptions",
+    "/data",
+    "/import",
+    "/transaction/add",
+    "/add",
+    "/settings",
+    "/profile",
+    "/dashboard",
+  ].map((path) => extractPathname(normalizePath(path)) ?? "/")
 );
+
+type ResolvedRoute = {
+  target: string | null;
+  invalid: boolean;
+};
+
+function isKnownRoute(path: string | null): boolean {
+  if (!path) return false;
+  const pathname = extractPathname(path);
+  if (!pathname) return false;
+  return KNOWN_ROUTE_PATHS.has(pathname);
+}
+
+function resolveStoredRouteFor(uid: string | null): ResolvedRoute {
+  if (uid) {
+    const raw = readUserRouteRaw(uid);
+    if (typeof raw === "string" && raw.trim()) {
+      const normalized = normalizePath(raw);
+      if (!isBlacklisted(normalized)) {
+        if (isKnownRoute(normalized)) {
+          return { target: normalized, invalid: false };
+        }
+        return { target: null, invalid: true };
+      }
+      return { target: null, invalid: false };
+    }
+  }
+
+  const fallback = readGlobalRouteRaw();
+  if (typeof fallback === "string" && fallback.trim()) {
+    const normalized = normalizePath(fallback);
+    if (!isBlacklisted(normalized)) {
+      if (isKnownRoute(normalized)) {
+        return { target: normalized, invalid: false };
+      }
+      return { target: null, invalid: true };
+    }
+    return { target: null, invalid: false };
+  }
+
+  return { target: null, invalid: false };
+}
 
 export default function BootGate({ children }: BootGateProps) {
   const { mode } = useMode();
   const navigate = useNavigate();
   const location = useLocation();
+
   const suppressNextWriteRef = useRef(false);
+  const userIdRef = useRef<string | null>(null);
+  const lastRestoredUserRef = useRef<string | null>(null);
   const restoredOnceRef = useRef(false);
-  const currentUserIdRef = useRef<string | null>(null);
-  const latestLocationRef = useRef(location);
-  const initialLoadRef = useRef(true);
+  const bootHandledRef = useRef(false);
+  const latestPathRef = useRef(
+    normalizePath(
+      `${location.pathname}${location.search}${location.hash}`
+    )
+  );
   const [bootReady, setBootReady] = useState(false);
 
   useRoutePersistence({
     suppressNextWriteRef,
-    getUserId: () => currentUserIdRef.current,
+    getUserId: () => userIdRef.current ?? undefined,
   });
 
   useEffect(() => {
-    latestLocationRef.current = location;
-  }, [location]);
+    latestPathRef.current = normalizePath(
+      `${location.pathname}${location.search}${location.hash}`
+    );
+  }, [location.pathname, location.search, location.hash]);
 
-  const getCurrentPath = useCallback(() => {
-    const current = latestLocationRef.current;
-    return buildFullPath({
-      pathname: current.pathname,
-      search: current.search,
-      hash: current.hash,
-    });
-  }, []);
+  const handleRestore = useCallback(
+    (uid: string | null, options: { fallbackToRootOnEmpty?: boolean } = {}) => {
+      const { fallbackToRootOnEmpty = false } = options;
+      const { target, invalid } = resolveStoredRouteFor(uid);
+      const current = latestPathRef.current;
+      let restored = false;
+      let fellBack = false;
 
-  const shouldAllowRestore = useCallback(
-    (currentPath: string | null) => {
-      if (!currentPath) return true;
-      if (initialLoadRef.current) return true;
-      return DEFAULT_PATHS.some((allowed) => samePath(currentPath, allowed));
+      if (target && !samePath(current, target)) {
+        suppressNextWriteRef.current = true;
+        if (import.meta.env?.DEV) {
+          console.debug(`Boot restore → ${target}`);
+        }
+        navigate(target, { replace: true });
+        restored = true;
+      } else if (invalid && !samePath(current, ROOT_PATH)) {
+        navigate(ROOT_PATH, { replace: true });
+        fellBack = true;
+      } else if (fallbackToRootOnEmpty && !target && !samePath(current, ROOT_PATH)) {
+        navigate(ROOT_PATH, { replace: true });
+        fellBack = true;
+      }
+
+      return { restored, fellBack };
     },
-    []
-  );
-
-  const resolveStoredRoute = useCallback((uid: string | null) => {
-    const userRaw = readUserRouteRaw(uid);
-    const hasUserValue = typeof userRaw === "string" && userRaw.trim().length > 0;
-    const normalizedUser = normalizePath(userRaw);
-    const userValid = !!normalizedUser && !isBlacklisted(normalizedUser);
-    if (userValid) {
-      return { target: normalizedUser, invalid: false };
-    }
-
-    const globalRaw = readGlobalRouteRaw();
-    const hasGlobalValue = typeof globalRaw === "string" && globalRaw.trim().length > 0;
-    const normalizedGlobal = normalizePath(globalRaw);
-    const globalValid = !!normalizedGlobal && !isBlacklisted(normalizedGlobal);
-    if (globalValid) {
-      return { target: normalizedGlobal, invalid: false };
-    }
-
-    const invalid = (hasUserValue && !userValid) || (hasGlobalValue && !globalValid);
-    return { target: null, invalid };
-  }, []);
-
-  const attemptFallbackToRoot = useCallback(() => {
-    const currentPath = getCurrentPath();
-    if (!shouldAllowRestore(currentPath)) {
-      return false;
-    }
-    if (samePath(currentPath, ROOT_PATH)) {
-      return false;
-    }
-    suppressNextWriteRef.current = true;
-    if (import.meta.env.DEV) {
-      console.debug(`Restored route -> ${ROOT_PATH}`);
-    }
-    navigate(ROOT_PATH, { replace: true });
-    return true;
-  }, [getCurrentPath, navigate, shouldAllowRestore]);
-
-  const attemptRestore = useCallback(
-    (candidate: string | null) => {
-      const currentPath = getCurrentPath();
-      if (!shouldAllowRestore(currentPath)) {
-        return false;
-      }
-
-      const normalizedCandidate = normalizePath(candidate);
-      if (!normalizedCandidate || isBlacklisted(normalizedCandidate)) {
-        return false;
-      }
-
-      if (samePath(currentPath, normalizedCandidate)) {
-        return false;
-      }
-
-      suppressNextWriteRef.current = true;
-      if (import.meta.env.DEV) {
-        console.debug(`Restored route -> ${normalizedCandidate}`);
-      }
-      navigate(normalizedCandidate, { replace: true });
-      return true;
-    },
-    [getCurrentPath, navigate, shouldAllowRestore]
+    [navigate]
   );
 
   useEffect(() => {
-    let active = true;
+    if (bootHandledRef.current) return;
+    bootHandledRef.current = true;
+
+    let cancelled = false;
+
     (async () => {
       try {
         const { data } = await supabase.auth.getSession();
-        if (!active) return;
+        if (cancelled) return;
         const session = data.session ?? null;
         const uid = session?.user?.id ?? null;
-        currentUserIdRef.current = uid;
-        const { target, invalid } = resolveStoredRoute(uid);
-        const restored = attemptRestore(target);
-        if (!restored && invalid) {
-          attemptFallbackToRoot();
+        userIdRef.current = uid;
+        const { restored, fellBack } = handleRestore(uid);
+        if (restored || fellBack) {
+          lastRestoredUserRef.current = uid;
         }
-        restoredOnceRef.current = Boolean(session?.user);
+        restoredOnceRef.current = true;
       } catch {
-        restoredOnceRef.current = false;
+        restoredOnceRef.current = true;
       } finally {
-        if (active) {
-          initialLoadRef.current = false;
+        if (!cancelled) {
           setBootReady(true);
         }
       }
     })();
 
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, [attemptFallbackToRoot, attemptRestore, resolveStoredRoute]);
+  }, [handleRestore]);
 
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        currentUserIdRef.current = session?.user?.id ?? null;
-        if (event === "SIGNED_IN") {
-          if (!session?.user) return;
-          if (!restoredOnceRef.current) {
-            const { target, invalid } = resolveStoredRoute(session.user.id);
-            const restored = attemptRestore(target);
-            if (!restored && invalid) {
-              attemptFallbackToRoot();
-            }
-            restoredOnceRef.current = true;
-          }
-        }
+        const uid = session?.user?.id ?? null;
+        userIdRef.current = uid;
+
         if (event === "SIGNED_OUT") {
+          lastRestoredUserRef.current = null;
           restoredOnceRef.current = false;
+          return;
+        }
+
+        if (event !== "SIGNED_IN" || !uid) {
+          return;
+        }
+
+        if (lastRestoredUserRef.current === uid && restoredOnceRef.current) {
+          return;
+        }
+
+        const { restored, fellBack } = handleRestore(uid, {
+          fallbackToRootOnEmpty: true,
+        });
+        if (restored || fellBack) {
+          lastRestoredUserRef.current = uid;
+          restoredOnceRef.current = true;
         }
       }
     );
@@ -178,7 +201,7 @@ export default function BootGate({ children }: BootGateProps) {
     return () => {
       subscription.subscription?.unsubscribe();
     };
-  }, [attemptFallbackToRoot, attemptRestore, resolveStoredRoute]);
+  }, [handleRestore]);
 
   if (!bootReady || !mode) {
     return (
