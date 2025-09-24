@@ -29,6 +29,8 @@ import {
 } from '../lib/api-subscriptions';
 import { exportSubscriptionsCsv } from '../lib/subscriptions-csv';
 import { supabase } from '../lib/supabase';
+import { getCurrentUserId } from '../lib/session';
+import { isAuthSessionMissingError, toUserFacingAuthError } from '../lib/auth-errors';
 
 const DEFAULT_FILTERS: SubscriptionFilterState = {
   q: '',
@@ -106,9 +108,17 @@ export default function SubscriptionsPage() {
     let active = true;
     async function fetchOptions() {
       try {
+        const uid = await getCurrentUserId();
+        if (!uid) {
+          if (active) {
+            setCategories([]);
+            setAccounts([]);
+          }
+          return;
+        }
         const [catRes, accRes] = await Promise.all([
-          supabase.from('categories').select('id, name').order('name'),
-          supabase.from('accounts').select('id, name').order('name'),
+          supabase.from('categories').select('id, name').eq('user_id', uid).order('name'),
+          supabase.from('accounts').select('id, name').eq('user_id', uid).order('name'),
         ]);
         if (!active) return;
         if (catRes.error) throw catRes.error;
@@ -123,10 +133,18 @@ export default function SubscriptionsPage() {
         setAccounts(accOptions);
       } catch (error) {
         if (!active) return;
-        const message =
-          error instanceof Error && error.message
-            ? error.message
-            : 'Gagal memuat referensi. Cek koneksi atau ulangi.';
+        if (isAuthSessionMissingError(error)) {
+          setCategories([]);
+          setAccounts([]);
+          return;
+        }
+        const message = toUserFacingAuthError(
+          error,
+          'Gagal memuat referensi. Cek koneksi atau ulangi.',
+          {
+            missingMessage: 'Silakan masuk untuk menyinkronkan data langganan dari cloud.',
+          },
+        );
         addToast(`Gagal memuat kategori/akun: ${message}`, 'danger');
       }
     }

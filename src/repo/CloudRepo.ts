@@ -1,4 +1,5 @@
 import { IRepo, ICrud, IGoalsRepo, IProfileRepo } from '../interfaces/IRepo';
+import { isAuthSessionMissingError } from '../lib/auth-errors';
 
 export class CloudRepo implements IRepo {
   client: any;
@@ -28,9 +29,16 @@ export class CloudRepo implements IRepo {
   }
 
   private async getUserId(): Promise<string | null> {
-    const { data, error } = await this.client.auth.getUser();
-    if (error) throw error;
-    return data.user?.id ?? null;
+    try {
+      const { data, error } = await this.client.auth.getUser();
+      if (error) throw error;
+      return data.user?.id ?? null;
+    } catch (error) {
+      if (isAuthSessionMissingError(error)) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   private async withUserScope(query: any, name: string) {

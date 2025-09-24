@@ -8,6 +8,7 @@ import Card, { CardBody, CardHeader } from '../components/Card';
 import AccountFormModal, { type AccountFormValues } from '../components/accounts/AccountFormModal';
 import { useToast } from '../context/ToastContext';
 import { supabase } from '../lib/supabase.js';
+import { isAuthSessionMissingError, toUserFacingAuthError } from '../lib/auth-errors';
 import {
   type AccountRecord,
   type AccountType,
@@ -63,18 +64,22 @@ export default function AccountsPage() {
     try {
       const { data, error } = await supabase.auth.getUser();
       if (error) {
+        if (isAuthSessionMissingError(error)) {
+          throw new Error('Silakan masuk untuk melihat akun Anda.');
+        }
         throw error;
       }
       const uid = data.user?.id;
       if (!uid) {
-        throw new Error('Anda harus login untuk melihat akun.');
+        throw new Error('Silakan masuk untuk melihat akun Anda.');
       }
       setUserId(uid);
       const rows = await listAccounts(uid);
       setAccounts(sortAccounts(rows));
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Gagal memuat akun. Silakan coba lagi.';
+      const message = toUserFacingAuthError(error, 'Gagal memuat akun. Silakan coba lagi.', {
+        missingMessage: 'Silakan masuk untuk melihat akun Anda.',
+      });
       setLoadError(message);
       addToast(message, 'error');
     } finally {

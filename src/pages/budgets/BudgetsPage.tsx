@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
 import { useToast } from '../../context/ToastContext';
+import { getCurrentUserId } from '../../lib/session';
+import { isAuthSessionMissingError, toUserFacingAuthError } from '../../lib/auth-errors';
 import {
   applyRolloverToNext,
   bulkUpsertBudgets,
@@ -161,11 +163,23 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
     let mounted = true;
     (async () => {
       try {
+        const uid = await getCurrentUserId();
+        if (!uid) {
+          if (mounted) setCategories([]);
+          return;
+        }
         const { data, error } = await supabase
           .from('categories')
           .select('id, name, type')
+          .eq('user_id', uid)
           .order('name');
-        if (error) throw error;
+        if (error) {
+          if (isAuthSessionMissingError(error)) {
+            if (mounted) setCategories([]);
+            return;
+          }
+          throw error;
+        }
         if (mounted) {
           const normalized = (data ?? [])
             .filter((row) => row?.id && row?.name)
@@ -177,7 +191,14 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
           setCategories(normalized);
         }
       } catch (error) {
-        addToast(`Gagal memuat kategori: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+        const message = toUserFacingAuthError(
+          error,
+          'Gagal memuat kategori. Silakan coba lagi.',
+          {
+            missingMessage: 'Silakan masuk untuk menyinkronkan kategori dari cloud.',
+          },
+        );
+        addToast(message, 'error');
       }
     })();
     return () => {

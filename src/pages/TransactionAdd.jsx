@@ -26,6 +26,7 @@ import Textarea from "../components/ui/Textarea";
 import { listCategories, listMerchants, saveMerchant } from "../lib/api";
 import { createAccount, listAccounts as fetchAccounts } from "../lib/api.ts";
 import { supabase } from "../lib/supabase.js";
+import { isAuthSessionMissingError, toUserFacingAuthError } from "../lib/auth-errors";
 import { useToast } from "../context/ToastContext";
 
 const TEMPLATE_KEY = "hw:txTemplates";
@@ -106,11 +107,14 @@ export default function TransactionAdd({ onAdd }) {
       try {
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError) {
+          if (isAuthSessionMissingError(userError)) {
+            throw new Error("Silakan masuk untuk membuat transaksi.");
+          }
           throw userError;
         }
         const uid = userData.user?.id;
         if (!uid) {
-          throw new Error("Anda harus login untuk membuat transaksi.");
+          throw new Error("Silakan masuk untuk membuat transaksi.");
         }
         setUserId(uid);
 
@@ -131,7 +135,12 @@ export default function TransactionAdd({ onAdd }) {
         }
       } catch (err) {
         console.error(err);
-        addToast(`Gagal memuat data master: ${err.message}`, "error");
+        const message = toUserFacingAuthError(
+          err,
+          "Gagal memuat data master. Silakan coba lagi.",
+          { missingMessage: "Silakan masuk untuk membuat transaksi." },
+        );
+        addToast(`Gagal memuat data master: ${message}`, "error");
       } finally {
         setLoading(false);
       }
@@ -202,11 +211,14 @@ export default function TransactionAdd({ onAdd }) {
       if (!uid) {
         const { data: userData, error: userError } = await supabase.auth.getUser();
         if (userError) {
+          if (isAuthSessionMissingError(userError)) {
+            throw new Error("Silakan masuk untuk menambah akun.");
+          }
           throw userError;
         }
         uid = userData.user?.id;
         if (!uid) {
-          throw new Error("Anda harus login untuk menambah akun.");
+          throw new Error("Silakan masuk untuk menambah akun.");
         }
         setUserId(uid);
       }
@@ -242,12 +254,11 @@ export default function TransactionAdd({ onAdd }) {
 
       closeAccountModal();
     } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : typeof err === "string"
-            ? err
-            : "Gagal menambah akun. Silakan coba lagi.";
+      const message = toUserFacingAuthError(
+        err,
+        "Gagal menambah akun. Silakan coba lagi.",
+        { missingMessage: "Silakan masuk untuk menambah akun." },
+      );
       setAccountModalError(message);
     } finally {
       setAccountModalBusy(false);
