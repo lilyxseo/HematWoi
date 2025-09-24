@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Routes,
   Route,
@@ -34,6 +34,7 @@ import AuthGuard from "./components/AuthGuard";
 import { DataProvider } from "./context/DataContext";
 
 import { supabase } from "./lib/supabase";
+import { syncGuestToCloud } from "./lib/sync";
 import { playChaChing } from "./lib/walletSound";
 import {
   listTransactions,
@@ -250,6 +251,18 @@ function AppShell({ prefs, setPrefs }) {
   const [sessionUser, setSessionUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
+  const syncedUsersRef = useRef(new Set());
+  const syncGuestData = useCallback(async (userId) => {
+    if (!userId) return;
+    if (syncedUsersRef.current.has(userId)) return;
+    try {
+      await syncGuestToCloud(supabase, userId);
+      syncedUsersRef.current.add(userId);
+    } catch (error) {
+      console.error('Gagal memindahkan data lokal ke cloud', error);
+      syncedUsersRef.current.delete(userId);
+    }
+  }, []);
   const useCloud = mode === "online";
   const [catMeta, setCatMeta] = useState(() => {
     try {
@@ -344,6 +357,9 @@ function AppShell({ prefs, setPrefs }) {
             /* ignore */
           }
           setMode("online");
+          void syncGuestData(session.user.id);
+        } else {
+          syncedUsersRef.current.clear();
         }
         setSessionUser(session?.user ?? null);
         setSessionChecked(true);
@@ -352,6 +368,7 @@ function AppShell({ prefs, setPrefs }) {
         if (!isMounted) return;
         setSessionUser(null);
         setSessionChecked(true);
+        syncedUsersRef.current.clear();
       });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
@@ -365,13 +382,19 @@ function AppShell({ prefs, setPrefs }) {
           /* ignore */
         }
         setMode("online");
+        if (session?.user?.id) {
+          void syncGuestData(session.user.id);
+        }
+      }
+      if (event === "SIGNED_OUT") {
+        syncedUsersRef.current.clear();
       }
     });
     return () => {
       isMounted = false;
       sub.subscription?.unsubscribe();
     };
-  }, [setMode]);
+  }, [setMode, syncGuestData]);
 
   useEffect(() => {
     if (sessionChecked && !sessionUser && mode === "online") {
