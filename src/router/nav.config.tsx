@@ -23,6 +23,7 @@ import {
   Repeat,
   Settings as SettingsIcon,
   User as UserIcon,
+  CreditCard,
 } from 'lucide-react';
 
 export const NAV_ITEMS: NavItem[] = [
@@ -38,6 +39,14 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Transaksi',
     path: '/transactions',
     icon: <ListChecks className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Akun',
+    path: '/accounts',
+    icon: <CreditCard className="h-5 w-5" />,
     section: 'primary',
     inSidebar: true,
     protected: true,
