@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
-import { Loader2, WifiOff } from 'lucide-react';
+import { Loader2, LogIn, WifiOff } from 'lucide-react';
 import AccountCard from '../components/profile/AccountCard';
 import SecurityCard from '../components/profile/SecurityCard';
 import PreferencesCard from '../components/profile/PreferencesCard';
@@ -160,11 +161,14 @@ export default function ProfilePage() {
     (async () => {
       try {
         const session = await getSession();
-        if (!session.user) {
-          throw new Error('Kamu perlu masuk untuk mengakses halaman profil.');
-        }
         if (!mounted) return;
-        setSessionUser(session.user as User);
+        const user = (session.user as User | null) ?? null;
+        setSessionUser(user);
+        if (!user) {
+          setProfile(null);
+          setSessions([]);
+          return;
+        }
         const profileData = await getProfile();
         if (!mounted) return;
         setProfile(profileData);
@@ -385,6 +389,28 @@ export default function ProfilePage() {
       return (
         <div className="rounded-3xl border border-danger/40 bg-danger/10 p-6 text-center text-sm text-danger">
           {pageError}
+        </div>
+      );
+    }
+    if (!sessionUser) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-border bg-surface-1 p-8 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted/40 text-muted">
+            <LogIn className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <div className="space-y-2">
+            <p className="text-base font-semibold text-foreground">Profil tamu aktif</p>
+            <p className="max-w-md text-sm text-muted">
+              Kamu bisa menjelajahi seluruh fitur HematWoi sebagai tamu. Masuk untuk menyinkronkan data
+              ke cloud dan mengatur preferensi akun pribadi kamu.
+            </p>
+          </div>
+          <Link
+            to="/auth"
+            className="inline-flex items-center justify-center rounded-full bg-brand px-5 py-2 text-sm font-semibold text-brand-foreground shadow-sm transition hover:bg-brand/90"
+          >
+            Masuk ke akun
+          </Link>
         </div>
       );
     }
