@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
+import { Icon, ICON_NAMES } from '../components/icons';
 import {
   createUserProfile,
   deleteRoute,
@@ -372,7 +373,7 @@ export default function AdminPage() {
 
   const handleStartSidebarEdit = (item: SidebarItemRecord) => {
     setEditingSidebarId(item.id);
-    setSidebarDraft({ ...item, icon_name: item.icon_name ?? '' });
+    setSidebarDraft({ ...item, icon_name: (item.icon_name ?? '').toLowerCase() });
   };
 
   const handleCancelSidebarEdit = () => {
@@ -418,7 +419,7 @@ export default function AdminPage() {
       return;
     }
 
-    const iconValue = sidebarDraft.icon_name.trim();
+    const iconValue = sidebarDraft.icon_name.trim().toLowerCase();
 
     setSidebarSavingId(editingSidebarId);
     try {
@@ -517,7 +518,7 @@ export default function AdminPage() {
 
     const nextPosition =
       sidebarItems.reduce((max, item) => Math.max(max, item.position ?? 0), 0) + 1;
-    const iconValue = newSidebarItem.icon_name.trim();
+    const iconValue = newSidebarItem.icon_name.trim().toLowerCase();
 
     setSidebarSavingId('new');
     try {
@@ -818,6 +819,9 @@ export default function AdminPage() {
     const baseInputClass =
       'h-11 w-full rounded-2xl border border-border/70 bg-surface-1 px-4 text-sm shadow-sm ring-2 ring-transparent transition focus:border-brand focus:outline-none focus:ring-brand/60';
 
+    const newIconValue = newSidebarItem.icon_name.trim().toLowerCase();
+    const newIconSelectValue = ICON_NAMES.includes(newIconValue) ? newIconValue : '';
+
     return (
       <SectionCard>
         <div className="space-y-6">
@@ -853,7 +857,10 @@ export default function AdminPage() {
                     const routeValue = draft?.route ?? item.route;
                     const accessValue = draft?.access_level ?? item.access_level;
                     const enabledValue = draft?.is_enabled ?? item.is_enabled;
-                    const iconValue = draft?.icon_name ?? item.icon_name ?? '';
+                    const iconRawValue = draft?.icon_name ?? item.icon_name ?? '';
+                    const iconValue = iconRawValue.trim().toLowerCase();
+                    const iconStoredValue = (item.icon_name ?? '').trim().toLowerCase();
+                    const iconSelectValue = ICON_NAMES.includes(iconValue) ? iconValue : '';
                     const isProcessing = sidebarSavingId === item.id;
                     const isAnotherEditing =
                       editingSidebarId !== null && editingSidebarId !== item.id;
@@ -865,7 +872,7 @@ export default function AdminPage() {
                         draft.route.trim() !== item.route ||
                         draft.access_level !== item.access_level ||
                         draft.is_enabled !== item.is_enabled ||
-                        draft.icon_name.trim() !== (item.icon_name ?? ''));
+                        draft.icon_name.trim().toLowerCase() !== iconStoredValue);
 
                     return (
                       <tr key={item.id} className="align-middle">
@@ -944,20 +951,38 @@ export default function AdminPage() {
                           </div>
                         </td>
                         <td className="py-3 pr-4">
-                          {isEditing ? (
-                            <input
-                              value={iconValue}
-                              onChange={(event) =>
-                                handleSidebarDraftChange('icon_name', event.target.value)
-                              }
-                              className={baseInputClass}
-                              placeholder="contoh: home"
-                            />
-                          ) : (
-                            <span className="inline-flex min-h-[32px] items-center rounded-full bg-surface-2/60 px-3 text-xs text-muted-foreground">
-                              {item.icon_name || '—'}
+                          <div className="flex items-center gap-3">
+                            <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-surface-2/60 text-muted-foreground">
+                              <Icon
+                                name={iconRawValue}
+                                label={titleValue || item.route}
+                                className="h-5 w-5 shrink-0"
+                              />
                             </span>
-                          )}
+                            {isEditing ? (
+                              <select
+                                value={iconSelectValue}
+                                onChange={(event) =>
+                                  handleSidebarDraftChange(
+                                    'icon_name',
+                                    event.target.value.toLowerCase()
+                                  )
+                                }
+                                className={clsx(baseInputClass, 'flex-1')}
+                              >
+                                <option value="">Tanpa ikon</option>
+                                {ICON_NAMES.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="inline-flex min-h-[32px] items-center rounded-full bg-surface-2/60 px-3 text-xs text-muted-foreground">
+                                {iconValue || '—'}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 text-right">
                           <div className="flex flex-wrap justify-end gap-2">
@@ -1095,14 +1120,32 @@ export default function AdminPage() {
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
                   Ikon (opsional)
                 </label>
-                <input
-                  value={newSidebarItem.icon_name}
-                  onChange={(event) =>
-                    setNewSidebarItem((prev) => ({ ...prev, icon_name: event.target.value }))
-                  }
-                  className={baseInputClass}
-                  placeholder="home"
-                />
+                <div className="flex items-center gap-3">
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/60 bg-surface-2/60 text-muted-foreground">
+                    <Icon
+                      name={newSidebarItem.icon_name}
+                      label={newSidebarItem.title || newSidebarItem.route || 'Ikon menu baru'}
+                      className="h-5 w-5 shrink-0"
+                    />
+                  </span>
+                  <select
+                    value={newIconSelectValue}
+                    onChange={(event) =>
+                      setNewSidebarItem((prev) => ({
+                        ...prev,
+                        icon_name: event.target.value.toLowerCase(),
+                      }))
+                    }
+                    className={clsx(baseInputClass, 'flex-1')}
+                  >
+                    <option value="">Tanpa ikon</option>
+                    {ICON_NAMES.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="md:col-span-2">
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
