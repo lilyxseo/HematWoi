@@ -25,6 +25,7 @@ import AccountFormModal from "../components/accounts/AccountFormModal";
 import Textarea from "../components/ui/Textarea";
 import { listCategories, listMerchants, saveMerchant } from "../lib/api";
 import { createAccount, listAccounts as fetchAccounts } from "../lib/api.ts";
+import { supabase } from "../lib/supabase.js";
 import { useToast } from "../context/ToastContext";
 
 const TEMPLATE_KEY = "hw:txTemplates";
@@ -88,6 +89,7 @@ export default function TransactionAdd({ onAdd }) {
   const [pending, setPending] = useState(false);
   const [attachments, setAttachments] = useState(() => [{ id: nextId(), url: "" }]);
   const [categories, setCategories] = useState([]);
+  const [userId, setUserId] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [merchants, setMerchants] = useState([]);
   const [templates, setTemplates] = useState(() => templateStorage([]));
@@ -102,17 +104,30 @@ export default function TransactionAdd({ onAdd }) {
     async function loadMasterData() {
       setLoading(true);
       try {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          throw userError;
+        }
+        const uid = userData.user?.id;
+        if (!uid) {
+          throw new Error("Anda harus login untuk membuat transaksi.");
+        }
+        setUserId(uid);
+
         const [catRows, accountRows, merchantRows] = await Promise.all([
           listCategories(),
-          fetchAccounts(),
+          fetchAccounts(uid),
           listMerchants(),
         ]);
         setCategories(catRows);
-        setAccounts(accountRows);
+        const sortedAccounts = [...accountRows].sort((a, b) =>
+          (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }),
+        );
+        setAccounts(sortedAccounts);
         setMerchants(merchantRows);
-        if (accountRows.length) {
-          setAccountId(accountRows[0].id);
-          setAccountName(accountRows[0].name);
+        if (sortedAccounts.length) {
+          setAccountId(sortedAccounts[0].id);
+          setAccountName(sortedAccounts[0].name);
         }
       } catch (err) {
         console.error(err);
@@ -183,12 +198,26 @@ export default function TransactionAdd({ onAdd }) {
     setAccountModalBusy(true);
     setAccountModalError("");
     try {
-      const created = await createAccount(values);
+      let uid = userId;
+      if (!uid) {
+        const { data: userData, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          throw userError;
+        }
+        uid = userData.user?.id;
+        if (!uid) {
+          throw new Error("Anda harus login untuk menambah akun.");
+        }
+        setUserId(uid);
+      }
+
+      const created = await createAccount(uid, values);
       addToast("Akun ditambahkan", "success");
 
       try {
-        const refreshed = await fetchAccounts();
-        setAccounts(refreshed);
+        const refreshed = await fetchAccounts(uid);
+        const sorted = [...refreshed].sort((a, b) => (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }));
+        setAccounts(sorted);
       } catch {
         const merged = [...accounts.filter((acc) => acc.id !== created.id), created];
         merged.sort((a, b) => (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }));
