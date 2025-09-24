@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   ChevronLeft,
@@ -15,7 +16,6 @@ import {
 import SidebarSection from "./SidebarSection";
 import SidebarItem from "./SidebarItem";
 import Logo from "../Logo";
-import SignIn from "../SignIn";
 import { NAV_ITEMS } from "../../router/nav.config";
 import { supabase } from "../../lib/supabase";
 import { useMode } from "../../hooks/useMode";
@@ -79,9 +79,9 @@ export default function Sidebar({
   onNavigate,
   onClose,
 }: SidebarProps) {
+  const navigate = useNavigate();
   const { mode, setMode } = useMode();
   const [sessionUser, setSessionUser] = useState<User | null>(null);
-  const [showSignIn, setShowSignIn] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -351,7 +351,10 @@ export default function Sidebar({
               ) : (
                 <button
                   type="button"
-                  onClick={() => setShowSignIn(true)}
+                  onClick={() => {
+                    navigate("/auth");
+                    onNavigate?.();
+                  }}
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text transition-colors duration-200 hover:border-brand/50 hover:text-brand"
                 >
                   <LogIn className="h-4 w-4" />
@@ -376,7 +379,6 @@ export default function Sidebar({
           </div>
         </footer>
       </nav>
-      <SignIn open={showSignIn} onClose={() => setShowSignIn(false)} />
     </>
   );
 }
