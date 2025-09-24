@@ -19,6 +19,7 @@ import Logo from "../Logo";
 import { supabase } from "../../lib/supabase";
 import { useMode } from "../../hooks/useMode";
 import type { User } from "@supabase/supabase-js";
+import { Icon } from "../icons";
 
 const BRAND_SWATCHES = [
   { name: "Blue", h: 211, s: 92, l: 60 },
@@ -56,36 +57,6 @@ function formatEmail(email?: string | null) {
   return email.length > 24 ? `${email.slice(0, 21)}…` : email;
 }
 
-const MENU_ICON_EMOJI: Record<string, string> = {
-  home: "🏠",
-  dashboard: "📊",
-  wallets: "👛",
-  wallet: "👛",
-  savings: "💰",
-  saving: "💰",
-  budget: "💰",
-  budgets: "💰",
-  goals: "🎯",
-  goal: "🎯",
-  subscriptions: "🔔",
-  subscription: "🔔",
-  transactions: "💵",
-  transaction: "💵",
-  debts: "📉",
-  debt: "📉",
-  categories: "🗂️",
-  category: "🗂️",
-  report: "📄",
-  reports: "📑",
-  analytics: "📈",
-  graph: "📈",
-  data: "🧾",
-  profile: "👤",
-  account: "👤",
-  settings: "⚙️",
-  insight: "💡",
-  insights: "💡",
-};
 
 type SidebarMenuEntry = {
   id: string;
@@ -118,21 +89,6 @@ function normalizeSidebarRoute(path: string): string {
   }
 
   return collapsed;
-}
-
-function renderMenuIcon(iconName?: string | null) {
-  const key = iconName?.trim().toLowerCase();
-  if (key && MENU_ICON_EMOJI[key]) {
-    return <span className="text-lg leading-none">{MENU_ICON_EMOJI[key]}</span>;
-  }
-  if (key && key.length) {
-    return (
-      <span className="text-[11px] font-semibold uppercase leading-none tracking-wide">
-        {key.slice(0, 2)}
-      </span>
-    );
-  }
-  return <span className="text-lg leading-none">•</span>;
 }
 
 export default function Sidebar({
@@ -353,7 +309,13 @@ export default function Sidebar({
                       <li key={item.id}>
                         <SidebarItem
                           to={item.route}
-                          icon={renderMenuIcon(item.icon_name)}
+                          icon={
+                            <Icon
+                              name={item.icon_name}
+                              label={item.title || item.route}
+                              className="w-5 h-5 shrink-0"
+                            />
+                          }
                           label={item.title || item.route}
                           collapsed={collapsed}
                           onNavigate={onNavigate}
