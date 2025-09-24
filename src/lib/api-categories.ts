@@ -446,6 +446,15 @@ export async function createCategory(input: {
       [sortColumn]: nextOrder,
     };
 
+    const timestamp = nowISO();
+    insertPayload.updated_at = timestamp;
+    const createdColumn = getCategoryCreatedColumn();
+    if (createdColumn === "created_at") {
+      insertPayload.created_at = timestamp;
+    } else {
+      insertPayload.inserted_at = timestamp;
+    }
+
     if (shouldUseCategoryColor()) {
       insertPayload.color = color;
     }
