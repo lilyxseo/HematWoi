@@ -22,10 +22,29 @@ function parseDecimal(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-const todayIso = () => {
-  const now = new Date();
-  return now.toISOString().slice(0, 10);
+const todayIsoJakarta = () => {
+  if (typeof Intl === 'undefined' || typeof Intl.DateTimeFormat !== 'function') {
+    const now = new Date();
+    return now.toISOString().slice(0, 10);
+  }
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    const now = new Date();
+    return now.toISOString().slice(0, 10);
+  }
 };
+
+interface AccountOption {
+  id: string;
+  name: string;
+  type?: string | null;
+}
 
 interface PaymentDrawerProps {
   open: boolean;
@@ -34,8 +53,15 @@ interface PaymentDrawerProps {
   loading?: boolean;
   submitting?: boolean;
   deletingId?: string | null;
+  accounts: AccountOption[];
+  offline?: boolean;
   onClose: () => void;
-  onSubmit: (payload: { amount: number; date: string; notes?: string | null }) => Promise<void> | void;
+  onSubmit: (payload: {
+    amount: number;
+    paid_at: string;
+    account_id: string;
+    note?: string | null;
+  }) => Promise<void> | void;
   onDeletePayment: (payment: DebtPaymentRecord) => void;
 }
 
@@ -46,14 +72,17 @@ export default function PaymentDrawer({
   loading,
   submitting,
   deletingId,
+  accounts,
+  offline = false,
   onClose,
   onSubmit,
   onDeletePayment,
 }: PaymentDrawerProps) {
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(todayIso());
-  const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<{ amount?: string; date?: string }>({});
+  const [date, setDate] = useState(todayIsoJakarta());
+  const [accountId, setAccountId] = useState('');
+  const [note, setNote] = useState('');
+  const [errors, setErrors] = useState<{ amount?: string; paidAt?: string; account?: string }>({});
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -102,11 +131,22 @@ export default function PaymentDrawer({
   useEffect(() => {
     if (open) {
       setAmount('');
-      setDate(todayIso());
-      setNotes('');
+      setDate(todayIsoJakarta());
+      setNote('');
       setErrors({});
     }
   }, [open, debt?.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!accounts.length) {
+      setAccountId('');
+      return;
+    }
+    if (!accountId || !accounts.some((item) => item.id === accountId)) {
+      setAccountId(accounts[0].id);
+    }
+  }, [accounts, accountId, open]);
 
   useEffect(() => {
     if (open) {
@@ -128,18 +168,22 @@ export default function PaymentDrawer({
     event.preventDefault();
     const parsedAmount = parseDecimal(amount);
     const trimmedDate = date?.trim() ?? '';
-    const nextErrors: { amount?: string; date?: string } = {};
+    const nextErrors: { amount?: string; paidAt?: string; account?: string } = {};
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       nextErrors.amount = 'Masukkan nominal lebih dari 0.';
     }
 
-    const parsedDate = trimmedDate ? new Date(trimmedDate) : null;
+    const parsedDate = trimmedDate ? new Date(`${trimmedDate}T00:00:00Z`) : null;
     if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
-      nextErrors.date = 'Pilih tanggal pembayaran yang valid.';
+      nextErrors.paidAt = 'Pilih tanggal pembayaran yang valid.';
     }
 
-    if (nextErrors.amount || nextErrors.date) {
+    if (!accountId) {
+      nextErrors.account = 'Pilih akun sumber dana.';
+    }
+
+    if (nextErrors.amount || nextErrors.paidAt || nextErrors.account) {
       setErrors(nextErrors);
       return;
     }
@@ -149,11 +193,12 @@ export default function PaymentDrawer({
     try {
       await onSubmit({
         amount: parsedAmount,
-        date: trimmedDate || todayIso(),
-        notes: notes.trim() ? notes.trim() : null,
+        paid_at: trimmedDate || todayIsoJakarta(),
+        account_id: accountId,
+        note: note.trim() ? note.trim() : null,
       });
       setAmount('');
-      setNotes('');
+      setNote('');
     } catch (submitError) {
       if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
         // eslint-disable-next-line no-console
@@ -219,6 +264,12 @@ export default function PaymentDrawer({
               </div>
             </section>
 
+            {offline ? (
+              <div className="rounded-2xl border border-dashed border-amber-400 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                Mode offline aktif. Pembayaran disimpan sebagai draft dan transaksi akan otomatis dibuat saat koneksi kembali.
+              </div>
+            ) : null}
+
             <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
                 <label htmlFor="payment-amount" className="form-label">
@@ -244,6 +295,39 @@ export default function PaymentDrawer({
               </div>
 
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                <label htmlFor="payment-account" className="form-label">
+                  Ambil dari akun
+                </label>
+                <select
+                  id="payment-account"
+                  value={accountId}
+                  onChange={(event) => {
+                    setAccountId(event.target.value);
+                    if (errors.account) {
+                      setErrors((prev) => ({ ...prev, account: undefined }));
+                    }
+                  }}
+                  className="input"
+                  disabled={accounts.length === 0}
+                >
+                  <option value="" disabled>
+                    {accounts.length === 0 ? 'Belum ada akun' : 'Pilih akun sumber'}
+                  </option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+                {errors.account ? <span className="form-error">{errors.account}</span> : null}
+                {accounts.length === 0 ? (
+                  <p className="text-xs font-normal text-muted">
+                    Tambahkan akun keuangan terlebih dahulu di menu Akun sebelum mencatat pembayaran.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
                 <label htmlFor="payment-date" className="form-label">
                   Tanggal pembayaran
                 </label>
@@ -253,13 +337,13 @@ export default function PaymentDrawer({
                   value={date}
                   onChange={(event) => {
                     setDate(event.target.value);
-                    if (errors.date) {
-                      setErrors((prev) => ({ ...prev, date: undefined }));
+                    if (errors.paidAt) {
+                      setErrors((prev) => ({ ...prev, paidAt: undefined }));
                     }
                   }}
                   className="input"
                 />
-                {errors.date ? <span className="form-error">{errors.date}</span> : null}
+                {errors.paidAt ? <span className="form-error">{errors.paidAt}</span> : null}
               </div>
 
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
@@ -268,8 +352,8 @@ export default function PaymentDrawer({
                 </label>
                 <textarea
                   id="payment-notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
                   rows={3}
                   placeholder="Catatan (opsional)"
                   className="form-control"
@@ -301,7 +385,7 @@ export default function PaymentDrawer({
             <button
               type="submit"
               form="payment-form"
-              disabled={Boolean(submitting)}
+              disabled={Boolean(submitting) || accounts.length === 0}
               aria-busy={Boolean(submitting)}
               className="btn btn-primary w-full sm:w-auto"
             >

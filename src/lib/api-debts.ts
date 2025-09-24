@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { upsert } from './sync/SyncEngine';
 
 export type DebtType = 'debt' | 'receivable';
 export type DebtStatus = 'ongoing' | 'paid' | 'overdue';
@@ -26,14 +27,34 @@ export interface DebtRecord {
   updated_at: string;
 }
 
+export interface PaymentAccountInfo {
+  id: string;
+  name: string;
+  type: string | null;
+}
+
+export interface PaymentTransactionInfo {
+  id: string;
+  date: string;
+  amount: number;
+  title: string | null;
+  deleted_at: string | null;
+}
+
 export interface DebtPaymentRecord {
   id: string;
   debt_id: string;
   user_id: string;
   amount: number;
-  date: string;
-  notes: string | null;
+  paid_at: string;
+  note: string | null;
+  account_id: string | null;
+  related_tx_id: string | null;
   created_at: string;
+  updated_at: string;
+  account: PaymentAccountInfo | null;
+  transaction: PaymentTransactionInfo | null;
+  queued?: boolean;
 }
 
 export interface DebtSummary {
@@ -74,9 +95,11 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
 }
 
 export interface PaymentInput {
+  id?: string;
   amount: number;
-  date: string;
-  notes?: string | null;
+  paid_at: string;
+  account_id: string;
+  note?: string | null;
 }
 
 const DEBT_SELECT_COLUMNS =
@@ -176,14 +199,36 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
 }
 
 function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+  const account = row.account ?? row.accounts ?? null;
+  const transaction = row.transaction ?? row.transactions ?? null;
+
   return {
     id: String(row.id),
     debt_id: String(row.debt_id),
     user_id: String(row.user_id),
     amount: safeNumber(row.amount),
-    date: row.date ?? row.created_at ?? new Date().toISOString(),
-    notes: row.notes ?? null,
+    paid_at: row.paid_at ?? row.date ?? row.created_at ?? new Date().toISOString(),
+    note: row.note ?? row.notes ?? null,
+    account_id: row.account_id ? String(row.account_id) : null,
+    related_tx_id: row.related_tx_id ? String(row.related_tx_id) : null,
     created_at: row.created_at ?? new Date().toISOString(),
+    updated_at: row.updated_at ?? row.created_at ?? new Date().toISOString(),
+    account: account
+      ? {
+          id: String(account.id),
+          name: account.name ?? '',
+          type: account.type ?? null,
+        }
+      : null,
+    transaction: transaction
+      ? {
+          id: String(transaction.id),
+          date: transaction.date ?? transaction.created_at ?? new Date().toISOString(),
+          amount: safeNumber(transaction.amount),
+          title: transaction.title ?? transaction.description ?? null,
+          deleted_at: transaction.deleted_at ?? null,
+        }
+      : null,
   };
 }
 
@@ -241,10 +286,10 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
       .eq('user_id', userId),
     supabase
       .from('debt_payments')
-      .select('amount, date')
+      .select('amount, paid_at')
       .eq('user_id', userId)
-      .gte('date', startOfMonth.toISOString())
-      .lt('date', nextMonth.toISOString()),
+      .gte('paid_at', startOfMonth.toISOString().slice(0, 10))
+      .lt('paid_at', nextMonth.toISOString().slice(0, 10)),
   ]);
 
   if (debtsError) throw debtsError;
@@ -386,10 +431,13 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(
+        'id,debt_id,user_id,amount,paid_at,account_id,related_tx_id,note,created_at,updated_at,' +
+          'accounts (id,name,type),transactions (id,date,title,amount,deleted_at,account_id,notes)'
+      )
       .eq('debt_id', id)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (paymentsError) throw paymentsError;
 
@@ -407,10 +455,13 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
     const userId = await getUserId();
     const { data, error } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(
+        'id,debt_id,user_id,amount,paid_at,account_id,related_tx_id,note,created_at,updated_at,' +
+          'accounts (id,name,type),transactions (id,date,title,amount,deleted_at,account_id,notes)'
+      )
       .eq('debt_id', debtId)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(mapPaymentRow);
@@ -592,31 +643,63 @@ export async function deleteDebt(id: string): Promise<void> {
 export async function addPayment(
   debtId: string,
   payload: PaymentInput
-): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
+): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord; queued: boolean }>
 {
   try {
     const userId = await getUserId();
     const amount = Math.max(0, payload.amount);
-    const insertPayload = {
+    const accountId = payload.account_id?.trim();
+
+    if (!accountId) {
+      throw new Error('Akun sumber wajib dipilih.');
+    }
+
+    const paidAtDate = toISODate(payload.paid_at) ?? new Date().toISOString();
+    const paidAt = paidAtDate.slice(0, 10);
+    const noteValue = payload.note?.trim() ? payload.note.trim() : null;
+    const id = payload.id ?? (typeof crypto !== 'undefined' ? crypto.randomUUID() : `${Date.now()}`);
+
+    const record = {
+      id,
       debt_id: debtId,
       user_id: userId,
       amount: amount.toFixed(2),
-      date: toISODate(payload.date) ?? new Date().toISOString(),
-      notes: payload.notes ?? null,
+      paid_at: paidAt,
+      account_id: accountId,
+      note: noteValue,
+      related_tx_id: null as string | null,
     };
+
+    const offline =
+      typeof navigator !== 'undefined' &&
+      (!navigator.onLine ||
+        (typeof window !== 'undefined' && (window as { __sync?: { fakeOffline?: boolean } }).__sync?.fakeOffline));
+
+    if (offline) {
+      const saved = await upsert('debt_payments', record);
+      const payment = mapPaymentRow(saved);
+      payment.queued = true;
+      return { debt: null, payment, queued: true };
+    }
 
     const { data, error } = await supabase
       .from('debt_payments')
-      .insert([insertPayload])
-      .select('*')
+      .insert([record])
+      .select(
+        'id,debt_id,user_id,amount,paid_at,account_id,related_tx_id,note,created_at,updated_at,' +
+          'accounts (id,name,type),transactions (id,date,title,amount,deleted_at,account_id,notes)'
+      )
       .single();
     if (error) throw error;
 
     const updatedDebt = await recalculateDebtAggregates(debtId, userId);
+    const payment = mapPaymentRow(data);
+    payment.queued = false;
 
     return {
       debt: updatedDebt,
-      payment: mapPaymentRow(data),
+      payment,
+      queued: false,
     };
   } catch (error) {
     return handleError(error, 'Gagal menambahkan pembayaran');

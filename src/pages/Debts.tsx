@@ -23,6 +23,8 @@ import {
   type DebtSummary,
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
+import useNetworkStatus from '../hooks/useNetworkStatus';
+import { listAccounts as fetchAccounts } from '../lib/api';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -33,6 +35,12 @@ const INITIAL_FILTERS: DebtsFilterState = {
   dateTo: null,
   sort: 'newest',
 };
+
+interface AccountOption {
+  id: string;
+  name: string;
+  type?: string | null;
+}
 
 function toISO(date: string | null | undefined) {
   if (!date) return null;
@@ -63,7 +71,9 @@ function formatCurrency(value: number) {
 export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
+  const online = useNetworkStatus();
   const canUseCloud = Boolean(user?.id);
+  const offlineMode = !online;
   const [filters, setFilters] = useState<DebtsFilterState>(INITIAL_FILTERS);
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [summary, setSummary] = useState<DebtSummary | null>(null);
@@ -80,6 +90,7 @@ export default function Debts() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountOption[]>([]);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -92,6 +103,35 @@ export default function Debts() {
       console.error(`[HW][Debts] ${context}`, error);
     }
   }, []);
+
+  const loadAccounts = useCallback(async () => {
+    if (!canUseCloud) {
+      setAccounts([]);
+      return;
+    }
+    try {
+      const rows = await fetchAccounts();
+      setAccounts(
+        rows.map(
+          (account: {
+            id: string;
+            name?: string | null;
+            title?: string | null;
+            label?: string | null;
+            type?: string | null;
+            account_type?: string | null;
+          }) => ({
+            id: account.id,
+            name: account.name ?? account.title ?? account.label ?? '',
+            type: account.type ?? account.account_type ?? null,
+          }),
+        ),
+      );
+    } catch (error) {
+      logError(error, 'load accounts');
+      addToast('Gagal memuat daftar akun', 'error');
+    }
+  }, [canUseCloud, addToast, logError]);
 
   useEffect(() => {
     let active = true;
@@ -121,6 +161,10 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
@@ -326,6 +370,7 @@ export default function Debts() {
       addToast('Masuk untuk mengelola pembayaran hutang.', 'error');
       return;
     }
+    loadAccounts();
     setPaymentDebt(debt);
     setPaymentOpen(true);
     setPaymentLoading(true);
@@ -344,22 +389,42 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
+  const handlePaymentSubmit = async (input: {
+    amount: number;
+    paid_at: string;
+    account_id: string;
+    note?: string | null;
+  }) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
       return;
     }
     setPaymentSubmitting(true);
-    const tempId = `temp-payment-${Date.now()}`;
+    const paymentId = typeof crypto !== 'undefined' ? crypto.randomUUID() : `temp-payment-${Date.now()}`;
+    const paidAt = input.paid_at || new Date().toISOString().slice(0, 10);
+    const nowIso = new Date().toISOString();
+    const accountInfo = accounts.find((item) => item.id === input.account_id) ?? null;
     const optimisticPayment: DebtPaymentRecord = {
-      id: tempId,
+      id: paymentId,
       debt_id: paymentDebt.id,
       user_id: paymentDebt.user_id,
       amount: input.amount,
-      date: toISO(input.date) ?? new Date().toISOString(),
-      notes: input.notes ?? null,
-      created_at: new Date().toISOString(),
+      paid_at: paidAt,
+      note: input.note ?? null,
+      account_id: input.account_id,
+      related_tx_id: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+      account: accountInfo
+        ? {
+            id: accountInfo.id,
+            name: accountInfo.name,
+            type: accountInfo.type ?? null,
+          }
+        : null,
+      transaction: null,
+      queued: offlineMode,
     };
     setPaymentList((prev) => [optimisticPayment, ...prev]);
     const previousDebt = paymentDebt;
@@ -372,17 +437,39 @@ export default function Debts() {
     setPaymentDebt(updatedDebt);
     setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
     try {
-      const result = await addPayment(paymentDebt.id, input);
+      const result = await addPayment(paymentDebt.id, {
+        id: paymentId,
+        amount: input.amount,
+        paid_at: paidAt,
+        account_id: input.account_id,
+        note: input.note ?? null,
+      });
       if (result.debt) {
         setPaymentDebt(result.debt);
         setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
       }
-      setPaymentList((prev) => [result.payment, ...prev.filter((payment) => payment.id !== tempId)]);
-      addToast('Pembayaran berhasil dicatat', 'success');
-      await refreshData();
+      if (result.queued) {
+        const merged: DebtPaymentRecord = {
+          ...optimisticPayment,
+          ...result.payment,
+          account: optimisticPayment.account ?? result.payment.account,
+          queued: true,
+        };
+        setPaymentList((prev) => prev.map((payment) => (payment.id === paymentId ? merged : payment)));
+        addToast('Pembayaran disimpan & akan tersinkron saat online.', 'info');
+      } else {
+        const finalized: DebtPaymentRecord = {
+          ...result.payment,
+          account: result.payment.account ?? optimisticPayment.account,
+          queued: false,
+        };
+        setPaymentList((prev) => [finalized, ...prev.filter((payment) => payment.id !== paymentId)]);
+        addToast('Pembayaran tercatat & saldo keluar dibuat otomatis.', 'success');
+        await refreshData();
+      }
     } catch (error) {
       logError(error, 'add payment');
-      setPaymentList((prev) => prev.filter((payment) => payment.id !== tempId));
+      setPaymentList((prev) => prev.filter((payment) => payment.id !== paymentId));
       setPaymentDebt(previousDebt);
       setDebts((prev) => prev.map((item) => (item.id === previousDebt.id ? previousDebt : item)));
       addToast('Gagal mencatat pembayaran', 'error');
@@ -511,6 +598,8 @@ export default function Debts() {
         loading={paymentLoading}
         submitting={paymentSubmitting}
         deletingId={paymentDeletingId}
+        accounts={accounts}
+        offline={offlineMode}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}
