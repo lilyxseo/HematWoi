@@ -392,13 +392,13 @@ async function assertUniqueName(
     .select("id, name")
     .eq("user_id", userId)
     .eq("type", type)
-    .ilike("name", name)
-    .limit(5);
+    .limit(200);
   const { data, error } = await query;
   if (error) throw error;
+  const normalized = name.toLowerCase();
   const conflict = (data ?? []).find((row) => {
     if (excludeId && row.id === excludeId) return false;
-    return normalizeName(row.name).toLowerCase() === name.toLowerCase();
+    return normalizeName(row.name).toLowerCase() === normalized;
   });
   if (conflict) {
     throw new Error("Nama kategori sudah digunakan pada tipe ini.");
