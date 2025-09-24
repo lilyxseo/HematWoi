@@ -44,9 +44,14 @@ function getCategoryBaseColumns(): string {
 }
 
 let categoryColorSupported: boolean | undefined;
+let categoryUpdatedColumnSupported: boolean | undefined;
 
 function shouldUseCategoryColor(): boolean {
   return categoryColorSupported !== false;
+}
+
+function shouldUseCategoryUpdatedColumn(): boolean {
+  return categoryUpdatedColumnSupported !== false;
 }
 
 function getCategoryCreatedColumn(): CategoryCreatedColumn {
@@ -105,6 +110,14 @@ function handleMissingCategoryCreatedColumn(error: unknown): boolean {
   const current = getCategoryCreatedColumn();
   if (current === "created_at" && isMissingColumnError(error, "created_at")) {
     categoryCreatedColumn = "inserted_at";
+    return true;
+  }
+  return false;
+}
+
+function handleMissingCategoryUpdatedColumn(error: unknown): boolean {
+  if (shouldUseCategoryUpdatedColumn() && isMissingColumnError(error, "updated_at")) {
+    categoryUpdatedColumnSupported = false;
     return true;
   }
   return false;
@@ -366,6 +379,9 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
     if (handleMissingCategoryCreatedColumn(error)) {
       return listCategories(signal);
     }
+    if (handleMissingCategoryUpdatedColumn(error)) {
+      return listCategories(signal);
+    }
     if (signal?.aborted) {
       return [];
     }
@@ -439,15 +455,23 @@ export async function createCategory(input: {
     >;
     const nextOrder = normalizeSortOrder(orderRow[sortColumn], -1) + 1;
 
+    const timestamp = nowISO();
+    const createdColumn = getCategoryCreatedColumn();
+
     const insertPayload: Record<string, unknown> = {
       user_id: userId,
       name,
       type,
       [sortColumn]: nextOrder,
+      [createdColumn]: timestamp,
     };
 
     if (shouldUseCategoryColor()) {
       insertPayload.color = color;
+    }
+
+    if (shouldUseCategoryUpdatedColumn()) {
+      insertPayload.updated_at = timestamp;
     }
 
     const { data, error } = await supabase
@@ -468,6 +492,9 @@ export async function createCategory(input: {
       return createCategory(input);
     }
     if (handleMissingCategoryCreatedColumn(error)) {
+      return createCategory(input);
+    }
+    if (handleMissingCategoryUpdatedColumn(error)) {
       return createCategory(input);
     }
     logDevError("createCategory", error);
@@ -501,6 +528,10 @@ export async function updateCategory(
   if (patch.sort_order != null) {
     const sortColumn = getCategorySortColumn();
     updates[sortColumn] = normalizeSortOrder(patch.sort_order);
+  }
+
+  if (Object.keys(updates).length && shouldUseCategoryUpdatedColumn()) {
+    updates.updated_at = nowISO();
   }
 
   if (!Object.keys(updates).length) {
@@ -545,6 +576,9 @@ export async function updateCategory(
     if (handleMissingCategoryCreatedColumn(error)) {
       return updateCategory(id, patch);
     }
+    if (handleMissingCategoryUpdatedColumn(error)) {
+      return updateCategory(id, patch);
+    }
     logDevError("updateCategory", error);
     throw toError(error, "Gagal memperbarui kategori.");
   }
@@ -564,11 +598,13 @@ export async function reorderCategories(
 
   const normalizedType = normalizeType(type);
   const sortColumn = getCategorySortColumn();
+  const timestamp = shouldUseCategoryUpdatedColumn() ? nowISO() : null;
   const payload = orderedIds.map((id, index) => ({
     id,
     user_id: userId,
     type: normalizedType,
     [sortColumn]: index,
+    ...(timestamp ? { updated_at: timestamp } : {}),
   }));
 
   try {
@@ -588,6 +624,9 @@ export async function reorderCategories(
       return reorderCategories(type, orderedIds);
     }
     if (handleMissingCategoryCreatedColumn(error)) {
+      return reorderCategories(type, orderedIds);
+    }
+    if (handleMissingCategoryUpdatedColumn(error)) {
       return reorderCategories(type, orderedIds);
     }
     logDevError("reorderCategories", error);
