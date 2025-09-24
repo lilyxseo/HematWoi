@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Routes,
   Route,
@@ -292,9 +292,162 @@ function AppShell({ prefs, setPrefs }) {
   const { challenges, addChallenge, updateChallenge, removeChallenge } =
     useChallenges(data.txs);
   const { speak } = useMoneyTalk();
+  const migrationStateRef = useRef({ running: false, userId: null });
   window.__hw_prefs = prefs;
 
   const navigate = useNavigate();
+
+  const migrateGuestData = useCallback(
+    async (user) => {
+      if (!user?.id) return false;
+
+      const userId = user.id;
+      const flagKey = `hw:guestMigrated:${userId}`;
+
+      let existingFlag = null;
+      try {
+        existingFlag = localStorage.getItem(flagKey);
+        if (existingFlag && existingFlag !== 'pending') {
+          return false;
+        }
+      } catch {
+        existingFlag = null;
+      }
+
+      const snapshot = loadInitial();
+      const hasTransactions = Array.isArray(snapshot.txs) && snapshot.txs.length > 0;
+      const incomeCount = Array.isArray(snapshot.cat?.income)
+        ? snapshot.cat.income.length
+        : 0;
+      const expenseCount = Array.isArray(snapshot.cat?.expense)
+        ? snapshot.cat.expense.length
+        : 0;
+      const hasCategories = incomeCount + expenseCount > 0;
+
+      if (!hasTransactions && !hasCategories) {
+        try {
+          localStorage.setItem(flagKey, new Date().toISOString());
+        } catch {
+          /* ignore */
+        }
+        return false;
+      }
+
+      let flagSetToPending = false;
+      try {
+        localStorage.setItem(flagKey, 'pending');
+        flagSetToPending = true;
+      } catch {
+        /* ignore */
+      }
+
+      const categoryLookup = new Map();
+      Object.entries(catMap || {}).forEach(([name, id]) => {
+        if (name && id) {
+          categoryLookup.set(name, id);
+        }
+      });
+
+      let migrated = false;
+      const migrationErrors = [];
+
+      if (hasCategories) {
+        try {
+          const rows = await upsertCategories(snapshot.cat);
+          rows.forEach((row) => {
+            if (row?.name && row?.id) {
+              categoryLookup.set(row.name, row.id);
+            }
+          });
+          migrated = migrated || rows.length > 0;
+        } catch (error) {
+          migrationErrors.push(error);
+          console.error('[App] Failed to migrate guest categories', error);
+        }
+      }
+
+      let existingIds = new Set();
+      try {
+        const { data: existing } = await supabase
+          .from('transactions')
+          .select('id')
+          .eq('user_id', userId);
+        if (Array.isArray(existing)) {
+          existingIds = new Set(existing.map((row) => row?.id).filter(Boolean));
+        }
+      } catch (error) {
+        console.error(
+          '[App] Failed to fetch existing transactions before guest migration',
+          error,
+        );
+      }
+
+      if (hasTransactions) {
+        for (const tx of snapshot.txs) {
+          const baseId = tx?.id || tx?.client_id;
+          const resolvedId =
+            (typeof baseId === 'string' && baseId) ||
+            globalThis.crypto?.randomUUID?.() ||
+            Math.random().toString(36).slice(2);
+          if (existingIds.has(resolvedId)) {
+            continue;
+          }
+
+          const categoryId =
+            tx?.category_id ??
+            (typeof tx?.category === 'string' ? categoryLookup.get(tx.category) ?? null : null);
+
+          const payload = {
+            id: resolvedId,
+            date: tx?.date ?? new Date().toISOString(),
+            type: tx?.type ?? 'expense',
+            amount: Number(tx?.amount ?? 0),
+            title: tx?.title ?? tx?.name ?? null,
+            notes: tx?.note ?? tx?.notes ?? null,
+            category_id: categoryId ?? null,
+            account_id: tx?.account_id ?? null,
+            to_account_id:
+              (tx?.type ?? 'expense') === 'transfer' ? tx?.to_account_id ?? null : null,
+            merchant_id: tx?.merchant_id ?? null,
+          };
+          if (Array.isArray(tx?.receipts) && tx.receipts.length > 0) {
+            payload.receipts = tx.receipts;
+          }
+
+          try {
+            await apiAdd(payload);
+            migrated = true;
+          } catch (error) {
+            migrationErrors.push(error);
+            console.error('[App] Failed to migrate guest transaction', { id: resolvedId }, error);
+          }
+        }
+      }
+
+      if (migrationErrors.length > 0) {
+        if (flagSetToPending) {
+          localStorage.removeItem(flagKey);
+        }
+        if (!existingFlag) {
+          addToast('Beberapa data tamu gagal dipindahkan ke cloud. Coba lagi nanti.', 'error');
+        }
+        return false;
+      }
+
+      try {
+        localStorage.setItem(flagKey, new Date().toISOString());
+      } catch {
+        /* ignore */
+      }
+
+      if (migrated) {
+        addToast('Data tamu berhasil dipindahkan ke cloud.', 'success');
+      }
+
+      return migrated;
+    },
+    [addToast, catMap],
+  );
 
 
   const handleProfileSyncError = useCallback(
@@ -330,48 +483,67 @@ function AppShell({ prefs, setPrefs }) {
   );
 
   useEffect(() => {
-    let isMounted = true;
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!isMounted) return;
-        const session = data.session ?? null;
-        if (session?.user) {
+    let active = true;
+
+    const ensureOnline = async (session) => {
+      if (!session?.user) return;
+      const { user } = session;
+      if (
+        migrationStateRef.current.running &&
+        migrationStateRef.current.userId === user.id
+      ) {
+        return;
+      }
+      migrationStateRef.current = { running: true, userId: user.id };
+      try {
+        await migrateGuestData(user);
+      } catch (error) {
+        console.error('[App] Migrasi data tamu gagal', error);
+      } finally {
+        migrationStateRef.current = { running: false, userId: null };
+        if (active) {
           try {
-            localStorage.setItem("hw:connectionMode", "online");
-            localStorage.setItem("hw:mode", "online");
+            localStorage.setItem('hw:connectionMode', 'online');
+            localStorage.setItem('hw:mode', 'online');
           } catch {
             /* ignore */
           }
-          setMode("online");
+          setMode('online');
         }
+      }
+    };
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        const session = data.session ?? null;
         setSessionUser(session?.user ?? null);
         setSessionChecked(true);
+        if (session?.user) {
+          ensureOnline(session);
+        }
       })
       .catch(() => {
-        if (!isMounted) return;
+        if (!active) return;
         setSessionUser(null);
         setSessionChecked(true);
       });
+
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) return;
+      if (!active) return;
       setSessionUser(session?.user ?? null);
       setSessionChecked(true);
-      if (event === "SIGNED_IN") {
-        try {
-          localStorage.setItem("hw:connectionMode", "online");
-          localStorage.setItem("hw:mode", "online");
-        } catch {
-          /* ignore */
-        }
-        setMode("online");
+      if (event === 'SIGNED_IN') {
+        ensureOnline(session);
       }
     });
+
     return () => {
-      isMounted = false;
+      active = false;
       sub.subscription?.unsubscribe();
     };
-  }, [setMode]);
+  }, [setMode, migrateGuestData]);
 
   useEffect(() => {
     if (sessionChecked && !sessionUser && mode === "online") {
