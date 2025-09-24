@@ -30,10 +30,8 @@ import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
 import AuthLogin from "./pages/AuthLogin";
 import ChallengesPage from "./pages/Challenges.jsx";
-import AdminPage from "./pages/AdminPage";
 import useChallenges from "./hooks/useChallenges.js";
 import AuthGuard from "./components/AuthGuard";
-import AdminGuard from "./components/AdminGuard";
 import { DataProvider } from "./context/DataContext";
 
 import { supabase } from "./lib/supabase";
@@ -1073,14 +1071,6 @@ function AppShell({ prefs, setPrefs }) {
                 <Route
                   path="profile"
                   element={<ProfilePage transactions={data.txs} challenges={challenges} />}
-                />
-                <Route
-                  path="admin"
-                  element={
-                    <AdminGuard>
-                      <AdminPage />
-                    </AdminGuard>
-                  }
                 />
                 <Route path="dashboard" element={<Navigate to="/" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
