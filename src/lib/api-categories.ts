@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { dbCache } from "./sync/localdb";
 import { getCurrentUserId } from "./session";
+import { LocalDriver } from "./data-driver";
 
 type CategoryType = "income" | "expense";
 type CategorySortColumn = "sort_order" | "order_index";
@@ -21,6 +22,7 @@ const DEFAULT_COLOR = "#64748B";
 
 let categorySortColumn: CategorySortColumn | undefined;
 let categoryCreatedColumn: CategoryCreatedColumn | undefined;
+const guestDriver = new LocalDriver();
 
 function getCategorySortColumn(): CategorySortColumn {
   return categorySortColumn ?? "sort_order";
@@ -119,6 +121,19 @@ function logDevError(scope: string, error: unknown) {
   }
 }
 
+function nowISO(): string {
+  return new Date().toISOString();
+}
+
+async function resolveUserId(): Promise<string | null> {
+  try {
+    return await getCurrentUserId();
+  } catch (error) {
+    logDevError("resolveUserId", error);
+    return null;
+  }
+}
+
 function toError(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) {
     const wrapped = new Error(error.message);
@@ -184,9 +199,142 @@ function sortCategories(rows: CategoryRecord[]): CategoryRecord[] {
   });
 }
 
+async function listGuestCategories(): Promise<CategoryRecord[]> {
+  const rows = await guestDriver.list("categories");
+  const mapped = (rows ?? []).map((row) =>
+    mapCategoryRow(row as Partial<CategoryRecord> & Record<string, unknown>)
+  );
+  return sortCategories(mapped);
+}
+
+async function ensureGuestUniqueName(
+  type: CategoryType,
+  name: string,
+  excludeId?: string
+): Promise<void> {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return;
+  const rows = await listGuestCategories();
+  const conflict = rows.find(
+    (row) =>
+      row.type === type &&
+      row.id !== excludeId &&
+      row.name.trim().toLowerCase() === normalized
+  );
+  if (conflict) {
+    throw new Error("Nama kategori sudah digunakan pada tipe ini.");
+  }
+}
+
+async function createGuestCategory(input: {
+  name: string;
+  type: CategoryType;
+  color: string;
+}): Promise<CategoryRecord> {
+  const { name, type, color } = input;
+  await ensureGuestUniqueName(type, name);
+  const existing = await listGuestCategories();
+  const lastOrder = existing
+    .filter((row) => row.type === type)
+    .reduce((max, row) => Math.max(max, row.sort_order ?? 0), -1);
+  const sortOrder = lastOrder + 1;
+  const now = nowISO();
+  const payload: Record<string, unknown> = {
+    name,
+    type,
+    color,
+    sort_order: sortOrder,
+    created_at: now,
+    updated_at: now,
+    user_id: null,
+  };
+  const inserted = await guestDriver.insert("categories", payload);
+  const record = mapCategoryRow(
+    inserted as Partial<CategoryRecord> & Record<string, unknown>
+  );
+  await dbCache.set("categories", record);
+  return record;
+}
+
+async function updateGuestCategory(
+  id: string,
+  patch: Partial<Pick<CategoryRecord, "name" | "color" | "sort_order">>
+): Promise<CategoryRecord> {
+  const existing = await guestDriver.get("categories", id);
+  if (!existing) {
+    throw new Error("Kategori tidak ditemukan.");
+  }
+  const current = mapCategoryRow(
+    existing as Partial<CategoryRecord> & Record<string, unknown>
+  );
+  const updates: Record<string, unknown> = {};
+
+  if (typeof patch.name === "string") {
+    const normalized = normalizeName(patch.name);
+    if (!normalized || normalized.length > 60) {
+      throw new Error("Nama kategori harus 1-60 karakter.");
+    }
+    await ensureGuestUniqueName(current.type, normalized, current.id);
+    updates.name = normalized;
+  }
+
+  if (typeof patch.color === "string") {
+    updates.color = normalizeColor(patch.color);
+  }
+
+  if (patch.sort_order != null) {
+    updates.sort_order = normalizeSortOrder(patch.sort_order);
+  }
+
+  if (!Object.keys(updates).length) {
+    return current;
+  }
+
+  updates.updated_at = nowISO();
+  const updated = await guestDriver.update("categories", id, updates);
+  const record = mapCategoryRow(
+    updated as Partial<CategoryRecord> & Record<string, unknown>
+  );
+  await dbCache.set("categories", record);
+  return record;
+}
+
+async function reorderGuestCategories(
+  type: CategoryType,
+  orderedIds: string[]
+): Promise<void> {
+  if (!Array.isArray(orderedIds) || !orderedIds.length) {
+    return;
+  }
+  const normalizedType = normalizeType(type);
+  const now = nowISO();
+  await Promise.all(
+    orderedIds.map((id, index) =>
+      guestDriver.update("categories", id, {
+        type: normalizedType,
+        sort_order: index,
+        updated_at: now,
+      })
+    )
+  );
+  const rows = await listGuestCategories();
+  await dbCache.bulkSet("categories", rows);
+}
+
+async function deleteGuestCategory(id: string): Promise<void> {
+  await guestDriver.softDelete("categories", id);
+  await dbCache.remove("categories", id);
+}
+
 export async function listCategories(signal?: AbortSignal): Promise<CategoryRecord[]> {
-  const userId = await getCurrentUserId();
-  if (!userId) return [];
+  if (signal?.aborted) {
+    return [];
+  }
+
+  const userId = await resolveUserId();
+  if (!userId) {
+    return listGuestCategories();
+  }
 
   try {
     const sortColumn = getCategorySortColumn();
@@ -262,15 +410,17 @@ export async function createCategory(input: {
   type: CategoryType;
   color: string;
 }): Promise<CategoryRecord> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
-
   const name = normalizeName(input.name);
   if (!name || name.length > 60) {
     throw new Error("Nama kategori harus 1-60 karakter.");
   }
   const type = normalizeType(input.type);
   const color = normalizeColor(input.color);
+
+  const userId = await resolveUserId();
+  if (!userId) {
+    return createGuestCategory({ name, type, color });
+  }
 
   try {
     await assertUniqueName(userId, type, name);
@@ -329,8 +479,10 @@ export async function updateCategory(
   id: string,
   patch: Partial<Pick<CategoryRecord, "name" | "color" | "sort_order">>
 ): Promise<CategoryRecord> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
+  const userId = await resolveUserId();
+  if (!userId) {
+    return updateGuestCategory(id, patch);
+  }
 
   const updates: Record<string, unknown> = {};
   const nextName =
@@ -402,9 +554,13 @@ export async function reorderCategories(
   type: CategoryType,
   orderedIds: string[]
 ): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
   if (!Array.isArray(orderedIds) || !orderedIds.length) return;
+
+  const userId = await resolveUserId();
+  if (!userId) {
+    await reorderGuestCategories(type, orderedIds);
+    return;
+  }
 
   const normalizedType = normalizeType(type);
   const sortColumn = getCategorySortColumn();
@@ -440,8 +596,11 @@ export async function reorderCategories(
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const userId = await getCurrentUserId();
-  if (!userId) throw new Error("Pengguna belum masuk.");
+  const userId = await resolveUserId();
+  if (!userId) {
+    await deleteGuestCategory(id);
+    return;
+  }
 
   try {
     const { error } = await supabase
