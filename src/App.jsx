@@ -29,9 +29,11 @@ import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
 import AuthLogin from "./pages/AuthLogin";
+import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import useChallenges from "./hooks/useChallenges.js";
 import AuthGuard from "./components/AuthGuard";
+import AdminGuard from "./components/AdminGuard";
 import { DataProvider } from "./context/DataContext";
 
 import { supabase } from "./lib/supabase";
@@ -1068,6 +1070,14 @@ function AppShell({ prefs, setPrefs }) {
                   element={<Navigate to="/transaction/add" replace />}
                 />
                 <Route path="settings" element={<SettingsPage />} />
+                <Route
+                  path="admin"
+                  element={
+                    <AdminGuard>
+                      <AdminPage />
+                    </AdminGuard>
+                  }
+                />
                 <Route
                   path="profile"
                   element={<ProfilePage transactions={data.txs} challenges={challenges} />}
