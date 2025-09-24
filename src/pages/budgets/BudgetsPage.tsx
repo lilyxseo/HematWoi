@@ -279,6 +279,7 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
     (async () => {
       try {
         await upsertBudget({
+          id: target.previous.id,
           period: target.previous.period_month.slice(0, 7),
           category_id: target.previous.category_id ?? undefined,
           name: target.previous.name ?? undefined,
@@ -333,6 +334,7 @@ export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
     pushUndo(previous);
     try {
       await upsertBudget({
+        id: next.id,
         period: next.period_month.slice(0, 7),
         category_id: next.category_id ?? undefined,
         name: next.name ?? undefined,
