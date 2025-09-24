@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { CategoryType } from "../../lib/api-categories";
 import ColorSwatch from "./ColorSwatch";
 
@@ -34,18 +34,13 @@ export default function CategoryForm({
   isSubmitting = false,
   allowTypeChange = mode === "create",
 }: CategoryFormProps) {
-  const defaults = useMemo(
-    () => ({
-      name: initialValues?.name ?? "",
-      color: initialValues?.color ?? "#64748B",
-      type: normalizeType(initialValues?.type),
-    }),
-    [initialValues]
-  );
+  const defaultName = initialValues?.name ?? "";
+  const defaultColor = initialValues?.color ?? "#64748B";
+  const defaultType = normalizeType(initialValues?.type);
 
-  const [name, setName] = useState(defaults.name);
-  const [color, setColor] = useState(defaults.color);
-  const [type, setType] = useState<CategoryType>(defaults.type);
+  const [name, setName] = useState(defaultName);
+  const [color, setColor] = useState(defaultColor);
+  const [type, setType] = useState<CategoryType>(defaultType);
   const [nameError, setNameError] = useState<string | null>(null);
   const [colorError, setColorError] = useState<string | null>(null);
 
@@ -53,12 +48,12 @@ export default function CategoryForm({
   const typeId = useId();
 
   useEffect(() => {
-    setName(defaults.name);
-    setColor(defaults.color);
-    setType(defaults.type);
+    setName(defaultName);
+    setColor(defaultColor);
+    setType(defaultType);
     setNameError(null);
     setColorError(null);
-  }, [defaults]);
+  }, [defaultName, defaultColor, defaultType]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
