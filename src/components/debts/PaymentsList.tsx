@@ -26,8 +26,12 @@ export default function PaymentsList({ payments, onDelete, deletingId }: Payment
     <ul className="flex flex-col gap-3">
       {payments.map((payment) => {
         const amountLabel = currencyFormatter.format(payment.amount ?? 0);
-        const dateLabel = payment.date ? dateFormatter.format(new Date(payment.date)) : '-';
+        const dateLabel = payment.paid_at ? dateFormatter.format(new Date(payment.paid_at)) : '-';
         const isDeleting = deletingId === payment.id;
+        const accountLabel = payment.account_name ?? 'Akun tidak diketahui';
+        const isDraft = payment.sync_status === 'queued';
+        const transactionNote = payment.transaction?.note ?? null;
+        const transactionDeleted = Boolean(payment.transaction?.deleted_at);
         return (
           <li
             key={payment.id}
@@ -35,11 +39,27 @@ export default function PaymentsList({ payments, onDelete, deletingId }: Payment
           >
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text">{amountLabel}</p>
-              <p className="text-xs text-muted">{dateLabel}</p>
-              {payment.notes ? (
-                <p className="mt-2 break-words text-sm text-text/80" title={payment.notes}>
-                  {payment.notes}
+              <p className="text-xs text-muted">
+                {dateLabel}
+                {accountLabel ? ` • ${accountLabel}` : ''}
+              </p>
+              {isDraft ? (
+                <span className="mt-2 inline-flex items-center rounded-full bg-yellow-50 px-3 py-1 text-xs font-medium text-yellow-800">
+                  Draft offline
+                </span>
+              ) : null}
+              {payment.note ? (
+                <p className="mt-2 break-words text-sm text-text/80" title={payment.note}>
+                  {payment.note}
                 </p>
+              ) : null}
+              {transactionNote ? (
+                <p className="mt-2 break-words text-xs text-muted" title={transactionNote}>
+                  Transaksi: {transactionNote}
+                </p>
+              ) : null}
+              {transactionDeleted ? (
+                <p className="mt-2 text-xs font-medium text-red-600">Transaksi terkait ditandai terhapus.</p>
               ) : null}
             </div>
             <button

@@ -26,14 +26,30 @@ export interface DebtRecord {
   updated_at: string;
 }
 
+export interface PaymentTransactionSummary {
+  id: string;
+  amount: number;
+  date: string | null;
+  account_id: string | null;
+  note: string | null;
+  title: string | null;
+  deleted_at: string | null;
+}
+
 export interface DebtPaymentRecord {
   id: string;
   debt_id: string;
   user_id: string;
   amount: number;
-  date: string;
-  notes: string | null;
+  paid_at: string;
+  account_id: string | null;
+  account_name: string | null;
+  note: string | null;
   created_at: string;
+  related_tx_id: string | null;
+  transaction: PaymentTransactionSummary | null;
+  sync_status?: 'queued' | 'synced' | 'failed';
+  isDraft?: boolean;
 }
 
 export interface DebtSummary {
@@ -75,9 +91,15 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
 
 export interface PaymentInput {
   amount: number;
-  date: string;
-  notes?: string | null;
+  paid_at: string;
+  account_id: string;
+  note?: string | null;
 }
+
+export const PAYMENT_SELECT_COLUMNS =
+  'id,debt_id,user_id,amount,paid_at,account_id,note,created_at,related_tx_id,' +
+  'account:account_id (id,name),' +
+  'transaction:related_tx_id (id,date,amount,account_id,note,notes,title,deleted_at)';
 
 const DEBT_SELECT_COLUMNS =
   'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,created_at,updated_at';
@@ -175,15 +197,84 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
   };
 }
 
-function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+function todayJakarta(): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
+  return `${year}-${month}-${day}`;
+}
+
+function normalizePaidAt(value: string | null | undefined): string {
+  if (typeof value !== 'string') {
+    return todayJakarta();
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return todayJakarta();
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+  return todayJakarta();
+}
+
+export function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+  const paidAt =
+    row.paid_at ?? row.date ?? row.created_at ?? new Date().toISOString();
+  const paidAtStr = typeof paidAt === 'string'
+    ? String(paidAt).slice(0, 10)
+    : new Date(paidAt).toISOString().slice(0, 10);
+  const account = row.account ?? row.accounts ?? null;
+  const accountName =
+    row.account_name ??
+    account?.name ??
+    null;
+  const transactionRow = row.transaction ?? null;
+  const transaction: PaymentTransactionSummary | null = transactionRow
+    ? {
+        id: String(transactionRow.id),
+        amount: safeNumber(transactionRow.amount),
+        date: transactionRow.date ?? transactionRow.created_at ?? null,
+        account_id: transactionRow.account_id
+          ? String(transactionRow.account_id)
+          : null,
+        note:
+          transactionRow.note ??
+          transactionRow.notes ??
+          transactionRow.title ??
+          null,
+        title:
+          transactionRow.title ??
+          transactionRow.note ??
+          transactionRow.notes ??
+          null,
+        deleted_at: transactionRow.deleted_at ?? null,
+      }
+    : null;
+
   return {
     id: String(row.id),
     debt_id: String(row.debt_id),
     user_id: String(row.user_id),
     amount: safeNumber(row.amount),
-    date: row.date ?? row.created_at ?? new Date().toISOString(),
-    notes: row.notes ?? null,
+    paid_at: paidAtStr,
+    account_id: row.account_id ? String(row.account_id) : null,
+    account_name: accountName,
+    note: row.note ?? row.notes ?? null,
     created_at: row.created_at ?? new Date().toISOString(),
+    related_tx_id: row.related_tx_id ? String(row.related_tx_id) : null,
+    transaction,
   };
 }
 
@@ -234,6 +325,9 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
   const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
+  const startDateStr = startOfMonth.toISOString().slice(0, 10);
+  const nextDateStr = nextMonth.toISOString().slice(0, 10);
+
   const [{ data: debtsRows, error: debtsError }, { data: paymentRows, error: paymentError }] = await Promise.all([
     supabase
       .from('debts')
@@ -241,10 +335,10 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
       .eq('user_id', userId),
     supabase
       .from('debt_payments')
-      .select('amount, date')
+      .select('amount, paid_at')
       .eq('user_id', userId)
-      .gte('date', startOfMonth.toISOString())
-      .lt('date', nextMonth.toISOString()),
+      .gte('paid_at', startDateStr)
+      .lt('paid_at', nextDateStr),
   ]);
 
   if (debtsError) throw debtsError;
@@ -386,10 +480,10 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .eq('debt_id', id)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (paymentsError) throw paymentsError;
 
@@ -407,10 +501,10 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
     const userId = await getUserId();
     const { data, error } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .eq('debt_id', debtId)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(mapPaymentRow);
@@ -592,31 +686,42 @@ export async function deleteDebt(id: string): Promise<void> {
 export async function addPayment(
   debtId: string,
   payload: PaymentInput
-): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
+): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord; transaction: PaymentTransactionSummary | null }>
 {
   try {
     const userId = await getUserId();
     const amount = Math.max(0, payload.amount);
+    if (!payload.account_id) {
+      throw new Error('Akun sumber pembayaran wajib dipilih.');
+    }
+
+    const paidAt = normalizePaidAt(payload.paid_at);
     const insertPayload = {
       debt_id: debtId,
       user_id: userId,
-      amount: amount.toFixed(2),
-      date: toISODate(payload.date) ?? new Date().toISOString(),
-      notes: payload.notes ?? null,
+      amount: Number(amount.toFixed(2)),
+      paid_at: paidAt,
+      account_id: payload.account_id,
+      note: payload.note?.trim() ? payload.note.trim() : null,
     };
 
     const { data, error } = await supabase
       .from('debt_payments')
       .insert([insertPayload])
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .single();
     if (error) throw error;
+    if (!data) {
+      throw new Error('Pembayaran tidak tercatat.');
+    }
 
+    const payment = mapPaymentRow(data);
     const updatedDebt = await recalculateDebtAggregates(debtId, userId);
 
     return {
       debt: updatedDebt,
-      payment: mapPaymentRow(data),
+      payment,
+      transaction: payment.transaction,
     };
   } catch (error) {
     return handleError(error, 'Gagal menambahkan pembayaran');

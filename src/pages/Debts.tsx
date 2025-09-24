@@ -9,6 +9,7 @@ import DebtForm from '../components/debts/DebtForm';
 import PaymentDrawer from '../components/debts/PaymentDrawer';
 import ConfirmDialog from '../components/debts/ConfirmDialog';
 import { useToast } from '../context/ToastContext';
+import { useDataMode } from '../context/DataContext';
 import {
   addPayment,
   createDebt,
@@ -16,12 +17,26 @@ import {
   deletePayment,
   getDebt,
   listDebts,
+  mapPaymentRow,
   updateDebt,
+  PAYMENT_SELECT_COLUMNS,
   type DebtInput,
   type DebtPaymentRecord,
   type DebtRecord,
   type DebtSummary,
+  type PaymentTransactionSummary,
 } from '../lib/api-debts';
+import {
+  listAccounts as fetchAccounts,
+  type AccountRecord,
+} from '../lib/api.ts';
+import {
+  listDrafts,
+  listDraftsByDebt,
+  removeDraft,
+  saveDraft,
+} from '../lib/debt-payment-drafts';
+import { supabase } from '../lib/supabase';
 import useSupabaseUser from '../hooks/useSupabaseUser';
 
 const INITIAL_FILTERS: DebtsFilterState = {
@@ -62,8 +77,14 @@ function formatCurrency(value: number) {
 
 export default function Debts() {
   const { addToast } = useToast();
+  const { mode } = useDataMode();
   const { user, loading: userLoading } = useSupabaseUser();
-  const canUseCloud = Boolean(user?.id);
+  const isOnlineMode = mode === 'online';
+  const canUseCloud = isOnlineMode && Boolean(user?.id);
+  const offlineDraftMode =
+    !isOnlineMode ||
+    !user?.id ||
+    (typeof navigator !== 'undefined' && !navigator.onLine);
   const [filters, setFilters] = useState<DebtsFilterState>(INITIAL_FILTERS);
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [summary, setSummary] = useState<DebtSummary | null>(null);
@@ -76,7 +97,7 @@ export default function Debts() {
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentDebt, setPaymentDebt] = useState<DebtRecord | null>(null);
-  const [paymentList, setPaymentList] = useState<DebtPaymentRecord[]>([]);
+  const [serverPayments, setServerPayments] = useState<DebtPaymentRecord[]>([]);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
@@ -85,6 +106,11 @@ export default function Debts() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
+  const [recentPayment, setRecentPayment] = useState<DebtPaymentRecord | null>(null);
+  const [draftVersion, setDraftVersion] = useState(0);
+  const [syncingDrafts, setSyncingDrafts] = useState(false);
+  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
 
   const logError = useCallback((error: unknown, context: string) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -92,6 +118,43 @@ export default function Debts() {
       console.error(`[HW][Debts] ${context}`, error);
     }
   }, []);
+
+  const triggerTransactionsRefresh = useCallback(() => {
+    window.dispatchEvent(
+      new CustomEvent('hw:transactions:refresh-request', {
+        detail: { scope: 'current-month', source: 'debt-payment' },
+      }),
+    );
+  }, []);
+
+  const accountNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((account) => {
+      map.set(account.id, account.name ?? '');
+    });
+    return map;
+  }, [accounts]);
+
+  const paymentList = useMemo(() => {
+    if (!paymentDebt) return [];
+    const drafts = listDraftsByDebt(paymentDebt.id);
+    const draftRecords: DebtPaymentRecord[] = drafts.map((draft) => ({
+      id: draft.id,
+      debt_id: draft.debt_id,
+      user_id: draft.user_id ?? user?.id ?? 'offline',
+      amount: draft.amount,
+      paid_at: draft.paid_at,
+      account_id: draft.account_id,
+      account_name: accountNameMap.get(draft.account_id) ?? null,
+      note: draft.note,
+      created_at: draft.created_at,
+      related_tx_id: null,
+      transaction: null,
+      sync_status: 'queued',
+      isDraft: true,
+    }));
+    return [...draftRecords, ...serverPayments];
+  }, [paymentDebt, serverPayments, accountNameMap, user?.id, draftVersion]);
 
   useEffect(() => {
     let active = true;
@@ -121,6 +184,34 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!isOnlineMode || !user?.id) {
+      setAccounts([]);
+      return () => {
+        ignore = true;
+      };
+    }
+    setAccountsLoading(true);
+    fetchAccounts(user.id)
+      .then((rows) => {
+        if (!ignore) {
+          setAccounts(rows);
+        }
+      })
+      .catch((error) => {
+        logError(error, 'load accounts');
+      })
+      .finally(() => {
+        if (!ignore) {
+          setAccountsLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [isOnlineMode, user?.id, logError]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
@@ -322,20 +413,26 @@ export default function Debts() {
   };
 
   const handleOpenPayment = async (debt: DebtRecord) => {
-    if (!canUseCloud) {
+    if (isOnlineMode && !user?.id) {
       addToast('Masuk untuk mengelola pembayaran hutang.', 'error');
       return;
     }
+    setRecentPayment(null);
     setPaymentDebt(debt);
     setPaymentOpen(true);
+    if (!isOnlineMode || !user?.id) {
+      setServerPayments([]);
+      setPaymentLoading(false);
+      return;
+    }
     setPaymentLoading(true);
     try {
       const detail = await getDebt(debt.id);
       if (detail.debt) {
         setPaymentDebt(detail.debt);
-        setDebts((prev) => prev.map((item) => (item.id === detail.debt.id ? detail.debt : item)));
+        setDebts((prev) => prev.map((item) => (item.id === detail.debt!.id ? detail.debt! : item)));
       }
-      setPaymentList(detail.payments);
+      setServerPayments(detail.payments);
     } catch (error) {
       logError(error, 'load payments');
       addToast('Gagal memuat pembayaran', 'error');
@@ -344,30 +441,62 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
+  const handlePaymentSubmit = async (input: {
+    amount: number;
+    paid_at: string;
+    account_id: string;
+    note?: string | null;
+  }) => {
     if (!paymentDebt) return;
-    if (!canUseCloud) {
-      addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
+    const amount = Math.max(0, input.amount);
+    const offlineMode = !isOnlineMode || !user?.id || !navigator.onLine;
+    if (offlineMode) {
+      const draftId = `draft-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
+      saveDraft({
+        id: draftId,
+        debt_id: paymentDebt.id,
+        user_id: user?.id ?? null,
+        amount,
+        paid_at: input.paid_at,
+        account_id: input.account_id,
+        note: input.note ?? null,
+        created_at: new Date().toISOString(),
+      });
+      setDraftVersion((prev) => prev + 1);
+      const optimisticDebt: DebtRecord = {
+        ...paymentDebt,
+        paid_total: paymentDebt.paid_total + amount,
+        remaining: Math.max(paymentDebt.remaining - amount, 0),
+        status: computeStatus(paymentDebt.amount, paymentDebt.paid_total + amount, paymentDebt.due_date),
+      };
+      setPaymentDebt(optimisticDebt);
+      setDebts((prev) => prev.map((item) => (item.id === optimisticDebt.id ? optimisticDebt : item)));
+      addToast('Pembayaran disimpan sebagai draft. Akan tersinkron saat online.', 'success');
       return;
     }
+
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
     const optimisticPayment: DebtPaymentRecord = {
       id: tempId,
       debt_id: paymentDebt.id,
       user_id: paymentDebt.user_id,
-      amount: input.amount,
-      date: toISO(input.date) ?? new Date().toISOString(),
-      notes: input.notes ?? null,
+      amount,
+      paid_at: input.paid_at,
+      account_id: input.account_id,
+      account_name: accountNameMap.get(input.account_id) ?? null,
+      note: input.note ?? null,
       created_at: new Date().toISOString(),
+      related_tx_id: null,
+      transaction: null,
     };
-    setPaymentList((prev) => [optimisticPayment, ...prev]);
+    setServerPayments((prev) => [optimisticPayment, ...prev]);
     const previousDebt = paymentDebt;
     const updatedDebt: DebtRecord = {
       ...paymentDebt,
-      paid_total: paymentDebt.paid_total + input.amount,
-      remaining: Math.max(paymentDebt.remaining - input.amount, 0),
-      status: computeStatus(paymentDebt.amount, paymentDebt.paid_total + input.amount, paymentDebt.due_date),
+      paid_total: paymentDebt.paid_total + amount,
+      remaining: Math.max(paymentDebt.remaining - amount, 0),
+      status: computeStatus(paymentDebt.amount, paymentDebt.paid_total + amount, paymentDebt.due_date),
     };
     setPaymentDebt(updatedDebt);
     setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
@@ -375,14 +504,16 @@ export default function Debts() {
       const result = await addPayment(paymentDebt.id, input);
       if (result.debt) {
         setPaymentDebt(result.debt);
-        setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
+        setDebts((prev) => prev.map((item) => (item.id === result.debt!.id ? result.debt! : item)));
       }
-      setPaymentList((prev) => [result.payment, ...prev.filter((payment) => payment.id !== tempId)]);
-      addToast('Pembayaran berhasil dicatat', 'success');
+      setServerPayments((prev) => [result.payment, ...prev.filter((payment) => payment.id !== tempId)]);
+      setRecentPayment(result.payment);
+      addToast('Pembayaran tercatat & saldo keluar dibuat otomatis.', 'success');
       await refreshData();
+      triggerTransactionsRefresh();
     } catch (error) {
       logError(error, 'add payment');
-      setPaymentList((prev) => prev.filter((payment) => payment.id !== tempId));
+      setServerPayments((prev) => prev.filter((payment) => payment.id !== tempId));
       setPaymentDebt(previousDebt);
       setDebts((prev) => prev.map((item) => (item.id === previousDebt.id ? previousDebt : item)));
       addToast('Gagal mencatat pembayaran', 'error');
@@ -391,20 +522,123 @@ export default function Debts() {
     }
   };
 
+  const syncDraftPayments = useCallback(async () => {
+    if (!isOnlineMode || !user?.id || !navigator.onLine) return;
+    const drafts = listDrafts();
+    if (!drafts.length) return;
+    if (syncingDrafts) return;
+    setSyncingDrafts(true);
+    const succeeded: DebtPaymentRecord[] = [];
+    const failed: string[] = [];
+    for (const draft of drafts) {
+      try {
+        const { data, error } = await supabase
+          .from('debt_payments')
+          .insert([
+            {
+              debt_id: draft.debt_id,
+              user_id: user.id,
+              amount: Number(draft.amount.toFixed(2)),
+              paid_at: draft.paid_at,
+              account_id: draft.account_id,
+              note: draft.note,
+            },
+          ])
+          .select(PAYMENT_SELECT_COLUMNS)
+          .single();
+        if (error) throw error;
+        if (data) {
+          removeDraft(draft.id);
+          succeeded.push(mapPaymentRow(data));
+        }
+      } catch (error) {
+        logError(error, 'sync draft payment');
+        failed.push(draft.id);
+      }
+    }
+
+    if (succeeded.length) {
+      setDraftVersion((prev) => prev + 1);
+      await refreshData();
+      triggerTransactionsRefresh();
+      if (paymentDebt) {
+        try {
+          const detail = await getDebt(paymentDebt.id);
+          if (detail.debt) {
+            setPaymentDebt(detail.debt);
+            setDebts((prev) => prev.map((item) => (item.id === detail.debt!.id ? detail.debt! : item)));
+          }
+          setServerPayments(detail.payments);
+          const newestPayment = detail.payments?.[0] ?? succeeded[succeeded.length - 1] ?? null;
+          if (newestPayment) {
+            setRecentPayment(newestPayment);
+          }
+        } catch (error) {
+          logError(error, 'reload payments after sync');
+          const fallback = succeeded[succeeded.length - 1] ?? null;
+          if (fallback) {
+            setRecentPayment(fallback);
+          }
+        }
+      } else {
+        const fallback = succeeded[succeeded.length - 1] ?? null;
+        if (fallback) {
+          setRecentPayment(fallback);
+        }
+      }
+      addToast('Draft pembayaran tersinkron otomatis.', 'success');
+    }
+
+    if (failed.length) {
+      addToast('Sebagian draft pembayaran belum tersinkron.', 'warning');
+    }
+
+    setSyncingDrafts(false);
+  }, [
+    isOnlineMode,
+    user?.id,
+    syncingDrafts,
+    refreshData,
+    triggerTransactionsRefresh,
+    paymentDebt,
+    logError,
+    setDebts,
+  ]);
+
+  useEffect(() => {
+    if (!isOnlineMode || !user?.id) return;
+    if (!navigator.onLine) return;
+    syncDraftPayments();
+    const handleOnline = () => {
+      syncDraftPayments();
+    };
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [isOnlineMode, user?.id, syncDraftPayments]);
+
   const handleDeletePayment = (payment: DebtPaymentRecord) => {
     setPendingPaymentDelete(payment);
   };
 
   const confirmDeletePayment = async () => {
     if (!pendingPaymentDelete || !paymentDebt) return;
-    if (!canUseCloud) {
+    const payment = pendingPaymentDelete;
+    if (payment.isDraft) {
+      removeDraft(payment.id);
+      setDraftVersion((prev) => prev + 1);
+      addToast('Draft pembayaran dihapus.', 'success');
+      setPendingPaymentDelete(null);
+      return;
+    }
+    if (!isOnlineMode || !user?.id) {
       addToast('Masuk untuk menghapus pembayaran hutang.', 'error');
       setPendingPaymentDelete(null);
       return;
     }
-    const payment = pendingPaymentDelete;
     setPaymentDeletingId(payment.id);
-    setPaymentList((prev) => prev.filter((item) => item.id !== payment.id));
+    setServerPayments((prev) => prev.filter((item) => item.id !== payment.id));
     const backupDebt = paymentDebt;
     try {
       const updated = await deletePayment(payment.id);
@@ -414,9 +648,10 @@ export default function Debts() {
       }
       addToast('Pembayaran dihapus', 'success');
       await refreshData();
+      triggerTransactionsRefresh();
     } catch (error) {
       logError(error, 'delete payment');
-      setPaymentList((prev) => [payment, ...prev]);
+      setServerPayments((prev) => [payment, ...prev]);
       setPaymentDebt(backupDebt);
       setDebts((prev) => prev.map((item) => (item.id === backupDebt.id ? backupDebt : item)));
       addToast('Gagal menghapus pembayaran', 'error');
@@ -429,7 +664,8 @@ export default function Debts() {
   const handleClosePayment = () => {
     setPaymentOpen(false);
     setPaymentDebt(null);
-    setPaymentList([]);
+    setServerPayments([]);
+    setRecentPayment(null);
     setPendingPaymentDelete(null);
     setPaymentDeletingId(null);
   };
@@ -508,9 +744,14 @@ export default function Debts() {
         open={paymentOpen}
         debt={paymentDebt}
         payments={paymentList}
+        accounts={accounts}
+        accountsLoading={accountsLoading}
         loading={paymentLoading}
         submitting={paymentSubmitting}
         deletingId={paymentDeletingId}
+        draftMode={offlineDraftMode}
+        recentPayment={recentPayment}
+        syncingDrafts={syncingDrafts}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}

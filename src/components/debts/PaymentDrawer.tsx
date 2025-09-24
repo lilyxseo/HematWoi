@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
+import type { AccountRecord } from '../../lib/api.ts';
 import type { DebtPaymentRecord, DebtRecord } from '../../lib/api-debts';
 import PaymentsList from './PaymentsList';
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll';
@@ -22,20 +23,34 @@ function parseDecimal(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-const todayIso = () => {
-  const now = new Date();
-  return now.toISOString().slice(0, 10);
-};
+function todayJakarta(): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
+  return `${year}-${month}-${day}`;
+}
 
 interface PaymentDrawerProps {
   open: boolean;
   debt: DebtRecord | null;
   payments: DebtPaymentRecord[];
+  accounts: AccountRecord[];
+  accountsLoading?: boolean;
   loading?: boolean;
   submitting?: boolean;
   deletingId?: string | null;
+  draftMode?: boolean;
+  recentPayment?: DebtPaymentRecord | null;
+  syncingDrafts?: boolean;
   onClose: () => void;
-  onSubmit: (payload: { amount: number; date: string; notes?: string | null }) => Promise<void> | void;
+  onSubmit: (payload: { amount: number; paid_at: string; account_id: string; note?: string | null }) => Promise<void> | void;
   onDeletePayment: (payment: DebtPaymentRecord) => void;
 }
 
@@ -43,17 +58,23 @@ export default function PaymentDrawer({
   open,
   debt,
   payments,
+  accounts,
+  accountsLoading,
   loading,
   submitting,
   deletingId,
+  draftMode,
+  recentPayment,
+  syncingDrafts,
   onClose,
   onSubmit,
   onDeletePayment,
 }: PaymentDrawerProps) {
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(todayIso());
-  const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<{ amount?: string; date?: string }>({});
+  const [paidAt, setPaidAt] = useState(todayJakarta());
+  const [accountId, setAccountId] = useState('');
+  const [note, setNote] = useState('');
+  const [errors, setErrors] = useState<{ amount?: string; paid_at?: string; account_id?: string }>({});
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -100,19 +121,42 @@ export default function PaymentDrawer({
   }, [open]);
 
   useEffect(() => {
-    if (open) {
-      setAmount('');
-      setDate(todayIso());
-      setNotes('');
-      setErrors({});
+    if (!open) return;
+    setAmount('');
+    setPaidAt(todayJakarta());
+    setNote('');
+    setErrors({});
+    if (accounts.length) {
+      setAccountId(accounts[0].id);
+    } else {
+      setAccountId('');
     }
-  }, [open, debt?.id]);
+  }, [open, debt?.id, accounts]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!accounts.length) {
+      setAccountId('');
+      return;
+    }
+    if (!accounts.some((account) => account.id === accountId)) {
+      setAccountId(accounts[0].id);
+    }
+  }, [open, accounts, accountId]);
 
   useEffect(() => {
     if (open) {
       closeButtonRef.current?.focus();
     }
   }, [open]);
+
+  const accountMap = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((account) => {
+      map.set(account.id, account.name ?? '');
+    });
+    return map;
+  }, [accounts]);
 
   const remainingLabel = useMemo(() => {
     if (!debt) return currencyFormatter.format(0);
@@ -124,36 +168,46 @@ export default function PaymentDrawer({
     return currencyFormatter.format(Math.max(0, debt.paid_total));
   }, [debt]);
 
+  const recentTransaction = recentPayment?.transaction ?? null;
+  const recentAccountName = recentPayment?.account_name ?? (recentPayment?.account_id ? accountMap.get(recentPayment.account_id) ?? null : null);
+  const recentTransactionDate = recentTransaction?.date ?? recentPayment?.paid_at ?? null;
+  const recentTransactionNote = recentTransaction?.note ?? recentPayment?.note ?? null;
+  const recentTransactionDeleted = Boolean(recentTransaction?.deleted_at);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsedAmount = parseDecimal(amount);
-    const trimmedDate = date?.trim() ?? '';
-    const nextErrors: { amount?: string; date?: string } = {};
+    const trimmedDate = paidAt?.trim() ?? '';
+    const nextErrors: { amount?: string; paid_at?: string; account_id?: string } = {};
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       nextErrors.amount = 'Masukkan nominal lebih dari 0.';
     }
 
-    const parsedDate = trimmedDate ? new Date(trimmedDate) : null;
-    if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
-      nextErrors.date = 'Pilih tanggal pembayaran yang valid.';
+    if (!trimmedDate || !/^\d{4}-\d{2}-\d{2}$/.test(trimmedDate)) {
+      nextErrors.paid_at = 'Pilih tanggal pembayaran yang valid.';
     }
 
-    if (nextErrors.amount || nextErrors.date) {
+    if (!accountId) {
+      nextErrors.account_id = 'Pilih akun sumber dana.';
+    }
+
+    if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
     }
 
-    setErrors({});
+    const finalDate = trimmedDate || todayJakarta();
 
     try {
       await onSubmit({
         amount: parsedAmount,
-        date: trimmedDate || todayIso(),
-        notes: notes.trim() ? notes.trim() : null,
+        paid_at: finalDate,
+        account_id: accountId,
+        note: note.trim() ? note.trim() : null,
       });
       setAmount('');
-      setNotes('');
+      setNote('');
     } catch (submitError) {
       if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
         // eslint-disable-next-line no-console
@@ -161,6 +215,9 @@ export default function PaymentDrawer({
       }
     }
   };
+
+  const submitDisabled = Boolean(submitting) || Boolean(accountsLoading) || !accountId;
+  const showEmptyAccountsHint = !accountsLoading && accounts.length === 0;
 
   if (!open || !debt) return null;
 
@@ -219,6 +276,12 @@ export default function PaymentDrawer({
               </div>
             </section>
 
+            {draftMode ? (
+              <p className="rounded-3xl border border-dashed border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+                Mode offline: pembayaran akan disimpan sebagai draft dan tersinkron otomatis saat kembali online.
+              </p>
+            ) : null}
+
             <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
                 <label htmlFor="payment-amount" className="form-label">
@@ -250,32 +313,95 @@ export default function PaymentDrawer({
                 <input
                   id="payment-date"
                   type="date"
-                  value={date}
+                  value={paidAt}
                   onChange={(event) => {
-                    setDate(event.target.value);
-                    if (errors.date) {
-                      setErrors((prev) => ({ ...prev, date: undefined }));
+                    setPaidAt(event.target.value);
+                    if (errors.paid_at) {
+                      setErrors((prev) => ({ ...prev, paid_at: undefined }));
                     }
                   }}
                   className="input"
                 />
-                {errors.date ? <span className="form-error">{errors.date}</span> : null}
+                {errors.paid_at ? <span className="form-error">{errors.paid_at}</span> : null}
               </div>
 
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
-                <label htmlFor="payment-notes" className="form-label">
+                <label htmlFor="payment-account" className="form-label">
+                  Akun sumber dana
+                </label>
+                <div className="relative">
+                  <select
+                    id="payment-account"
+                    value={accountId}
+                    onChange={(event) => {
+                      setAccountId(event.target.value);
+                      if (errors.account_id) {
+                        setErrors((prev) => ({ ...prev, account_id: undefined }));
+                      }
+                    }}
+                    className="input pr-10"
+                    disabled={Boolean(accountsLoading) || accounts.length === 0}
+                  >
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                  {accountsLoading ? (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted" />
+                  ) : null}
+                </div>
+                {showEmptyAccountsHint ? (
+                  <span className="text-xs text-muted">
+                    Tidak ada akun tersedia. Tambahkan akun untuk mencatat pembayaran.
+                  </span>
+                ) : null}
+                {errors.account_id ? <span className="form-error">{errors.account_id}</span> : null}
+              </div>
+
+              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                <label htmlFor="payment-note" className="form-label">
                   Catatan
                 </label>
                 <textarea
-                  id="payment-notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
+                  id="payment-note"
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
                   rows={3}
                   placeholder="Catatan (opsional)"
                   className="form-control"
                 />
               </div>
             </form>
+
+            {recentPayment ? (
+              <section className="rounded-3xl border border-border-subtle bg-surface-alt/70 p-4 text-sm shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Transaksi saldo keluar</p>
+                <p className="mt-2 text-lg font-semibold text-text tabular-nums">
+                  {currencyFormatter.format(recentTransaction?.amount ?? recentPayment.amount)}
+                </p>
+                <p className="text-sm text-muted">
+                  {recentTransactionDate ? dateFormatter.format(new Date(recentTransactionDate)) : '-'}
+                  {recentAccountName ? ` • ${recentAccountName}` : ''}
+                </p>
+                {recentTransactionNote ? (
+                  <p className="mt-2 break-words text-sm text-text/80" title={recentTransactionNote}>
+                    {recentTransactionNote}
+                  </p>
+                ) : null}
+                {recentTransactionDeleted ? (
+                  <p className="mt-2 text-xs font-medium text-red-600">
+                    Transaksi terkait ditandai terhapus.
+                  </p>
+                ) : null}
+                {!recentTransaction && !recentTransactionDeleted ? (
+                  <p className="mt-2 text-xs text-muted">
+                    Transaksi akan tersedia setelah proses sinkronisasi selesai.
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="min-h-[160px] min-w-0">
               {loading ? (
@@ -285,6 +411,9 @@ export default function PaymentDrawer({
               ) : (
                 <PaymentsList payments={payments} onDelete={onDeletePayment} deletingId={deletingId} />
               )}
+              {syncingDrafts ? (
+                <p className="mt-2 text-xs italic text-muted">Menyinkronkan draft pembayaran…</p>
+              ) : null}
             </section>
           </div>
         </div>
@@ -301,7 +430,7 @@ export default function PaymentDrawer({
             <button
               type="submit"
               form="payment-form"
-              disabled={Boolean(submitting)}
+              disabled={submitDisabled}
               aria-busy={Boolean(submitting)}
               className="btn btn-primary w-full sm:w-auto"
             >
