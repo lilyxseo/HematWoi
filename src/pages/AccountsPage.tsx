@@ -7,6 +7,7 @@ import Section from '../layout/Section';
 import Card, { CardBody, CardHeader } from '../components/Card';
 import AccountFormModal, { type AccountFormValues } from '../components/accounts/AccountFormModal';
 import { useToast } from '../context/ToastContext';
+import { supabase } from '../lib/supabase.js';
 import {
   type AccountRecord,
   type AccountType,
@@ -46,6 +47,7 @@ export default function AccountsPage() {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [filter, setFilter] = useState<'all' | AccountType>('all');
   const [modalOpen, setModalOpen] = useState(false);
@@ -59,7 +61,16 @@ export default function AccountsPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const rows = await listAccounts();
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        throw error;
+      }
+      const uid = data.user?.id;
+      if (!uid) {
+        throw new Error('Anda harus login untuk melihat akun.');
+      }
+      setUserId(uid);
+      const rows = await listAccounts(uid);
       setAccounts(sortAccounts(rows));
     } catch (error) {
       const message =
@@ -122,7 +133,10 @@ export default function AccountsPage() {
           setAccounts((prev) => sortAccounts(prev.map((acc) => (acc.id === updated.id ? updated : acc))));
           addToast('Akun diperbarui', 'success');
         } else {
-          const created = await createAccount(values);
+          if (!userId) {
+            throw new Error('Anda harus login untuk menambah akun.');
+          }
+          const created = await createAccount(userId, values);
           setAccounts((prev) => sortAccounts([...prev, created]));
           addToast('Akun ditambahkan', 'success');
         }
@@ -135,7 +149,7 @@ export default function AccountsPage() {
         setModalBusy(false);
       }
     },
-    [addToast, modalMode, resetModalState, selectedAccount],
+    [addToast, modalMode, resetModalState, selectedAccount, userId],
   );
 
   const handleDelete = useCallback(
