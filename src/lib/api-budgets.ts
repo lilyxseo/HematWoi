@@ -36,6 +36,7 @@ export interface BudgetActivity {
 }
 
 export interface BudgetInput {
+  id?: string;
   period: string; // YYYY-MM
   category_id?: string | null;
   name?: string | null;
@@ -130,29 +131,57 @@ function ensureAuth(userId: string | null | undefined) {
   }
 }
 
+function isRelationMissing(error: any, relation: string): boolean {
+  if (!error) return false;
+  const message = typeof error === 'string' ? error : (error as any)?.message ?? '';
+  if (typeof message !== 'string') return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('does not exist') && normalized.includes(relation.toLowerCase());
+}
+
 function mapBudgetRow(row: Record<string, any>): BudgetRecord {
+  const period = row.period_month ?? row.month ?? row.period ?? null;
+  const resolvedPeriod = period ? toISODate(String(period).slice(0, 7)) : new Date().toISOString().slice(0, 10);
+  const nameFromRelation = row.category?.name ?? row.categories?.name ?? row.category_name ?? null;
+  const planned = parseNumber(row.planned ?? row.amount_planned);
+  const rolloverIn = parseNumber(row.rollover_in ?? row.rolloverIn ?? 0);
+  const rolloverOut = parseNumber(row.rollover_out ?? row.rolloverOut ?? 0);
+  const note = row.note ?? row.notes ?? null;
+  const carryRule: CarryRule = (row.carry_rule as CarryRule) ?? (row.carryover_enabled ? 'carry-positive' : 'none');
+  const baseActivity = row.activity
+    ? {
+        period_month: row.activity.period_month ?? resolvedPeriod,
+        category_id: row.activity.category_id ?? row.category_id ?? null,
+        actual: parseNumber(row.activity.actual),
+        inflow: parseNumber(row.activity.inflow),
+        outflow: parseNumber(row.activity.outflow),
+      }
+    : undefined;
+  const fallbackActual = parseNumber(
+    row.current_spent ?? row.actual ?? row.spent ?? baseActivity?.actual ?? 0
+  );
+  const activity = baseActivity ?? {
+    period_month: resolvedPeriod,
+    category_id: row.category_id ?? null,
+    actual: fallbackActual,
+    inflow: 0,
+    outflow: fallbackActual,
+  };
+
   return {
     id: String(row.id),
     user_id: String(row.user_id),
-    period_month: row.period_month,
+    period_month: resolvedPeriod,
     category_id: row.category_id ?? null,
-    name: row.name ?? null,
-    planned: parseNumber(row.planned),
-    rollover_in: parseNumber(row.rollover_in),
-    rollover_out: parseNumber(row.rollover_out),
-    carry_rule: (row.carry_rule as CarryRule) ?? 'carry-positive',
-    note: row.note ?? null,
+    name: row.name ?? nameFromRelation ?? null,
+    planned,
+    rollover_in: rolloverIn,
+    rollover_out: rolloverOut,
+    carry_rule: carryRule,
+    note,
     created_at: row.created_at ?? new Date().toISOString(),
     updated_at: row.updated_at ?? new Date().toISOString(),
-    activity: row.activity
-      ? {
-          period_month: row.activity.period_month ?? row.period_month,
-          category_id: row.activity.category_id ?? row.category_id ?? null,
-          actual: parseNumber(row.activity.actual),
-          inflow: parseNumber(row.activity.inflow),
-          outflow: parseNumber(row.activity.outflow),
-        }
-      : undefined,
+    activity,
   };
 }
 
@@ -207,7 +236,7 @@ export async function listBudgets(options: ListBudgetsOptions): Promise<BudgetRe
 
     let query = supabase
       .from('budgets')
-      .select('*')
+      .select('*, category:categories(id, name)')
       .eq('user_id', userId)
       .eq('period_month', periodIso);
 
@@ -227,39 +256,6 @@ export async function listBudgets(options: ListBudgetsOptions): Promise<BudgetRe
     if (error) throw error;
 
     const mapped = (data ?? []).map(mapBudgetRow);
-
-    if (withActivity && mapped.length) {
-      const { data: activityRows, error: activityError } = await supabase
-        .from('budget_activity')
-        .select('period_month, category_id, actual, inflow, outflow')
-        .eq('period_month', periodIso);
-      if (activityError) throw activityError;
-      const map = new Map<string, BudgetActivity>();
-      (activityRows ?? []).forEach((row) => {
-        const key = `${row.period_month ?? periodIso}__${row.category_id ?? 'null'}`;
-        map.set(key, {
-          period_month: row.period_month ?? periodIso,
-          category_id: row.category_id ?? null,
-          actual: parseNumber(row.actual),
-          inflow: parseNumber(row.inflow),
-          outflow: parseNumber(row.outflow),
-        });
-      });
-      mapped.forEach((item) => {
-        const key = `${item.period_month}__${item.category_id ?? 'null'}`;
-        if (map.has(key)) {
-          item.activity = map.get(key);
-        } else {
-          item.activity = {
-            period_month: item.period_month,
-            category_id: item.category_id ?? null,
-            actual: 0,
-            inflow: 0,
-            outflow: 0,
-          };
-        }
-      });
-    }
 
     if (sort) {
       mapped.sort((a, b) => {
@@ -301,22 +297,25 @@ export async function upsertBudget(payload: BudgetInput): Promise<BudgetRecord> 
     if (!payload.category_id && !payload.name) {
       throw new Error('Nama anggaran wajib diisi untuk envelope tanpa kategori');
     }
-    const body = {
+    const carryoverEnabled = payload.carry_rule === 'carry-positive' || payload.carry_rule === 'carry-all';
+    const body: Record<string, any> = {
+      id: payload.id,
       user_id: userId,
       period_month: periodIso,
       category_id: payload.category_id ?? null,
-      name: payload.name ?? null,
-      planned: Number(payload.planned ?? 0),
-      carry_rule: payload.carry_rule,
-      note: payload.note ?? null,
-      rollover_in: Number(payload.rollover_in ?? 0),
-      rollover_out: Number(payload.rollover_out ?? 0),
+      amount_planned: Number(payload.planned ?? 0),
+      carryover_enabled: carryoverEnabled,
+      notes: payload.note ?? null,
     };
+
+    if (!payload.category_id && payload.name) {
+      body.notes = payload.note ? `${payload.name} — ${payload.note}` : payload.name;
+    }
 
     const { data, error } = await supabase
       .from('budgets')
-      .upsert(body, { onConflict: 'user_id,period_month,category_key' })
-      .select('*')
+      .upsert(body)
+      .select('*, category:categories(id, name)')
       .maybeSingle();
     if (error) throw error;
     if (!data) throw new Error('Tidak ada data yang dikembalikan');
@@ -339,22 +338,25 @@ export async function bulkUpsertBudgets(payloads: BudgetInput[]): Promise<Budget
       if (!p.category_id && !p.name) {
         throw new Error('Nama anggaran wajib diisi untuk envelope tanpa kategori');
       }
-      return {
+      const carryoverEnabled = p.carry_rule === 'carry-positive' || p.carry_rule === 'carry-all';
+      const row: Record<string, any> = {
+        id: p.id,
         user_id: userId,
         period_month: toISODate(p.period),
         category_id: p.category_id ?? null,
-        name: p.name ?? null,
-        planned: Number(p.planned ?? 0),
-        carry_rule: p.carry_rule,
-        note: p.note ?? null,
-        rollover_in: Number(p.rollover_in ?? 0),
-        rollover_out: Number(p.rollover_out ?? 0),
+        amount_planned: Number(p.planned ?? 0),
+        carryover_enabled: carryoverEnabled,
+        notes: p.note ?? null,
       };
+      if (!p.category_id && p.name) {
+        row.notes = p.note ? `${p.name} — ${p.note}` : p.name;
+      }
+      return row;
     });
     const { data, error } = await supabase
       .from('budgets')
-      .upsert(rows, { onConflict: 'user_id,period_month,category_key' })
-      .select('*');
+      .upsert(rows)
+      .select('*, category:categories(id, name)');
     if (error) throw error;
     return (data ?? []).map(mapBudgetRow);
   } catch (error) {
@@ -394,37 +396,26 @@ export async function copyBudgets(payload: CopyBudgetsPayload): Promise<BudgetRe
 
     const { data: rows, error } = await supabase
       .from('budgets')
-      .select('*')
+      .select('*, category:categories(id, name)')
       .eq('user_id', userId)
       .eq('period_month', fromIso);
     if (error) throw error;
 
     if (!rows?.length) return [];
 
-    const cloned = rows.map((row) => {
-      const resolvedName = row.category_id ? row.name ?? null : row.name ?? 'Envelope';
-      const base: any = {
-        user_id: userId,
-        period_month: toIso,
-        category_id: row.category_id ?? null,
-        name: resolvedName,
-        planned: row.planned,
-        carry_rule: row.carry_rule,
-        note: row.note ?? null,
-        rollover_in: payload.includeRolloverIn ? row.rollover_out ?? 0 : 0,
-        rollover_out: 0,
-      };
-      if (payload.strategy === 'rollover-rules') {
-        base.planned = row.planned;
-        base.rollover_in = payload.includeRolloverIn ? row.rollover_out ?? 0 : 0;
-      }
-      return base;
-    });
+    const cloned = rows.map((row) => ({
+      user_id: userId,
+      period_month: toIso,
+      category_id: row.category_id ?? null,
+      amount_planned: parseNumber(row.amount_planned ?? row.planned ?? 0),
+      carryover_enabled: Boolean(row.carryover_enabled ?? false),
+      notes: row.notes ?? null,
+    }));
 
     const { data: inserted, error: upsertError } = await supabase
       .from('budgets')
-      .upsert(cloned, { onConflict: 'user_id,period_month,category_key' })
-      .select('*');
+      .upsert(cloned)
+      .select('*, category:categories(id, name)');
     if (upsertError) throw upsertError;
     return (inserted ?? []).map(mapBudgetRow);
   } catch (error) {
@@ -437,121 +428,13 @@ export async function copyBudgets(payload: CopyBudgetsPayload): Promise<BudgetRe
 }
 
 export async function computeRollover(options: { period: string }): Promise<BudgetRecord[]> {
-  try {
-    const userId = await getCurrentUserId();
-    ensureAuth(userId);
-    const periodIso = toISODate(options.period);
-
-    const { data: budgetsData, error } = await supabase
-      .from('budgets')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('period_month', periodIso);
-    if (error) throw error;
-
-    const { data: activityData, error: activityError } = await supabase
-      .from('budget_activity')
-      .select('category_id, period_month, actual')
-      .eq('period_month', periodIso);
-    if (activityError) throw activityError;
-
-    const activityMap = new Map<string, number>();
-    (activityData ?? []).forEach((row) => {
-      const key = `${row.period_month ?? periodIso}__${row.category_id ?? 'null'}`;
-      activityMap.set(key, parseNumber(row.actual));
-    });
-
-    const rowsToUpdate = (budgetsData ?? []).map((row) => {
-      const key = `${periodIso}__${row.category_id ?? 'null'}`;
-      const actual = activityMap.get(key) ?? 0;
-      const remaining = parseNumber(row.planned) + parseNumber(row.rollover_in) - actual;
-      let rolloverOut = 0;
-      switch (row.carry_rule) {
-        case 'carry-all':
-          rolloverOut = remaining;
-          break;
-        case 'carry-positive':
-          rolloverOut = Math.max(remaining, 0);
-          break;
-        case 'reset-zero':
-        case 'none':
-        default:
-          rolloverOut = 0;
-      }
-      return {
-        ...row,
-        rollover_out: rolloverOut,
-      };
-    });
-
-    const { data: updated, error: updateError } = await supabase
-      .from('budgets')
-      .upsert(rowsToUpdate)
-      .select('*');
-    if (updateError) throw updateError;
-    return (updated ?? []).map(mapBudgetRow);
-  } catch (error) {
-    logDev(error, 'computeRollover');
-    if (error instanceof Error && error.message) {
-      throw new Error(`Gagal menghitung rollover: ${error.message}`);
-    }
-    throw new Error('Gagal menghitung rollover');
-  }
+  void options;
+  throw new Error('Fitur rollover belum tersedia pada skema anggaran saat ini.');
 }
 
 export async function applyRolloverToNext(options: { period: string }): Promise<ApplyRolloverResult> {
-  try {
-    const userId = await getCurrentUserId();
-    ensureAuth(userId);
-    const periodIso = toISODate(options.period);
-    const currentDate = new Date(`${periodIso}T00:00:00Z`);
-    if (Number.isNaN(currentDate.getTime())) {
-      throw new Error('Periode tidak valid');
-    }
-    const next = new Date(Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth() + 1, 1));
-    const nextIso = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-01`;
-
-    const { data: currentRows, error } = await supabase
-      .from('budgets')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('period_month', periodIso);
-    if (error) throw error;
-
-    if (!currentRows?.length) {
-      return { updated: [] };
-    }
-
-    const updates: any[] = [];
-    for (const row of currentRows) {
-      const resolvedName = row.category_id ? row.name ?? null : row.name ?? 'Envelope';
-      const nextBase = {
-        user_id: userId,
-        period_month: nextIso,
-        category_id: row.category_id ?? null,
-        name: resolvedName,
-        planned: row.planned,
-        carry_rule: row.carry_rule,
-        note: row.note ?? null,
-        rollover_in: Number(row.rollover_out ?? 0),
-      };
-      updates.push(nextBase);
-    }
-
-    const { data: upserted, error: upsertError } = await supabase
-      .from('budgets')
-      .upsert(updates, { onConflict: 'user_id,period_month,category_key' })
-      .select('*');
-    if (upsertError) throw upsertError;
-
-    return { updated: (upserted ?? []).map(mapBudgetRow) };
-  } catch (error) {
-    logDev(error, 'applyRolloverToNext');
-    if (error instanceof Error && error.message) {
-      throw new Error(`Gagal menerapkan rollover: ${error.message}`);
-    }
-    throw new Error('Gagal menerapkan rollover');
-  }
+  void options;
+  throw new Error('Fitur rollover belum tersedia pada skema anggaran saat ini.');
 }
 
 export async function listRules(): Promise<BudgetRuleRecord[]> {
@@ -563,7 +446,10 @@ export async function listRules(): Promise<BudgetRuleRecord[]> {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
-    if (error) throw error;
+    if (error) {
+      if (isRelationMissing(error, 'budget_rules')) return [];
+      throw error;
+    }
     return (data ?? []).map(mapRuleRow);
   } catch (error) {
     logDev(error, 'listRules');
@@ -592,7 +478,12 @@ export async function upsertRule(rule: Partial<BudgetRuleRecord>): Promise<Budge
       .upsert(payload)
       .select('*')
       .maybeSingle();
-    if (error) throw error;
+    if (error) {
+      if (isRelationMissing(error, 'budget_rules')) {
+        throw new Error('Fitur aturan anggaran belum tersedia pada skema ini.');
+      }
+      throw error;
+    }
     if (!data) throw new Error('Aturan tidak tersedia');
     return mapRuleRow(data);
   } catch (error) {
@@ -613,7 +504,12 @@ export async function deleteRule(id: UUID): Promise<void> {
       .delete()
       .eq('user_id', userId)
       .eq('id', id);
-    if (error) throw error;
+    if (error) {
+      if (isRelationMissing(error, 'budget_rules')) {
+        throw new Error('Fitur aturan anggaran belum tersedia pada skema ini.');
+      }
+      throw error;
+    }
   } catch (error) {
     logDev(error, 'deleteRule');
     if (error instanceof Error && error.message) {
@@ -630,20 +526,20 @@ export async function getSummary(options: { period: string }): Promise<BudgetSum
     const periodIso = toISODate(options.period);
     const { data: budgetsData, error } = await supabase
       .from('budgets')
-      .select('planned, rollover_in, rollover_out')
+      .select('amount_planned, current_spent')
       .eq('user_id', userId)
       .eq('period_month', periodIso);
     if (error) throw error;
 
-    const { data: activityData, error: activityError } = await supabase
-      .from('budget_activity')
-      .select('actual, category_id, period_month')
-      .eq('period_month', periodIso);
-    if (activityError) throw activityError;
-
-    const totalPlanned = (budgetsData ?? []).reduce((sum, row) => sum + parseNumber(row.planned), 0);
-    const totalRolloverIn = (budgetsData ?? []).reduce((sum, row) => sum + parseNumber(row.rollover_in), 0);
-    const totalActual = (activityData ?? []).reduce((sum, row) => sum + parseNumber(row.actual), 0);
+    const totalPlanned = (budgetsData ?? []).reduce(
+      (sum, row) => sum + parseNumber(row.amount_planned ?? row.planned),
+      0
+    );
+    const totalActual = (budgetsData ?? []).reduce(
+      (sum, row) => sum + parseNumber(row.current_spent ?? row.actual),
+      0
+    );
+    const totalRolloverIn = 0;
     const remaining = totalPlanned + totalRolloverIn - totalActual;
     const overspend = remaining < 0 ? Math.abs(remaining) : 0;
 
