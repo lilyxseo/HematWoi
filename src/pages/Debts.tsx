@@ -22,6 +22,7 @@ import {
   type DebtRecord,
   type DebtSummary,
 } from '../lib/api-debts';
+import useSupabaseUser from '../hooks/useSupabaseUser';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -61,6 +62,8 @@ function formatCurrency(value: number) {
 
 export default function Debts() {
   const { addToast } = useToast();
+  const { user, loading: userLoading } = useSupabaseUser();
+  const canUseCloud = Boolean(user?.id);
   const [filters, setFilters] = useState<DebtsFilterState>(INITIAL_FILTERS);
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [summary, setSummary] = useState<DebtSummary | null>(null);
@@ -92,6 +95,14 @@ export default function Debts() {
 
   useEffect(() => {
     let active = true;
+    if (!canUseCloud) {
+      setDebts([]);
+      setSummary(null);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
     setLoading(true);
     (async () => {
       try {
@@ -109,9 +120,14 @@ export default function Debts() {
     return () => {
       active = false;
     };
-  }, [filters, addToast, logError]);
+  }, [filters, addToast, logError, canUseCloud]);
 
   const refreshData = useCallback(async () => {
+    if (!canUseCloud) {
+      setDebts([]);
+      setSummary(null);
+      return;
+    }
     try {
       const result = await listDebts(filters);
       setDebts(result.items);
@@ -119,21 +135,33 @@ export default function Debts() {
     } catch (error) {
       logError(error, 'refresh debts');
     }
-  }, [filters, logError]);
+  }, [filters, logError, canUseCloud]);
 
   const handleCreateClick = () => {
+    if (!canUseCloud) {
+      addToast('Masuk untuk menambah hutang atau piutang.', 'error');
+      return;
+    }
     setFormMode('create');
     setEditingDebt(null);
     setFormOpen(true);
   };
 
   const handleEditClick = (debt: DebtRecord) => {
+    if (!canUseCloud) {
+      addToast('Masuk untuk mengubah data hutang.', 'error');
+      return;
+    }
     setEditingDebt(debt);
     setFormMode('edit');
     setFormOpen(true);
   };
 
   const handleFormSubmit = async (payload: DebtInput) => {
+    if (!canUseCloud) {
+      addToast('Mode offline tidak mendukung penyimpanan hutang.', 'error');
+      return;
+    }
     setFormSubmitting(true);
     if (formMode === 'create') {
       const tempId = `temp-${Date.now()}`;
@@ -212,6 +240,11 @@ export default function Debts() {
 
   const handleConfirmDelete = async () => {
     if (!pendingDelete) return;
+    if (!canUseCloud) {
+      addToast('Masuk untuk menghapus hutang.', 'error');
+      setPendingDelete(null);
+      return;
+    }
     const target = pendingDelete;
     setDeleteLoading(true);
     const previous = debts;
@@ -231,6 +264,10 @@ export default function Debts() {
   };
 
   const handleExport = async () => {
+    if (!canUseCloud) {
+      addToast('Masuk untuk mengekspor daftar hutang.', 'error');
+      return;
+    }
     try {
       setExporting(true);
       if (!debts.length) {
@@ -285,6 +322,10 @@ export default function Debts() {
   };
 
   const handleOpenPayment = async (debt: DebtRecord) => {
+    if (!canUseCloud) {
+      addToast('Masuk untuk mengelola pembayaran hutang.', 'error');
+      return;
+    }
     setPaymentDebt(debt);
     setPaymentOpen(true);
     setPaymentLoading(true);
@@ -305,6 +346,10 @@ export default function Debts() {
 
   const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
     if (!paymentDebt) return;
+    if (!canUseCloud) {
+      addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
+      return;
+    }
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
     const optimisticPayment: DebtPaymentRecord = {
@@ -352,6 +397,11 @@ export default function Debts() {
 
   const confirmDeletePayment = async () => {
     if (!pendingPaymentDelete || !paymentDebt) return;
+    if (!canUseCloud) {
+      addToast('Masuk untuk menghapus pembayaran hutang.', 'error');
+      setPendingPaymentDelete(null);
+      return;
+    }
     const payment = pendingPaymentDelete;
     setPaymentDeletingId(payment.id);
     setPaymentList((prev) => prev.filter((item) => item.id !== payment.id));
@@ -389,6 +439,8 @@ export default function Debts() {
     [],
   );
 
+  const disableActions = !canUseCloud;
+
   return (
     <Page>
       <div className="space-y-6 min-w-0">
@@ -396,7 +448,7 @@ export default function Debts() {
           <button
             type="button"
             onClick={handleExport}
-            disabled={exporting}
+            disabled={exporting || disableActions}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Download className="h-4 w-4" aria-hidden="true" />
@@ -405,12 +457,19 @@ export default function Debts() {
           <button
             type="button"
             onClick={handleCreateClick}
+            disabled={disableActions}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             Tambah Hutang/Piutang
           </button>
         </PageHeader>
+
+        {!userLoading && !canUseCloud ? (
+          <div className="rounded-3xl border border-dashed border-border bg-surface-2/70 px-4 py-3 text-sm text-muted">
+            Mode offline aktif. Masuk untuk melihat dan mengelola data hutang yang tersimpan di cloud.
+          </div>
+        ) : null}
 
         <SummaryCards summary={summary} />
 

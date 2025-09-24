@@ -29,6 +29,7 @@ import {
 } from '../lib/api-subscriptions';
 import { exportSubscriptionsCsv } from '../lib/subscriptions-csv';
 import { supabase } from '../lib/supabase';
+import useSupabaseUser from '../hooks/useSupabaseUser';
 
 const DEFAULT_FILTERS: SubscriptionFilterState = {
   q: '',
@@ -86,6 +87,8 @@ function computeDueSoon(charges: SubscriptionChargeRecord[]) {
 
 export default function SubscriptionsPage() {
   const { addToast } = useToast();
+  const { user, loading: userLoading } = useSupabaseUser();
+  const isAuthenticated = Boolean(user?.id);
   const [filters, setFilters] = useState<SubscriptionFilterState>(DEFAULT_FILTERS);
   const [categories, setCategories] = useState<FilterOption[]>([]);
   const [accounts, setAccounts] = useState<FilterOption[]>([]);
@@ -104,6 +107,15 @@ export default function SubscriptionsPage() {
 
   useEffect(() => {
     let active = true;
+
+    if (!isAuthenticated) {
+      setCategories([]);
+      setAccounts([]);
+      return () => {
+        active = false;
+      };
+    }
+
     async function fetchOptions() {
       try {
         const [catRes, accRes] = await Promise.all([
@@ -130,14 +142,27 @@ export default function SubscriptionsPage() {
         addToast(`Gagal memuat kategori/akun: ${message}`, 'danger');
       }
     }
+
     fetchOptions();
     return () => {
       active = false;
     };
-  }, [addToast]);
+  }, [addToast, isAuthenticated]);
 
   useEffect(() => {
     let active = true;
+
+    if (!isAuthenticated) {
+      setSubscriptions([]);
+      setUpcomingRaw([]);
+      setSummary(emptySummary);
+      setLoadingSubs(false);
+      setLoadingUpcoming(false);
+      setSummaryLoading(false);
+      return () => {
+        active = false;
+      };
+    }
 
     async function fetchSubscriptions() {
       setLoadingSubs(true);
@@ -213,7 +238,7 @@ export default function SubscriptionsPage() {
     return () => {
       active = false;
     };
-  }, [filters, addToast]);
+  }, [filters, addToast, isAuthenticated]);
 
   const upcoming = useMemo(() => {
     if (!Array.isArray(upcomingRaw)) return [];
@@ -259,9 +284,13 @@ export default function SubscriptionsPage() {
   }, []);
 
   const handleOpenForm = useCallback(() => {
+    if (!isAuthenticated) {
+      addToast('Masuk untuk menambah langganan.', 'danger');
+      return;
+    }
     setEditing(null);
     setFormOpen(true);
-  }, []);
+  }, [isAuthenticated, addToast]);
 
   const handleEdit = useCallback((id: string) => {
     const target = subscriptions.find((item) => item.id === id) ?? null;
@@ -279,6 +308,12 @@ export default function SubscriptionsPage() {
   }, []);
 
   const refreshData = useCallback(async () => {
+    if (!isAuthenticated) {
+      setSubscriptions([]);
+      setUpcomingRaw([]);
+      setSummary(emptySummary);
+      return;
+    }
     try {
       const [subs, charges] = await Promise.all([
         listSubscriptions({
@@ -305,7 +340,7 @@ export default function SubscriptionsPage() {
       const message = error instanceof Error ? error.message : 'Gagal memuat ulang data. Cek koneksi atau ulangi.';
       addToast(message, 'danger');
     }
-  }, [filters, addToast]);
+  }, [filters, addToast, isAuthenticated]);
 
   const handleFormSubmit = useCallback(
     async (payload: SubscriptionFormSubmitPayload) => {
@@ -511,7 +546,7 @@ export default function SubscriptionsPage() {
   }, [subscriptions, upcoming, filters, addToast]);
 
   useEffect(() => {
-    if (import.meta.env?.VITE_ENABLE_REALTIME !== 'true') {
+    if (import.meta.env?.VITE_ENABLE_REALTIME !== 'true' || !isAuthenticated) {
       return;
     }
     const channel = supabase
@@ -527,7 +562,7 @@ export default function SubscriptionsPage() {
     return () => {
       channel.unsubscribe();
     };
-  }, [refreshData]);
+  }, [refreshData, isAuthenticated]);
 
   const bulkCount = selectedChargeIds.length;
 
@@ -542,6 +577,7 @@ export default function SubscriptionsPage() {
             type="button"
             onClick={handleExport}
             className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border bg-surface-2 px-4 text-sm font-semibold text-text focus:outline-none focus:ring-2 focus:ring-primary/40"
+            disabled={!isAuthenticated}
           >
             Export CSV
           </button>
@@ -549,12 +585,18 @@ export default function SubscriptionsPage() {
             type="button"
             onClick={handleOpenForm}
             className="inline-flex h-11 items-center gap-2 rounded-2xl border border-primary bg-primary px-4 text-sm font-semibold text-white shadow focus:outline-none focus:ring-2 focus:ring-primary/40"
+            disabled={!isAuthenticated}
           >
             Tambah Langganan
           </button>
         </PageHeader>
 
         <Section first>
+          {!userLoading && !isAuthenticated ? (
+            <div className="mb-6 rounded-3xl border border-dashed border-border bg-surface-2/70 px-4 py-3 text-sm text-muted">
+              Mode offline aktif. Masuk ke akun HematWoi untuk menyinkronkan dan mengelola data langganan Anda.
+            </div>
+          ) : null}
           <SummaryCards
             totalActive={summary.totalActive}
             forecastAmount={summary.forecastAmount}

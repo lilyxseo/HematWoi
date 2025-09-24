@@ -7,7 +7,6 @@ import Section from '../layout/Section';
 import Card, { CardBody, CardHeader } from '../components/Card';
 import AccountFormModal, { type AccountFormValues } from '../components/accounts/AccountFormModal';
 import { useToast } from '../context/ToastContext';
-import { supabase } from '../lib/supabase.js';
 import {
   type AccountRecord,
   type AccountType,
@@ -16,6 +15,7 @@ import {
   listAccounts,
   updateAccount,
 } from '../lib/api.ts';
+import useSupabaseUser from '../hooks/useSupabaseUser';
 
 const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   cash: 'Tunai',
@@ -45,9 +45,9 @@ function formatDate(iso: string | null): string {
 
 export default function AccountsPage() {
   const { addToast } = useToast();
+  const { user, loading: userLoading } = useSupabaseUser();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [filter, setFilter] = useState<'all' | AccountType>('all');
   const [modalOpen, setModalOpen] = useState(false);
@@ -58,18 +58,16 @@ export default function AccountsPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchAccounts = useCallback(async () => {
+    const uid = user?.id ?? null;
+    if (!uid) {
+      setAccounts([]);
+      setLoading(false);
+      setLoadError(null);
+      return;
+    }
     setLoading(true);
     setLoadError(null);
     try {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) {
-        throw error;
-      }
-      const uid = data.user?.id;
-      if (!uid) {
-        throw new Error('Anda harus login untuk melihat akun.');
-      }
-      setUserId(uid);
       const rows = await listAccounts(uid);
       setAccounts(sortAccounts(rows));
     } catch (error) {
@@ -80,10 +78,10 @@ export default function AccountsPage() {
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [user, addToast]);
 
   useEffect(() => {
-    fetchAccounts();
+    void fetchAccounts();
   }, [fetchAccounts]);
 
   const filteredAccounts = useMemo(() => {
@@ -133,10 +131,10 @@ export default function AccountsPage() {
           setAccounts((prev) => sortAccounts(prev.map((acc) => (acc.id === updated.id ? updated : acc))));
           addToast('Akun diperbarui', 'success');
         } else {
-          if (!userId) {
+          if (!user?.id) {
             throw new Error('Anda harus login untuk menambah akun.');
           }
-          const created = await createAccount(userId, values);
+          const created = await createAccount(user.id, values);
           setAccounts((prev) => sortAccounts([...prev, created]));
           addToast('Akun ditambahkan', 'success');
         }
@@ -149,7 +147,7 @@ export default function AccountsPage() {
         setModalBusy(false);
       }
     },
-    [addToast, modalMode, resetModalState, selectedAccount, userId],
+    [addToast, modalMode, resetModalState, selectedAccount, user?.id],
   );
 
   const handleDelete = useCallback(
@@ -182,13 +180,20 @@ export default function AccountsPage() {
     }
   }, [modalBusy, resetModalState]);
 
+  const canManage = Boolean(user?.id);
+
   return (
     <Page>
       <PageHeader
         title="Akun"
         description="Kelola daftar akun sumber transaksi Anda."
       >
-        <button type="button" className="btn btn-primary" onClick={handleAddClick}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={handleAddClick}
+          disabled={!canManage}
+        >
           <Plus className="h-4 w-4" /> Tambah Akun
         </button>
       </PageHeader>
@@ -198,6 +203,11 @@ export default function AccountsPage() {
             title="Daftar Akun"
             subtext="Tambah, ubah, atau hapus akun sesuai kebutuhan Anda."
           />
+          {!userLoading && !canManage ? (
+            <div className="mx-4 mb-4 rounded-lg border border-dashed border-border bg-surface-2/60 p-4 text-sm text-muted">
+              Masuk ke akun HematWoi untuk menyinkronkan dan mengelola daftar akun keuangan Anda.
+            </div>
+          ) : null}
           <CardBody className="space-y-5">
             <div className="flex flex-wrap gap-2">
               {FILTER_OPTIONS.map((option) => (
