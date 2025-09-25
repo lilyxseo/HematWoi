@@ -728,18 +728,24 @@ function AppShell({ prefs, setPrefs }) {
   };
 
   const addTx = async (tx) => {
-    const categoryId = tx.category_id ?? (tx.category ? catMap[tx.category] ?? null : null);
-    const resolvedNote = tx.notes ?? tx.note ?? "";
-    const receiptsPayload = Array.isArray(tx.receipts) ? tx.receipts : [];
-    const merchantLabel = tx.merchant_name ?? tx.merchant ?? null;
-    const accountLabel = tx.account_name ?? tx.account ?? null;
-    const toAccountLabel = tx.to_account_name ?? tx.to_account ?? null;
-    const baseCategoryName = tx.category ?? tx.category_name ?? categoryNameById(categoryId);
+    const baseTx = { ...(tx || {}) };
+    const skipCloud = Boolean(baseTx.__skipCloud);
+    delete baseTx.__skipCloud;
+
+    const categoryId =
+      baseTx.category_id ?? (baseTx.category ? catMap[baseTx.category] ?? null : null);
+    const resolvedNote = baseTx.notes ?? baseTx.note ?? "";
+    const receiptsPayload = Array.isArray(baseTx.receipts) ? baseTx.receipts : [];
+    const merchantLabel = baseTx.merchant_name ?? baseTx.merchant ?? null;
+    const accountLabel = baseTx.account_name ?? baseTx.account ?? null;
+    const toAccountLabel = baseTx.to_account_name ?? baseTx.to_account ?? null;
+    const baseCategoryName =
+      baseTx.category ?? baseTx.category_name ?? categoryNameById(categoryId);
 
     const pushRecord = (record) => {
       const normalized = {
         ...record,
-        amount: Number(record.amount ?? tx.amount ?? 0),
+        amount: Number(record.amount ?? baseTx.amount ?? 0),
       };
       setData((d) => {
         let goals = d.goals;
@@ -766,18 +772,18 @@ function AppShell({ prefs, setPrefs }) {
 
     let finalRecord = null;
 
-    if (useCloud && sessionUser) {
+    if (useCloud && sessionUser && !skipCloud) {
       try {
         const saved = await apiAdd({
-          date: tx.date,
-          type: tx.type,
-          amount: tx.amount,
+          date: baseTx.date,
+          type: baseTx.type,
+          amount: baseTx.amount,
           notes: resolvedNote,
-          title: tx.title ?? null,
+          title: baseTx.title ?? null,
           category_id: categoryId || null,
-          account_id: tx.account_id || null,
-          to_account_id: tx.type === "transfer" ? tx.to_account_id || null : null,
-          merchant_id: tx.merchant_id || null,
+          account_id: baseTx.account_id || null,
+          to_account_id: baseTx.type === "transfer" ? baseTx.to_account_id || null : null,
+          merchant_id: baseTx.merchant_id || null,
           receipts: receiptsPayload,
         });
         const resolvedCategory =
@@ -802,7 +808,7 @@ function AppShell({ prefs, setPrefs }) {
       }
     } else {
       finalRecord = pushRecord({
-        ...tx,
+        ...baseTx,
         id: uid(),
         category: baseCategoryName,
         category_id: categoryId,
@@ -819,7 +825,7 @@ function AppShell({ prefs, setPrefs }) {
     }
 
     if (prefs.walletSound) playChaChing();
-    triggerMoneyTalk(finalRecord || tx);
+    triggerMoneyTalk(finalRecord || baseTx);
   };
 
   const updateTx = async (id, patch) => {
