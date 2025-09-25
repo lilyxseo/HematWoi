@@ -1,6 +1,9 @@
+// src/lib/budgets.ts (contoh nama file)
+
 import { supabase } from './supabase';
 import { getCurrentUserId, getUserToken } from './session';
 import { listCategories as listAllCategories } from './api-categories';
+import { buildSupabaseHeaders, createRestUrl } from './supabaseRest';
 
 type UUID = string;
 
@@ -18,10 +21,50 @@ export interface ExpenseCategory {
 
 const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
+const CATEGORY_SELECT_COLUMNS = 'id,user_id,type,name,inserted_at,group_name,order_index';
+const CATEGORY_ORDER = 'order_index.asc.nullsfirst,name.asc';
+
+let categoriesViewUnavailable = false;
+let categoriesFallbackWarned = false;
+
 const isDevelopment = Boolean(
-  (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ||
-    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.DEV) ||
+    (typeof process !== 'undefined' && (process as any)?.env?.NODE_ENV === 'development')
 );
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+async function parsePostgrestError(response: Response, fallback: string): Promise<Error> {
+  let message = fallback;
+  try {
+    const body = await response.json();
+    if ((body as any)?.message) {
+      message = (body as any).message as string;
+    }
+  } catch (error) {
+    if (isDevelopment) {
+      console.warn('[HW] Failed to parse PostgREST error response', error);
+    }
+  }
+  const err = new Error(message);
+  (err as { status?: number }).status = response.status;
+  return err;
+}
+
+function parseOrderIndex(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
 
 function mapCategoryRecordToExpense(category: {
   id: string;
@@ -128,22 +171,12 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   async function fetchFromCloud(): Promise<ExpenseCategory[]> {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
-    const { data, error } = await supabase
-      .from('categories')
-      .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
-      .eq('user_id', userId)
-      .eq('type', 'expense')
-      .order('order_index', { ascending: true, nullsFirst: true })
-      .order('name', { ascending: true });
-    if (error) throw error;
-    return (data ?? []) as ExpenseCategory[];
+    return listExpenseCategories(userId);
   }
 
   try {
     const rows = await fetchFromCloud();
-    if (rows.length > 0) {
-      return rows;
-    }
+    return rows;
   } catch (error) {
     // Fallback handled below when cloud fetch fails (e.g. offline or guest mode)
     if (isDevelopment && error instanceof Error) {
@@ -164,6 +197,79 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
         order_index: category.sort_order,
       })
     );
+}
+
+async function fetchExpenseCategoriesRemote(
+  userId: string,
+  signal?: AbortSignal
+): Promise<ExpenseCategory[]> {
+  const params = new URLSearchParams({
+    select: CATEGORY_SELECT_COLUMNS,
+    user_id: `eq.${userId}`,
+    type: 'eq.expense',
+    order: CATEGORY_ORDER,
+  });
+  const headers = buildSupabaseHeaders();
+
+  if (!categoriesViewUnavailable) {
+    const viewUrl = createRestUrl('/rest/v1/v_categories_budget', params);
+    const response = await fetch(viewUrl, { headers, signal });
+    if (response.status === 404) {
+      categoriesViewUnavailable = true;
+      if (!categoriesFallbackWarned) {
+        console.warn('v_categories_budget missing — using fallback /categories');
+        categoriesFallbackWarned = true;
+      }
+    } else if (!response.ok) {
+      throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
+    } else {
+      const data = ((await response.json()) ?? []) as Record<string, unknown>[];
+      return data.map((row) =>
+        mapCategoryRecordToExpense({
+          id: String(row.id ?? ''),
+          user_id: typeof row.user_id === 'string' ? row.user_id : userId,
+          name: String(row.name ?? ''),
+          type: 'expense',
+          inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
+          group_name: (row.group_name as string | null | undefined) ?? null,
+          order_index: parseOrderIndex((row as any).order_index),
+        })
+      );
+    }
+  }
+
+  const fallbackUrl = createRestUrl('/rest/v1/categories', params);
+  const fallbackResponse = await fetch(fallbackUrl, { headers, signal });
+  if (fallbackResponse.status === 404) {
+    throw new Error('Endpoint kategori belum tersedia');
+  }
+  if (!fallbackResponse.ok) {
+    throw await parsePostgrestError(fallbackResponse, 'Gagal memuat kategori pengeluaran');
+  }
+  const fallbackData = ((await fallbackResponse.json()) ?? []) as Record<string, unknown>[];
+  return fallbackData.map((row) =>
+    mapCategoryRecordToExpense({
+      id: String(row.id ?? ''),
+      user_id: typeof row.user_id === 'string' ? row.user_id : userId,
+      name: String(row.name ?? ''),
+      type: 'expense',
+      inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
+      group_name: (row.group_name as string | null | undefined) ?? null,
+      order_index: parseOrderIndex((row as any).order_index),
+    })
+  );
+}
+
+export async function listExpenseCategories(
+  userId: string,
+  signal?: AbortSignal
+): Promise<ExpenseCategory[]> {
+  try {
+    return await fetchExpenseCategoriesRemote(userId, signal);
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw error;
+  }
 }
 
 export async function listBudgets(period: string): Promise<BudgetRow[]> {
@@ -187,15 +293,16 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
   const { start, end } = getMonthRange(period);
   const { data, error } = await supabase
     .from('transactions')
-    .select('category_id, amount, date')
+    .select('category_id, amount, date, to_account_id')
     .eq('user_id', userId)
     .is('deleted_at', null)
     .eq('type', 'expense')
+    .is('to_account_id', null)
     .gte('date', start)
     .lt('date', end);
   if (error) throw error;
   const totals: Record<string, number> = {};
-  for (const row of data ?? []) {
+  for (const row of (data ?? []) as any[]) {
     const categoryId = row?.category_id as string | null;
     if (!categoryId) continue;
     const amount = Number(row?.amount ?? 0);
@@ -208,6 +315,8 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
+
+  // Pastikan benar-benar logged-in (punya token) sebelum menulis ke cloud
   try {
     await getUserToken();
   } catch (error) {
@@ -216,20 +325,22 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
     }
     throw error;
   }
+
   const payload = {
     p_category_id: input.category_id,
     p_amount_planned: Number(input.amount_planned ?? 0),
-    p_period_month: toMonthStart(input.period),
+    p_period_month: toMonthStart(input.period), // 'YYYY-MM-01'
     p_carryover_enabled: Boolean(input.carryover_enabled),
     p_notes: input.notes ?? null,
   };
+
   const { error } = await supabase.rpc('bud_upsert', payload);
   if (error) {
     if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
       throw new Error('Silakan login untuk menyimpan anggaran');
     }
-    const message = error.message?.toLowerCase?.() ?? '';
-    if (error.code === '404' || message.includes('bud_upsert')) {
+    const msg = (error.message || '').toLowerCase();
+    if (error.code === '404' || msg.includes('bud_upsert')) {
       throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
     }
     throw error;
@@ -266,4 +377,3 @@ export function buildSummary(rows: BudgetWithSpent[]): BudgetSummary {
     percentage,
   };
 }
-

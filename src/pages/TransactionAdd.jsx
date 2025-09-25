@@ -10,6 +10,7 @@ import {
   Receipt,
   RotateCcw,
   Save,
+  Search,
   Tag as TagIcon,
   TrendingDown,
   TrendingUp,
@@ -21,6 +22,7 @@ import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { listAccounts, listCategories } from '../lib/api';
+import { listCategoriesExpense } from '../lib/budgetApi';
 import { createTransaction } from '../lib/transactionsApi';
 import { supabase } from '../lib/supabase';
 
@@ -114,6 +116,7 @@ export default function TransactionAdd({ onAdd }) {
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [categoryQuery, setCategoryQuery] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
@@ -128,9 +131,10 @@ export default function TransactionAdd({ onAdd }) {
     async function loadMasterData() {
       setLoading(true);
       try {
-        const [accountRows, categoryRows] = await Promise.all([
+        const [accountRows, expenseRows, incomeRows] = await Promise.all([
           listAccounts(),
-          listCategories(),
+          listCategoriesExpense(),
+          listCategories('income'),
         ]);
         if (!active) return;
         const sortedAccounts = (accountRows || []).slice().sort((a, b) => {
@@ -140,7 +144,12 @@ export default function TransactionAdd({ onAdd }) {
         if (sortedAccounts.length) {
           setAccountId(sortedAccounts[0].id);
         }
-        setCategories(categoryRows || []);
+        const combinedCategories = [
+          ...(expenseRows || []),
+          ...((incomeRows || []).filter(Boolean)),
+        ];
+        setCategories(combinedCategories);
+        setCategoryQuery('');
       } catch (err) {
         addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
@@ -158,6 +167,9 @@ export default function TransactionAdd({ onAdd }) {
       setToAccountId('');
     } else {
       setCategoryId('');
+    }
+    if (type === 'transfer') {
+      setCategoryQuery('');
     }
   }, [type]);
 
@@ -190,6 +202,24 @@ export default function TransactionAdd({ onAdd }) {
     });
     return grouped;
   }, [categories]);
+
+  const filteredCategories = useMemo(() => {
+    const list = categoriesByType[type] || [];
+    const keyword = categoryQuery.trim().toLowerCase();
+    if (!keyword) return list;
+    return list.filter((item) => (item.name || '').toLowerCase().includes(keyword));
+  }, [categoriesByType, type, categoryQuery]);
+
+  const categoryEmptyMessage = useMemo(() => {
+    if (type === 'transfer') return null;
+    const baseMessage = type === 'income' ? 'Belum ada kategori pemasukan' : 'Belum ada kategori pengeluaran';
+    const baseList = categoriesByType[type] || [];
+    if (!baseList.length) return baseMessage;
+    if (!filteredCategories.length) {
+      return categoryQuery.trim() ? 'Tidak ada kategori yang cocok dengan pencarian' : baseMessage;
+    }
+    return null;
+  }, [type, categoriesByType, filteredCategories.length, categoryQuery]);
 
   useEffect(() => {
     if (type === 'transfer') return;
@@ -560,11 +590,28 @@ export default function TransactionAdd({ onAdd }) {
                   </div>
                 ) : null}
                 {!isTransfer ? (
-                  <div>
-                    <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                      <TagIcon className="h-4 w-4" aria-hidden="true" />
-                      Kategori
-                    </label>
+                <div>
+                  <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                    <TagIcon className="h-4 w-4" aria-hidden="true" />
+                    Kategori
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    <div className="relative">
+                      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
+                        <Search className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      <label htmlFor="transaction-category-search" className="sr-only">
+                        Cari kategori
+                      </label>
+                      <input
+                        id="transaction-category-search"
+                        type="search"
+                        value={categoryQuery}
+                        onChange={(event) => setCategoryQuery(event.target.value)}
+                        placeholder="Cari kategori…"
+                        className="h-10 w-full rounded-2xl border bg-background pl-9 pr-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      />
+                    </div>
                     <select
                       id="category"
                       value={categoryId}
@@ -573,17 +620,23 @@ export default function TransactionAdd({ onAdd }) {
                         setErrors((prev) => ({ ...prev, category_id: undefined }));
                       }}
                       className={INPUT_CLASS}
+                      disabled={filteredCategories.length === 0}
                     >
                       <option value="">Pilih kategori</option>
-                      {(categoriesByType[type] || []).map((category) => (
+                      {filteredCategories.map((category) => (
                         <option key={category.id} value={category.id}>
                           {category.name}
                         </option>
                       ))}
                     </select>
-                    {errors.category_id ? <p className="mt-1 text-xs text-destructive">{errors.category_id}</p> : null}
                   </div>
-                ) : null}
+                  {errors.category_id ? (
+                    <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
+                  ) : categoryEmptyMessage ? (
+                    <p className="mt-1 text-xs text-muted">{categoryEmptyMessage}</p>
+                  ) : null}
+                </div>
+              ) : null}
               </div>
 
               <div>
