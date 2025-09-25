@@ -1,0 +1,18 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="hwLogoGradient" x1="12" y1="12" x2="52" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3F63F3" />
+      <stop offset="100%" stop-color="#738AE8" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#hwLogoGradient)" />
+  <path
+    fill="#F9FAFF"
+    d="M18 18h8v28h-8zM26 30h12v8H26zM38 18h8v28h-8z"
+  />
+  <path
+    opacity="0.16"
+    fill="#0B1F61"
+    d="M18 46h28c0 5.523-4.477 10-10 10H28c-5.523 0-10-4.477-10-10z"
+  />
+</svg>
