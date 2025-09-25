@@ -31,8 +31,11 @@ export interface DebtPaymentRecord {
   debt_id: string;
   user_id: string;
   amount: number;
-  date: string;
-  notes: string | null;
+  paid_at: string;
+  account_id: string | null;
+  note: string | null;
+  related_tx_id: string | null;
+  account?: { id: string; name: string } | null;
   created_at: string;
 }
 
@@ -75,12 +78,16 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
 
 export interface PaymentInput {
   amount: number;
-  date: string;
-  notes?: string | null;
+  paid_at: string;
+  account_id: string;
+  note?: string | null;
 }
 
 const DEBT_SELECT_COLUMNS =
   'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,created_at,updated_at';
+
+const PAYMENT_SELECT_COLUMNS =
+  'id,debt_id,user_id,amount,paid_at,account_id,note,related_tx_id,created_at,account:account_id (id,name)';
 
 function logDevError(error: unknown) {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -175,15 +182,36 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
   };
 }
 
+function normalizeDateValue(value: unknown): string {
+  if (!value) {
+    return new Date().toISOString();
+  }
+  const date = new Date(value as string);
+  if (Number.isNaN(date.getTime())) {
+    return new Date().toISOString();
+  }
+  return date.toISOString();
+}
+
 function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+  const account = row.account
+    ? {
+        id: String(row.account.id),
+        name: typeof row.account.name === 'string' ? row.account.name : '',
+      }
+    : null;
+
   return {
     id: String(row.id),
     debt_id: String(row.debt_id),
     user_id: String(row.user_id),
     amount: safeNumber(row.amount),
-    date: row.date ?? row.created_at ?? new Date().toISOString(),
-    notes: row.notes ?? null,
-    created_at: row.created_at ?? new Date().toISOString(),
+    paid_at: normalizeDateValue(row.paid_at ?? row.date ?? row.created_at),
+    account_id: row.account_id ? String(row.account_id) : null,
+    note: row.note ?? row.notes ?? null,
+    related_tx_id: row.related_tx_id ? String(row.related_tx_id) : null,
+    account,
+    created_at: normalizeDateValue(row.created_at),
   };
 }
 
@@ -386,10 +414,10 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .eq('debt_id', id)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false, nullsLast: true })
       .order('created_at', { ascending: false });
     if (paymentsError) throw paymentsError;
 
@@ -407,10 +435,10 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
     const userId = await getUserId();
     const { data, error } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .eq('debt_id', debtId)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false, nullsLast: true })
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(mapPaymentRow);
@@ -597,18 +625,27 @@ export async function addPayment(
   try {
     const userId = await getUserId();
     const amount = Math.max(0, payload.amount);
+    const accountId = typeof payload.account_id === 'string' ? payload.account_id.trim() : '';
+
+    if (!accountId) {
+      throw new Error('Akun sumber dana wajib dipilih.');
+    }
+
+    const paidAtIso = toISODate(payload.paid_at) ?? new Date().toISOString();
+    const noteValue = payload.note ? payload.note.trim() : '';
     const insertPayload = {
       debt_id: debtId,
       user_id: userId,
       amount: amount.toFixed(2),
-      date: toISODate(payload.date) ?? new Date().toISOString(),
-      notes: payload.notes ?? null,
+      paid_at: paidAtIso,
+      account_id: accountId,
+      note: noteValue ? noteValue : null,
     };
 
     const { data, error } = await supabase
       .from('debt_payments')
       .insert([insertPayload])
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .single();
     if (error) throw error;
 
