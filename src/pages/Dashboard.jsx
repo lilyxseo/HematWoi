@@ -1,5 +1,4 @@
-import { useMemo } from "react";
-import KpiCards from "../components/KpiCards";
+import { useMemo, useState, useCallback } from "react";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
@@ -12,9 +11,44 @@ import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
+import PeriodPicker, {
+  getInitialSelection,
+  labelRange,
+} from "../components/dashboard/PeriodPicker";
+import DashboardSummary from "../components/dashboard/DashboardSummary";
+import useDashboardBalances from "../hooks/useDashboardBalances";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
+  const [selection, setSelection] = useState(getInitialSelection);
+  const {
+    income,
+    expense,
+    cashBalance,
+    nonCashBalance,
+    totalBalance,
+    netTrend,
+    loading,
+    error,
+    refresh,
+  } = useDashboardBalances({
+    start: selection.start,
+    end: selection.end,
+  });
+
+  const handleSelectionChange = useCallback(
+    (next) => {
+      setSelection(next);
+      refresh();
+    },
+    [refresh]
+  );
+
+  const periodLabel = useMemo(
+    () => labelRange(selection.start, selection.end),
+    [selection]
+  );
+
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
     let count = 0;
@@ -47,11 +81,26 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
         </p>
       </header>
 
-      <KpiCards
-        income={stats?.income || 0}
-        expense={stats?.expense || 0}
-        net={stats?.balance || 0}
-      />
+      <div className="space-y-4">
+        <PeriodPicker
+          value={selection}
+          onChange={handleSelectionChange}
+          onRefresh={refresh}
+          loading={loading}
+        />
+        <DashboardSummary
+          income={income}
+          expense={expense}
+          cashBalance={cashBalance}
+          nonCashBalance={nonCashBalance}
+          totalBalance={totalBalance}
+          netTrend={netTrend}
+          loading={loading}
+          error={error}
+          onRetry={refresh}
+          periodLabel={periodLabel}
+        />
+      </div>
 
       <QuoteBoard />
 
