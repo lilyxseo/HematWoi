@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import KpiCards from "../components/KpiCards";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
@@ -95,12 +94,6 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           period={periodRange}
         />
       </section>
-
-      <KpiCards
-        income={stats?.income || 0}
-        expense={stats?.expense || 0}
-        net={stats?.balance || 0}
-      />
 
       <QuoteBoard />
 
