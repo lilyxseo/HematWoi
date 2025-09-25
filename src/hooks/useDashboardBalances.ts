@@ -39,6 +39,90 @@ const INITIAL_STATE: MetricsState = {
   totalBalance: 0,
 }
 
+function isAuthMissingError(error: unknown): boolean {
+  if (!error) return false
+  const message =
+    typeof error === "string"
+      ? error
+      : typeof (error as { message?: unknown }).message === "string"
+        ? String((error as { message: string }).message)
+        : ""
+  if (!message) return false
+  const normalized = message.toLowerCase()
+  return (
+    normalized.includes("auth session missing") ||
+    normalized.includes("auth session is missing") ||
+    normalized.includes("missing auth session")
+  )
+}
+
+type GuestStorage = {
+  txs?: Array<Record<string, any>>
+}
+
+function loadGuestStorage(): GuestStorage | null {
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage?.getItem("hematwoi:v3")
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== "object") return null
+    return parsed as GuestStorage
+  } catch {
+    return null
+  }
+}
+
+function computeGuestMetrics(range: DashboardRange): MetricsState {
+  const storage = loadGuestStorage()
+  const txs = Array.isArray(storage?.txs)
+    ? (storage?.txs as Array<Record<string, any>>)
+    : []
+
+  const inRange = txs.filter((row) => {
+    const rawDate =
+      typeof row?.date === "string"
+        ? row.date
+        : typeof row?.created_at === "string"
+          ? row.created_at
+          : null
+    if (!rawDate) return false
+    const value = rawDate.slice(0, 10)
+    return value >= range.start && value <= range.end
+  })
+
+  let income = 0
+  let expense = 0
+  for (const row of inRange) {
+    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
+    if (type !== "income" && type !== "expense") continue
+    const amount = asNumber(row?.amount)
+    if (!amount) continue
+    if (type === "income") income += amount
+    else expense += amount
+  }
+
+  let totalBalance = 0
+  for (const row of txs) {
+    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
+    if (type !== "income" && type !== "expense") continue
+    const amount = asNumber(row?.amount)
+    if (!amount) continue
+    totalBalance += type === "income" ? amount : -amount
+  }
+
+  const cashBalance = totalBalance
+  const nonCashBalance = 0
+
+  return {
+    income,
+    expense,
+    cashBalance,
+    nonCashBalance,
+    totalBalance,
+  }
+}
+
 function sum(values: Iterable<number>): number {
   let total = 0
   for (const value of values) {
@@ -96,11 +180,28 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
       setLoading(true)
       setError(null)
 
+      const applyGuestMetrics = () => {
+        const fallback = computeGuestMetrics(currentRange)
+        if (!mountedRef.current || requestId !== requestIdRef.current) return false
+        setMetrics(fallback)
+        setError(null)
+        return true
+      }
+
       try {
         const { data: authData, error: authError } = await supabase.auth.getUser()
-        if (authError) throw authError
+        if (authError) {
+          if (isAuthMissingError(authError)) {
+            applyGuestMetrics()
+            return
+          }
+          throw authError
+        }
         const uid = authData.user?.id
         if (!uid) {
+          if (applyGuestMetrics()) {
+            return
+          }
           if (mountedRef.current && requestId === requestIdRef.current) {
             setMetrics(INITIAL_STATE)
             setLoading(false)
@@ -176,6 +277,10 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         if (!mountedRef.current || requestId !== requestIdRef.current) return
         setMetrics({ income, expense, cashBalance, nonCashBalance, totalBalance })
       } catch (err) {
+        if (isAuthMissingError(err)) {
+          applyGuestMetrics()
+          return
+        }
         if (!mountedRef.current || requestId !== requestIdRef.current) return
         setError(mapError(err as PostgrestError | Error))
         setMetrics(INITIAL_STATE)
