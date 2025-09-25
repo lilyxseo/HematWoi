@@ -21,7 +21,7 @@ import Budgets from "./pages/Budgets";
 import DebtsPage from "./pages/Debts";
 import Categories from "./pages/Categories";
 import DataPage from "./pages/DataPage";
-import TransactionAdd from "./pages/TransactionAdd";
+import AddTransactionPage from "./pages/transactions/AddTransactionPage";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
@@ -737,9 +737,10 @@ function AppShell({ prefs, setPrefs }) {
     const baseCategoryName = tx.category ?? tx.category_name ?? categoryNameById(categoryId);
 
     const pushRecord = (record) => {
+      const { skipCloud: _skipCloud, ...rest } = record;
       const normalized = {
-        ...record,
-        amount: Number(record.amount ?? tx.amount ?? 0),
+        ...rest,
+        amount: Number(rest.amount ?? tx.amount ?? 0),
       };
       setData((d) => {
         let goals = d.goals;
@@ -765,8 +766,22 @@ function AppShell({ prefs, setPrefs }) {
     };
 
     let finalRecord = null;
+    const skipCloud = Boolean(tx?.skipCloud);
+    const baseRecord = { ...tx };
+    delete baseRecord.skipCloud;
 
-    if (useCloud && sessionUser) {
+    if (skipCloud) {
+      finalRecord = pushRecord({
+        ...baseRecord,
+        category: baseCategoryName,
+        category_id: categoryId,
+        note: resolvedNote,
+        merchant: merchantLabel,
+        account: accountLabel,
+        to_account: toAccountLabel,
+        receipts: receiptsPayload,
+      });
+    } else if (useCloud && sessionUser) {
       try {
         const saved = await apiAdd({
           date: tx.date,
@@ -1063,7 +1078,7 @@ function AppShell({ prefs, setPrefs }) {
                 />
                 <Route
                   path="transaction/add"
-                  element={<TransactionAdd onAdd={addTx} />}
+                  element={<AddTransactionPage onAdd={addTx} />}
                 />
                 <Route
                   path="add"
