@@ -1,6 +1,6 @@
 import clsx from "clsx";
 
-import logoPlaceholder from "../assets/logo-placeholder.svg";
+import logoPlaceholder from "../assets/aAXTdp01.svg";
 
 export default function Logo({ className, ...props }) {
   return (
