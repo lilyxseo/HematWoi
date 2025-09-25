@@ -22,16 +22,24 @@ const DEFAULT_COLOR = "#64748B";
 
 let categorySortColumn: CategorySortColumn | undefined;
 let categoryCreatedColumn: CategoryCreatedColumn | undefined;
+let categoryInsertedColumnSupported: boolean | undefined;
 const guestDriver = new LocalDriver();
 
 function getCategorySortColumn(): CategorySortColumn {
   return categorySortColumn ?? "sort_order";
 }
 
+function shouldSelectInsertedAt(): boolean {
+  if (getCategoryCreatedColumn() === "inserted_at") {
+    return true;
+  }
+  return categoryInsertedColumnSupported !== false;
+}
+
 function getCategoryBaseColumns(): string {
   const sortColumn = getCategorySortColumn();
   const createdColumn = getCategoryCreatedColumn();
-  return [
+  const columns = [
     "id",
     "user_id",
     "name",
@@ -39,8 +47,11 @@ function getCategoryBaseColumns(): string {
     sortColumn,
     ...(createdColumn === "created_at" ? ["created_at"] : []),
     "updated_at",
-    "inserted_at",
-  ].join(", ");
+  ];
+  if (shouldSelectInsertedAt()) {
+    columns.push("inserted_at");
+  }
+  return columns.join(", ");
 }
 
 let categoryColorSupported: boolean | undefined;
@@ -105,6 +116,14 @@ function handleMissingCategoryCreatedColumn(error: unknown): boolean {
   const current = getCategoryCreatedColumn();
   if (current === "created_at" && isMissingColumnError(error, "created_at")) {
     categoryCreatedColumn = "inserted_at";
+    return true;
+  }
+  return false;
+}
+
+function handleMissingCategoryInsertedColumn(error: unknown): boolean {
+  if (shouldSelectInsertedAt() && isMissingColumnError(error, "inserted_at")) {
+    categoryInsertedColumnSupported = false;
     return true;
   }
   return false;
@@ -361,6 +380,9 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
       return listCategories(signal);
     }
     if (handleMissingCategorySortColumn(error)) {
+      return listCategories(signal);
+    }
+    if (handleMissingCategoryInsertedColumn(error)) {
       return listCategories(signal);
     }
     if (handleMissingCategoryCreatedColumn(error)) {
