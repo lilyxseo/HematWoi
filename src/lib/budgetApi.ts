@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { listCategories } from './api-categories';
 
 type UUID = string;
 
@@ -7,10 +8,10 @@ type Nullable<T> = T | null;
 
 export interface ExpenseCategory {
   id: UUID;
-  user_id: UUID;
+  user_id: UUID | null;
   type: 'income' | 'expense';
   name: string;
-  inserted_at: string;
+  inserted_at: string | null;
   group_name: Nullable<string>;
   order_index: Nullable<number>;
 }
@@ -91,9 +92,30 @@ function getMonthRange(period: string): { start: string; end: string } {
   };
 }
 
+async function mapFallbackCategories(): Promise<ExpenseCategory[]> {
+  const records = await listCategories();
+  return records
+    .filter((category) => category.type === 'expense')
+    .map((category) => ({
+      id: category.id,
+      user_id: category.user_id,
+      type: 'expense',
+      name: category.name,
+      inserted_at: category.created_at,
+      group_name: null,
+      order_index: category.sort_order,
+    }));
+}
+
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
-  const userId = await getCurrentUserId();
-  ensureAuth(userId);
+  let userId: string | null = null;
+  try {
+    userId = await getCurrentUserId();
+    ensureAuth(userId);
+  } catch (error) {
+    return mapFallbackCategories();
+  }
+
   const { data, error } = await supabase
     .from('categories')
     .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
@@ -101,7 +123,9 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
     .eq('type', 'expense')
     .order('order_index', { ascending: true, nullsFirst: true })
     .order('name', { ascending: true });
-  if (error) throw error;
+  if (error) {
+    return mapFallbackCategories();
+  }
   return (data ?? []) as ExpenseCategory[];
 }
 

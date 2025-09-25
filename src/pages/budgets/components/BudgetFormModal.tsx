@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, Fragment, useEffect, useMemo, useState } from 'react';
 import { Calendar, PiggyBank } from 'lucide-react';
 import type { ExpenseCategory } from '../../../lib/budgetApi';
 
@@ -133,7 +133,7 @@ export default function BudgetFormModal({
                   type="month"
                   value={values.period}
                   onChange={(event) => handleChange('period', event.target.value)}
-                  className="h-11 w-full rounded-2xl border-0 bg-white/80 pl-11 pr-4 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+                  className="h-11 w-full rounded-2xl border border-white/40 bg-white/80 pl-11 pr-4 text-sm text-zinc-900 shadow-inner shadow-white/20 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-50"
                   required
                 />
               </div>
@@ -149,21 +149,29 @@ export default function BudgetFormModal({
                 <select
                   value={values.category_id}
                   onChange={(event) => handleChange('category_id', event.target.value)}
-                  className="h-11 w-full rounded-2xl border-0 bg-white/80 pl-11 pr-10 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+                  className="h-11 w-full rounded-2xl border border-white/40 bg-white/80 pl-11 pr-10 text-sm text-zinc-900 shadow-inner shadow-white/20 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-50"
                   required
                 >
-                  <option value="" disabled>
-                    Pilih kategori
-                  </option>
-                  {groupedCategories.map(([groupName, groupCategories]) => (
-                    <optgroup key={groupName} label={groupName}>
-                      {groupCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
+                  {groupedCategories.length === 0 ? (
+                    <option value="" disabled>
+                      Belum ada kategori pengeluaran
+                    </option>
+                  ) : (
+                    <Fragment>
+                      <option value="" disabled>
+                        Pilih kategori
+                      </option>
+                      {groupedCategories.map(([groupName, groupCategories]) => (
+                        <optgroup key={groupName} label={groupName}>
+                          {groupCategories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </optgroup>
                       ))}
-                    </optgroup>
-                  ))}
+                    </Fragment>
+                  )}
                 </select>
               </div>
               {errors.category_id ? <span className="text-xs font-medium text-rose-500">{errors.category_id}</span> : null}
@@ -178,7 +186,7 @@ export default function BudgetFormModal({
               step="1000"
               value={values.amount_planned}
               onChange={(event) => handleChange('amount_planned', Number(event.target.value))}
-              className="h-11 w-full rounded-2xl border-0 bg-white/80 px-4 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+              className="h-11 w-full rounded-2xl border border-white/40 bg-white/80 px-4 text-sm text-zinc-900 shadow-inner shadow-white/20 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-50"
               required
             />
             {errors.amount_planned ? <span className="text-xs font-medium text-rose-500">{errors.amount_planned}</span> : null}
@@ -189,9 +197,9 @@ export default function BudgetFormModal({
             <button
               type="button"
               onClick={() => handleChange('carryover_enabled', !values.carryover_enabled)}
-              className={`relative inline-flex h-6 w-12 cursor-pointer items-center rounded-full ${
+              className={`relative inline-flex h-6 w-12 cursor-pointer items-center rounded-full transition ${
                 values.carryover_enabled
-                  ? 'bg-emerald-500/80 dark:bg-emerald-500/70'
+                  ? 'bg-brand/90 dark:bg-brand/80'
                   : 'bg-zinc-200/70 dark:bg-zinc-800/70'
               }`}
             >
@@ -209,7 +217,7 @@ export default function BudgetFormModal({
               rows={3}
               value={values.notes}
               onChange={(event) => handleChange('notes', event.target.value)}
-              className="min-h-[96px] rounded-2xl border-0 bg-white/80 px-4 py-3 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+              className="min-h-[96px] rounded-2xl border border-white/40 bg-white/80 px-4 py-3 text-sm text-zinc-900 shadow-inner shadow-white/20 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-50"
               placeholder="Catatan tambahan untuk anggaran ini"
             />
           </label>
@@ -225,7 +233,7 @@ export default function BudgetFormModal({
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 px-6 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-11 items-center justify-center rounded-2xl bg-brand px-6 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? 'Menyimpan...' : 'Simpan anggaran'}
             </button>
