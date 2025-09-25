@@ -17,3 +17,13 @@ export async function getCurrentUserId() {
 export function clearCachedUser() {
   cachedUserId = null;
 }
+
+export async function getUserToken() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const token = data?.session?.access_token ?? null;
+  if (!token) {
+    throw new Error("Not signed in");
+  }
+  return token;
+}

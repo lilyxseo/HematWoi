@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { getCurrentUserId } from './session';
+import { getCurrentUserId, getUserToken } from './session';
 import { listCategories as listAllCategories } from './api-categories';
 
 type UUID = string;
@@ -206,17 +206,55 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
 }
 
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
-  const userId = await getCurrentUserId();
-  ensureAuth(userId);
+  try {
+    const userId = await getCurrentUserId();
+    ensureAuth(userId);
+    await getUserToken();
+  } catch (error) {
+    if (error instanceof Error) {
+      const normalized = error.message?.toLowerCase?.() ?? '';
+      if (normalized.includes('pengguna belum masuk') || normalized.includes('not signed in')) {
+        throw new Error('Silakan login untuk menyimpan anggaran');
+      }
+      throw error;
+    }
+    throw new Error('Silakan login untuk menyimpan anggaran');
+  }
+
   const payload = {
-    category_id: input.category_id,
-    amount_planned: input.amount_planned,
-    period_month: toMonthStart(input.period),
-    carryover_enabled: input.carryover_enabled,
-    notes: input.notes ?? null,
+    p_category_id: input.category_id,
+    p_amount_planned: input.amount_planned,
+    p_period_month: toMonthStart(input.period),
+    p_carryover_enabled: input.carryover_enabled,
+    p_notes: input.notes ?? null,
   };
+
   const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) throw error;
+  if (error) {
+    const message =
+      typeof error === 'object' && error && 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : '';
+    const code =
+      typeof error === 'object' && error && 'code' in error && typeof error.code === 'string'
+        ? error.code
+        : '';
+    const status =
+      typeof error === 'object' && error && 'status' in error && typeof error.status === 'number'
+        ? error.status
+        : null;
+
+    const normalizedMessage = message.toLowerCase();
+    if (status === 401 || code === '401' || normalizedMessage.includes('unauthorized')) {
+      throw new Error('Silakan login untuk menyimpan anggaran');
+    }
+
+    if (status === 404 || code === '404' || normalizedMessage.includes('bud_upsert')) {
+      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
+    }
+
+    throw new Error(message || 'Gagal menyimpan anggaran');
+  }
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
