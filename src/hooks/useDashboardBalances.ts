@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PostgrestError } from "@supabase/supabase-js"
 import { supabase } from "../lib/supabase.js"
+import { LocalDriver } from "../lib/data-driver"
 
 export type DashboardRange = {
   start: string
@@ -38,6 +39,8 @@ const INITIAL_STATE: MetricsState = {
   nonCashBalance: 0,
   totalBalance: 0,
 }
+
+const guestDriver = new LocalDriver()
 
 function sum(values: Iterable<number>): number {
   let total = 0
@@ -80,6 +83,113 @@ function mapError(error: PostgrestError | Error): Error {
   return new Error(error.message)
 }
 
+function normalizeAccount(row: any): AccountRow | null {
+  const id = row?.id ?? row?.client_id
+  if (!id) return null
+  const type = row?.type
+  if (type === "cash" || type === "bank" || type === "ewallet" || type === "other") {
+    return { id: String(id), type }
+  }
+  return { id: String(id), type: "other" }
+}
+
+function normalizeTransaction(row: any): TransactionRow | null {
+  const id = row?.id ?? row?.client_id
+  if (!id) return null
+  const accountId = row?.account_id ?? row?.accountId ?? null
+  const toAccountId = row?.to_account_id ?? row?.toAccountId ?? null
+  const rawType = typeof row?.type === "string" ? row.type.toLowerCase() : ""
+  const type = rawType === "income" ? "income" : "expense"
+  const date =
+    typeof row?.date === "string"
+      ? row.date
+      : typeof row?.created_at === "string"
+        ? row.created_at
+        : new Date().toISOString()
+  const deletedAt = row?.deleted_at ?? row?.deletedAt ?? null
+  return {
+    id: String(id),
+    user_id: row?.user_id ? String(row.user_id) : "",
+    account_id: accountId ? String(accountId) : null,
+    to_account_id: toAccountId ? String(toAccountId) : null,
+    type,
+    amount: asNumber(row?.amount),
+    date,
+    deleted_at: typeof deletedAt === "string" ? deletedAt : null,
+  }
+}
+
+async function loadGuestData(): Promise<{ accounts: AccountRow[]; transactions: TransactionRow[] }> {
+  try {
+    const [accountsRaw, transactionsRaw] = await Promise.all([
+      guestDriver.list("accounts"),
+      guestDriver.list("transactions"),
+    ])
+    const accounts = (accountsRaw ?? []).map(normalizeAccount).filter((item): item is AccountRow => Boolean(item))
+    const transactions = (transactionsRaw ?? [])
+      .map(normalizeTransaction)
+      .filter((item): item is TransactionRow => Boolean(item) && !item.deleted_at)
+    return { accounts, transactions }
+  } catch (err) {
+    console.error("[useDashboardBalances] Failed to load guest data", err)
+    throw mapError(err as PostgrestError | Error)
+  }
+}
+
+function calculateMetrics({
+  accounts,
+  transactions,
+  range,
+}: {
+  accounts: AccountRow[]
+  transactions: TransactionRow[]
+  range: DashboardRange
+}): MetricsState {
+  const rangeTransactions = transactions.filter((tx) => withinRange(tx, range))
+
+  let income = 0
+  let expense = 0
+  for (const tx of rangeTransactions) {
+    if (isTransfer(tx)) continue
+    const amount = asNumber(tx.amount)
+    if (!amount) continue
+    if (tx.type === "income") {
+      income += amount
+    } else if (tx.type === "expense") {
+      expense += amount
+    }
+  }
+
+  const perAccount = new Map<string, number>()
+  for (const tx of transactions) {
+    const amount = asNumber(tx.amount)
+    if (!amount) continue
+    const accountId = tx.account_id ?? undefined
+    const toAccountId = tx.to_account_id ?? undefined
+
+    if (isTransfer(tx)) {
+      if (accountId) {
+        perAccount.set(accountId, (perAccount.get(accountId) ?? 0) - amount)
+      }
+      if (toAccountId) {
+        perAccount.set(toAccountId, (perAccount.get(toAccountId) ?? 0) + amount)
+      }
+      continue
+    }
+
+    if (accountId) {
+      const delta = tx.type === "income" ? amount : -amount
+      perAccount.set(accountId, (perAccount.get(accountId) ?? 0) + delta)
+    }
+  }
+
+  const cashBalance = sum(accounts.filter((account) => account.type === "cash").map((account) => perAccount.get(account.id) ?? 0))
+  const nonCashBalance = sum(accounts.filter((account) => account.type !== "cash").map((account) => perAccount.get(account.id) ?? 0))
+  const totalBalance = cashBalance + nonCashBalance
+
+  return { income, expense, cashBalance, nonCashBalance, totalBalance }
+}
+
 export function useDashboardBalances({ start, end }: DashboardRange) {
   const [metrics, setMetrics] = useState<MetricsState>(INITIAL_STATE)
   const [loading, setLoading] = useState<boolean>(true)
@@ -101,10 +211,10 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         if (authError) throw authError
         const uid = authData.user?.id
         if (!uid) {
-          if (mountedRef.current && requestId === requestIdRef.current) {
-            setMetrics(INITIAL_STATE)
-            setLoading(false)
-          }
+          const guestData = await loadGuestData()
+          const metrics = calculateMetrics({ accounts: guestData.accounts, transactions: guestData.transactions, range: currentRange })
+          if (!mountedRef.current || requestId !== requestIdRef.current) return
+          setMetrics(metrics)
           return
         }
 
@@ -127,54 +237,9 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         const accounts = (accountsData ?? []) as AccountRow[]
         const transactions = (transactionsData ?? []) as TransactionRow[]
 
-        const rangeTransactions = transactions.filter((tx) => withinRange(tx, currentRange))
-
-        let income = 0
-        let expense = 0
-        for (const tx of rangeTransactions) {
-          if (isTransfer(tx)) continue
-          const amount = asNumber(tx.amount)
-          if (!amount) continue
-          if (tx.type === "income") {
-            income += amount
-          } else if (tx.type === "expense") {
-            expense += amount
-          }
-        }
-
-        const perAccount = new Map<string, number>()
-        for (const tx of transactions) {
-          const amount = asNumber(tx.amount)
-          if (!amount) continue
-          const accountId = tx.account_id ?? undefined
-          const toAccountId = tx.to_account_id ?? undefined
-
-          if (isTransfer(tx)) {
-            if (accountId) {
-              perAccount.set(accountId, (perAccount.get(accountId) ?? 0) - amount)
-            }
-            if (toAccountId) {
-              perAccount.set(toAccountId, (perAccount.get(toAccountId) ?? 0) + amount)
-            }
-            continue
-          }
-
-          if (accountId) {
-            const delta = tx.type === "income" ? amount : -amount
-            perAccount.set(accountId, (perAccount.get(accountId) ?? 0) + delta)
-          }
-        }
-
-        const cashBalance = sum(
-          accounts.filter((account) => account.type === "cash").map((account) => perAccount.get(account.id) ?? 0),
-        )
-        const nonCashBalance = sum(
-          accounts.filter((account) => account.type !== "cash").map((account) => perAccount.get(account.id) ?? 0),
-        )
-        const totalBalance = cashBalance + nonCashBalance
-
         if (!mountedRef.current || requestId !== requestIdRef.current) return
-        setMetrics({ income, expense, cashBalance, nonCashBalance, totalBalance })
+        const metrics = calculateMetrics({ accounts, transactions, range: currentRange })
+        setMetrics(metrics)
       } catch (err) {
         if (!mountedRef.current || requestId !== requestIdRef.current) return
         setError(mapError(err as PostgrestError | Error))
