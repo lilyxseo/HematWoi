@@ -728,18 +728,26 @@ function AppShell({ prefs, setPrefs }) {
   };
 
   const addTx = async (tx) => {
-    const categoryId = tx.category_id ?? (tx.category ? catMap[tx.category] ?? null : null);
-    const resolvedNote = tx.notes ?? tx.note ?? "";
-    const receiptsPayload = Array.isArray(tx.receipts) ? tx.receipts : [];
-    const merchantLabel = tx.merchant_name ?? tx.merchant ?? null;
-    const accountLabel = tx.account_name ?? tx.account ?? null;
-    const toAccountLabel = tx.to_account_name ?? tx.to_account ?? null;
-    const baseCategoryName = tx.category ?? tx.category_name ?? categoryNameById(categoryId);
+    const alreadyPersisted = Boolean(tx && tx.__persisted);
+    const payloadTx = alreadyPersisted ? { ...tx } : tx;
+    if (alreadyPersisted) {
+      delete payloadTx.__persisted;
+    }
+    const categoryId =
+      payloadTx.category_id ??
+      (payloadTx.category ? catMap[payloadTx.category] ?? null : null);
+    const resolvedNote = payloadTx.notes ?? payloadTx.note ?? "";
+    const receiptsPayload = Array.isArray(payloadTx.receipts) ? payloadTx.receipts : [];
+    const merchantLabel = payloadTx.merchant_name ?? payloadTx.merchant ?? null;
+    const accountLabel = payloadTx.account_name ?? payloadTx.account ?? null;
+    const toAccountLabel = payloadTx.to_account_name ?? payloadTx.to_account ?? null;
+    const baseCategoryName =
+      payloadTx.category ?? payloadTx.category_name ?? categoryNameById(categoryId);
 
     const pushRecord = (record) => {
       const normalized = {
         ...record,
-        amount: Number(record.amount ?? tx.amount ?? 0),
+        amount: Number(record.amount ?? payloadTx.amount ?? 0),
       };
       setData((d) => {
         let goals = d.goals;
@@ -766,18 +774,29 @@ function AppShell({ prefs, setPrefs }) {
 
     let finalRecord = null;
 
-    if (useCloud && sessionUser) {
+    if (alreadyPersisted) {
+      finalRecord = pushRecord({
+        ...payloadTx,
+        category: baseCategoryName,
+        category_id: payloadTx.category_id ?? categoryId,
+        note: payloadTx.note ?? resolvedNote,
+        merchant: payloadTx.merchant ?? merchantLabel,
+        account: payloadTx.account ?? accountLabel,
+        to_account: payloadTx.to_account ?? toAccountLabel,
+        receipts: receiptsPayload,
+      });
+    } else if (useCloud && sessionUser) {
       try {
         const saved = await apiAdd({
-          date: tx.date,
-          type: tx.type,
-          amount: tx.amount,
+          date: payloadTx.date,
+          type: payloadTx.type,
+          amount: payloadTx.amount,
           notes: resolvedNote,
-          title: tx.title ?? null,
+          title: payloadTx.title ?? null,
           category_id: categoryId || null,
-          account_id: tx.account_id || null,
-          to_account_id: tx.type === "transfer" ? tx.to_account_id || null : null,
-          merchant_id: tx.merchant_id || null,
+          account_id: payloadTx.account_id || null,
+          to_account_id: payloadTx.type === "transfer" ? payloadTx.to_account_id || null : null,
+          merchant_id: payloadTx.merchant_id || null,
           receipts: receiptsPayload,
         });
         const resolvedCategory =
@@ -802,7 +821,7 @@ function AppShell({ prefs, setPrefs }) {
       }
     } else {
       finalRecord = pushRecord({
-        ...tx,
+        ...payloadTx,
         id: uid(),
         category: baseCategoryName,
         category_id: categoryId,
@@ -819,7 +838,7 @@ function AppShell({ prefs, setPrefs }) {
     }
 
     if (prefs.walletSound) playChaChing();
-    triggerMoneyTalk(finalRecord || tx);
+    triggerMoneyTalk(finalRecord || payloadTx);
   };
 
   const updateTx = async (id, patch) => {

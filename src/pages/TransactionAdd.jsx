@@ -1,55 +1,105 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, CalendarClock, Check, FileText, Loader2, Plus, Repeat, Save, Sparkles } from "lucide-react";
-import Page from "../layout/Page";
-import PageHeader from "../layout/PageHeader";
-import Section from "../layout/Section";
-import Card, { CardBody, CardFooter, CardHeader } from "../components/Card";
-import Segmented from "../components/ui/Segmented";
-import CurrencyInput from "../components/ui/CurrencyInput";
-import Input from "../components/ui/Input";
-import Select from "../components/ui/Select";
-import AccountFormModal from "../components/accounts/AccountFormModal";
-import Textarea from "../components/ui/Textarea";
-import { listCategories } from "../lib/api";
-import { createAccount, listAccounts as fetchAccounts } from "../lib/api.ts";
-import { supabase } from "../lib/supabase.js";
-import { useToast } from "../context/ToastContext";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ArrowRight,
+  ArrowLeftRight,
+  Banknote,
+  Calendar,
+  Loader2,
+  Receipt,
+  RotateCcw,
+  Save,
+  Store,
+  Tag as TagIcon,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+} from 'lucide-react';
+import Page from '../layout/Page';
+import PageHeader from '../layout/PageHeader';
+import Section from '../layout/Section';
+import Card, { CardBody } from '../components/Card';
+import TagInput from '../components/inputs/TagInput';
+import { useToast } from '../context/ToastContext';
+import { listAccounts, listCategories, listMerchants, saveMerchant } from '../lib/api';
+import { createTransaction } from '../lib/transactionsApi';
+import { supabase } from '../lib/supabase';
 
-const TEMPLATE_KEY = "hw:txTemplates";
-const ADD_ACCOUNT_OPTION_VALUE = "__add_account__";
+const TYPE_OPTIONS = [
+  {
+    value: 'income',
+    label: 'Income',
+    description: 'Catat pemasukan',
+    icon: TrendingUp,
+  },
+  {
+    value: 'expense',
+    label: 'Expense',
+    description: 'Catat pengeluaran',
+    icon: TrendingDown,
+  },
+  {
+    value: 'transfer',
+    label: 'Transfer',
+    description: 'Pindahkan saldo antar akun',
+    icon: ArrowLeftRight,
+  },
+];
 
-function templateStorage(initial = []) {
-  try {
-    const raw = localStorage.getItem(TEMPLATE_KEY);
-    if (!raw) return initial;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return initial;
-    return parsed;
-  } catch (err) {
-    console.warn("Failed to parse templates", err);
-    return initial;
+const INPUT_CLASS =
+  'h-11 w-full rounded-2xl border bg-background px-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60';
+
+const TEXTAREA_CLASS =
+  'w-full rounded-2xl border bg-background px-3 py-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60';
+
+const SEGMENTED_CLASS =
+  'inline-flex rounded-2xl border border-border-subtle bg-muted/40 p-1 text-sm font-medium text-muted';
+
+const SEGMENT_ITEM_CLASS =
+  'flex items-center gap-2 rounded-xl px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+
+const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
+const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
+
+function getDateWithOffset(offset = 0) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + offset);
+  return DATE_FORMATTER.format(date);
+}
+
+function formatAmountDisplay(value) {
+  if (!Number.isFinite(value) || value <= 0) return '-';
+  return `Rp ${CURRENCY_FORMATTER.format(value)}`;
+}
+
+function parseAmount(value) {
+  if (typeof value === 'number') return value;
+  if (!value) return NaN;
+  const cleaned = String(value)
+    .replace(/[^0-9,.]/g, '')
+    .replace(/\.(?=\d{3})/g, '')
+    .replace(/,/g, '.');
+  const parsed = Number.parseFloat(cleaned);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+async function uploadReceipt(file, transactionId) {
+  const path = `receipts/${transactionId}/${Date.now()}_${file.name}`;
+  const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file, {
+    cacheControl: '3600',
+    upsert: true,
+  });
+  if (uploadError) throw uploadError;
+  const { data } = supabase.storage.from('receipts').getPublicUrl(path);
+  const publicUrl = data?.publicUrl ?? null;
+  if (publicUrl) {
+    const { error: updateError } = await supabase
+      .from('transactions')
+      .update({ receipt_url: publicUrl })
+      .eq('id', transactionId);
+    if (updateError) throw updateError;
   }
-}
-
-function formatCurrency(value) {
-  return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(
-    Number(value || 0),
-  );
-}
-
-function buildIsoDate(date, time) {
-  if (!date) return new Date().toISOString();
-  if (!time) return new Date(`${date}T00:00`).toISOString();
-  return new Date(`${date}T${time}`).toISOString();
-}
-
-function defaultTime() {
-  return new Date().toISOString().slice(11, 16);
-}
-
-function nextId() {
-  return globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  return publicUrl;
 }
 
 export default function TransactionAdd({ onAdd }) {
@@ -57,328 +107,267 @@ export default function TransactionAdd({ onAdd }) {
   const { addToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [type, setType] = useState("expense");
-  const [amount, setAmount] = useState(0);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [time, setTime] = useState(defaultTime);
-  const [categoryId, setCategoryId] = useState("");
-  const [categoryName, setCategoryName] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [accountName, setAccountName] = useState("");
-  const [toAccountId, setToAccountId] = useState("");
-  const [toAccountName, setToAccountName] = useState("");
-  const [title, setTitle] = useState("");
-  const [note, setNote] = useState("");
-  const [repeat, setRepeat] = useState("none");
-  const [pending, setPending] = useState(false);
-  const [categories, setCategories] = useState([]);
-  const [userId, setUserId] = useState(null);
+  const [type, setType] = useState('expense');
+  const [date, setDate] = useState(() => getDateWithOffset(0));
+  const [amountInput, setAmountInput] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [toAccountId, setToAccountId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [merchantId, setMerchantId] = useState('');
+  const [merchantInput, setMerchantInput] = useState('');
+  const [merchantFocused, setMerchantFocused] = useState(false);
+  const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [tags, setTags] = useState([]);
   const [accounts, setAccounts] = useState([]);
-  const [templates, setTemplates] = useState(() => templateStorage([]));
-  const [templateName, setTemplateName] = useState("");
-  const [accountModalOpen, setAccountModalOpen] = useState(false);
-  const [accountModalBusy, setAccountModalBusy] = useState(false);
-  const [accountModalError, setAccountModalError] = useState("");
-  const [accountModalTarget, setAccountModalTarget] = useState("source");
-  const offline = typeof navigator !== "undefined" && !navigator.onLine;
+  const [categories, setCategories] = useState([]);
+  const [merchants, setMerchants] = useState([]);
+  const [errors, setErrors] = useState({});
+  const [receiptFile, setReceiptFile] = useState(null);
+  const [receiptPreview, setReceiptPreview] = useState('');
+  const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
+    let active = true;
     async function loadMasterData() {
       setLoading(true);
       try {
-        const { data: userData, error: userError } = await supabase.auth.getUser();
-        if (userError) {
-          throw userError;
-        }
-        const uid = userData.user?.id;
-        if (!uid) {
-          throw new Error("Anda harus login untuk membuat transaksi.");
-        }
-        setUserId(uid);
-
-        const [catRows, accountRows] = await Promise.all([listCategories(), fetchAccounts(uid)]);
-        setCategories(catRows);
-        const sortedAccounts = [...accountRows].sort((a, b) =>
-          (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }),
-        );
+        const [accountRows, categoryRows, merchantRows] = await Promise.all([
+          listAccounts(),
+          listCategories(),
+          listMerchants(),
+        ]);
+        if (!active) return;
+        const sortedAccounts = (accountRows || []).slice().sort((a, b) => {
+          return (a.name || '').localeCompare(b.name || '', 'id');
+        });
         setAccounts(sortedAccounts);
         if (sortedAccounts.length) {
           setAccountId(sortedAccounts[0].id);
-          setAccountName(sortedAccounts[0].name);
         }
+        setCategories(categoryRows || []);
+        setMerchants(merchantRows || []);
       } catch (err) {
-        console.error(err);
-        addToast(`Gagal memuat data master: ${err.message}`, "error");
+        addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
     loadMasterData();
+    return () => {
+      active = false;
+    };
   }, [addToast]);
 
+  useEffect(() => {
+    if (type !== 'transfer') {
+      setToAccountId('');
+    } else {
+      setCategoryId('');
+    }
+  }, [type]);
+
+  useEffect(() => {
+    if (!receiptFile) return undefined;
+    const url = URL.createObjectURL(receiptFile);
+    setReceiptPreview(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [receiptFile]);
+
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        navigate('/transactions');
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [navigate]);
+
   const categoriesByType = useMemo(() => {
-    const map = { income: [], expense: [], transfer: [] };
-    (categories || []).forEach((cat) => {
-      const key = (cat.type || "expense").toLowerCase();
-      if (!map[key]) map[key] = [];
-      map[key].push(cat);
+    const grouped = { income: [], expense: [] };
+    categories.forEach((item) => {
+      const key = (item.type || 'expense').toLowerCase();
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(item);
     });
-    return map;
+    return grouped;
   }, [categories]);
 
   useEffect(() => {
+    if (type === 'transfer') return;
     const list = categoriesByType[type] || [];
-    if (list.length === 0) {
-      setCategoryId("");
-      setCategoryName("");
-      return;
-    }
-    if (!list.some((c) => c.id === categoryId)) {
+    if (!list.length) return;
+    if (!categoryId || !list.some((item) => item.id === categoryId)) {
       setCategoryId(list[0].id);
-      setCategoryName(list[0].name);
     }
   }, [categoriesByType, categoryId, type]);
 
-  useEffect(() => {
-    if (type !== "transfer") {
-      setToAccountId("");
-      setToAccountName("");
-    } else if (toAccountId && toAccountId === accountId) {
-      setToAccountId("");
-      setToAccountName("");
+  const merchantSuggestions = useMemo(() => {
+    if (!merchantInput) return merchants.slice(0, 5);
+    const keyword = merchantInput.toLowerCase();
+    return merchants
+      .filter((item) => (item.name || '').toLowerCase().includes(keyword))
+      .slice(0, 5);
+  }, [merchantInput, merchants]);
+
+  const selectedAccount = accounts.find((item) => item.id === accountId);
+  const selectedToAccount = accounts.find((item) => item.id === toAccountId);
+  const selectedCategory = categories.find((item) => item.id === categoryId);
+  const selectedMerchant = merchants.find((item) => item.id === merchantId);
+  const merchantExactMatch = selectedMerchant
+    ? merchantInput.trim().toLowerCase() === (selectedMerchant.name || '').toLowerCase()
+    : false;
+
+  const isTransfer = type === 'transfer';
+  const amountValue = parseAmount(amountInput);
+
+  const handleAmountChange = (event) => {
+    const value = event.target.value;
+    setAmountInput(value.replace(/[^0-9.,]/g, ''));
+    setErrors((prev) => ({ ...prev, amount: undefined }));
+  };
+
+  const handleDateSelect = (value) => {
+    setDate(value);
+    setErrors((prev) => ({ ...prev, date: undefined }));
+  };
+
+  const handleReceiptFiles = (files) => {
+    if (!files || !files.length) return;
+    const [file] = files;
+    if (!file) return;
+    setReceiptFile(file);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setDragOver(false);
+    handleReceiptFiles(event.dataTransfer.files);
+  };
+
+  const validate = useCallback(() => {
+    const nextErrors = {};
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      nextErrors.amount = 'Nominal wajib diisi dan harus lebih besar dari 0.';
     }
-  }, [type, accountId, toAccountId]);
-
-  useEffect(() => {
-    localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates));
-  }, [templates]);
-
-  const openAccountModal = useCallback((target = "source") => {
-    setAccountModalTarget(target);
-    setAccountModalError("");
-    setAccountModalOpen(true);
-  }, []);
-
-  const closeAccountModal = useCallback(() => {
-    setAccountModalOpen(false);
-    setAccountModalError("");
-    setAccountModalTarget("source");
-  }, []);
-
-  const guardedCloseAccountModal = useCallback(() => {
-    if (!accountModalBusy) {
-      closeAccountModal();
+    if (!date) {
+      nextErrors.date = 'Pilih tanggal transaksi.';
     }
-  }, [accountModalBusy, closeAccountModal]);
-
-  const handleAccountCreate = async (values) => {
-    setAccountModalBusy(true);
-    setAccountModalError("");
-    try {
-      let uid = userId;
-      if (!uid) {
-        const { data: userData, error: userError } = await supabase.auth.getUser();
-        if (userError) {
-          throw userError;
-        }
-        uid = userData.user?.id;
-        if (!uid) {
-          throw new Error("Anda harus login untuk menambah akun.");
-        }
-        setUserId(uid);
+    if (!accountId) {
+      nextErrors.account_id = 'Pilih akun sumber.';
+    }
+    if (isTransfer) {
+      if (!toAccountId) {
+        nextErrors.to_account_id = 'Pilih akun tujuan untuk transfer.';
+      } else if (toAccountId === accountId) {
+        nextErrors.to_account_id = 'Akun tujuan tidak boleh sama dengan sumber.';
       }
-
-      const created = await createAccount(uid, values);
-      addToast("Akun ditambahkan", "success");
-
-      try {
-        const refreshed = await fetchAccounts(uid);
-        const sorted = [...refreshed].sort((a, b) => (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }));
-        setAccounts(sorted);
-      } catch {
-        const merged = [...accounts.filter((acc) => acc.id !== created.id), created];
-        merged.sort((a, b) => (a.name || "").localeCompare(b.name || "", "id", { sensitivity: "base" }));
-        setAccounts(merged);
-      }
-
-      const createdName = created.name || "";
-      if (accountModalTarget === "destination") {
-        setToAccountId(created.id);
-        setToAccountName(createdName);
-        if (created.id === accountId) {
-          setAccountName(createdName);
-        }
-      } else {
-        setAccountId(created.id);
-        setAccountName(createdName);
-        if (type === "transfer" && created.id === toAccountId) {
-          setToAccountId("");
-          setToAccountName("");
-        }
-      }
-
-      closeAccountModal();
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : typeof err === "string"
-            ? err
-            : "Gagal menambah akun. Silakan coba lagi.";
-      setAccountModalError(message);
-    } finally {
-      setAccountModalBusy(false);
+    } else if (toAccountId) {
+      nextErrors.to_account_id = 'Akun tujuan hanya digunakan untuk transfer.';
     }
-  };
-
-  const accountOptions = useMemo(() => {
-    const options = accounts.map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" }));
-    options.push({ value: ADD_ACCOUNT_OPTION_VALUE, label: "+ Tambah Akun…" });
-    return options;
-  }, [accounts]);
-
-  const toAccountOptions = useMemo(() => {
-    const options = accounts
-      .filter((acc) => acc.id !== accountId)
-      .map((acc) => ({ value: acc.id, label: acc.name || "(Tanpa Nama)" }));
-    options.push({ value: ADD_ACCOUNT_OPTION_VALUE, label: "+ Tambah Akun…" });
-    return options;
-  }, [accounts, accountId]);
-
-  const categoryOptions = useMemo(() => {
-    return (categoriesByType[type] || []).map((cat) => ({ value: cat.id, label: cat.name }));
-  }, [categoriesByType, type]);
-
-  const presetAmounts = [25000, 50000, 100000, 200000, 500000];
-
-  const repeatLabels = {
-    none: "Tidak ada",
-    weekly: "Setiap minggu",
-    monthly: "Setiap bulan",
-    yearly: "Setiap tahun",
-  };
-
-  const applyTemplate = (template) => {
-    if (!template) return;
-    setType(template.type || "expense");
-    setAmount(template.amount || 0);
-    if (template.date) setDate(template.date);
-    if (template.time) setTime(template.time);
-    setCategoryId(template.category_id || "");
-    setCategoryName(template.category_name || "");
-    setAccountId(template.account_id || "");
-    setAccountName(template.account_name || "");
-    setToAccountId(template.to_account_id || "");
-    setToAccountName(template.to_account_name || "");
-    setTitle(template.title || "");
-    setNote(template.note || "");
-    setRepeat(template.repeat || "none");
-    setPending(Boolean(template.pending));
-  };
-
-  const resetForm = () => {
-    setAmount(0);
-    setTitle("");
-    setNote("");
-    setRepeat("none");
-    setPending(false);
-    setTime(defaultTime());
-  };
-
-  const handleSaveTemplate = () => {
-    const name = templateName.trim();
-    if (!name) {
-      addToast("Nama template wajib diisi", "error");
-      return;
+    if (!isTransfer && type === 'expense' && !categoryId) {
+      nextErrors.category_id = 'Kategori wajib diisi untuk pengeluaran.';
     }
-    const entry = {
-      id: nextId(),
-      name,
-      type,
-      amount,
-      date,
-      time,
-      category_id: categoryId,
-      category_name: categoryName,
-      account_id: accountId,
-      account_name: accountName,
-      to_account_id: toAccountId,
-      to_account_name: toAccountName,
-      title,
-      note,
-      repeat,
-      pending,
-    };
-    setTemplates((prev) => [...prev, entry]);
-    setTemplateName("");
-    addToast("Template transaksi disimpan", "success");
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }, [amountValue, date, accountId, toAccountId, isTransfer, type, categoryId]);
+
+  const handleReset = () => {
+    setType('expense');
+    setDate(getDateWithOffset(0));
+    setAmountInput('');
+    setCategoryId('');
+    setMerchantId('');
+    setMerchantInput('');
+    setMerchantFocused(false);
+    setTitle('');
+    setNotes('');
+    setTags([]);
+    setReceiptFile(null);
+    setReceiptPreview('');
+    setErrors({});
+    if (accounts.length) {
+      setAccountId(accounts[0].id);
+    }
+    setToAccountId('');
   };
 
-  const handleRemoveTemplate = (id) => {
-    setTemplates((prev) => prev.filter((tpl) => tpl.id !== id));
-  };
-
-  const canSubmit =
-    amount > 0 &&
-    categoryId &&
-    (!isTransfer() || (toAccountId && toAccountId !== accountId));
-
-  function isTransfer() {
-    return type === "transfer";
-  }
-
-  const summary = [
-    { label: "Tipe", value: type === "income" ? "Pemasukan" : type === "expense" ? "Pengeluaran" : "Transfer" },
-    { label: "Jumlah", value: formatCurrency(amount) },
-    { label: "Tanggal", value: `${date}${time ? ` • ${time}` : ""}` },
-    { label: "Kategori", value: categoryName || "-" },
-    { label: "Akun", value: accountName || "-" },
-    isTransfer() ? { label: "Ke Akun", value: toAccountName || "-" } : null,
-    { label: "Status", value: pending ? "Menunggu konfirmasi" : "Selesai" },
-    repeat !== "none" ? { label: "Pengulangan", value: repeatLabels[repeat] } : null,
-  ].filter(Boolean);
-
-  const quickDate = (offset) => {
-    const d = new Date();
-    d.setDate(d.getDate() + offset);
-    setDate(d.toISOString().slice(0, 10));
-  };
-
-  const handleSubmit = async (redirect = "list") => {
-    if (!canSubmit) {
-      addToast("Lengkapi data utama terlebih dahulu", "error");
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    if (saving) return;
+    const isValid = validate();
+    if (!isValid) {
+      addToast('Periksa kembali data yang wajib diisi.', 'error');
       return;
     }
     setSaving(true);
     try {
-      const noteParts = [];
-      if (pending) noteParts.push("[Pending]");
-      if (note.trim()) noteParts.push(note.trim());
-      if (repeat !== "none") noteParts.push(`[Recurring: ${repeatLabels[repeat]}]`);
-      const combinedNote = noteParts.join("\n");
-      const payload = {
-        type,
-        amount,
-        date: buildIsoDate(date, time),
-        category: categoryName,
-        category_id: categoryId,
-        account_id: accountId,
-        account_name: accountName,
-        to_account_id: isTransfer() ? toAccountId : null,
-        to_account_name: toAccountName,
-        title: title || null,
-        note: combinedNote,
-        notes: combinedNote,
-      };
-      await onAdd(payload);
-      addToast("Transaksi berhasil disimpan", "success");
-      if (redirect === "stay") {
-        resetForm();
-      } else {
-        navigate("/transactions");
+      let merchantName = merchantInput.trim();
+      let merchantValue = merchantId;
+      if (merchantName && !merchantValue) {
+        try {
+          const created = await saveMerchant({ name: merchantName });
+          merchantValue = created.id;
+          merchantName = created.name;
+          setMerchants((prev) => [...prev, created].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id')));
+          setMerchantId(created.id);
+          setMerchantInput(created.name || merchantName);
+        } catch (err) {
+          addToast(err?.message || 'Gagal menyimpan merchant baru', 'error');
+        }
       }
+
+      const cleanedTags = tags.map((tag) => tag.trim()).filter(Boolean);
+      const saved = await createTransaction({
+        type,
+        date,
+        amount: amountValue,
+        account_id: accountId,
+        to_account_id: isTransfer ? toAccountId : null,
+        category_id: !isTransfer ? categoryId || null : null,
+        merchant_id: merchantValue || null,
+        title: title.trim() ? title.trim() : null,
+        notes: notes.trim() ? notes.trim() : null,
+        tags: cleanedTags.length ? cleanedTags : null,
+      });
+
+      let receiptUrl = saved.receipt_url || null;
+      if (receiptFile) {
+        try {
+          receiptUrl = await uploadReceipt(receiptFile, saved.id);
+        } catch (err) {
+          addToast(err?.message || 'Struk gagal diunggah, tetapi transaksi tersimpan.', 'error');
+        }
+      }
+
+      const payload = {
+        ...saved,
+        amount: saved.amount ?? amountValue,
+        account: selectedAccount?.name || null,
+        account_id: saved.account_id ?? accountId,
+        to_account: isTransfer ? selectedToAccount?.name || null : null,
+        to_account_id: saved.to_account_id ?? (isTransfer ? toAccountId : null),
+        category: !isTransfer ? selectedCategory?.name || null : null,
+        category_id: saved.category_id ?? (!isTransfer ? categoryId || null : null),
+        merchant: merchantValue ? merchantName || selectedMerchant?.name || null : merchantName || null,
+        merchant_id: saved.merchant_id ?? (merchantValue || null),
+        title: saved.title ?? (title.trim() || null),
+        notes: saved.notes ?? (notes.trim() || null),
+        note: saved.notes ?? (notes.trim() || null),
+        tags: saved.tags ?? (cleanedTags.length ? cleanedTags : null),
+        receipt_url: receiptUrl,
+        __persisted: true,
+      };
+
+      onAdd?.(payload);
+      addToast('Transaksi tersimpan', 'success');
+      navigate('/transactions');
     } catch (err) {
-      addToast(`Gagal menyimpan transaksi: ${err.message}`, "error");
+      addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
     } finally {
       setSaving(false);
     }
@@ -387,9 +376,9 @@ export default function TransactionAdd({ onAdd }) {
   if (loading) {
     return (
       <Page>
-        <Section first className="max-w-3xl mx-auto">
-          <div className="flex items-center justify-center py-20 text-muted gap-2">
-            <Loader2 className="h-5 w-5 animate-spin" />
+        <Section first className="mx-auto max-w-3xl">
+          <div className="flex items-center justify-center gap-2 py-16 text-muted">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
             Memuat formulir...
           </div>
         </Section>
@@ -399,309 +388,415 @@ export default function TransactionAdd({ onAdd }) {
 
   return (
     <Page>
-      <PageHeader
-        title="Tambah Riwayat Transaksi"
-        description="Catat pengeluaran, pemasukan, transfer atau transaksi berulang dengan detail lengkap"
-      >
-        <button type="button" className="btn" onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4" /> Kembali
+      <PageHeader title="Tambah Transaksi">
+        <button
+          type="button"
+          onClick={() => navigate('/transactions')}
+          className="h-11 rounded-2xl border border-border-subtle px-4 text-sm font-medium text-text transition hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          Batal
+        </button>
+        <button
+          type="button"
+          onClick={handleReset}
+          className="h-11 rounded-2xl border border-border-subtle px-4 text-sm font-medium text-text transition hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          Reset
+        </button>
+        <button
+          type="submit"
+          form="add-transaction-form"
+          disabled={saving}
+          className="flex h-11 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
+          Simpan
         </button>
       </PageHeader>
-      <Section first className="max-w-5xl mx-auto space-y-6">
-        {offline && (
-          <div className="rounded-xl border border-dashed border-amber-400 bg-amber-100 px-4 py-3 text-sm text-amber-700">
-            Kamu sedang offline. Data akan disimpan ke antrian dan dikirim ke server saat koneksi kembali normal.
-          </div>
-        )}
-        <Card>
-          <CardHeader
-            title="Informasi Utama"
-            subtext="Isi data dasar transaksi dengan cepat dan rapi. Gunakan preset untuk menghemat waktu."
-          />
-          <CardBody className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <Segmented
-                value={type}
-                onChange={setType}
-                options={[
-                  { label: "Pengeluaran", value: "expense" },
-                  { label: "Pemasukan", value: "income" },
-                  { label: "Transfer", value: "transfer" },
-                ]}
-              />
-              <div className="flex flex-wrap gap-2">
-                {presetAmounts.map((val) => (
-                  <button
-                    key={val}
-                    type="button"
-                    className="btn btn-secondary text-xs"
-                    onClick={() => setAmount((prev) => prev + val)}
-                  >
-                    +{formatCurrency(val)}
-                  </button>
-                ))}
-                <button type="button" className="btn btn-secondary text-xs" onClick={() => setAmount(0)}>
-                  Reset
-                </button>
-              </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <CurrencyInput
-                  label="Jumlah"
-                  value={amount}
-                  onChangeNumber={setAmount}
-                  helper="Gunakan tombol nominal cepat di atas untuk mengisi lebih cepat."
-                />
-              </div>
-              <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
-              <Input
-                type="time"
-                label="Waktu"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                helper="Opsional, gunakan jika perlu mencatat waktu spesifik."
-              />
-              <div>
-                <Select
-                  label="Akun sumber"
-                  value={accountId}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === ADD_ACCOUNT_OPTION_VALUE) {
-                      openAccountModal("source");
-                      return;
-                    }
-                    setAccountId(val);
-                    const selected = accounts.find((acc) => acc.id === val);
-                    setAccountName(selected?.name || "");
-                  }}
-                  options={accountOptions}
-                  placeholder="Pilih akun"
-                  helper="Catat asal dana agar laporan lebih akurat."
-                />
-              </div>
-              {isTransfer() && (
+
+      <Section first>
+        <form id="add-transaction-form" onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
+          <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
+            <CardBody className="space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <Select
-                    label="Akun tujuan"
-                    value={toAccountId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === ADD_ACCOUNT_OPTION_VALUE) {
-                        openAccountModal("destination");
-                        return;
-                      }
-                      setToAccountId(val);
-                      const selected = accounts.find((acc) => acc.id === val);
-                      setToAccountName(selected?.name || "");
-                    }}
-                    options={toAccountOptions}
-                    placeholder="Pilih akun"
-                    helper="Pilih tujuan transfer untuk menghindari duplikasi catatan."
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tipe</span>
+                  <div className="mt-2">
+                    <div className={SEGMENTED_CLASS} role="radiogroup" aria-label="Pilih tipe transaksi">
+                      {TYPE_OPTIONS.map((option) => {
+                        const Icon = option.icon;
+                        const active = type === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            tabIndex={active ? 0 : -1}
+                            onClick={() => {
+                              setType(option.value);
+                              setErrors((prev) => ({
+                                ...prev,
+                                category_id: undefined,
+                                to_account_id: undefined,
+                              }));
+                            }}
+                            className={`${SEGMENT_ITEM_CLASS} ${active ? 'bg-primary text-primary-foreground' : 'text-muted'}`}
+                          >
+                            <Icon className="h-4 w-4" aria-hidden="true" />
+                            <span>{option.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+                <div className="min-w-[200px]">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tanggal</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleDateSelect(getDateWithOffset(0))}
+                      className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        date === getDateWithOffset(0)
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border-subtle text-text hover:bg-muted/30'
+                      }`}
+                    >
+                      Hari ini
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDateSelect(getDateWithOffset(-1))}
+                      className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        date === getDateWithOffset(-1)
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border-subtle text-text hover:bg-muted/30'
+                      }`}
+                    >
+                      Kemarin
+                    </button>
+                    <div className="relative">
+                      <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+                      <input
+                        type="date"
+                        value={date}
+                        onChange={(event) => handleDateSelect(event.target.value)}
+                        className={`${INPUT_CLASS} pl-9`}
+                      />
+                    </div>
+                  </div>
+                  {errors.date ? <p className="mt-1 text-xs text-destructive">{errors.date}</p> : null}
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                  <Banknote className="h-4 w-4" aria-hidden="true" />
+                  Nominal
+                </label>
+                <div className="flex items-center gap-3 rounded-2xl border border-border-subtle bg-background px-4 py-4 ring-2 ring-transparent focus-within:ring-2 focus-within:ring-primary">
+                  <span className="text-sm font-semibold text-muted">Rp</span>
+                  <input
+                    value={amountInput}
+                    onChange={handleAmountChange}
+                    onBlur={() => validate()}
+                    inputMode="decimal"
+                    placeholder="Masukkan jumlah"
+                    className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-text focus:outline-none"
                   />
                 </div>
-              )}
-              <div className="md:col-span-2">
-                <Select
-                  label="Kategori"
-                  value={categoryId}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setCategoryId(val);
-                    const selected = categories.find((cat) => cat.id === val);
-                    setCategoryName(selected?.name || "");
-                  }}
-                  options={categoryOptions}
-                  placeholder="Pilih kategori"
-                  helper="Kategori membantu laporan keuangan lebih terstruktur."
-                />
+                {errors.amount ? <p className="mt-1 text-xs text-destructive">{errors.amount}</p> : null}
               </div>
-            </div>
-            <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-alt/60 px-3 py-3 text-xs text-muted">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 font-medium text-foreground">
-                  <CalendarClock className="h-3.5 w-3.5" />
-                  Preset tanggal cepat:
-                </span>
-                <button type="button" className="btn btn-secondary text-xs" onClick={() => quickDate(0)}>
-                  Hari ini
-                </button>
-                <button type="button" className="btn btn-secondary text-xs" onClick={() => quickDate(-1)}>
-                  Kemarin
-                </button>
-                <button type="button" className="btn btn-secondary text-xs" onClick={() => quickDate(-7)}>
-                  7 hari lalu
-                </button>
-              </div>
-            </div>
-            {accounts.length === 0 && (
-              <p className="text-xs text-muted">
-                Belum ada akun tersimpan. Transaksi akan dicatat tanpa informasi akun.
-              </p>
-            )}
-          </CardBody>
-        </Card>
 
-        <Card>
-          <CardHeader
-            title="Rincian Tambahan"
-            subtext="Berikan detail singkat agar transaksi mudah dikenali di daftar maupun laporan."
-          />
-          <CardBody className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div>
-                <Input
-                  label="Judul singkat"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Contoh: Makan siang tim"
-                  helper="Judul akan tampil di daftar transaksi."
-                />
-              </div>
-              <div className="md:col-span-2">
-                <Textarea
-                  label="Catatan"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Tambahkan detail penting, nomor invoice, dsb"
-                  helper="Gunakan catatan untuk menyimpan konteks tambahan."
-                />
-              </div>
-            </div>
-            <div className="rounded-2xl border border-dashed border-border-subtle bg-surface-alt/60 px-3 py-3 text-xs text-muted">
-              <p className="font-medium text-foreground">Tips:</p>
-              <p className="mt-1">
-                Catatan dan judul membantu saat mencari transaksi ataupun membuat laporan periodik.
-              </p>
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardHeader
-            title="Penjadwalan & Status"
-            subtext="Atur pengulangan transaksi serta tandai status penyelesaiannya."
-          />
-          <CardBody className="space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-6">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                <Repeat className="h-4 w-4" /> Pengulangan otomatis
-              </div>
-              <Select
-                label="Frekuensi"
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value)}
-                options={[
-                  { value: "none", label: repeatLabels.none },
-                  { value: "weekly", label: repeatLabels.weekly },
-                  { value: "monthly", label: repeatLabels.monthly },
-                  { value: "yearly", label: repeatLabels.yearly },
-                ]}
-                helper="Pilih pengulangan untuk membuat transaksi tercatat otomatis."
-              />
-            </div>
-            <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 space-y-3">
-              <p className="text-sm font-medium text-foreground">Status transaksi</p>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={pending}
-                  onChange={(e) => setPending(e.target.checked)}
-                  className="h-4 w-4 rounded border-border"
-                />
-                Tandai sebagai transaksi pending / menunggu konfirmasi
-              </label>
-              <p className="text-xs text-muted">
-                Tandai pending untuk transaksi yang belum selesai supaya mudah ditindaklanjuti.
-              </p>
-            </div>
-          </CardBody>
-        </Card>
-
-
-        <Card>
-          <CardHeader
-            title="Template & Otomatisasi"
-            subtext="Simpan konfigurasi favorit agar pengisian berikutnya cukup satu klik."
-          />
-          <CardBody className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <Input
-                label="Nama template"
-                value={templateName}
-                onChange={(e) => setTemplateName(e.target.value)}
-                placeholder="Contoh: Makan siang tim"
-              />
-              <button type="button" className="btn btn-primary mt-6" onClick={handleSaveTemplate}>
-                <Sparkles className="h-4 w-4" /> Simpan sebagai template
-              </button>
-            </div>
-            {templates.length > 0 ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {templates.map((tpl) => (
-                  <div key={tpl.id} className="rounded-xl border border-border p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-sm">{tpl.name}</span>
-                      <button type="button" className="text-xs text-danger" onClick={() => handleRemoveTemplate(tpl.id)}>
-                        Hapus
-                      </button>
-                    </div>
-                    <div className="text-xs text-muted">{formatCurrency(tpl.amount)} • {tpl.category_name || "Tanpa kategori"}</div>
-                    <button type="button" className="btn btn-secondary w-full" onClick={() => applyTemplate(tpl)}>
-                      Terapkan template
-                    </button>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div>
+                  <label htmlFor="account" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                    <Wallet className="h-4 w-4" aria-hidden="true" />
+                    Akun sumber
+                  </label>
+                  <select
+                    id="account"
+                    value={accountId}
+                    onChange={(event) => {
+                      setAccountId(event.target.value);
+                      setErrors((prev) => ({ ...prev, account_id: undefined }));
+                    }}
+                    className={INPUT_CLASS}
+                  >
+                    <option value="">Pilih akun</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name || 'Tanpa nama'}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.account_id ? <p className="mt-1 text-xs text-destructive">{errors.account_id}</p> : null}
+                </div>
+                {isTransfer ? (
+                  <div>
+                    <label htmlFor="to-account" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                      Akun tujuan
+                    </label>
+                    <select
+                      id="to-account"
+                      value={toAccountId}
+                      onChange={(event) => {
+                        setToAccountId(event.target.value);
+                        setErrors((prev) => ({ ...prev, to_account_id: undefined }));
+                      }}
+                      className={INPUT_CLASS}
+                    >
+                      <option value="">Pilih akun tujuan</option>
+                      {accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name || 'Tanpa nama'}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.to_account_id ? <p className="mt-1 text-xs text-destructive">{errors.to_account_id}</p> : null}
                   </div>
-                ))}
+                ) : null}
+                {!isTransfer ? (
+                  <div>
+                    <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                      <TagIcon className="h-4 w-4" aria-hidden="true" />
+                      Kategori
+                    </label>
+                    <select
+                      id="category"
+                      value={categoryId}
+                      onChange={(event) => {
+                        setCategoryId(event.target.value);
+                        setErrors((prev) => ({ ...prev, category_id: undefined }));
+                      }}
+                      className={INPUT_CLASS}
+                    >
+                      <option value="">Pilih kategori</option>
+                      {(categoriesByType[type] || []).map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                    {errors.category_id ? <p className="mt-1 text-xs text-destructive">{errors.category_id}</p> : null}
+                  </div>
+                ) : null}
               </div>
-            ) : (
-              <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted flex items-center gap-2">
-                <FileText className="h-4 w-4" /> Belum ada template tersimpan.
-              </div>
-            )}
-          </CardBody>
-        </Card>
 
-        <Card>
-          <CardHeader title="Ringkasan" subtext="Tinjau kembali sebelum menyimpan." />
-          <CardBody className="space-y-2">
-            <ul className="grid gap-2 md:grid-cols-2">
-              {summary.map((row) => (
-                <li key={row.label} className="rounded-lg border border-border px-3 py-2 text-sm">
-                  <span className="text-xs text-muted uppercase">{row.label}</span>
-                  <div className="font-medium">{row.value}</div>
-                </li>
-              ))}
-            </ul>
-          </CardBody>
-          <CardFooter className="flex flex-wrap justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <Check className="h-4 w-4 text-brand-var" /> Formulir otomatis menyimpan preferensi terakhir.
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn" onClick={() => handleSubmit("stay")} disabled={!canSubmit || saving}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Simpan & tambah lagi
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => handleSubmit("list")}
-                disabled={!canSubmit || saving}
-              >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Simpan transaksi
-              </button>
-            </div>
-          </CardFooter>
-        </Card>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="relative">
+                  <label htmlFor="merchant" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                    <Store className="h-4 w-4" aria-hidden="true" />
+                    Merchant (opsional)
+                  </label>
+                  <input
+                    id="merchant"
+                    value={merchantInput}
+                    onChange={(event) => {
+                      setMerchantInput(event.target.value);
+                      const value = event.target.value.trim().toLowerCase();
+                      const match = merchants.find((item) => (item.name || '').toLowerCase() === value);
+                      setMerchantId(match ? match.id : '');
+                    }}
+                    onFocus={() => setMerchantFocused(true)}
+                    onBlur={() => setMerchantFocused(false)}
+                    autoComplete="off"
+                    placeholder="Cari atau ketik nama merchant"
+                    className={INPUT_CLASS}
+                  />
+                  {merchantFocused && merchantSuggestions.length > 0 && merchantInput && !merchantExactMatch && (
+                    <ul className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-border-subtle bg-background shadow-lg">
+                      {merchantSuggestions.map((item) => (
+                        <li key={item.id}>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-text hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => {
+                              setMerchantId(item.id);
+                              setMerchantInput(item.name || '');
+                              setMerchantFocused(false);
+                            }}
+                          >
+                            <span>{item.name}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="title" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                    Judul (opsional)
+                  </label>
+                  <input
+                    id="title"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Contoh: Makan siang tim"
+                    className={INPUT_CLASS}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="notes" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                  Catatan (opsional)
+                </label>
+                <textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  rows={4}
+                  placeholder="Catatan tambahan"
+                  className={TEXTAREA_CLASS}
+                />
+              </div>
+
+              <TagInput
+                label="Tags"
+                value={tags}
+                onChange={setTags}
+                placeholder="Tambah tag"
+                helperText="Pisahkan dengan koma"
+              />
+
+              <div>
+                <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                  <Receipt className="h-4 w-4" aria-hidden="true" />
+                  Upload struk (opsional)
+                </p>
+                <label
+                  htmlFor="receipt"
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-8 text-center text-sm transition ${
+                    dragOver ? 'border-primary bg-primary/10 text-primary' : 'border-border-subtle text-muted hover:border-primary hover:text-primary'
+                  }`}
+                >
+                  <Receipt className="h-8 w-8" aria-hidden="true" />
+                  <div>
+                    <p className="font-medium text-text">Tarik file ke sini atau klik untuk pilih</p>
+                    <p className="text-xs text-muted">Mendukung gambar atau PDF</p>
+                  </div>
+                  <input
+                    id="receipt"
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(event) => handleReceiptFiles(event.target.files)}
+                    className="sr-only"
+                  />
+                  {receiptFile ? (
+                    <p className="text-xs text-text">{receiptFile.name}</p>
+                  ) : null}
+                  {receiptPreview ? (
+                    <img src={receiptPreview} alt="Pratinjau struk" className="mt-2 max-h-40 rounded-xl object-cover" />
+                  ) : null}
+                </label>
+                {receiptFile ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReceiptFile(null);
+                      setReceiptPreview('');
+                    }}
+                    className="mt-2 inline-flex items-center gap-2 text-sm text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                    Hapus file
+                  </button>
+                ) : null}
+              </div>
+            </CardBody>
+          </Card>
+
+          <div className="space-y-6">
+            <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
+              <CardBody className="space-y-4">
+                <h2 className="text-base font-semibold text-text">Ringkasan cepat</h2>
+                <div className="space-y-3 text-sm text-muted">
+                  <div className="flex items-start gap-3">
+                    <Banknote className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium text-text">{formatAmountDisplay(amountValue)}</p>
+                      <p className="text-xs text-muted">Nominal transaksi</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Calendar className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium text-text">{date}</p>
+                      <p className="text-xs text-muted">Tanggal disimpan di zona waktu Asia/Jakarta</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Wallet className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium text-text">{selectedAccount?.name || 'Belum dipilih'}</p>
+                      <p className="text-xs text-muted">Akun sumber</p>
+                    </div>
+                  </div>
+                  {isTransfer ? (
+                    <div className="flex items-start gap-3">
+                      <ArrowRight className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                      <div>
+                        <p className="font-medium text-text">{selectedToAccount?.name || 'Belum dipilih'}</p>
+                        <p className="text-xs text-muted">Akun tujuan</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-3">
+                      <TagIcon className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                      <div>
+                        <p className="font-medium text-text">{selectedCategory?.name || 'Belum dipilih'}</p>
+                        <p className="text-xs text-muted">Kategori transaksi</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+
+            <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
+              <CardBody className="space-y-4 text-sm text-muted">
+                <h2 className="text-base font-semibold text-text">Bantuan cepat</h2>
+                <ul className="space-y-2">
+                  <li>
+                    {isTransfer
+                      ? 'Kategori disembunyikan saat transfer, dan kedua akun wajib berbeda.'
+                      : 'Untuk pengeluaran, kategori wajib diisi. Untuk pemasukan, kategori opsional.'}
+                  </li>
+                  <li>
+                    {isTransfer
+                      ? 'Transaksi akan disimpan sebagai transfer satu baris dengan akun sumber dan tujuan.'
+                      : 'Pastikan akun tujuan dibiarkan kosong untuk pemasukan/pengeluaran biasa.'}
+                  </li>
+                  <li>Tips keyboard: Enter untuk simpan, Esc untuk batal.</li>
+                </ul>
+                <div className="rounded-2xl border border-dashed border-border-subtle bg-muted/20 p-3 text-xs">
+                  <p className="font-medium text-text">Arus kas</p>
+                  <p className="mt-1 text-muted">
+                    <Wallet className="mr-1 inline h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                    Sumber: {selectedAccount?.name || 'Belum dipilih'}
+                  </p>
+                  {isTransfer ? (
+                    <p className="mt-1 text-muted">
+                      <ArrowRight className="mr-1 inline h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                      Tujuan: {selectedToAccount?.name || 'Belum dipilih'}
+                    </p>
+                  ) : null}
+                </div>
+              </CardBody>
+            </Card>
+          </div>
+        </form>
       </Section>
-      <AccountFormModal
-        open={accountModalOpen}
-        mode="create"
-        busy={accountModalBusy}
-        error={accountModalError || null}
-        onClose={guardedCloseAccountModal}
-        onSubmit={handleAccountCreate}
-      />
     </Page>
   );
 }
