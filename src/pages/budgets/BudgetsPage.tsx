@@ -1,705 +1,306 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { supabase } from '../../lib/supabase';
+import { useEffect, useMemo, useState } from 'react';
+import { Calendar, Plus, RefreshCw } from 'lucide-react';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
 import { useToast } from '../../context/ToastContext';
+import SummaryCards from './components/SummaryCards';
+import BudgetTable from './components/BudgetTable';
+import BudgetFormModal, { type BudgetFormValues } from './components/BudgetFormModal';
+import { useBudgets } from '../../hooks/useBudgets';
 import {
-  applyRolloverToNext,
-  bulkUpsertBudgets,
-  computeRollover,
-  copyBudgets,
   deleteBudget,
-  formatBudgetAmount,
-  getPeriods,
-  getSummary,
-  listBudgets,
-  listRules,
-  type BudgetRecord,
-  type BudgetRuleRecord,
-  type CarryRule,
-  type BudgetSummary,
+  listCategoriesExpense,
   upsertBudget,
-} from '../../lib/api-budgets';
-import BudgetsSummary from '../../components/budgets/BudgetsSummary';
-import BudgetsFilterBar, {
-  type BudgetsFilterState,
-} from '../../components/budgets/BudgetsFilterBar';
-import BudgetsTable from '../../components/budgets/BudgetsTable';
-import BudgetCard from '../../components/budgets/BudgetCard';
-import BudgetDetailDrawer from '../../components/budgets/BudgetDetailDrawer';
-import BudgetRuleForm from '../../components/budgets/BudgetRuleForm';
-import AutoAllocateDialog from '../../components/budgets/AutoAllocateDialog';
-import Modal from '../../components/Modal.jsx';
-import BudgetForm from '../../components/budgets/BudgetForm';
-import type { BudgetViewModel } from '../../components/budgets/types';
+  type BudgetWithSpent,
+  type ExpenseCategory,
+} from '../../lib/budgetApi';
 
-export interface BudgetsPageProps {
-  currentMonth?: string;
-  data?: {
-    budgets?: BudgetRecord[];
-  };
+const SEGMENTS = [
+  { value: 'current', label: 'Bulan ini' },
+  { value: 'previous', label: 'Bulan lalu' },
+  { value: 'custom', label: 'Custom' },
+] as const;
+
+type SegmentValue = (typeof SEGMENTS)[number]['value'];
+
+function formatPeriod(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  return `${year}-${month}`;
 }
 
-interface UndoItem {
-  id: string;
-  previous: BudgetRecord;
-  timeoutId: number;
-  expiresAt: number;
+function getCurrentPeriod() {
+  return formatPeriod(new Date());
 }
 
-interface CategoryOption {
-  id: string;
-  name: string;
-  type: 'income' | 'expense';
+function getPreviousPeriod() {
+  const now = new Date();
+  const previous = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return formatPeriod(previous);
 }
 
-const DEFAULT_SUMMARY: BudgetSummary = {
-  planned: 0,
-  actual: 0,
-  remaining: 0,
-  overspend: 0,
-  coverageDays: null,
+function toHumanReadable(period: string): string {
+  const [year, month] = period.split('-').map((value) => Number.parseInt(value, 10));
+  if (!year || !month) return period;
+  const formatter = new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' });
+  return formatter.format(new Date(year, month - 1, 1));
+}
+
+function isoToPeriod(isoDate: string | null | undefined): string {
+  if (!isoDate) return getCurrentPeriod();
+  return isoDate.slice(0, 7);
+}
+
+const DEFAULT_FORM_VALUES: BudgetFormValues = {
+  period: getCurrentPeriod(),
+  category_id: '',
+  amount_planned: 0,
+  carryover_enabled: false,
+  notes: '',
 };
 
-function determineStatus(view: BudgetViewModel): BudgetViewModel['status'] {
-  if (view.remaining < 0) return 'overspend';
-  const ceiling = view.planned + view.rolloverIn;
-  if (ceiling <= 0) return 'on-track';
-  const ratio = view.actual / ceiling;
-  if (ratio >= 0.8) return 'warning';
-  return 'on-track';
-}
-
-function buildViewModel(record: BudgetRecord, summary: BudgetSummary): BudgetViewModel {
-  const actual = record.activity?.actual ?? 0;
-  const inflow = record.activity?.inflow ?? 0;
-  const outflow = record.activity?.outflow ?? 0;
-  const remaining = record.planned + record.rollover_in - actual;
-  const coverageDays = summary.coverageDays;
-  const progressBase = record.planned + record.rollover_in;
-  const progress = progressBase > 0 ? Math.min(actual / progressBase, 1) : 0;
-  const label = record.category_id ? record.name ?? 'Kategori' : record.name ?? 'Envelope';
-  const view: BudgetViewModel = {
-    id: record.id,
-    label,
-    categoryId: record.category_id ?? null,
-    period: record.period_month,
-    planned: record.planned,
-    rolloverIn: record.rollover_in,
-    rolloverOut: record.rollover_out,
-    actual,
-    inflow,
-    outflow,
-    remaining,
-    carryRule: record.carry_rule,
-    note: record.note ?? null,
-    activity: record.activity,
-    status: 'on-track',
-    progress,
-    coverageDays,
-    raw: record,
-  };
-  view.status = determineStatus(view);
-  return view;
-}
-
-function buildTip(summary: BudgetSummary, views: BudgetViewModel[]): string {
-  if (!views.length) return 'Belum ada anggaran untuk periode ini.';
-  if (summary.remaining <= 0) {
-    const highest = [...views].sort((a, b) => b.actual - a.actual)[0];
-    if (!highest) return 'Periksa pengeluaran Anda untuk tetap on-track.';
-    const need = formatBudgetAmount(Math.abs(summary.remaining));
-    return `Overspend ${need}. Pertimbangkan kurangi ${highest.label} minggu ini.`;
-  }
-  const suggestion = formatBudgetAmount(summary.remaining);
-  return `Saran alokasi ${suggestion} agar on-track bulan ini.`;
-}
-
-export default function BudgetsPage({ currentMonth }: BudgetsPageProps) {
+export default function BudgetsPage() {
   const { addToast } = useToast();
-  const [periods, setPeriods] = useState<string[]>([]);
-  const [period, setPeriod] = useState(() => currentMonth ?? new Date().toISOString().slice(0, 7));
-  const [filters, setFilters] = useState<BudgetsFilterState>({
-    q: '',
-    categoryId: 'all',
-    status: 'all',
-    sort: 'name',
-    open: false,
-  });
-  const [budgets, setBudgets] = useState<BudgetRecord[]>([]);
-  const [views, setViews] = useState<BudgetViewModel[]>([]);
-  const [summary, setSummary] = useState<BudgetSummary>(DEFAULT_SUMMARY);
-  const [loading, setLoading] = useState(false);
-  const [rules, setRules] = useState<BudgetRuleRecord[]>([]);
-  const [categories, setCategories] = useState<CategoryOption[]>([]);
-  const [selected, setSelected] = useState<BudgetViewModel | null>(null);
-  const [ruleEditing, setRuleEditing] = useState<BudgetRuleRecord | null>(null);
-  const [ruleBudget, setRuleBudget] = useState<BudgetViewModel | null>(null);
-  const [autoAllocateOpen, setAutoAllocateOpen] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [budgetFormOpen, setBudgetFormOpen] = useState(false);
-  const undoStack = useRef<UndoItem[]>([]);
-  const [, forceRerenderUndo] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [segment, setSegment] = useState<SegmentValue>('current');
+  const [customPeriod, setCustomPeriod] = useState<string>(getCurrentPeriod());
+  const [period, setPeriod] = useState<string>(getCurrentPeriod());
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<BudgetWithSpent | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+
+  const { rows, summary, loading, error, refresh } = useBudgets(period);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const fetched = await getPeriods({ months: 18, anchor: period });
-        if (mounted) setPeriods(fetched);
-      } catch (error) {
-        addToast(`Gagal memuat daftar periode: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-      }
-    })();
+    let active = true;
+    setCategoriesLoading(true);
+    listCategoriesExpense()
+      .then((data) => {
+        if (!active) return;
+        setCategories(data);
+      })
+      .catch((err) => {
+        if (!active) return;
+        const message = err instanceof Error ? err.message : 'Gagal memuat kategori';
+        addToast(message, 'error');
+      })
+      .finally(() => {
+        if (!active) return;
+        setCategoriesLoading(false);
+      });
     return () => {
-      mounted = false;
-    };
-  }, [period, addToast]);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const { data, error } = await supabase
-          .from('categories')
-          .select('id, name, type')
-          .order('name');
-        if (error) throw error;
-        if (mounted) {
-          const normalized = (data ?? [])
-            .filter((row) => row?.id && row?.name)
-            .map((row) => ({
-              id: row.id as string,
-              name: row.name as string,
-              type: (row.type as 'income' | 'expense') ?? 'expense',
-            }));
-          setCategories(normalized);
-        }
-      } catch (error) {
-        addToast(`Gagal memuat kategori: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-      }
-    })();
-    return () => {
-      mounted = false;
+      active = false;
     };
   }, [addToast]);
 
-  const refreshRules = async () => {
+  useEffect(() => {
+    if (!error) return;
+    addToast(error, 'error');
+  }, [error, addToast]);
+
+  useEffect(() => {
+    if (segment === 'current') {
+      setPeriod(getCurrentPeriod());
+    } else if (segment === 'previous') {
+      setPeriod(getPreviousPeriod());
+    } else {
+      setPeriod(customPeriod || getCurrentPeriod());
+    }
+  }, [segment, customPeriod]);
+
+  const initialFormValues = useMemo<BudgetFormValues>(() => {
+    if (editing) {
+      return {
+        period: isoToPeriod(editing.period_month),
+        category_id: editing.category_id ?? '',
+        amount_planned: Number(editing.amount_planned ?? 0),
+        carryover_enabled: editing.carryover_enabled,
+        notes: editing.notes ?? '',
+      };
+    }
+    return { ...DEFAULT_FORM_VALUES, period };
+  }, [editing, period]);
+
+  const handleSegmentChange = (value: SegmentValue) => {
+    setSegment(value);
+  };
+
+  const handleCustomPeriodChange = (value: string) => {
+    setCustomPeriod(value);
+    setPeriod(value || getCurrentPeriod());
+  };
+
+  const handleOpenCreate = () => {
+    setEditing(null);
+    setModalOpen(true);
+  };
+
+  const handleEdit = (row: BudgetWithSpent) => {
+    setEditing(row);
+    setModalOpen(true);
+  };
+
+  const handleDelete = async (row: BudgetWithSpent) => {
+    const confirmed = window.confirm(`Hapus anggaran untuk ${row.category?.name ?? 'kategori ini'}?`);
+    if (!confirmed) return;
     try {
-      const rows = await listRules();
-      setRules(rows);
-    } catch (error) {
-      addToast(`Gagal memuat aturan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      setSubmitting(true);
+      await deleteBudget(row.id);
+      await refresh();
+      addToast('Anggaran dihapus', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal menghapus anggaran';
+      addToast(message, 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  useEffect(() => {
-    refreshRules();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    (async () => {
-      try {
-        const [rows, summaryData] = await Promise.all([
-          listBudgets({ period, q: filters.q || undefined, categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId, withActivity: true, sort: filters.sort }),
-          getSummary({ period }),
-        ]);
-        if (!cancelled) {
-          setBudgets(rows);
-          setSummary(summaryData);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          addToast(`Gagal memuat anggaran: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [period, filters.q, filters.categoryId, filters.sort, addToast]);
-
-  useEffect(() => {
-    const filtered = budgets
-      .map((record) => buildViewModel(record, summary))
-      .filter((item) => {
-        if (filters.status === 'overspend' && item.remaining >= 0) return false;
-        if (filters.status === 'on-track' && item.remaining < 0) return false;
-        if (filters.categoryId && filters.categoryId !== 'all') {
-          return item.categoryId === filters.categoryId;
-        }
-        return true;
-      })
-      .filter((item) => {
-        if (!filters.q) return true;
-        return item.label.toLowerCase().includes(filters.q.toLowerCase());
-      });
-    setViews(filtered);
-  }, [budgets, summary, filters]);
-
-  useEffect(() => {
-    if (!budgets.length) {
-      setSummary(DEFAULT_SUMMARY);
-      return;
-    }
-    const totalPlanned = budgets.reduce((sum, row) => sum + Number(row.planned ?? 0), 0);
-    const totalRolloverIn = budgets.reduce((sum, row) => sum + Number(row.rollover_in ?? 0), 0);
-    const totalActual = budgets.reduce(
-      (sum, row) => sum + Number(row.activity?.actual ?? 0),
-      0
-    );
-    const remaining = totalPlanned + totalRolloverIn - totalActual;
-    const base = new Date(`${period}-01T00:00:00Z`);
-    const daysInMonth = Number.isNaN(base.getTime())
-      ? 30
-      : new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0)).getUTCDate();
-    const coverage = totalActual > 0 ? Math.max(Math.floor(remaining / (totalActual / daysInMonth)), 0) : null;
-    setSummary({
-      planned: totalPlanned,
-      actual: totalActual,
-      remaining,
-      overspend: remaining < 0 ? Math.abs(remaining) : 0,
-      coverageDays: coverage,
-    });
-  }, [budgets, period]);
-
-  const tip = useMemo(() => buildTip(summary, views), [summary, views]);
-
-  const handleUndo = (id: string) => {
-    const existingIndex = undoStack.current.findIndex((item) => item.id === id);
-    if (existingIndex === -1) return;
-    const [target] = undoStack.current.splice(existingIndex, 1);
-    window.clearTimeout(target.timeoutId);
-    forceRerenderUndo((x) => x + 1);
-    (async () => {
-      try {
-        await upsertBudget({
-          id: target.previous.id,
-          period: target.previous.period_month.slice(0, 7),
-          category_id: target.previous.category_id ?? undefined,
-          name: target.previous.name ?? undefined,
-          planned: target.previous.planned,
-          carry_rule: target.previous.carry_rule,
-          note: target.previous.note ?? undefined,
-          rollover_in: target.previous.rollover_in,
-          rollover_out: target.previous.rollover_out,
-        });
-        setBudgets((prev) =>
-          prev.map((row) => (row.id === target.previous.id ? { ...target.previous } : row))
-        );
-        addToast('Perubahan dibatalkan', 'success');
-      } catch (error) {
-        addToast(`Gagal membatalkan perubahan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-      }
-    })();
-  };
-
-  const pushUndo = (previous: BudgetRecord) => {
-    const timeoutId = window.setTimeout(() => {
-      undoStack.current = undoStack.current.filter((item) => item.id !== previous.id);
-      forceRerenderUndo((x) => x + 1);
-    }, 6000);
-    undoStack.current.push({
-      id: previous.id,
-      previous,
-      timeoutId,
-      expiresAt: Date.now() + 6000,
-    });
-    forceRerenderUndo((x) => x + 1);
-  };
-
-  const handleInlineUpdate = async (
-    id: string,
-    payload: Partial<Pick<BudgetRecord, 'planned' | 'rollover_in' | 'carry_rule'>>
-  ) => {
-    const target = budgets.find((item) => item.id === id);
-    if (!target) return;
-    const previous = { ...target };
-    const next: BudgetRecord = {
-      ...target,
-      ...('planned' in payload ? { planned: payload.planned ?? target.planned } : {}),
-      ...('rollover_in' in payload
-        ? { rollover_in: payload.rollover_in ?? target.rollover_in }
-        : {}),
-      ...('carry_rule' in payload
-        ? { carry_rule: (payload.carry_rule ?? target.carry_rule) as CarryRule }
-        : {}),
-    };
-    setBudgets((prev) => prev.map((row) => (row.id === id ? next : row)));
-    pushUndo(previous);
+  const handleToggleCarryover = async (row: BudgetWithSpent, carryover: boolean) => {
     try {
       await upsertBudget({
-        id: next.id,
-        period: next.period_month.slice(0, 7),
-        category_id: next.category_id ?? undefined,
-        name: next.name ?? undefined,
-        planned: next.planned,
-        carry_rule: next.carry_rule,
-        note: next.note ?? undefined,
-        rollover_in: next.rollover_in,
-        rollover_out: next.rollover_out,
+        category_id: row.category_id,
+        period: isoToPeriod(row.period_month),
+        amount_planned: Number(row.amount_planned ?? 0),
+        carryover_enabled: carryover,
+        notes: row.notes ?? undefined,
       });
-    } catch (error) {
-      setBudgets((prev) => prev.map((row) => (row.id === id ? previous : row)));
-      addToast(`Gagal menyimpan perubahan: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal memperbarui carryover';
+      addToast(message, 'error');
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleSubmit = async (values: BudgetFormValues) => {
     try {
-      await deleteBudget(id);
-      setBudgets((prev) => prev.filter((row) => row.id !== id));
-      addToast('Anggaran dihapus', 'success');
-    } catch (error) {
-      addToast(`Gagal menghapus anggaran: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-    }
-  };
-
-  const handleCopy = async () => {
-    if (periods.length < 2) return;
-    const fromPeriod = periods[1];
-    try {
-      await copyBudgets({ fromPeriod, toPeriod: period, strategy: 'clone', includeRolloverIn: false });
-      addToast('Anggaran bulan lalu disalin', 'success');
-      const rows = await listBudgets({ period, withActivity: true, sort: filters.sort });
-      setBudgets(rows);
-    } catch (error) {
-      addToast(`Gagal menyalin anggaran: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-    }
-  };
-
-  const handleComputeRollover = async () => {
-    try {
-      const rows = await computeRollover({ period });
-      setBudgets(rows);
-      addToast('Rollover berhasil dihitung', 'success');
-    } catch (error) {
-      addToast(`Gagal menghitung rollover: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-    }
-  };
-
-  const handleApplyRollover = async () => {
-    try {
-      await applyRolloverToNext({ period });
-      addToast('Rollover diterapkan ke bulan berikut', 'success');
-    } catch (error) {
-      addToast(`Gagal menerapkan rollover: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-    }
-  };
-
-  const handleExportCsv = async () => {
-    setExporting(true);
-    try {
-      const header = ['category_or_name', 'planned', 'rollover_in', 'carry_rule', 'note'];
-      const lines = [header.join(',')];
-      budgets.forEach((row) => {
-        const label = row.category_id ? row.name ?? '' : row.name ?? '';
-        const cells = [
-          `"${label.replace(/"/g, '""')}"`,
-          row.planned.toFixed(2),
-          row.rollover_in.toFixed(2),
-          row.carry_rule,
-          row.note ? `"${row.note.replace(/"/g, '""')}"` : '',
-        ];
-        lines.push(cells.join(','));
+      setSubmitting(true);
+      await upsertBudget({
+        category_id: values.category_id,
+        period: values.period,
+        amount_planned: Number(values.amount_planned),
+        carryover_enabled: values.carryover_enabled,
+        notes: values.notes ? values.notes : undefined,
       });
-      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `budgets-${period}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      addToast('Data anggaran diekspor', 'success');
-    } catch (error) {
-      addToast(`Gagal mengekspor CSV: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
+      setModalOpen(false);
+      setEditing(null);
+      addToast('Anggaran tersimpan', 'success');
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan anggaran';
+      addToast(message, 'error');
     } finally {
-      setExporting(false);
+      setSubmitting(false);
     }
   };
-
-  const parseCsv = (content: string) => {
-    const rows = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (!rows.length) return [];
-    const [, ...dataRows] = rows;
-    return dataRows.map((row) => {
-      const parts: string[] = [];
-      let buffer = '';
-      let inQuotes = false;
-      for (let i = 0; i < row.length; i += 1) {
-        const char = row[i];
-        if (char === '"') {
-          if (inQuotes && row[i + 1] === '"') {
-            buffer += '"';
-            i += 1;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (char === ',' && !inQuotes) {
-          parts.push(buffer);
-          buffer = '';
-        } else {
-          buffer += char;
-        }
-      }
-      parts.push(buffer);
-      return parts;
-    });
-  };
-
-  const handleImportCsv = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const rows = parseCsv(text);
-      if (!rows.length) {
-        addToast('File kosong atau tidak valid', 'warning');
-        return;
-      }
-      const payloads = rows
-        .map((cols) => {
-          const [label, plannedStr, rolloverInStr, carryRule, note] = cols;
-          const planned = Number.parseFloat(plannedStr ?? '0');
-          const rolloverIn = Number.parseFloat(rolloverInStr ?? '0');
-          const carry = (carryRule as CarryRule) ?? 'carry-positive';
-          return {
-            period,
-            name: label || undefined,
-            planned: Number.isFinite(planned) ? planned : 0,
-            rollover_in: Number.isFinite(rolloverIn) ? rolloverIn : 0,
-            carry_rule: ['none', 'carry-positive', 'carry-all', 'reset-zero'].includes(carry)
-              ? (carry as CarryRule)
-              : 'carry-positive',
-            note: note || undefined,
-          };
-        })
-        .filter((item) => item.name);
-      const saved = await bulkUpsertBudgets(payloads);
-      setBudgets(saved);
-      addToast('CSV berhasil diimpor', 'success');
-    } catch (error) {
-      addToast(`Gagal mengimpor CSV: ${error instanceof Error ? error.message : 'tidak diketahui'}`, 'error');
-    } finally {
-      event.target.value = '';
-    }
-  };
-
-  const filteredViews = useMemo(() => {
-    if (filters.status === 'warning') {
-      return views.filter((item) => item.status === 'warning');
-    }
-    return views;
-  }, [views, filters.status]);
 
   return (
     <Page>
       <Section first>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-sm font-medium" htmlFor="period-picker">
-              Periode
-            </label>
-            <select
-              id="period-picker"
-              className="h-11 rounded-2xl border border-border bg-surface-1 px-4 text-sm"
-              value={period}
-              onChange={(event) => setPeriod(event.target.value)}
-            >
-              {periods.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="h-11 rounded-2xl bg-[var(--brand)] px-4 text-sm font-semibold text-white shadow"
-              onClick={() => setBudgetFormOpen(true)}
-            >
-              Tambah Anggaran
-            </button>
-            <button
-              type="button"
-              className="h-11 rounded-2xl border border-border px-4 text-sm font-medium"
-              onClick={() => setAutoAllocateOpen(true)}
-            >
-              Template
-            </button>
-            <button
-              type="button"
-              className="h-11 rounded-2xl border border-border px-4 text-sm font-medium"
-              onClick={handleCopy}
-            >
-              Salin dari …
-            </button>
-            <button
-              type="button"
-              className="h-11 rounded-2xl border border-border px-4 text-sm font-medium"
-              onClick={handleExportCsv}
-              disabled={exporting}
-            >
-              Ekspor CSV
-            </button>
-            <button
-              type="button"
-              className="h-11 rounded-2xl border border-border px-4 text-sm font-medium"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Impor CSV
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={handleImportCsv}
-            />
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border bg-surface-1 p-4 text-sm text-muted">
-          {tip}
-        </div>
-      </Section>
-
-      <Section>
-        <BudgetsSummary summary={summary} loading={loading} />
-      </Section>
-
-      <Section>
-        <BudgetsFilterBar
-          filters={filters}
-          onChange={setFilters}
-          categories={categories}
-        />
-      </Section>
-
-      {undoStack.current.length > 0 && (
-        <Section>
-          <div className="rounded-2xl border border-dashed border-border bg-surface-1 p-4 text-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span>Perubahan tersimpan. Anda dapat membatalkan dalam 6 detik.</span>
-              <div className="flex flex-wrap gap-2">
-                {undoStack.current.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="rounded-xl border border-border px-3 py-1 text-xs font-medium"
-                    onClick={() => handleUndo(item.id)}
-                  >
-                    Undo {formatBudgetAmount(item.previous.planned)}
-                  </button>
-                ))}
-              </div>
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-3xl font-semibold text-zinc-900 dark:text-zinc-50">Anggaran</h1>
+              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                Atur dan pantau alokasi pengeluaranmu tiap bulan.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={refresh}
+                className="hidden h-11 items-center gap-2 rounded-2xl border border-white/50 px-4 text-sm font-semibold text-zinc-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-white dark:border-white/20 dark:text-zinc-200 md:inline-flex"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Segarkan
+              </button>
+              <button
+                type="button"
+                disabled={categoriesLoading}
+                onClick={handleOpenCreate}
+                className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 px-5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <Plus className="h-4 w-4" />
+                Tambah anggaran
+              </button>
             </div>
           </div>
-        </Section>
-      )}
 
-      <Section>
-        <div className="hidden lg:block">
-          <BudgetsTable
-            budgets={filteredViews}
-            loading={loading}
-            onInlineUpdate={handleInlineUpdate}
-            onOpenDetail={setSelected}
-            onDelete={handleDelete}
-            onManageRule={(budget) => {
-              const target = rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
-              setRuleBudget(budget);
-              setRuleEditing(target);
-            }}
-            onComputeRollover={handleComputeRollover}
-            onApplyRollover={handleApplyRollover}
-          />
-        </div>
-        <div className="space-y-4 lg:hidden">
-          {filteredViews.map((budget) => (
-            <BudgetCard
-              key={budget.id}
-              budget={budget}
-              onOpenDetail={() => setSelected(budget)}
-              onEdit={(field, value) =>
-                handleInlineUpdate(budget.id, { [field]: value } as Partial<BudgetRecord>)
-              }
-              onRule={() => {
-                const target = rules.find((rule) => rule.category_id === budget.categoryId) ?? null;
-                setRuleBudget(budget);
-                setRuleEditing(target);
-              }}
-              onDelete={() => handleDelete(budget.id)}
-            />
-          ))}
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap gap-2">
+              {SEGMENTS.map(({ value, label }) => {
+                const active = value === segment;
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => handleSegmentChange(value)}
+                    className={`h-11 rounded-2xl px-5 text-sm font-semibold transition ${
+                      active
+                        ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-900/20 dark:bg-zinc-100 dark:text-zinc-900'
+                        : 'border border-white/50 bg-white/70 text-zinc-600 shadow-sm hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {segment === 'custom' ? (
+              <input
+                type="month"
+                value={customPeriod}
+                onChange={(event) => handleCustomPeriodChange(event.target.value)}
+                className="h-11 rounded-2xl border-0 bg-white/80 px-4 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+                aria-label="Pilih periode custom"
+              />
+            ) : (
+              <div className="flex items-center gap-2 rounded-2xl border border-white/50 bg-white/70 px-4 py-2 text-sm font-medium text-zinc-600 shadow-sm dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200">
+                <Calendar className="h-4 w-4" />
+                <span>{toHumanReadable(period)}</span>
+              </div>
+            )}
+          </div>
         </div>
       </Section>
 
-      <BudgetDetailDrawer
-        budget={selected}
-        onClose={() => setSelected(null)}
-        period={period}
-      />
+      <Section>
+        <SummaryCards summary={summary} loading={loading} />
+      </Section>
 
-      <Modal
-        open={budgetFormOpen}
-        title="Tambah Anggaran"
-        onClose={() => setBudgetFormOpen(false)}
-      >
-        <BudgetForm
-          period={period}
-          categories={categories}
-          onCancel={() => setBudgetFormOpen(false)}
-          onSaved={async () => {
-            setBudgetFormOpen(false);
-            const rows = await listBudgets({ period, withActivity: true, sort: filters.sort });
-            setBudgets(rows);
-          }}
+      {error ? (
+        <Section>
+          <div className="rounded-2xl border border-rose-200/70 bg-rose-50/70 p-4 text-sm text-rose-600 shadow-sm dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-300">
+            Terjadi kesalahan saat memuat data anggaran. Silakan coba lagi.
+          </div>
+        </Section>
+      ) : null}
+
+      <Section>
+        <BudgetTable
+          rows={rows}
+          loading={loading || submitting}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onToggleCarryover={handleToggleCarryover}
         />
-      </Modal>
+      </Section>
 
-      <Modal
-        open={!!ruleBudget}
-        title={ruleEditing?.id ? 'Edit Aturan' : 'Buat Aturan'}
+      <BudgetFormModal
+        open={modalOpen}
+        title={editing ? 'Edit anggaran' : 'Tambah anggaran'}
+        categories={categories}
+        initialValues={initialFormValues}
+        submitting={submitting}
         onClose={() => {
-          setRuleEditing(null);
-          setRuleBudget(null);
+          setModalOpen(false);
+          setEditing(null);
         }}
-      >
-        {ruleBudget && (
-          <BudgetRuleForm
-            budget={ruleBudget}
-            rule={ruleEditing ?? undefined}
-            onSaved={() => {
-              setRuleEditing(null);
-              setRuleBudget(null);
-              refreshRules();
-            }}
-          />
-        )}
-      </Modal>
-
-      <AutoAllocateDialog
-        open={autoAllocateOpen}
-        onClose={() => setAutoAllocateOpen(false)}
-        period={period}
-        budgets={budgets.map((record) => buildViewModel(record, summary))}
-        onApplied={async () => {
-          setAutoAllocateOpen(false);
-          const rows = await listBudgets({ period, withActivity: true, sort: filters.sort });
-          setBudgets(rows);
-        }}
+        onSubmit={handleSubmit}
       />
     </Page>
   );
 }
+
