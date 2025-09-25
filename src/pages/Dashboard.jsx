@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import KpiCards from "../components/KpiCards";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
@@ -12,9 +12,26 @@ import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
+import PeriodPicker from "../components/dashboard/PeriodPicker";
+import DashboardSummary from "../components/dashboard/DashboardSummary";
+import useDashboardBalances from "../hooks/useDashboardBalances";
+import { getPresetRange } from "../lib/date-range";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
+  const [preset, setPreset] = useState("month");
+  const [range, setRange] = useState(() => getPresetRange("month"));
+  const {
+    income: summaryIncome,
+    expense: summaryExpense,
+    cashBalance,
+    nonCashBalance,
+    totalBalance,
+    loading: balancesLoading,
+    error: balancesError,
+    refresh: refreshBalances,
+  } = useDashboardBalances({ start: range.start, end: range.end });
+
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
     let count = 0;
@@ -35,6 +52,16 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
 
   const insights = useInsights(txs);
   const savingsTarget = stats?.savingsTarget || 1_000_000;
+  const effectiveBalance = balancesLoading && typeof stats?.balance === "number" ? stats.balance : totalBalance;
+
+  const handlePeriodChange = useCallback((nextPreset, nextRange) => {
+    setPreset(nextPreset);
+    setRange(nextRange);
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    void refreshBalances();
+  }, [refreshBalances]);
 
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
@@ -47,16 +74,37 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
         </p>
       </header>
 
+      <div className="space-y-4">
+        <PeriodPicker
+          range={range}
+          preset={preset}
+          onChange={handlePeriodChange}
+          onRefresh={handleRefresh}
+          loading={balancesLoading}
+        />
+        <DashboardSummary
+          income={summaryIncome}
+          expense={summaryExpense}
+          cashBalance={cashBalance}
+          nonCashBalance={nonCashBalance}
+          totalBalance={totalBalance}
+          period={range}
+          loading={balancesLoading}
+          error={balancesError}
+        />
+      </div>
+
       <KpiCards
-        income={stats?.income || 0}
-        expense={stats?.expense || 0}
-        net={stats?.balance || 0}
+        income={summaryIncome}
+        expense={summaryExpense}
+        net={totalBalance}
+        loading={balancesLoading}
       />
 
       <QuoteBoard />
 
       <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
-        <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
+        <SavingsProgress current={effectiveBalance || 0} target={savingsTarget} />
         <AchievementBadges
           stats={stats}
           streak={streak}
