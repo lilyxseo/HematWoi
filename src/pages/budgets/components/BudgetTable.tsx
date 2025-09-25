@@ -10,8 +10,7 @@ interface BudgetTableProps {
   onToggleCarryover: (row: BudgetWithSpent, carryover: boolean) => void;
 }
 
-const TABLE_WRAPPER_CLASS =
-  'rounded-2xl border border-white/20 dark:border-white/5 bg-gradient-to-b from-white/80 to-white/50 dark:from-zinc-900/60 dark:to-zinc-900/30 backdrop-blur shadow-sm overflow-hidden';
+const TABLE_WRAPPER_CLASS = 'card overflow-hidden p-0';
 
 function LoadingRows() {
   return (
@@ -62,15 +61,15 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
           ) : rows.length === 0 ? (
             <EmptyState />
           ) : (
-            <tbody className="divide-y divide-white/10 text-sm text-zinc-700 dark:text-zinc-200">
+            <tbody className="divide-y divide-border-subtle text-sm text-text">
               {rows.map((row) => {
-                const remainingClass = row.remaining < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+                const remainingClass = row.remaining < 0 ? 'text-danger' : 'text-success';
                 return (
                   <tr
                     key={row.id}
-                    className="transition-colors odd:bg-white/50 even:bg-white/40 hover:bg-white/70 dark:odd:bg-zinc-900/40 dark:even:bg-zinc-900/20 dark:hover:bg-zinc-900/60"
+                    className="transition-colors odd:bg-surface-alt/40 even:bg-surface-alt/60 hover:bg-surface-alt"
                   >
-                    <td className="px-4 py-4 font-medium text-zinc-900 dark:text-zinc-50">
+                    <td className="px-4 py-4 font-medium text-text">
                       {row.category?.name ?? 'Tanpa kategori'}
                     </td>
                     <td className="px-4 py-4">{formatCurrency(row.amount_planned, 'IDR')}</td>
@@ -86,11 +85,11 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                           onChange={(event) => onToggleCarryover(row, event.target.checked)}
                           className="peer sr-only"
                         />
-                        <span className="absolute inset-0 rounded-full bg-zinc-200/70 transition peer-checked:bg-emerald-500/80 dark:bg-zinc-800/70 dark:peer-checked:bg-emerald-500/70" />
-                        <span className="relative ml-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-6" />
+                        <span className="absolute inset-0 rounded-full bg-surface-alt transition peer-checked:bg-primary" />
+                        <span className="relative ml-1 h-4 w-4 rounded-full bg-surface shadow-sm transition-transform peer-checked:translate-x-6" />
                       </label>
                     </td>
-                    <td className="px-4 py-4 text-sm text-zinc-500 dark:text-zinc-400">
+                    <td className="px-4 py-4 text-sm text-muted">
                       {row.notes?.trim() ? row.notes : '—'}
                     </td>
                     <td className="px-4 py-4">
@@ -98,18 +97,16 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                         <button
                           type="button"
                           onClick={() => onEdit(row)}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/30 bg-white/60 text-zinc-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200"
-                          aria-label={`Edit ${row.category?.name ?? 'budget'}`}
+                          className="btn btn-secondary btn-sm"
                         >
-                          <Pencil className="h-4 w-4" />
+                          <Pencil className="h-4 w-4" /> Edit
                         </button>
                         <button
                           type="button"
                           onClick={() => onDelete(row)}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200/50 bg-rose-50/60 text-rose-500 shadow-sm transition hover:-translate-y-0.5 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
-                          aria-label={`Hapus ${row.category?.name ?? 'budget'}`}
+                          className="btn btn-danger btn-sm"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" /> Hapus
                         </button>
                       </div>
                     </td>
