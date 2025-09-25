@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { listCategories as listAllCategories } from './api-categories';
 
 type UUID = string;
 
@@ -13,6 +14,38 @@ export interface ExpenseCategory {
   inserted_at: string;
   group_name: Nullable<string>;
   order_index: Nullable<number>;
+}
+
+const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
+
+const isDevelopment = Boolean(
+  (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ||
+    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
+);
+
+function mapCategoryRecordToExpense(category: {
+  id: string;
+  user_id: string | null;
+  name: string;
+  type: string;
+  inserted_at?: string | null;
+  created_at?: string | null;
+  group_name?: string | null;
+  order_index?: number | null;
+  sort_order?: number | null;
+}): ExpenseCategory {
+  return {
+    id: category.id as UUID,
+    user_id: (category.user_id ?? 'local') as UUID,
+    type: 'expense',
+    name: category.name,
+    inserted_at:
+      category.inserted_at ??
+      category.created_at ??
+      FALLBACK_CATEGORY_INSERTED_AT,
+    group_name: category.group_name ?? null,
+    order_index: (category.order_index ?? category.sort_order) ?? null,
+  };
 }
 
 export interface BudgetRow {
@@ -92,17 +125,45 @@ function getMonthRange(period: string): { start: string; end: string } {
 }
 
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
-  const userId = await getCurrentUserId();
-  ensureAuth(userId);
-  const { data, error } = await supabase
-    .from('categories')
-    .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
-    .eq('user_id', userId)
-    .eq('type', 'expense')
-    .order('order_index', { ascending: true, nullsFirst: true })
-    .order('name', { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as ExpenseCategory[];
+  async function fetchFromCloud(): Promise<ExpenseCategory[]> {
+    const userId = await getCurrentUserId();
+    ensureAuth(userId);
+    const { data, error } = await supabase
+      .from('categories')
+      .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
+      .eq('user_id', userId)
+      .eq('type', 'expense')
+      .order('order_index', { ascending: true, nullsFirst: true })
+      .order('name', { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as ExpenseCategory[];
+  }
+
+  try {
+    const rows = await fetchFromCloud();
+    if (rows.length > 0) {
+      return rows;
+    }
+  } catch (error) {
+    // Fallback handled below when cloud fetch fails (e.g. offline or guest mode)
+    if (isDevelopment && error instanceof Error) {
+      console.warn('[HW] listCategoriesExpense fallback', error);
+    }
+  }
+
+  const localCategories = await listAllCategories();
+  return localCategories
+    .filter((category) => category.type === 'expense')
+    .map((category) =>
+      mapCategoryRecordToExpense({
+        id: category.id,
+        user_id: category.user_id,
+        name: category.name,
+        type: category.type,
+        created_at: category.created_at,
+        order_index: category.sort_order,
+      })
+    );
 }
 
 export async function listBudgets(period: string): Promise<BudgetRow[]> {
