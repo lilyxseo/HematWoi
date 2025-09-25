@@ -133,7 +133,7 @@ export default function BudgetFormModal({
                   type="month"
                   value={values.period}
                   onChange={(event) => handleChange('period', event.target.value)}
-                  className="h-11 w-full rounded-2xl border-0 bg-white/80 pl-11 pr-4 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+                  className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   required
                 />
               </div>
@@ -149,7 +149,7 @@ export default function BudgetFormModal({
                 <select
                   value={values.category_id}
                   onChange={(event) => handleChange('category_id', event.target.value)}
-                  className="h-11 w-full rounded-2xl border-0 bg-white/80 pl-11 pr-10 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+                  className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   required
                 >
                   <option value="" disabled>
@@ -178,21 +178,21 @@ export default function BudgetFormModal({
               step="1000"
               value={values.amount_planned}
               onChange={(event) => handleChange('amount_planned', Number(event.target.value))}
-              className="h-11 w-full rounded-2xl border-0 bg-white/80 px-4 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+              className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               required
             />
             {errors.amount_planned ? <span className="text-xs font-medium text-rose-500">{errors.amount_planned}</span> : null}
           </label>
 
-          <label className="flex items-center justify-between gap-4 rounded-2xl bg-white/70 px-4 py-3 text-sm font-medium text-zinc-600 shadow-inner ring-1 ring-white/40 transition dark:bg-zinc-900/50 dark:text-zinc-200 dark:ring-white/10">
+          <label className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-medium text-text shadow-sm transition">
             <span>Aktifkan carryover ke bulan berikutnya</span>
             <button
               type="button"
               onClick={() => handleChange('carryover_enabled', !values.carryover_enabled)}
               className={`relative inline-flex h-6 w-12 cursor-pointer items-center rounded-full ${
                 values.carryover_enabled
-                  ? 'bg-emerald-500/80 dark:bg-emerald-500/70'
-                  : 'bg-zinc-200/70 dark:bg-zinc-800/70'
+                  ? 'bg-brand/80'
+                  : 'bg-border/80'
               }`}
             >
               <span
@@ -209,7 +209,7 @@ export default function BudgetFormModal({
               rows={3}
               value={values.notes}
               onChange={(event) => handleChange('notes', event.target.value)}
-              className="min-h-[96px] rounded-2xl border-0 bg-white/80 px-4 py-3 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
+              className="min-h-[96px] rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               placeholder="Catatan tambahan untuk anggaran ini"
             />
           </label>
@@ -218,14 +218,14 @@ export default function BudgetFormModal({
             <button
               type="button"
               onClick={onClose}
-              className="h-11 rounded-2xl border border-white/50 px-6 text-sm font-semibold text-zinc-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-white dark:border-white/20 dark:text-zinc-200"
+              className="h-11 rounded-2xl border border-border px-6 text-sm font-semibold text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 px-6 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+              className="inline-flex h-11 items-center justify-center rounded-2xl bg-brand px-6 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting ? 'Menyimpan...' : 'Simpan anggaran'}
             </button>
