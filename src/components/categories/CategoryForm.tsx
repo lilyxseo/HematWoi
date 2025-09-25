@@ -1,16 +1,16 @@
 import { useEffect, useId, useState } from "react";
 import type { CategoryType } from "../../lib/api-categories";
-import ColorSwatch from "./ColorSwatch";
 
-interface CategoryFormValues {
+export interface CategoryFormValues {
   name: string;
-  color: string;
   type: CategoryType;
+  group_name: string | null;
+  order_index: number | null;
 }
 
 interface CategoryFormProps {
   mode?: "create" | "edit";
-  initialValues?: CategoryFormValues;
+  initialValues?: Partial<CategoryFormValues>;
   onSubmit: (values: CategoryFormValues) => Promise<void> | void;
   onCancel?: () => void;
   isSubmitting?: boolean;
@@ -35,49 +35,72 @@ export default function CategoryForm({
   allowTypeChange = mode === "create",
 }: CategoryFormProps) {
   const defaultName = initialValues?.name ?? "";
-  const defaultColor = initialValues?.color ?? "#64748B";
   const defaultType = normalizeType(initialValues?.type);
+  const defaultGroup = initialValues?.group_name ?? "";
+  const defaultOrder =
+    typeof initialValues?.order_index === "number" && Number.isFinite(initialValues.order_index)
+      ? String(initialValues.order_index)
+      : "";
 
   const [name, setName] = useState(defaultName);
-  const [color, setColor] = useState(defaultColor);
   const [type, setType] = useState<CategoryType>(defaultType);
+  const [groupName, setGroupName] = useState(defaultGroup);
+  const [orderIndex, setOrderIndex] = useState(defaultOrder);
   const [nameError, setNameError] = useState<string | null>(null);
-  const [colorError, setColorError] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   const nameId = useId();
   const typeId = useId();
+  const groupId = useId();
+  const orderId = useId();
 
   useEffect(() => {
     setName(defaultName);
-    setColor(defaultColor);
     setType(defaultType);
+    setGroupName(defaultGroup);
+    setOrderIndex(defaultOrder);
     setNameError(null);
-    setColorError(null);
-  }, [defaultName, defaultColor, defaultType]);
+    setOrderError(null);
+  }, [defaultName, defaultType, defaultGroup, defaultOrder]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = name.trim();
+    const trimmedName = name.trim();
+    const trimmedGroup = groupName.trim();
+    const orderValue = orderIndex.trim();
+
     let hasError = false;
 
-    if (!trimmed || trimmed.length < 1 || trimmed.length > 60) {
-      setNameError("Nama harus 1-60 karakter.");
+    if (!trimmedName || trimmedName.length > 60) {
+      setNameError("Nama kategori harus 1-60 karakter.");
       hasError = true;
     } else {
       setNameError(null);
     }
 
-    if (!/^#[0-9A-F]{6}$/i.test(color)) {
-      setColorError("Gunakan format #RRGGBB.");
-      hasError = true;
+    let parsedOrder: number | null = null;
+    if (orderValue.length) {
+      const parsed = Number.parseInt(orderValue, 10);
+      if (Number.isNaN(parsed)) {
+        setOrderError("Urutan harus berupa angka.");
+        hasError = true;
+      } else {
+        parsedOrder = parsed;
+        setOrderError(null);
+      }
     } else {
-      setColorError(null);
+      setOrderError(null);
     }
 
     if (hasError) return;
 
     try {
-      await onSubmit({ name: trimmed, color: color.toUpperCase(), type });
+      await onSubmit({
+        name: trimmedName,
+        type,
+        group_name: trimmedGroup.length ? trimmedGroup : null,
+        order_index: parsedOrder,
+      });
     } catch (error) {
       if (import.meta.env?.DEV || process.env?.NODE_ENV === "development") {
         console.error("[HW] category form submit failed", error);
@@ -87,9 +110,12 @@ export default function CategoryForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-3 md:grid-cols-2">
         <div className="min-w-0">
-          <label htmlFor={nameId} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+          <label
+            htmlFor={nameId}
+            className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted"
+          >
             Nama kategori
           </label>
           <input
@@ -105,13 +131,18 @@ export default function CategoryForm({
         </div>
         {allowTypeChange ? (
           <div className="min-w-0">
-            <label htmlFor={typeId} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+            <label
+              htmlFor={typeId}
+              className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted"
+            >
               Tipe
             </label>
             <select
               id={typeId}
               value={type}
-              onChange={(event) => setType(normalizeType(event.target.value as CategoryType))}
+              onChange={(event) =>
+                setType(normalizeType(event.target.value as CategoryType))
+              }
               disabled={isSubmitting}
               className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-1/80 px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
             >
@@ -124,15 +155,43 @@ export default function CategoryForm({
           </div>
         ) : null}
       </div>
-      <div className="min-w-0">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Warna</p>
-        <ColorSwatch
-          value={color}
-          onChange={setColor}
-          disabled={isSubmitting}
-          name="category-color"
-        />
-        {colorError ? <p className="mt-1 text-xs text-danger">{colorError}</p> : null}
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="min-w-0">
+          <label
+            htmlFor={groupId}
+            className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Grup (opsional)
+          </label>
+          <input
+            id={groupId}
+            name="category-group"
+            value={groupName}
+            onChange={(event) => setGroupName(event.target.value)}
+            disabled={isSubmitting}
+            className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-1/80 px-3 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
+            placeholder="Contoh: Tetap"
+          />
+        </div>
+        <div className="min-w-0">
+          <label
+            htmlFor={orderId}
+            className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Urutan (opsional)
+          </label>
+          <input
+            id={orderId}
+            name="category-order"
+            value={orderIndex}
+            onChange={(event) => setOrderIndex(event.target.value)}
+            disabled={isSubmitting}
+            inputMode="numeric"
+            className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-1/80 px-3 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
+            placeholder="0"
+          />
+          {orderError ? <p className="mt-1 text-xs text-danger">{orderError}</p> : null}
+        </div>
       </div>
       <div className="flex justify-end gap-2">
         {onCancel ? (
