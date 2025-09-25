@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Plus, Trash2 } from 'lucide-react';
 import type { GoalPayload, GoalPriority, GoalRecord, GoalStatus } from '../../lib/api-goals';
@@ -314,11 +314,23 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
 
   if (!open) return null;
 
+  const handleBackdropClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  };
+
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto bg-black/40 px-4 py-10 sm:items-center sm:py-12"
+      role="dialog"
+      aria-modal="true"
+      onClick={handleBackdropClick}
+    >
       <div
         ref={dialogRef}
-        className="w-full max-w-2xl rounded-3xl border border-border/60 bg-card/95 p-6 text-text shadow-xl backdrop-blur"
+        className="relative my-auto w-full max-w-2xl rounded-3xl border border-border/60 bg-card/95 p-5 text-text shadow-xl backdrop-blur sm:p-6"
+        onClick={(event) => event.stopPropagation()}
       >
         <header className="mb-6 flex items-start justify-between gap-4">
           <div>
@@ -515,7 +527,10 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
 
             <div className="space-y-3">
               {custom.map((item) => (
-                <div key={item.id} className="grid grid-cols-[1fr,minmax(120px,1fr),auto] items-center gap-2">
+                <div
+                  key={item.id}
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr),minmax(140px,1fr),auto] sm:items-center"
+                >
                   <input
                     data-error-id={`milestone-${item.id}`}
                     type="text"
@@ -539,13 +554,13 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
                   <button
                     type="button"
                     onClick={handleRemoveCustom(item.id)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-muted transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-muted transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:justify-self-end"
                     aria-label="Hapus milestone"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                   </button>
                   {errors[`milestone-${item.id}`] ? (
-                    <span className="col-span-3 text-xs text-danger">{errors[`milestone-${item.id}`]}</span>
+                    <span className="col-span-full text-xs text-danger">{errors[`milestone-${item.id}`]}</span>
                   ) : null}
                 </div>
               ))}
