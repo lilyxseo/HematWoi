@@ -6,8 +6,8 @@ const nodeEnv =
     ? globalThis.process.env
     : {}
 
-const supabaseUrl = browserEnv.VITE_SUPABASE_URL ?? nodeEnv.VITE_SUPABASE_URL
-const supabaseKey =
+export const supabaseUrl = browserEnv.VITE_SUPABASE_URL ?? nodeEnv.VITE_SUPABASE_URL
+export const supabaseKey =
   browserEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
   browserEnv.VITE_SUPABASE_ANON_KEY ??
   nodeEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
@@ -19,4 +19,4 @@ if (!supabaseUrl || !supabaseKey) {
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient(supabaseUrl ?? '', supabaseKey ?? '')

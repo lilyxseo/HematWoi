@@ -10,6 +10,7 @@ import {
   Receipt,
   RotateCcw,
   Save,
+  Search,
   Tag as TagIcon,
   TrendingDown,
   TrendingUp,
@@ -21,6 +22,7 @@ import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { listAccounts, listCategories } from '../lib/api';
+import { listCategoriesExpense } from '../lib/budgetApi';
 import { createTransaction } from '../lib/transactionsApi';
 import { supabase } from '../lib/supabase';
 
@@ -84,6 +86,19 @@ function parseAmount(value) {
   return Number.isFinite(parsed) ? parsed : NaN;
 }
 
+function toUserMessage(error, fallback) {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (error && typeof error === 'object' && typeof error.message === 'string' && error.message.trim()) {
+    return error.message;
+  }
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+  return fallback;
+}
+
 async function uploadReceipt(file, transactionId) {
   const path = `receipts/${transactionId}/${Date.now()}_${file.name}`;
   const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file, {
@@ -118,31 +133,55 @@ export default function TransactionAdd({ onAdd }) {
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categorySearch, setCategorySearch] = useState('');
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
+    setCategorySearch('');
+  }, [type]);
+
+  useEffect(() => {
     let active = true;
     async function loadMasterData() {
       setLoading(true);
       try {
-        const [accountRows, categoryRows] = await Promise.all([
+        const [accountsResult, incomeResult, expenseResult] = await Promise.allSettled([
           listAccounts(),
-          listCategories(),
+          listCategories('income'),
+          listCategoriesExpense(),
         ]);
         if (!active) return;
-        const sortedAccounts = (accountRows || []).slice().sort((a, b) => {
+
+        if (accountsResult.status === 'rejected') {
+          throw accountsResult.reason;
+        }
+
+        const accountRows = accountsResult.value ?? [];
+        const sortedAccounts = accountRows.slice().sort((a, b) => {
           return (a.name || '').localeCompare(b.name || '', 'id');
         });
         setAccounts(sortedAccounts);
         if (sortedAccounts.length) {
           setAccountId(sortedAccounts[0].id);
         }
-        setCategories(categoryRows || []);
+
+        if (incomeResult.status === 'rejected') {
+          addToast(toUserMessage(incomeResult.reason, 'Gagal memuat kategori pemasukan'), 'error');
+        }
+
+        if (expenseResult.status === 'rejected') {
+          addToast(toUserMessage(expenseResult.reason, 'Gagal memuat kategori pengeluaran'), 'error');
+        }
+
+        const incomeCategories = incomeResult.status === 'fulfilled' ? incomeResult.value ?? [] : [];
+        const expenseCategories = expenseResult.status === 'fulfilled' ? expenseResult.value ?? [] : [];
+        setCategories([...expenseCategories, ...incomeCategories]);
       } catch (err) {
-        addToast(err?.message || 'Gagal memuat master data', 'error');
+        if (!active) return;
+        addToast(toUserMessage(err, 'Gagal memuat master data'), 'error');
       } finally {
         if (active) setLoading(false);
       }
@@ -191,10 +230,43 @@ export default function TransactionAdd({ onAdd }) {
     return grouped;
   }, [categories]);
 
-  useEffect(() => {
-    if (type === 'transfer') return;
+  const { filteredCategories, matchCount } = useMemo(() => {
     const list = categoriesByType[type] || [];
-    if (!list.length) return;
+    const query = categorySearch.trim().toLowerCase();
+    if (!query) {
+      return { filteredCategories: list, matchCount: list.length };
+    }
+    const matches = list.filter((item) => (item.name || '').toLowerCase().includes(query));
+    const matchCount = matches.length;
+    if (
+      categoryId &&
+      !matches.some((item) => item.id === categoryId)
+    ) {
+      const selected = list.find((item) => item.id === categoryId);
+      if (selected) {
+        matches.push(selected);
+      }
+    }
+    return { filteredCategories: matches, matchCount };
+  }, [categoriesByType, categoryId, categorySearch, type]);
+
+  const totalCategoriesForType = categoriesByType[type]?.length ?? 0;
+  const noCategoryMessage = type === 'expense' ? 'Belum ada kategori pengeluaran' : 'Belum ada kategori';
+  const showEmptyCategories = totalCategoriesForType === 0;
+  const showNoSearchResult = totalCategoriesForType > 0 && matchCount === 0 && categorySearch.trim().length > 0;
+  const categoryPlaceholder = showEmptyCategories ? noCategoryMessage : 'Pilih kategori';
+  const categorySelectValue = filteredCategories.some((item) => item.id === categoryId) ? categoryId : '';
+
+  useEffect(() => {
+    if (type === 'transfer') {
+      setCategoryId('');
+      return;
+    }
+    const list = categoriesByType[type] || [];
+    if (!list.length) {
+      setCategoryId('');
+      return;
+    }
     if (!categoryId || !list.some((item) => item.id === categoryId)) {
       setCategoryId(list[0].id);
     }
@@ -565,22 +637,40 @@ export default function TransactionAdd({ onAdd }) {
                       <TagIcon className="h-4 w-4" aria-hidden="true" />
                       Kategori
                     </label>
+                    <div className="relative mb-2">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+                      <input
+                        type="search"
+                        value={categorySearch}
+                        onChange={(event) => setCategorySearch(event.target.value)}
+                        placeholder="Cari kategori"
+                        aria-label="Cari kategori"
+                        className="h-10 w-full rounded-2xl border border-border-subtle bg-background pl-9 pr-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      />
+                    </div>
                     <select
                       id="category"
-                      value={categoryId}
+                      value={categorySelectValue}
                       onChange={(event) => {
                         setCategoryId(event.target.value);
                         setErrors((prev) => ({ ...prev, category_id: undefined }));
                       }}
                       className={INPUT_CLASS}
+                      disabled={showEmptyCategories}
                     >
-                      <option value="">Pilih kategori</option>
-                      {(categoriesByType[type] || []).map((category) => (
+                      <option value="">{categoryPlaceholder}</option>
+                      {filteredCategories.map((category) => (
                         <option key={category.id} value={category.id}>
                           {category.name}
                         </option>
                       ))}
                     </select>
+                    {showEmptyCategories ? (
+                      <p className="mt-1 text-xs text-muted">{noCategoryMessage}</p>
+                    ) : null}
+                    {showNoSearchResult ? (
+                      <p className="mt-1 text-xs text-muted">Tidak ada kategori yang cocok dengan pencarian.</p>
+                    ) : null}
                     {errors.category_id ? <p className="mt-1 text-xs text-destructive">{errors.category_id}</p> : null}
                   </div>
                 ) : null}

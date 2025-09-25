@@ -288,6 +288,7 @@ export default function BudgetsPage() {
         open={modalOpen}
         title={editing ? 'Edit anggaran' : 'Tambah anggaran'}
         categories={categories}
+        categoriesLoading={categoriesLoading}
         initialValues={initialFormValues}
         submitting={submitting}
         onClose={() => {

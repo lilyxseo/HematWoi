@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseUrl, supabaseKey } from './supabase';
 import { getCurrentUserId } from './session';
 import { listCategories as listAllCategories } from './api-categories';
 
@@ -23,6 +23,94 @@ const isDevelopment = Boolean(
     (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
 );
 
+const EXPENSE_CATEGORY_SELECT = 'id,user_id,type,name,inserted_at,group_name,order_index';
+
+let categoriesViewUnavailable = false;
+let categoriesViewWarningLogged = false;
+
+export class BudgetRpcUnavailableError extends Error {
+  status = 404;
+  code = 'BUDGET_RPC_MISSING';
+
+  constructor(message = 'Fungsi bud_upsert belum tersedia. Jalankan migrasi SQL di server.') {
+    super(message);
+    this.name = 'BudgetRpcUnavailableError';
+  }
+}
+
+function getSupabaseRestConfig() {
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Supabase belum dikonfigurasi.');
+  }
+  return { url: supabaseUrl, key: supabaseKey };
+}
+
+function buildSupabaseHeaders(asJson = false): Record<string, string> {
+  const { key } = getSupabaseRestConfig();
+  const headers: Record<string, string> = {
+    apikey: key,
+    Authorization: `Bearer ${key}`,
+  };
+  if (asJson) {
+    headers['Content-Type'] = 'application/json';
+  }
+  return headers;
+}
+
+async function readJson<T>(response: Response): Promise<T | null> {
+  try {
+    return (await response.json()) as T;
+  } catch (error) {
+    if (isDevelopment) {
+      console.warn('[HW] Failed to parse JSON response', error);
+    }
+    return null;
+  }
+}
+
+async function buildRestError(response: Response, fallback: string): Promise<Error> {
+  const body = await readJson<{ message?: string }>(response);
+  const message = typeof body?.message === 'string' && body.message.trim() ? body.message : fallback;
+  const error = new Error(message);
+  (error as { status?: number }).status = response.status;
+  return error;
+}
+
+async function fetchExpenseCategoriesFromRest(userId: string): Promise<ExpenseCategory[]> {
+  const { url } = getSupabaseRestConfig();
+  const params = new URLSearchParams({
+    select: EXPENSE_CATEGORY_SELECT,
+    user_id: `eq.${userId}`,
+    type: 'eq.expense',
+    order: 'order_index.asc.nullsfirst,name.asc',
+  });
+  const headers = buildSupabaseHeaders();
+
+  if (!categoriesViewUnavailable) {
+    const response = await fetch(`${url}/rest/v1/v_categories_budget?${params}`, { headers });
+    if (response.status === 404) {
+      categoriesViewUnavailable = true;
+      if (!categoriesViewWarningLogged) {
+        categoriesViewWarningLogged = true;
+        console.warn('v_categories_budget missing — using fallback /categories');
+      }
+    } else {
+      if (!response.ok) {
+        throw await buildRestError(response, 'Gagal memuat kategori pengeluaran.');
+      }
+      const payload = await readJson<ExpenseCategory[]>(response);
+      return (payload ?? []).map((row) => mapCategoryRecordToExpense(row as any));
+    }
+  }
+
+  const fallbackResponse = await fetch(`${url}/rest/v1/categories?${params}`, { headers });
+  if (!fallbackResponse.ok) {
+    throw await buildRestError(fallbackResponse, 'Gagal memuat kategori pengeluaran.');
+  }
+  const fallbackPayload = await readJson<ExpenseCategory[]>(fallbackResponse);
+  return (fallbackPayload ?? []).map((row) => mapCategoryRecordToExpense(row as any));
+}
+
 function mapCategoryRecordToExpense(category: {
   id: string;
   user_id: string | null;
@@ -43,7 +131,9 @@ function mapCategoryRecordToExpense(category: {
       category.inserted_at ??
       category.created_at ??
       FALLBACK_CATEGORY_INSERTED_AT,
-    group_name: category.group_name ?? null,
+    group_name: (category as { group_name?: string | null; group?: string | null }).group_name ??
+      (category as { group?: string | null }).group ??
+      null,
     order_index: (category.order_index ?? category.sort_order) ?? null,
   };
 }
@@ -96,7 +186,7 @@ function ensureAuth(userId: Nullable<string>): asserts userId is string {
   }
 }
 
-function toMonthStart(period: string): string {
+export function firstDayOfMonth(period: string): string {
   if (!period) throw new Error('Periode tidak valid');
   const [yearStr, monthStr] = period.split('-');
   if (!yearStr || !monthStr) throw new Error('Periode harus dalam format YYYY-MM');
@@ -109,43 +199,26 @@ function toMonthStart(period: string): string {
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
-  const start = new Date(`${toMonthStart(period)}T00:00:00.000Z`);
-  const end = new Date(start);
-  end.setUTCMonth(end.getUTCMonth() + 1);
-  const format = (date: Date) => {
-    const year = date.getUTCFullYear();
-    const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
-    const day = date.getUTCDate().toString().padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-  return {
-    start: format(start),
-    end: format(end),
-  };
+  const start = firstDayOfMonth(period);
+  const [yearStr, monthStr] = start.split('-');
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    throw new Error('Periode tidak valid');
+  }
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const end = `${nextYear.toString().padStart(4, '0')}-${nextMonth.toString().padStart(2, '0')}-01`;
+  return { start, end };
 }
 
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
-  async function fetchFromCloud(): Promise<ExpenseCategory[]> {
-    const userId = await getCurrentUserId();
-    ensureAuth(userId);
-    const { data, error } = await supabase
-      .from('categories')
-      .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
-      .eq('user_id', userId)
-      .eq('type', 'expense')
-      .order('order_index', { ascending: true, nullsFirst: true })
-      .order('name', { ascending: true });
-    if (error) throw error;
-    return (data ?? []) as ExpenseCategory[];
-  }
+  const userId = await getCurrentUserId();
+  ensureAuth(userId);
 
   try {
-    const rows = await fetchFromCloud();
-    if (rows.length > 0) {
-      return rows;
-    }
+    return await fetchExpenseCategoriesFromRest(userId);
   } catch (error) {
-    // Fallback handled below when cloud fetch fails (e.g. offline or guest mode)
     if (isDevelopment && error instanceof Error) {
       console.warn('[HW] listCategoriesExpense fallback', error);
     }
@@ -162,6 +235,9 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
         type: category.type,
         created_at: category.created_at,
         order_index: category.sort_order,
+        group_name: (category as { group_name?: string | null; group?: string | null }).group_name ??
+          (category as { group?: string | null }).group ??
+          null,
       })
     );
 }
@@ -175,7 +251,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
       'id,user_id,category_id,amount_planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name)'
     )
     .eq('user_id', userId)
-    .eq('period_month', toMonthStart(period))
+    .eq('period_month', firstDayOfMonth(period))
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as BudgetRow[];
@@ -187,10 +263,11 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
   const { start, end } = getMonthRange(period);
   const { data, error } = await supabase
     .from('transactions')
-    .select('category_id, amount, date')
+    .select('category_id, amount, date, to_account_id')
     .eq('user_id', userId)
     .is('deleted_at', null)
     .eq('type', 'expense')
+    .is('to_account_id', null)
     .gte('date', start)
     .lt('date', end);
   if (error) throw error;
@@ -208,15 +285,32 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
-  const payload = {
-    category_id: input.category_id,
-    amount_planned: input.amount_planned,
-    period_month: toMonthStart(input.period),
-    carryover_enabled: input.carryover_enabled,
-    notes: input.notes ?? null,
+  const { url } = getSupabaseRestConfig();
+  const body = {
+    p_category_id: input.category_id,
+    p_amount_planned: input.amount_planned,
+    p_period_month: firstDayOfMonth(input.period),
+    p_carryover_enabled: Boolean(input.carryover_enabled),
+    p_notes: input.notes ?? null,
   };
-  const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) throw error;
+
+  const response = await fetch(`${url}/rest/v1/rpc/bud_upsert`, {
+    method: 'POST',
+    headers: buildSupabaseHeaders(true),
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 404) {
+    throw new BudgetRpcUnavailableError();
+  }
+
+  if (!response.ok) {
+    throw await buildRestError(response, 'Gagal menyimpan anggaran.');
+  }
+
+  if (response.status !== 204) {
+    await readJson(response);
+  }
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {

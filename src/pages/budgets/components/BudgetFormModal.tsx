@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Calendar, PiggyBank } from 'lucide-react';
+import { Calendar, PiggyBank, Search } from 'lucide-react';
 import type { ExpenseCategory } from '../../../lib/budgetApi';
 
 export interface BudgetFormValues {
@@ -14,6 +14,7 @@ interface BudgetFormModalProps {
   open: boolean;
   title: string;
   categories: ExpenseCategory[];
+  categoriesLoading?: boolean;
   initialValues: BudgetFormValues;
   submitting?: boolean;
   onClose: () => void;
@@ -41,6 +42,7 @@ export default function BudgetFormModal({
   open,
   title,
   categories,
+  categoriesLoading,
   initialValues,
   submitting,
   onClose,
@@ -48,11 +50,13 @@ export default function BudgetFormModal({
 }: BudgetFormModalProps) {
   const [values, setValues] = useState<BudgetFormValues>(initialValues);
   const [errors, setErrors] = useState<Partial<Record<keyof BudgetFormValues, string>>>({});
+  const [categorySearch, setCategorySearch] = useState('');
 
   useEffect(() => {
     if (open) {
       setValues(initialValues);
       setErrors({});
+      setCategorySearch('');
     }
   }, [open, initialValues]);
 
@@ -67,16 +71,26 @@ export default function BudgetFormModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  const filteredCategories = useMemo(() => {
+    const query = categorySearch.trim().toLowerCase();
+    if (!query) return categories;
+    return categories.filter((category) =>
+      (category.name ?? '').toLowerCase().includes(query)
+    );
+  }, [categories, categorySearch]);
+
   const groupedCategories = useMemo(() => {
     const groups = new Map<string, ExpenseCategory[]>();
-    for (const category of categories) {
+    for (const category of filteredCategories) {
       const key = category.group_name ?? 'Ungrouped';
       const list = groups.get(key) ?? [];
       list.push(category);
       groups.set(key, list);
     }
     return Array.from(groups.entries());
-  }, [categories]);
+  }, [filteredCategories]);
+
+  const hasCategories = filteredCategories.length > 0;
 
   const handleChange = (field: keyof BudgetFormValues, value: string | number | boolean) => {
     setValues((prev) => ({ ...prev, [field]: value }));
@@ -138,22 +152,44 @@ export default function BudgetFormModal({
                 />
               </div>
               {errors.period ? <span className="text-xs font-medium text-rose-500">{errors.period}</span> : null}
-            </label>
+          </label>
 
-            <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
-              Kategori
-              <div className="relative">
-                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
-                  <PiggyBank className="h-4 w-4" />
-                </span>
+          <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+            Kategori
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
+                <Search className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <input
+                type="search"
+                value={categorySearch}
+                onChange={(event) => setCategorySearch(event.target.value)}
+                placeholder="Cari kategori"
+                aria-label="Cari kategori pengeluaran"
+                className="h-10 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              />
+            </div>
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
+                <PiggyBank className="h-4 w-4" />
+              </span>
+              {categoriesLoading ? (
+                <div
+                  className="h-11 w-full animate-pulse rounded-2xl bg-border/50"
+                  role="status"
+                  aria-live="polite"
+                  aria-label="Memuat daftar kategori"
+                />
+              ) : (
                 <select
                   value={values.category_id}
                   onChange={(event) => handleChange('category_id', event.target.value)}
                   className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  disabled={!hasCategories}
                   required
                 >
                   <option value="" disabled>
-                    Pilih kategori
+                    {hasCategories ? 'Pilih kategori' : 'Belum ada kategori pengeluaran'}
                   </option>
                   {groupedCategories.map(([groupName, groupCategories]) => (
                     <optgroup key={groupName} label={groupName}>
@@ -165,10 +201,21 @@ export default function BudgetFormModal({
                     </optgroup>
                   ))}
                 </select>
-              </div>
-              {errors.category_id ? <span className="text-xs font-medium text-rose-500">{errors.category_id}</span> : null}
-            </label>
-          </div>
+              )}
+            </div>
+            {!categoriesLoading && categories.length === 0 ? (
+              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Belum ada kategori pengeluaran
+              </span>
+            ) : null}
+            {!categoriesLoading && categories.length > 0 && !hasCategories ? (
+              <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Tidak ada kategori yang cocok dengan pencarian.
+              </span>
+            ) : null}
+            {errors.category_id ? <span className="text-xs font-medium text-rose-500">{errors.category_id}</span> : null}
+          </label>
+        </div>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
             Nominal Anggaran (IDR)
