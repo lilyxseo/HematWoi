@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import type { DebtPaymentRecord, DebtRecord } from '../../lib/api-debts';
+import type { AccountRecord } from '../../lib/api';
 import PaymentsList from './PaymentsList';
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll';
 
@@ -22,10 +23,14 @@ function parseDecimal(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-const todayIso = () => {
-  const now = new Date();
-  return now.toISOString().slice(0, 10);
-};
+const jakartaFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Jakarta',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const todayIso = () => jakartaFormatter.format(new Date());
 
 interface PaymentDrawerProps {
   open: boolean;
@@ -34,8 +39,10 @@ interface PaymentDrawerProps {
   loading?: boolean;
   submitting?: boolean;
   deletingId?: string | null;
+  accounts: AccountRecord[];
+  accountsLoading?: boolean;
   onClose: () => void;
-  onSubmit: (payload: { amount: number; date: string; notes?: string | null }) => Promise<void> | void;
+  onSubmit: (payload: { amount: number; paid_at: string; account_id: string; note?: string | null }) => Promise<void> | void;
   onDeletePayment: (payment: DebtPaymentRecord) => void;
 }
 
@@ -46,14 +53,17 @@ export default function PaymentDrawer({
   loading,
   submitting,
   deletingId,
+  accounts,
+  accountsLoading,
   onClose,
   onSubmit,
   onDeletePayment,
 }: PaymentDrawerProps) {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayIso());
-  const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<{ amount?: string; date?: string }>({});
+  const [accountId, setAccountId] = useState('');
+  const [note, setNote] = useState('');
+  const [errors, setErrors] = useState<{ amount?: string; date?: string; account?: string }>({});
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -103,10 +113,11 @@ export default function PaymentDrawer({
     if (open) {
       setAmount('');
       setDate(todayIso());
-      setNotes('');
+      setAccountId(accounts[0]?.id ?? '');
+      setNote('');
       setErrors({});
     }
-  }, [open, debt?.id]);
+  }, [open, debt?.id, accounts]);
 
   useEffect(() => {
     if (open) {
@@ -128,7 +139,7 @@ export default function PaymentDrawer({
     event.preventDefault();
     const parsedAmount = parseDecimal(amount);
     const trimmedDate = date?.trim() ?? '';
-    const nextErrors: { amount?: string; date?: string } = {};
+    const nextErrors: { amount?: string; date?: string; account?: string } = {};
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       nextErrors.amount = 'Masukkan nominal lebih dari 0.';
@@ -139,7 +150,11 @@ export default function PaymentDrawer({
       nextErrors.date = 'Pilih tanggal pembayaran yang valid.';
     }
 
-    if (nextErrors.amount || nextErrors.date) {
+    if (!accountId) {
+      nextErrors.account = 'Pilih sumber dana pembayaran.';
+    }
+
+    if (nextErrors.amount || nextErrors.date || nextErrors.account) {
       setErrors(nextErrors);
       return;
     }
@@ -149,11 +164,12 @@ export default function PaymentDrawer({
     try {
       await onSubmit({
         amount: parsedAmount,
-        date: trimmedDate || todayIso(),
-        notes: notes.trim() ? notes.trim() : null,
+        paid_at: trimmedDate || todayIso(),
+        account_id: accountId,
+        note: note.trim() ? note.trim() : null,
       });
       setAmount('');
-      setNotes('');
+      setNote('');
     } catch (submitError) {
       if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
         // eslint-disable-next-line no-console
@@ -263,13 +279,51 @@ export default function PaymentDrawer({
               </div>
 
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                <label htmlFor="payment-account" className="form-label">
+                  Sumber dana
+                </label>
+                <select
+                  id="payment-account"
+                  value={accountId}
+                  onChange={(event) => {
+                    setAccountId(event.target.value);
+                    if (errors.account) {
+                      setErrors((prev) => ({ ...prev, account: undefined }));
+                    }
+                  }}
+                  className="input"
+                  disabled={accountsLoading || accounts.length === 0}
+                >
+                  {accountsLoading ? (
+                    <option value="">Memuat akun…</option>
+                  ) : null}
+                  {!accountsLoading && accounts.length === 0 ? (
+                    <option value="">Belum ada akun</option>
+                  ) : null}
+                  {!accountsLoading
+                    ? accounts.map((account) => (
+                        <option key={account.id} value={account.id}>
+                          {account.name}
+                        </option>
+                      ))
+                    : null}
+                </select>
+                {errors.account ? <span className="form-error">{errors.account}</span> : null}
+                {!accountsLoading && accounts.length === 0 ? (
+                  <span className="text-xs font-normal text-muted">
+                    Tambahkan akun kas/bank terlebih dahulu untuk mencatat arus kas keluar.
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
                 <label htmlFor="payment-notes" className="form-label">
                   Catatan
                 </label>
-                <textarea
-                  id="payment-notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
+                  <textarea
+                    id="payment-notes"
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
                   rows={3}
                   placeholder="Catatan (opsional)"
                   className="form-control"
@@ -301,7 +355,7 @@ export default function PaymentDrawer({
             <button
               type="submit"
               form="payment-form"
-              disabled={Boolean(submitting)}
+              disabled={Boolean(submitting) || accountsLoading || accounts.length === 0}
               aria-busy={Boolean(submitting)}
               className="btn btn-primary w-full sm:w-auto"
             >

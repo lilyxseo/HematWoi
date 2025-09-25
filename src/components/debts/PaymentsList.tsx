@@ -26,7 +26,14 @@ export default function PaymentsList({ payments, onDelete, deletingId }: Payment
     <ul className="flex flex-col gap-3">
       {payments.map((payment) => {
         const amountLabel = currencyFormatter.format(payment.amount ?? 0);
-        const dateLabel = payment.date ? dateFormatter.format(new Date(payment.date)) : '-';
+        const dateValue = payment.paid_at
+          ? new Date(`${payment.paid_at}T00:00:00+07:00`)
+          : new Date(payment.created_at ?? Date.now());
+        const dateLabel = dateFormatter.format(dateValue);
+        const metaParts: string[] = [dateLabel];
+        if (payment.account_name) {
+          metaParts.push(payment.account_name);
+        }
         const isDeleting = deletingId === payment.id;
         return (
           <li
@@ -35,10 +42,10 @@ export default function PaymentsList({ payments, onDelete, deletingId }: Payment
           >
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text">{amountLabel}</p>
-              <p className="text-xs text-muted">{dateLabel}</p>
-              {payment.notes ? (
-                <p className="mt-2 break-words text-sm text-text/80" title={payment.notes}>
-                  {payment.notes}
+              <p className="text-xs text-muted">{metaParts.join(' • ')}</p>
+              {payment.note ? (
+                <p className="mt-2 break-words text-sm text-text/80" title={payment.note}>
+                  {payment.note}
                 </p>
               ) : null}
             </div>

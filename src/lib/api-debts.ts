@@ -31,8 +31,11 @@ export interface DebtPaymentRecord {
   debt_id: string;
   user_id: string;
   amount: number;
-  date: string;
-  notes: string | null;
+  paid_at: string;
+  account_id: string | null;
+  account_name: string | null;
+  note: string | null;
+  related_tx_id: string | null;
   created_at: string;
 }
 
@@ -75,8 +78,9 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
 
 export interface PaymentInput {
   amount: number;
-  date: string;
-  notes?: string | null;
+  paid_at: string;
+  account_id: string;
+  note?: string | null;
 }
 
 const DEBT_SELECT_COLUMNS =
@@ -102,10 +106,24 @@ function sanitizeIlike(value?: string | null) {
   return String(value).replace(/[%_]/g, (match) => `\\${match}`);
 }
 
+const JAKARTA_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Jakarta',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
 function safeNumber(value: unknown): number {
   if (value == null) return 0;
   const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toDateOnly(value: string | Date | null | undefined): string | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return JAKARTA_DATE_FORMATTER.format(date);
 }
 
 function toNum(value: unknown): number | undefined {
@@ -176,13 +194,20 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
 }
 
 function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+  const paidAtRaw = row.paid_at ?? row.date ?? row.created_at ?? new Date();
+  const paidAt = toDateOnly(paidAtRaw) ?? JAKARTA_DATE_FORMATTER.format(new Date());
+  const noteValue = row.note ?? row.notes ?? null;
+  const trimmedNote = typeof noteValue === 'string' ? noteValue.trim() || null : null;
   return {
     id: String(row.id),
     debt_id: String(row.debt_id),
     user_id: String(row.user_id),
     amount: safeNumber(row.amount),
-    date: row.date ?? row.created_at ?? new Date().toISOString(),
-    notes: row.notes ?? null,
+    paid_at: paidAt,
+    account_id: row.account_id ? String(row.account_id) : null,
+    account_name: row.account?.name ?? row.accounts?.name ?? null,
+    note: trimmedNote,
+    related_tx_id: row.related_tx_id ? String(row.related_tx_id) : null,
     created_at: row.created_at ?? new Date().toISOString(),
   };
 }
@@ -241,10 +266,10 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
       .eq('user_id', userId),
     supabase
       .from('debt_payments')
-      .select('amount, date')
+      .select('amount, paid_at')
       .eq('user_id', userId)
-      .gte('date', startOfMonth.toISOString())
-      .lt('date', nextMonth.toISOString()),
+      .gte('paid_at', toDateOnly(startOfMonth) ?? startOfMonth.toISOString().slice(0, 10))
+      .lt('paid_at', toDateOnly(nextMonth) ?? nextMonth.toISOString().slice(0, 10)),
   ]);
 
   if (debtsError) throw debtsError;
@@ -386,10 +411,12 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(
+        'id,debt_id,user_id,amount,paid_at,account_id,note,related_tx_id,created_at,account:accounts(id,name)'
+      )
       .eq('debt_id', id)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (paymentsError) throw paymentsError;
 
@@ -407,10 +434,12 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
     const userId = await getUserId();
     const { data, error } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(
+        'id,debt_id,user_id,amount,paid_at,account_id,note,related_tx_id,created_at,account:accounts(id,name)'
+      )
       .eq('debt_id', debtId)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(mapPaymentRow);
@@ -596,19 +625,38 @@ export async function addPayment(
 {
   try {
     const userId = await getUserId();
-    const amount = Math.max(0, payload.amount);
+    const amountValue = Number.isFinite(payload.amount) ? Number(payload.amount) : Number.NaN;
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      throw new Error('Nominal pembayaran harus lebih dari 0.');
+    }
+
+    const paidAtValue = toDateOnly(payload.paid_at) ?? null;
+    if (!paidAtValue) {
+      throw new Error('Tanggal pembayaran tidak valid.');
+    }
+
+    const accountId = typeof payload.account_id === 'string' ? payload.account_id.trim() : '';
+    if (!accountId) {
+      throw new Error('Pilih sumber dana pembayaran.');
+    }
+
+    const noteValue = payload.note && payload.note.trim() ? payload.note.trim() : null;
+
     const insertPayload = {
       debt_id: debtId,
       user_id: userId,
-      amount: amount.toFixed(2),
-      date: toISODate(payload.date) ?? new Date().toISOString(),
-      notes: payload.notes ?? null,
+      amount: Number(amountValue.toFixed(2)),
+      paid_at: paidAtValue,
+      account_id: accountId,
+      note: noteValue,
     };
 
     const { data, error } = await supabase
       .from('debt_payments')
       .insert([insertPayload])
-      .select('*')
+      .select(
+        'id,debt_id,user_id,amount,paid_at,account_id,note,related_tx_id,created_at,account:accounts(id,name)'
+      )
       .single();
     if (error) throw error;
 

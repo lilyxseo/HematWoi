@@ -139,6 +139,17 @@ export default function useTransactionsQuery() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const handler = () => {
+      setRefreshToken((token) => token + 1);
+    };
+    window.addEventListener("hematwoi:transactions:refresh", handler);
+    return () => {
+      window.removeEventListener("hematwoi:transactions:refresh", handler);
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const request = toRequestFilter(filter, page);
     setLoading(true);

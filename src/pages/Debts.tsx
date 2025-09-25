@@ -23,6 +23,7 @@ import {
   type DebtSummary,
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
+import { listAccounts, type AccountRecord } from '../lib/api';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -32,6 +33,13 @@ const INITIAL_FILTERS: DebtsFilterState = {
   dateFrom: null,
   dateTo: null,
   sort: 'newest',
+};
+
+type PaymentFormPayload = {
+  amount: number;
+  paid_at: string;
+  account_id: string;
+  note?: string | null;
 };
 
 function toISO(date: string | null | undefined) {
@@ -60,6 +68,24 @@ function formatCurrency(value: number) {
   }).format(Math.max(0, value));
 }
 
+const jakartaDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Jakarta',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+function toJakartaDate(value: string | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return jakartaDateFormatter.format(date);
+}
+
+function todayJakarta() {
+  return jakartaDateFormatter.format(new Date());
+}
+
 export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
@@ -80,6 +106,8 @@ export default function Debts() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -122,6 +150,37 @@ export default function Debts() {
     };
   }, [filters, addToast, logError, canUseCloud]);
 
+  useEffect(() => {
+    let active = true;
+    if (!canUseCloud || !user?.id) {
+      setAccounts([]);
+      setAccountsLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    setAccountsLoading(true);
+    (async () => {
+      try {
+        const rows = await listAccounts(user.id);
+        if (!active) return;
+        setAccounts(rows);
+      } catch (error) {
+        logError(error, 'load accounts');
+        if (active) {
+          addToast('Gagal memuat daftar akun', 'error');
+        }
+      } finally {
+        if (active) {
+          setAccountsLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [canUseCloud, user?.id, addToast, logError]);
+
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
       setDebts([]);
@@ -136,6 +195,11 @@ export default function Debts() {
       logError(error, 'refresh debts');
     }
   }, [filters, logError, canUseCloud]);
+
+  const notifyTransactionsRefresh = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('hematwoi:transactions:refresh'));
+  }, []);
 
   const handleCreateClick = () => {
     if (!canUseCloud) {
@@ -344,7 +408,7 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
+  const handlePaymentSubmit = async (input: PaymentFormPayload) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
@@ -352,13 +416,18 @@ export default function Debts() {
     }
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
+    const paidAt = toJakartaDate(input.paid_at) ?? todayJakarta();
+    const sourceAccount = accounts.find((account) => account.id === input.account_id) ?? null;
     const optimisticPayment: DebtPaymentRecord = {
       id: tempId,
       debt_id: paymentDebt.id,
       user_id: paymentDebt.user_id,
       amount: input.amount,
-      date: toISO(input.date) ?? new Date().toISOString(),
-      notes: input.notes ?? null,
+      paid_at: paidAt,
+      account_id: input.account_id,
+      account_name: sourceAccount?.name ?? null,
+      note: input.note ?? null,
+      related_tx_id: null,
       created_at: new Date().toISOString(),
     };
     setPaymentList((prev) => [optimisticPayment, ...prev]);
@@ -372,13 +441,19 @@ export default function Debts() {
     setPaymentDebt(updatedDebt);
     setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
     try {
-      const result = await addPayment(paymentDebt.id, input);
+      const result = await addPayment(paymentDebt.id, {
+        amount: input.amount,
+        paid_at: paidAt,
+        account_id: input.account_id,
+        note: input.note ?? null,
+      });
       if (result.debt) {
         setPaymentDebt(result.debt);
         setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
       }
       setPaymentList((prev) => [result.payment, ...prev.filter((payment) => payment.id !== tempId)]);
-      addToast('Pembayaran berhasil dicatat', 'success');
+      addToast('Pembayaran tercatat & saldo keluar dibuat otomatis', 'success');
+      notifyTransactionsRefresh();
       await refreshData();
     } catch (error) {
       logError(error, 'add payment');
@@ -413,6 +488,7 @@ export default function Debts() {
         setDebts((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       }
       addToast('Pembayaran dihapus', 'success');
+      notifyTransactionsRefresh();
       await refreshData();
     } catch (error) {
       logError(error, 'delete payment');
@@ -511,6 +587,8 @@ export default function Debts() {
         loading={paymentLoading}
         submitting={paymentSubmitting}
         deletingId={paymentDeletingId}
+        accounts={accounts}
+        accountsLoading={accountsLoading}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}
