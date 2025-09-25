@@ -764,6 +764,25 @@ function AppShell({ prefs, setPrefs }) {
       return normalized;
     };
 
+    if (tx?.__persisted) {
+      const normalized = pushRecord({
+        ...tx,
+        category: baseCategoryName,
+        category_id: categoryId,
+        note: resolvedNote,
+        merchant: merchantLabel,
+        account: accountLabel,
+        to_account: toAccountLabel,
+        receipts: receiptsPayload,
+      });
+      if (categoryId && baseCategoryName && !catMap[baseCategoryName]) {
+        setCatMap((prev) => ({ ...prev, [baseCategoryName]: categoryId }));
+      }
+      if (prefs.walletSound) playChaChing();
+      triggerMoneyTalk(normalized);
+      return normalized;
+    }
+
     let finalRecord = null;
 
     if (useCloud && sessionUser) {
