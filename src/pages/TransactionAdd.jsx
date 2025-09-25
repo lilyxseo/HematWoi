@@ -9,7 +9,6 @@ import {
   Receipt,
   RotateCcw,
   Save,
-  Store,
   Tag as TagIcon,
   TrendingDown,
   TrendingUp,
@@ -19,9 +18,8 @@ import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
-import TagInput from '../components/inputs/TagInput';
 import { useToast } from '../context/ToastContext';
-import { listAccounts, listCategories, listMerchants, saveMerchant } from '../lib/api';
+import { listAccounts, listCategories } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
 import { supabase } from '../lib/supabase';
 
@@ -60,6 +58,8 @@ const SEGMENT_ITEM_CLASS =
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
+
+const QUICK_AMOUNTS = [50000, 100000, 250000, 500000];
 
 function getDateWithOffset(offset = 0) {
   const date = new Date();
@@ -113,15 +113,10 @@ export default function TransactionAdd({ onAdd }) {
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [merchantId, setMerchantId] = useState('');
-  const [merchantInput, setMerchantInput] = useState('');
-  const [merchantFocused, setMerchantFocused] = useState(false);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [tags, setTags] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [merchants, setMerchants] = useState([]);
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
@@ -132,11 +127,7 @@ export default function TransactionAdd({ onAdd }) {
     async function loadMasterData() {
       setLoading(true);
       try {
-        const [accountRows, categoryRows, merchantRows] = await Promise.all([
-          listAccounts(),
-          listCategories(),
-          listMerchants(),
-        ]);
+        const [accountRows, categoryRows] = await Promise.all([listAccounts(), listCategories()]);
         if (!active) return;
         const sortedAccounts = (accountRows || []).slice().sort((a, b) => {
           return (a.name || '').localeCompare(b.name || '', 'id');
@@ -146,7 +137,6 @@ export default function TransactionAdd({ onAdd }) {
           setAccountId(sortedAccounts[0].id);
         }
         setCategories(categoryRows || []);
-        setMerchants(merchantRows || []);
       } catch (err) {
         addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
@@ -206,28 +196,51 @@ export default function TransactionAdd({ onAdd }) {
     }
   }, [categoriesByType, categoryId, type]);
 
-  const merchantSuggestions = useMemo(() => {
-    if (!merchantInput) return merchants.slice(0, 5);
-    const keyword = merchantInput.toLowerCase();
-    return merchants
-      .filter((item) => (item.name || '').toLowerCase().includes(keyword))
-      .slice(0, 5);
-  }, [merchantInput, merchants]);
-
   const selectedAccount = accounts.find((item) => item.id === accountId);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
   const selectedCategory = categories.find((item) => item.id === categoryId);
-  const selectedMerchant = merchants.find((item) => item.id === merchantId);
-  const merchantExactMatch = selectedMerchant
-    ? merchantInput.trim().toLowerCase() === (selectedMerchant.name || '').toLowerCase()
-    : false;
 
   const isTransfer = type === 'transfer';
   const amountValue = parseAmount(amountInput);
+  const typeSummary = useMemo(() => {
+    switch (type) {
+      case 'income':
+        return {
+          label: 'Pemasukan',
+          description: 'Saldo akan bertambah pada akun sumber.',
+          icon: TrendingUp,
+        };
+      case 'transfer':
+        return {
+          label: 'Transfer',
+          description: 'Dana akan dipindahkan antar dua akun berbeda.',
+          icon: ArrowLeftRight,
+        };
+      default:
+        return {
+          label: 'Pengeluaran',
+          description: 'Saldo akan berkurang dari akun sumber.',
+          icon: TrendingDown,
+        };
+    }
+  }, [type]);
+  const TypeIcon = typeSummary.icon;
+  const trimmedTitle = title.trim();
+  const trimmedNotes = notes.trim();
+  const titleDisplay = trimmedTitle || 'Belum diisi';
+  const notesDisplay = trimmedNotes || 'Belum ada catatan';
+  const categoryDisplay = !isTransfer ? selectedCategory?.name || 'Belum dipilih' : null;
+  const toAccountDisplay = isTransfer ? selectedToAccount?.name || 'Belum dipilih' : null;
+  const receiptStatus = receiptFile ? `File dipilih: ${receiptFile.name}` : 'Belum ada struk yang dipilih';
 
   const handleAmountChange = (event) => {
     const value = event.target.value;
     setAmountInput(value.replace(/[^0-9.,]/g, ''));
+    setErrors((prev) => ({ ...prev, amount: undefined }));
+  };
+
+  const handleQuickAmountSelect = (value) => {
+    setAmountInput(CURRENCY_FORMATTER.format(value));
     setErrors((prev) => ({ ...prev, amount: undefined }));
   };
 
@@ -281,12 +294,8 @@ export default function TransactionAdd({ onAdd }) {
     setDate(getDateWithOffset(0));
     setAmountInput('');
     setCategoryId('');
-    setMerchantId('');
-    setMerchantInput('');
-    setMerchantFocused(false);
     setTitle('');
     setNotes('');
-    setTags([]);
     setReceiptFile(null);
     setReceiptPreview('');
     setErrors({});
@@ -306,22 +315,6 @@ export default function TransactionAdd({ onAdd }) {
     }
     setSaving(true);
     try {
-      let merchantName = merchantInput.trim();
-      let merchantValue = merchantId;
-      if (merchantName && !merchantValue) {
-        try {
-          const created = await saveMerchant({ name: merchantName });
-          merchantValue = created.id;
-          merchantName = created.name;
-          setMerchants((prev) => [...prev, created].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id')));
-          setMerchantId(created.id);
-          setMerchantInput(created.name || merchantName);
-        } catch (err) {
-          addToast(err?.message || 'Gagal menyimpan merchant baru', 'error');
-        }
-      }
-
-      const cleanedTags = tags.map((tag) => tag.trim()).filter(Boolean);
       const saved = await createTransaction({
         type,
         date,
@@ -329,10 +322,8 @@ export default function TransactionAdd({ onAdd }) {
         account_id: accountId,
         to_account_id: isTransfer ? toAccountId : null,
         category_id: !isTransfer ? categoryId || null : null,
-        merchant_id: merchantValue || null,
         title: title.trim() ? title.trim() : null,
         notes: notes.trim() ? notes.trim() : null,
-        tags: cleanedTags.length ? cleanedTags : null,
       });
 
       let receiptUrl = saved.receipt_url || null;
@@ -353,12 +344,9 @@ export default function TransactionAdd({ onAdd }) {
         to_account_id: saved.to_account_id ?? (isTransfer ? toAccountId : null),
         category: !isTransfer ? selectedCategory?.name || null : null,
         category_id: saved.category_id ?? (!isTransfer ? categoryId || null : null),
-        merchant: merchantValue ? merchantName || selectedMerchant?.name || null : merchantName || null,
-        merchant_id: saved.merchant_id ?? (merchantValue || null),
         title: saved.title ?? (title.trim() || null),
         notes: saved.notes ?? (notes.trim() || null),
         note: saved.notes ?? (notes.trim() || null),
-        tags: saved.tags ?? (cleanedTags.length ? cleanedTags : null),
         receipt_url: receiptUrl,
         __persisted: true,
       };
@@ -507,6 +495,25 @@ export default function TransactionAdd({ onAdd }) {
                   />
                 </div>
                 {errors.amount ? <p className="mt-1 text-xs text-destructive">{errors.amount}</p> : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {QUICK_AMOUNTS.map((value) => {
+                    const active = amountValue === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => handleQuickAmountSelect(value)}
+                        className={`h-9 rounded-xl border px-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                          active
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border-subtle text-text hover:bg-muted/30'
+                        }`}
+                      >
+                        {formatAmountDisplay(value)}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -585,60 +592,17 @@ export default function TransactionAdd({ onAdd }) {
                 ) : null}
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="relative">
-                  <label htmlFor="merchant" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                    <Store className="h-4 w-4" aria-hidden="true" />
-                    Merchant (opsional)
-                  </label>
-                  <input
-                    id="merchant"
-                    value={merchantInput}
-                    onChange={(event) => {
-                      setMerchantInput(event.target.value);
-                      const value = event.target.value.trim().toLowerCase();
-                      const match = merchants.find((item) => (item.name || '').toLowerCase() === value);
-                      setMerchantId(match ? match.id : '');
-                    }}
-                    onFocus={() => setMerchantFocused(true)}
-                    onBlur={() => setMerchantFocused(false)}
-                    autoComplete="off"
-                    placeholder="Cari atau ketik nama merchant"
-                    className={INPUT_CLASS}
-                  />
-                  {merchantFocused && merchantSuggestions.length > 0 && merchantInput && !merchantExactMatch && (
-                    <ul className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-border-subtle bg-background shadow-lg">
-                      {merchantSuggestions.map((item) => (
-                        <li key={item.id}>
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-text hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                            onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              setMerchantId(item.id);
-                              setMerchantInput(item.name || '');
-                              setMerchantFocused(false);
-                            }}
-                          >
-                            <span>{item.name}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="title" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                    Judul (opsional)
-                  </label>
-                  <input
-                    id="title"
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Contoh: Makan siang tim"
-                    className={INPUT_CLASS}
-                  />
-                </div>
+              <div>
+                <label htmlFor="title" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                  Judul (opsional)
+                </label>
+                <input
+                  id="title"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  placeholder="Contoh: Makan siang tim"
+                  className={INPUT_CLASS}
+                />
               </div>
 
               <div>
@@ -654,14 +618,6 @@ export default function TransactionAdd({ onAdd }) {
                   className={TEXTAREA_CLASS}
                 />
               </div>
-
-              <TagInput
-                label="Tags"
-                value={tags}
-                onChange={setTags}
-                placeholder="Tambah tag"
-                helperText="Pisahkan dengan koma"
-              />
 
               <div>
                 <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
@@ -718,9 +674,21 @@ export default function TransactionAdd({ onAdd }) {
 
           <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
-              <CardBody className="space-y-4">
-                <h2 className="text-base font-semibold text-text">Ringkasan cepat</h2>
+              <CardBody className="space-y-5">
+                <div className="space-y-1">
+                  <h2 className="text-base font-semibold text-text">Ringkasan cepat</h2>
+                  <p className="text-sm text-muted">
+                    Pantau informasi penting dari transaksi ini sebelum menyimpannya.
+                  </p>
+                </div>
                 <div className="space-y-3 text-sm text-muted">
+                  <div className="flex items-start gap-3 rounded-2xl border border-border-subtle bg-muted/20 p-3">
+                    <TypeIcon className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                    <div>
+                      <p className="font-medium text-text">{typeSummary.label}</p>
+                      <p className="text-xs text-muted">{typeSummary.description}</p>
+                    </div>
+                  </div>
                   <div className="flex items-start gap-3">
                     <Banknote className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
                     <div>
@@ -732,7 +700,7 @@ export default function TransactionAdd({ onAdd }) {
                     <Calendar className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
                     <div>
                       <p className="font-medium text-text">{date}</p>
-                      <p className="text-xs text-muted">Tanggal disimpan di zona waktu Asia/Jakarta</p>
+                      <p className="text-xs text-muted">Tanggal tersimpan dalam zona waktu Asia/Jakarta</p>
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
@@ -746,51 +714,31 @@ export default function TransactionAdd({ onAdd }) {
                     <div className="flex items-start gap-3">
                       <ArrowRight className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
                       <div>
-                        <p className="font-medium text-text">{selectedToAccount?.name || 'Belum dipilih'}</p>
-                        <p className="text-xs text-muted">Akun tujuan</p>
+                        <p className="font-medium text-text">{toAccountDisplay}</p>
+                        <p className="text-xs text-muted">Akun tujuan transfer</p>
                       </div>
                     </div>
                   ) : (
                     <div className="flex items-start gap-3">
                       <TagIcon className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
                       <div>
-                        <p className="font-medium text-text">{selectedCategory?.name || 'Belum dipilih'}</p>
+                        <p className="font-medium text-text">{categoryDisplay}</p>
                         <p className="text-xs text-muted">Kategori transaksi</p>
                       </div>
                     </div>
                   )}
-                </div>
-              </CardBody>
-            </Card>
-
-            <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
-              <CardBody className="space-y-4 text-sm text-muted">
-                <h2 className="text-base font-semibold text-text">Bantuan cepat</h2>
-                <ul className="space-y-2">
-                  <li>
-                    {isTransfer
-                      ? 'Kategori disembunyikan saat transfer, dan kedua akun wajib berbeda.'
-                      : 'Untuk pengeluaran, kategori wajib diisi. Untuk pemasukan, kategori opsional.'}
-                  </li>
-                  <li>
-                    {isTransfer
-                      ? 'Transaksi akan disimpan sebagai transfer satu baris dengan akun sumber dan tujuan.'
-                      : 'Pastikan akun tujuan dibiarkan kosong untuk pemasukan/pengeluaran biasa.'}
-                  </li>
-                  <li>Tips keyboard: Enter untuk simpan, Esc untuk batal.</li>
-                </ul>
-                <div className="rounded-2xl border border-dashed border-border-subtle bg-muted/20 p-3 text-xs">
-                  <p className="font-medium text-text">Arus kas</p>
-                  <p className="mt-1 text-muted">
-                    <Wallet className="mr-1 inline h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                    Sumber: {selectedAccount?.name || 'Belum dipilih'}
-                  </p>
-                  {isTransfer ? (
+                  <div className="rounded-2xl border border-dashed border-border-subtle bg-muted/10 p-3 text-xs">
+                    <p className="font-medium text-text">Detail tambahan</p>
                     <p className="mt-1 text-muted">
-                      <ArrowRight className="mr-1 inline h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                      Tujuan: {selectedToAccount?.name || 'Belum dipilih'}
+                      <span className="font-medium text-text">Judul:</span> {titleDisplay}
                     </p>
-                  ) : null}
+                    <p className="mt-1 text-muted">
+                      <span className="font-medium text-text">Catatan:</span> {notesDisplay}
+                    </p>
+                    <p className="mt-1 text-muted">
+                      <span className="font-medium text-text">Struk:</span> {receiptStatus}
+                    </p>
+                  </div>
                 </div>
               </CardBody>
             </Card>
