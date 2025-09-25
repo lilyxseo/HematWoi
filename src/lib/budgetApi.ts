@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
 import { listCategories as listAllCategories } from './api-categories';
+import { buildSupabaseHeaders, createRestUrl } from './supabaseRest';
 
 type UUID = string;
 
@@ -18,10 +19,50 @@ export interface ExpenseCategory {
 
 const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
+const CATEGORY_SELECT_COLUMNS = 'id,user_id,type,name,inserted_at,group_name,order_index';
+const CATEGORY_ORDER = 'order_index.asc.nullsfirst,name.asc';
+
+let categoriesViewUnavailable = false;
+let categoriesFallbackWarned = false;
+
 const isDevelopment = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ||
     (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
 );
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
+async function parsePostgrestError(response: Response, fallback: string): Promise<Error> {
+  let message = fallback;
+  try {
+    const body = await response.json();
+    if (body?.message) {
+      message = body.message;
+    }
+  } catch (error) {
+    if (isDevelopment) {
+      console.warn('[HW] Failed to parse PostgREST error response', error);
+    }
+  }
+  const err = new Error(message);
+  (err as { status?: number }).status = response.status;
+  return err;
+}
+
+function parseOrderIndex(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
 
 function mapCategoryRecordToExpense(category: {
   id: string;
@@ -128,22 +169,12 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   async function fetchFromCloud(): Promise<ExpenseCategory[]> {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
-    const { data, error } = await supabase
-      .from('categories')
-      .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
-      .eq('user_id', userId)
-      .eq('type', 'expense')
-      .order('order_index', { ascending: true, nullsFirst: true })
-      .order('name', { ascending: true });
-    if (error) throw error;
-    return (data ?? []) as ExpenseCategory[];
+    return listExpenseCategories(userId);
   }
 
   try {
     const rows = await fetchFromCloud();
-    if (rows.length > 0) {
-      return rows;
-    }
+    return rows;
   } catch (error) {
     // Fallback handled below when cloud fetch fails (e.g. offline or guest mode)
     if (isDevelopment && error instanceof Error) {
@@ -164,6 +195,79 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
         order_index: category.sort_order,
       })
     );
+}
+
+async function fetchExpenseCategoriesRemote(
+  userId: string,
+  signal?: AbortSignal
+): Promise<ExpenseCategory[]> {
+  const params = new URLSearchParams({
+    select: CATEGORY_SELECT_COLUMNS,
+    user_id: `eq.${userId}`,
+    type: 'eq.expense',
+    order: CATEGORY_ORDER,
+  });
+  const headers = buildSupabaseHeaders();
+
+  if (!categoriesViewUnavailable) {
+    const viewUrl = createRestUrl('/rest/v1/v_categories_budget', params);
+    const response = await fetch(viewUrl, { headers, signal });
+    if (response.status === 404) {
+      categoriesViewUnavailable = true;
+      if (!categoriesFallbackWarned) {
+        console.warn('v_categories_budget missing — using fallback /categories');
+        categoriesFallbackWarned = true;
+      }
+    } else if (!response.ok) {
+      throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
+    } else {
+      const data = ((await response.json()) ?? []) as Record<string, unknown>[];
+      return data.map((row) =>
+        mapCategoryRecordToExpense({
+          id: String(row.id ?? ''),
+          user_id: typeof row.user_id === 'string' ? row.user_id : userId,
+          name: String(row.name ?? ''),
+          type: 'expense',
+          inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
+          group_name: (row.group_name as string | null | undefined) ?? null,
+          order_index: parseOrderIndex(row.order_index),
+        })
+      );
+    }
+  }
+
+  const fallbackUrl = createRestUrl('/rest/v1/categories', params);
+  const fallbackResponse = await fetch(fallbackUrl, { headers, signal });
+  if (fallbackResponse.status === 404) {
+    throw new Error('Endpoint kategori belum tersedia');
+  }
+  if (!fallbackResponse.ok) {
+    throw await parsePostgrestError(fallbackResponse, 'Gagal memuat kategori pengeluaran');
+  }
+  const fallbackData = ((await fallbackResponse.json()) ?? []) as Record<string, unknown>[];
+  return fallbackData.map((row) =>
+    mapCategoryRecordToExpense({
+      id: String(row.id ?? ''),
+      user_id: typeof row.user_id === 'string' ? row.user_id : userId,
+      name: String(row.name ?? ''),
+      type: 'expense',
+      inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
+      group_name: (row.group_name as string | null | undefined) ?? null,
+      order_index: parseOrderIndex(row.order_index),
+    })
+  );
+}
+
+export async function listExpenseCategories(
+  userId: string,
+  signal?: AbortSignal
+): Promise<ExpenseCategory[]> {
+  try {
+    return await fetchExpenseCategoriesRemote(userId, signal);
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw error;
+  }
 }
 
 export async function listBudgets(period: string): Promise<BudgetRow[]> {
@@ -187,10 +291,11 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
   const { start, end } = getMonthRange(period);
   const { data, error } = await supabase
     .from('transactions')
-    .select('category_id, amount, date')
+    .select('category_id, amount, date, to_account_id')
     .eq('user_id', userId)
     .is('deleted_at', null)
     .eq('type', 'expense')
+    .is('to_account_id', null)
     .gte('date', start)
     .lt('date', end);
   if (error) throw error;
@@ -209,14 +314,44 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
   const payload = {
-    category_id: input.category_id,
-    amount_planned: input.amount_planned,
-    period_month: toMonthStart(input.period),
-    carryover_enabled: input.carryover_enabled,
-    notes: input.notes ?? null,
+    p_category_id: input.category_id,
+    p_amount_planned: input.amount_planned,
+    p_period_month: firstDayOfMonth(input.period),
+    p_carryover_enabled: !!input.carryover_enabled,
+    p_notes: input.notes ?? null,
   };
-  const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) throw error;
+  const url = createRestUrl('/rest/v1/rpc/bud_upsert');
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: buildSupabaseHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  if (response.status === 404) {
+    throw new Error('Fungsi bud_upsert belum tersedia. Jalankan migrasi SQL di server.');
+  }
+  if (!response.ok) {
+    throw await parsePostgrestError(response, 'Gagal menyimpan anggaran');
+  }
+  if (response.status !== 204) {
+    // Consume body if any to avoid unhandled promise rejections in some environments.
+    await response.json().catch(() => undefined);
+  }
+}
+
+export function firstDayOfMonth(ym: string): string {
+  const trimmed = (ym ?? '').toString().trim();
+  if (!trimmed) {
+    throw new Error('Periode harus dalam format YYYY-MM');
+  }
+  const [yearStr, monthStr] = trimmed.split('-');
+  const year = Number.parseInt(yearStr ?? '', 10);
+  const month = Number.parseInt(monthStr ?? '', 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    throw new Error('Periode harus dalam format YYYY-MM');
+  }
+  const normalizedYear = year.toString().padStart(4, '0');
+  const normalizedMonth = month.toString().padStart(2, '0');
+  return `${normalizedYear}-${normalizedMonth}-01`;
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
