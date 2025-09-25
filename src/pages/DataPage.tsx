@@ -183,17 +183,27 @@ function sortOptionsFor(tab: string) {
   }
 }
 
+const CATEGORY_EXPORT_COLUMNS = `
+  id,
+  user_id,
+  name,
+  type,
+  order_index,
+  inserted_at,
+  "group" as group_name
+`;
+
 async function fetchCategories(filter, userId) {
   let query = supabase
     .from('categories')
-    .select('*', { count: 'exact' })
+    .select(CATEGORY_EXPORT_COLUMNS, { count: 'exact' })
     .eq('user_id', userId);
   if (filter.q) {
     query = query.ilike('name', `%${filter.q}%`);
   }
   const [sortField, sortDir] = (filter.sort || 'name-asc').split('-');
   const ascending = sortDir !== 'desc';
-  const orderField = sortField === 'created_at' ? 'created_at' : 'name';
+  const orderField = sortField === 'created_at' ? 'inserted_at' : 'name';
   query = query.order(orderField, { ascending });
   const from = (filter.page - 1) * filter.pageSize;
   const to = from + filter.pageSize - 1;

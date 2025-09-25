@@ -113,7 +113,7 @@ function sortByOrder(list: CategoryRecord[]): CategoryRecord[] {
     if (a.type !== b.type) {
       return a.type.localeCompare(b.type);
     }
-    const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    const orderDiff = (a.order_index ?? Number.POSITIVE_INFINITY) - (b.order_index ?? Number.POSITIVE_INFINITY);
     if (orderDiff !== 0) return orderDiff;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
@@ -123,7 +123,7 @@ function resequenceType(records: CategoryRecord[], type: CategoryType): Category
   const orderedIds = records
     .filter((cat) => cat.type === type)
     .sort((a, b) => {
-      const diff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
+      const diff = (a.order_index ?? Number.POSITIVE_INFINITY) - (b.order_index ?? Number.POSITIVE_INFINITY);
       if (diff !== 0) return diff;
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     })
@@ -131,7 +131,7 @@ function resequenceType(records: CategoryRecord[], type: CategoryType): Category
   const orderMap = new Map(orderedIds.map((id, index) => [id, index]));
   return records.map((cat) =>
     cat.type === type && orderMap.has(cat.id)
-      ? { ...cat, sort_order: orderMap.get(cat.id)! }
+      ? { ...cat, order_index: orderMap.get(cat.id)! }
       : cat
   );
 }
@@ -170,7 +170,7 @@ export default function Categories() {
       try {
         const rows = await listCategories(signal);
         if (signal?.aborted) return;
-        setCategories(rows);
+        setCategories(sortByOrder(rows));
       } catch (err) {
         if (signal?.aborted) return;
         logDevError("listCategories", err);
@@ -213,16 +213,21 @@ export default function Categories() {
   );
 
   const handleCreate = useCallback(
-    async (values: { name: string; color: string; type: CategoryType }) => {
+    async (values: { name: string; type: CategoryType; group_name?: string | null; order_index?: number | null }) => {
       const trimmed = values.name.trim();
-      const color = values.color.toUpperCase();
       const type = values.type;
+      const groupName = values.group_name ? values.group_name.trim() : null;
+      const orderIndex =
+        values.order_index != null && Number.isFinite(values.order_index)
+          ? values.order_index
+          : null;
+
       if (!trimmed || trimmed.length > 60) {
         addToast("Nama kategori harus 1-60 karakter.", "error");
         return;
       }
-      if (!/^#[0-9A-F]{6}$/i.test(color)) {
-        addToast("Gunakan warna dengan format #RRGGBB.", "error");
+      if (!["income", "expense"].includes(type)) {
+        addToast("Tipe kategori tidak valid.", "error");
         return;
       }
       if (isDuplicateName(type, trimmed)) {
@@ -232,22 +237,28 @@ export default function Categories() {
 
       const optimisticId =
         globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+      const nextOrder =
+        orderIndex != null ? orderIndex : grouped[type].length;
       const optimistic: CategoryRecord = {
         id: optimisticId,
         user_id: null,
         name: trimmed,
-        color,
         type,
-        sort_order: grouped[type].length,
-        created_at: null,
-        updated_at: null,
+        order_index: nextOrder,
+        inserted_at: new Date().toISOString(),
+        group_name: groupName,
       };
-      setCategories((prev) => [...prev, optimistic]);
+      setCategories((prev) => sortByOrder([...prev, optimistic]));
       setCreating(true);
       try {
-        const created = await createCategory({ name: trimmed, type, color });
+        const created = await createCategory({
+          name: trimmed,
+          type,
+          group_name: groupName,
+          order_index: orderIndex,
+        });
         setCategories((prev) =>
-          prev.map((cat) => (cat.id === optimisticId ? created : cat))
+          sortByOrder(prev.map((cat) => (cat.id === optimisticId ? created : cat)))
         );
         setCreateFormKey((prev) => prev + 1);
         addToast("Kategori berhasil ditambahkan.", "success");
@@ -263,15 +274,18 @@ export default function Categories() {
   );
 
   const handleSubmitEdit = useCallback(
-    async (category: CategoryRecord, values: { name: string; color: string; type: CategoryType }) => {
+    async (
+      category: CategoryRecord,
+      values: { name: string; group_name?: string | null; order_index?: number | null; type: CategoryType }
+    ) => {
       const trimmed = values.name.trim();
-      const color = values.color.toUpperCase();
+      const groupName = values.group_name ? values.group_name.trim() : null;
+      const orderIndex =
+        values.order_index != null && Number.isFinite(values.order_index)
+          ? values.order_index
+          : null;
       if (!trimmed || trimmed.length > 60) {
         addToast("Nama kategori harus 1-60 karakter.", "error");
-        return;
-      }
-      if (!/^#[0-9A-F]{6}$/i.test(color)) {
-        addToast("Gunakan warna dengan format #RRGGBB.", "error");
         return;
       }
       if (isDuplicateName(category.type, trimmed, category.id)) {
@@ -281,15 +295,23 @@ export default function Categories() {
 
       const snapshot = categories;
       setCategories((prev) =>
-        prev.map((cat) =>
-          cat.id === category.id ? { ...cat, name: trimmed, color } : cat
+        sortByOrder(
+          prev.map((cat) =>
+            cat.id === category.id
+              ? { ...cat, name: trimmed, group_name: groupName, order_index: orderIndex }
+              : cat
+          )
         )
       );
       addPending([category.id]);
       try {
-        const updated = await updateCategory(category.id, { name: trimmed, color });
+        const updated = await updateCategory(category.id, {
+          name: trimmed,
+          group_name: groupName,
+          order_index: orderIndex,
+        });
         setCategories((prev) =>
-          prev.map((cat) => (cat.id === updated.id ? { ...cat, ...updated } : cat))
+          sortByOrder(prev.map((cat) => (cat.id === updated.id ? updated : cat)))
         );
         setEditingId(null);
         addToast("Perubahan kategori disimpan.", "success");
@@ -320,10 +342,12 @@ export default function Categories() {
       const orderMap = new Map(orderedIds.map((catId, sortIndex) => [catId, sortIndex]));
 
       setCategories((prev) =>
-        prev.map((cat) =>
-          cat.type === type && orderMap.has(cat.id)
-            ? { ...cat, sort_order: orderMap.get(cat.id)! }
-            : cat
+        sortByOrder(
+          prev.map((cat) =>
+            cat.type === type && orderMap.has(cat.id)
+              ? { ...cat, order_index: orderMap.get(cat.id)! }
+              : cat
+          )
         )
       );
       addPending(orderedIds);
@@ -380,13 +404,13 @@ export default function Categories() {
       <section className="rounded-2xl border border-border/60 bg-surface-1/70 p-6 shadow-sm">
         <h2 className="text-base font-semibold text-text">Tambah kategori baru</h2>
         <p className="mt-1 text-sm text-muted">
-          Pilih tipe kategori, beri nama, dan sesuaikan warnanya.
+          Isi nama, pilih tipe, lalu atur grup dan urutan bila diperlukan.
         </p>
         <div className="mt-4">
           <CategoryForm
             key={createFormKey}
             mode="create"
-            initialValues={{ name: "", color: "#0EA5E9", type: "expense" }}
+            initialValues={{ name: "", type: "expense", group_name: "", order_index: null }}
             onSubmit={handleCreate}
             isSubmitting={creating}
           />

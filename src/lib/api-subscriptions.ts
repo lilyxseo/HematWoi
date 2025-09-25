@@ -320,7 +320,7 @@ export async function listSubscriptions(
       next_due_date,
       last_charge_at,
       total_charges,
-      category:category_id (id, name, color),
+      category:category_id (id, name),
       account:account_id (id, name, type)
     `;
 
@@ -437,7 +437,7 @@ export async function getSubscription(id: string): Promise<SubscriptionRecord | 
         next_due_date,
         last_charge_at,
         total_charges,
-        category:category_id (id, name, color),
+        category:category_id (id, name),
         account:account_id (id, name, type)
       `,
       )
@@ -526,7 +526,7 @@ export async function createSubscription(
         next_due_date,
         last_charge_at,
         total_charges,
-        category:category_id (id, name, color),
+        category:category_id (id, name),
         account:account_id (id, name, type)
       `,
       )
@@ -612,7 +612,7 @@ export async function updateSubscription(
         next_due_date,
         last_charge_at,
         total_charges,
-        category:category_id (id, name, color),
+        category:category_id (id, name),
         account:account_id (id, name, type)
       `,
       )
