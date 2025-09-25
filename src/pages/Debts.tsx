@@ -22,7 +22,9 @@ import {
   type DebtRecord,
   type DebtSummary,
 } from '../lib/api-debts';
+import { listAccounts, type AccountRecord } from '../lib/api';
 import useSupabaseUser from '../hooks/useSupabaseUser';
+import { dispatchTransactionsRefresh } from '../lib/events';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -80,6 +82,8 @@ export default function Debts() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -121,6 +125,39 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    let ignore = false;
+    if (!canUseCloud || !user?.id) {
+      setAccounts([]);
+      setAccountsLoading(false);
+      return () => {
+        ignore = true;
+      };
+    }
+    setAccountsLoading(true);
+    listAccounts(user.id)
+      .then((rows) => {
+        if (!ignore) {
+          setAccounts(rows ?? []);
+        }
+      })
+      .catch((error) => {
+        logError(error, 'load accounts');
+        if (!ignore) {
+          addToast('Gagal memuat daftar akun.', 'error');
+          setAccounts([]);
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setAccountsLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [canUseCloud, user?.id, logError, addToast]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
@@ -344,7 +381,9 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
+  const handlePaymentSubmit = async (
+    input: { amount: number; paid_at: string; account_id: string; note?: string | null }
+  ) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
@@ -352,14 +391,19 @@ export default function Debts() {
     }
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
+    const accountName = accounts.find((item) => item.id === input.account_id)?.name ?? null;
     const optimisticPayment: DebtPaymentRecord = {
       id: tempId,
       debt_id: paymentDebt.id,
       user_id: paymentDebt.user_id,
       amount: input.amount,
-      date: toISO(input.date) ?? new Date().toISOString(),
-      notes: input.notes ?? null,
+      paid_at: toISO(input.paid_at) ?? new Date().toISOString(),
+      account_id: input.account_id,
+      account_name: accountName,
+      note: input.note ?? null,
+      related_tx_id: null,
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
     setPaymentList((prev) => [optimisticPayment, ...prev]);
     const previousDebt = paymentDebt;
@@ -378,7 +422,8 @@ export default function Debts() {
         setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
       }
       setPaymentList((prev) => [result.payment, ...prev.filter((payment) => payment.id !== tempId)]);
-      addToast('Pembayaran berhasil dicatat', 'success');
+      addToast('Pembayaran tercatat & saldo keluar dibuat otomatis', 'success');
+      dispatchTransactionsRefresh({ reason: 'debt-payment-created', paymentId: result.payment.id });
       await refreshData();
     } catch (error) {
       logError(error, 'add payment');
@@ -413,6 +458,7 @@ export default function Debts() {
         setDebts((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       }
       addToast('Pembayaran dihapus', 'success');
+      dispatchTransactionsRefresh({ reason: 'debt-payment-deleted', paymentId: payment.id });
       await refreshData();
     } catch (error) {
       logError(error, 'delete payment');
@@ -511,6 +557,8 @@ export default function Debts() {
         loading={paymentLoading}
         submitting={paymentSubmitting}
         deletingId={paymentDeletingId}
+        accounts={accounts}
+        accountsLoading={accountsLoading}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}

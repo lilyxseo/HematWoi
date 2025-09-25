@@ -31,9 +31,13 @@ export interface DebtPaymentRecord {
   debt_id: string;
   user_id: string;
   amount: number;
-  date: string;
-  notes: string | null;
+  paid_at: string;
+  account_id: string | null;
+  account_name: string | null;
+  note: string | null;
+  related_tx_id: string | null;
   created_at: string;
+  updated_at: string | null;
 }
 
 export interface DebtSummary {
@@ -75,12 +79,15 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
 
 export interface PaymentInput {
   amount: number;
-  date: string;
-  notes?: string | null;
+  paid_at: string;
+  account_id: string;
+  note?: string | null;
 }
 
 const DEBT_SELECT_COLUMNS =
   'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,created_at,updated_at';
+const PAYMENT_SELECT_COLUMNS =
+  'id,debt_id,user_id,amount,paid_at,note,account_id,related_tx_id,created_at,updated_at,accounts(name)';
 
 function logDevError(error: unknown) {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -139,6 +146,28 @@ function toISODateEnd(value?: string | null): string | null {
   return date.toISOString();
 }
 
+function toIsoString(value: unknown): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed) {
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toISOString();
+      }
+    }
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return new Date().toISOString();
+}
+
 function evaluateStatus(amount: number, paid: number, dueDate: string | null): DebtStatus {
   if (paid + 0.0001 >= amount) return 'paid';
   if (dueDate) {
@@ -176,14 +205,27 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
 }
 
 function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+  const paidAtSource = row.paid_at ?? row.date ?? row.created_at;
+  const account = row.accounts ?? row.account ?? null;
+  const accountName =
+    typeof row.account_name === 'string' && row.account_name.trim()
+      ? row.account_name
+      : account && typeof account.name === 'string'
+        ? account.name
+        : null;
+
   return {
     id: String(row.id),
     debt_id: String(row.debt_id),
     user_id: String(row.user_id),
     amount: safeNumber(row.amount),
-    date: row.date ?? row.created_at ?? new Date().toISOString(),
-    notes: row.notes ?? null,
-    created_at: row.created_at ?? new Date().toISOString(),
+    paid_at: toIsoString(paidAtSource),
+    account_id: row.account_id ? String(row.account_id) : null,
+    account_name: accountName,
+    note: row.note ?? row.notes ?? null,
+    related_tx_id: row.related_tx_id ? String(row.related_tx_id) : null,
+    created_at: toIsoString(row.created_at ?? paidAtSource ?? new Date()),
+    updated_at: row.updated_at ? toIsoString(row.updated_at) : null,
   };
 }
 
@@ -233,6 +275,8 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
   const now = new Date();
   const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const startDate = startOfMonth.toISOString().slice(0, 10);
+  const nextDate = nextMonth.toISOString().slice(0, 10);
 
   const [{ data: debtsRows, error: debtsError }, { data: paymentRows, error: paymentError }] = await Promise.all([
     supabase
@@ -241,10 +285,10 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
       .eq('user_id', userId),
     supabase
       .from('debt_payments')
-      .select('amount, date')
+      .select('amount, paid_at')
       .eq('user_id', userId)
-      .gte('date', startOfMonth.toISOString())
-      .lt('date', nextMonth.toISOString()),
+      .gte('paid_at', startDate)
+      .lt('paid_at', nextDate),
   ]);
 
   if (debtsError) throw debtsError;
@@ -386,10 +430,10 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .eq('debt_id', id)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (paymentsError) throw paymentsError;
 
@@ -407,10 +451,10 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
     const userId = await getUserId();
     const { data, error } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .eq('debt_id', debtId)
       .eq('user_id', userId)
-      .order('date', { ascending: false })
+      .order('paid_at', { ascending: false })
       .order('created_at', { ascending: false });
     if (error) throw error;
     return (data ?? []).map(mapPaymentRow);
@@ -597,18 +641,31 @@ export async function addPayment(
   try {
     const userId = await getUserId();
     const amount = Math.max(0, payload.amount);
+    if (!amount || amount <= 0) {
+      throw new Error('Nominal pembayaran tidak valid.');
+    }
+    if (!payload.account_id) {
+      throw new Error('Pilih akun sumber dana.');
+    }
+
+    const paidAt =
+      typeof payload.paid_at === 'string' && payload.paid_at.trim()
+        ? payload.paid_at.trim()
+        : new Date().toISOString().slice(0, 10);
+
     const insertPayload = {
       debt_id: debtId,
       user_id: userId,
       amount: amount.toFixed(2),
-      date: toISODate(payload.date) ?? new Date().toISOString(),
-      notes: payload.notes ?? null,
+      paid_at: paidAt,
+      account_id: payload.account_id,
+      note: payload.note?.trim() ? payload.note.trim() : null,
     };
 
     const { data, error } = await supabase
       .from('debt_payments')
       .insert([insertPayload])
-      .select('*')
+      .select(PAYMENT_SELECT_COLUMNS)
       .single();
     if (error) throw error;
 

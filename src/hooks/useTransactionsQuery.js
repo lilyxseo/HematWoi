@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getTransactionsSummary, listCategories } from "../lib/api";
 import { listTransactions } from "../lib/api-transactions";
+import { TRANSACTIONS_REFRESH_EVENT } from "../lib/events";
 
 const PAGE_SIZE = 50;
 
@@ -219,6 +220,19 @@ export default function useTransactionsQuery() {
     },
     [page, updateParams],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") {
+      return undefined;
+    }
+    const handler = () => {
+      refresh({ keepPage: true });
+    };
+    window.addEventListener(TRANSACTIONS_REFRESH_EVENT, handler);
+    return () => {
+      window.removeEventListener(TRANSACTIONS_REFRESH_EVENT, handler);
+    };
+  }, [refresh]);
 
   const hasMore = items.length < total;
 
