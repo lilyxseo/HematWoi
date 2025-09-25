@@ -9,6 +9,7 @@ import {
   Loader2,
   Receipt,
   RotateCcw,
+  Search,
   Save,
   Tag as TagIcon,
   TrendingDown,
@@ -23,6 +24,7 @@ import { useToast } from '../context/ToastContext';
 import { listAccounts, listCategories } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
 import { supabase } from '../lib/supabase';
+import { listCategoriesExpense as listExpenseCategories } from '../lib/budgetApi';
 
 const TYPE_OPTIONS = [
   {
@@ -118,6 +120,7 @@ export default function TransactionAdd({ onAdd }) {
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categorySearch, setCategorySearch] = useState('');
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
@@ -128,10 +131,22 @@ export default function TransactionAdd({ onAdd }) {
     async function loadMasterData() {
       setLoading(true);
       try {
-        const [accountRows, categoryRows] = await Promise.all([
-          listAccounts(),
-          listCategories(),
-        ]);
+        const accountRows = await listAccounts();
+        const categoryRows = await listCategories();
+        let expenseCategories = [];
+        try {
+          expenseCategories = await listExpenseCategories();
+        } catch (error) {
+          console.error('Failed to fetch expense categories', error);
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Gagal memuat kategori pengeluaran';
+          addToast(message, 'error');
+          expenseCategories = (categoryRows || []).filter(
+            (item) => (item.type || '').toLowerCase() === 'expense',
+          );
+        }
         if (!active) return;
         const sortedAccounts = (accountRows || []).slice().sort((a, b) => {
           return (a.name || '').localeCompare(b.name || '', 'id');
@@ -140,7 +155,21 @@ export default function TransactionAdd({ onAdd }) {
         if (sortedAccounts.length) {
           setAccountId(sortedAccounts[0].id);
         }
-        setCategories(categoryRows || []);
+        const incomeCategories = (categoryRows || []).filter(
+          (item) => (item.type || '').toLowerCase() === 'income',
+        );
+        const normalizedExpenses = (expenseCategories || []).map((category) => ({
+          ...category,
+          type: 'expense',
+          order_index:
+            category.order_index ?? category.sort_order ?? null,
+        }));
+        const normalizedIncomes = incomeCategories.map((category) => ({
+          ...category,
+          order_index: category.sort_order ?? category.order_index ?? null,
+        }));
+        setCategories([...normalizedExpenses, ...normalizedIncomes]);
+        setCategorySearch('');
       } catch (err) {
         addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
@@ -188,17 +217,50 @@ export default function TransactionAdd({ onAdd }) {
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(item);
     });
+    const sortByName = (a, b) => (a.name || '').localeCompare(b.name || '', 'id');
+    const getOrder = (value) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
+    };
+    grouped.expense.sort((a, b) => {
+      const orderDiff = getOrder(a.order_index ?? a.sort_order) - getOrder(b.order_index ?? b.sort_order);
+      if (orderDiff !== 0) return orderDiff;
+      return sortByName(a, b);
+    });
+    grouped.income.sort((a, b) => sortByName(a, b));
     return grouped;
   }, [categories]);
+
+  const filteredCategories = useMemo(() => {
+    if (type === 'transfer') return [];
+    const list = categoriesByType[type] || [];
+    const normalized = categorySearch.trim().toLowerCase();
+    if (!normalized) return list;
+    return list.filter((category) =>
+      (category.name || '').toLowerCase().includes(normalized),
+    );
+  }, [categoriesByType, categorySearch, type]);
+
+  const hasCategoriesForType = (categoriesByType[type] || []).length > 0;
+  const hasFilteredCategories = filteredCategories.length > 0;
 
   useEffect(() => {
     if (type === 'transfer') return;
     const list = categoriesByType[type] || [];
-    if (!list.length) return;
+    if (!list.length) {
+      if (categoryId) setCategoryId('');
+      return;
+    }
     if (!categoryId || !list.some((item) => item.id === categoryId)) {
       setCategoryId(list[0].id);
     }
   }, [categoriesByType, categoryId, type]);
+
+  useEffect(() => {
+    if (type === 'transfer') {
+      setCategorySearch('');
+    }
+  }, [type]);
 
   const selectedAccount = accounts.find((item) => item.id === accountId);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
@@ -295,6 +357,7 @@ export default function TransactionAdd({ onAdd }) {
     setDate(getDateWithOffset(0));
     setAmountInput('');
     setCategoryId('');
+    setCategorySearch('');
     setTitle('');
     setNotes('');
     setReceiptFile(null);
@@ -565,23 +628,55 @@ export default function TransactionAdd({ onAdd }) {
                       <TagIcon className="h-4 w-4" aria-hidden="true" />
                       Kategori
                     </label>
-                    <select
-                      id="category"
-                      value={categoryId}
-                      onChange={(event) => {
-                        setCategoryId(event.target.value);
-                        setErrors((prev) => ({ ...prev, category_id: undefined }));
-                      }}
-                      className={INPUT_CLASS}
-                    >
-                      <option value="">Pilih kategori</option>
-                      {(categoriesByType[type] || []).map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="space-y-2">
+                      <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
+                          <Search className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <input
+                          id="category-search"
+                          type="search"
+                          value={categorySearch}
+                          onChange={(event) => setCategorySearch(event.target.value)}
+                          placeholder="Cari kategori"
+                          aria-label="Cari kategori"
+                          className="h-10 w-full rounded-2xl border bg-background pl-9 pr-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={!hasCategoriesForType}
+                        />
+                      </div>
+                      <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
+                          <TagIcon className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                        <select
+                          id="category"
+                          value={categoryId}
+                          onChange={(event) => {
+                            setCategoryId(event.target.value);
+                            setErrors((prev) => ({ ...prev, category_id: undefined }));
+                          }}
+                          className={`${INPUT_CLASS} pl-9`}
+                          disabled={!hasFilteredCategories}
+                        >
+                          <option value="">Pilih kategori</option>
+                          {filteredCategories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                     {errors.category_id ? <p className="mt-1 text-xs text-destructive">{errors.category_id}</p> : null}
+                    {!hasFilteredCategories ? (
+                      <p className="mt-1 text-xs text-muted">
+                        {hasCategoriesForType
+                          ? 'Tidak ada kategori yang cocok dengan pencarian.'
+                          : type === 'expense'
+                            ? 'Belum ada kategori pengeluaran.'
+                            : 'Belum ada kategori pendapatan.'}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

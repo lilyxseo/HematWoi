@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { Calendar, Plus, RefreshCw } from 'lucide-react';
 import Page from '../../layout/Page';
@@ -9,6 +9,7 @@ import SummaryCards from './components/SummaryCards';
 import BudgetTable from './components/BudgetTable';
 import BudgetFormModal, { type BudgetFormValues } from './components/BudgetFormModal';
 import { useBudgets } from '../../hooks/useBudgets';
+import useIsAdmin from '../../hooks/useIsAdmin';
 import {
   deleteBudget,
   listCategoriesExpense,
@@ -63,6 +64,8 @@ const DEFAULT_FORM_VALUES: BudgetFormValues = {
 
 export default function BudgetsPage() {
   const { addToast } = useToast();
+  const { isAdmin } = useIsAdmin();
+  const adminHintShownRef = useRef(false);
   const [segment, setSegment] = useState<SegmentValue>('current');
   const [customPeriod, setCustomPeriod] = useState<string>(getCurrentPeriod());
   const [period, setPeriod] = useState<string>(getCurrentPeriod());
@@ -96,10 +99,27 @@ export default function BudgetsPage() {
     };
   }, [addToast]);
 
+  const maybeShowAdminHint = useCallback(
+    (err: unknown) => {
+      if (!isAdmin || adminHintShownRef.current) return;
+      const message =
+        typeof err === 'string'
+          ? err
+          : err instanceof Error
+            ? err.message
+            : '';
+      if (!message || !message.toLowerCase().includes('bud_upsert')) return;
+      adminHintShownRef.current = true;
+      addToast('Perlu menjalankan migrasi SQL untuk RPC bud_upsert.', 'info');
+    },
+    [addToast, isAdmin],
+  );
+
   useEffect(() => {
     if (!error) return;
     addToast(error, 'error');
-  }, [error, addToast]);
+    maybeShowAdminHint(error);
+  }, [error, addToast, maybeShowAdminHint]);
 
   useEffect(() => {
     if (segment === 'current') {
@@ -172,6 +192,7 @@ export default function BudgetsPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Gagal memperbarui carryover';
       addToast(message, 'error');
+      maybeShowAdminHint(err);
     }
   };
 
@@ -192,6 +213,7 @@ export default function BudgetsPage() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Gagal menyimpan anggaran';
       addToast(message, 'error');
+      maybeShowAdminHint(err);
     } finally {
       setSubmitting(false);
     }
