@@ -1,8 +1,60 @@
 // src/lib/api.js
-import { supabase } from "./supabase";
+import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabase";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
+
+function ensureRestEnv() {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Supabase REST config missing");
+  }
+}
+
+function buildRestHeaders(asJson = false) {
+  ensureRestEnv();
+  const headers = {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+  };
+  if (asJson) headers["Content-Type"] = "application/json";
+  return headers;
+}
+
+function createRestUrl(path, params) {
+  ensureRestEnv();
+  const base = SUPABASE_URL.replace(/\/$/, "");
+  if (!params) {
+    return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
+  }
+  const search = params.toString();
+  return search
+    ? `${base}${path.startsWith("/") ? "" : "/"}${path}?${search}`
+    : `${base}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+async function readPostgrestError(response, fallbackMessage) {
+  let message = fallbackMessage;
+  try {
+    const body = await response.json();
+    if (body?.message) message = body.message;
+  } catch (error) {
+    if (import.meta.env?.DEV) {
+      console.warn("[HW] Failed parsing PostgREST error", error);
+    }
+  }
+  const err = new Error(message);
+  err.status = response.status;
+  return err;
+}
+
+function parseOrderIndex(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
 
 function sanitizeIlike(value = "") {
   return String(value).replace(/[%_]/g, (m) => `\\${m}`);
@@ -611,8 +663,20 @@ export async function deleteTransaction(id) {
 
 // -- CATEGORIES ----------------------------------------
 
+const CATEGORY_REST_SELECT = "id,user_id,type,name,inserted_at,group_name,order_index";
+const CATEGORY_REST_ORDER = "order_index.asc.nullsfirst,name.asc";
+
+let categoryViewUnavailable = false;
+let categoryFallbackWarned = false;
+
 function mapCategoryRow(row = {}, userId) {
-  const typeFromGroup = typeof row.group === "string" ? row.group.toLowerCase() : "";
+  const groupValue =
+    typeof row.group_name === "string"
+      ? row.group_name
+      : typeof row.group === "string"
+      ? row.group
+      : null;
+  const typeFromGroup = typeof groupValue === "string" ? groupValue.toLowerCase() : "";
   const rawType = row.type ?? row.category_type;
   const inferredType = rawType
     ? rawType
@@ -626,22 +690,56 @@ function mapCategoryRow(row = {}, userId) {
     normalizedType = "expense";
   }
   const rawOrder = row.order_index ?? row.sort_order;
-  let orderIndex = null;
-  if (typeof rawOrder === "number" && Number.isFinite(rawOrder)) {
-    orderIndex = rawOrder;
-  } else if (typeof rawOrder === "string") {
-    const parsed = Number.parseInt(rawOrder.trim(), 10);
-    if (Number.isFinite(parsed)) orderIndex = parsed;
-  }
+  const orderIndex = parseOrderIndex(rawOrder);
   return {
     id: row.id,
     user_id: row.user_id ?? userId ?? null,
     name: row.name ?? row.title ?? row.label ?? "",
     type: normalizedType,
-    group: row.group ?? null,
+    group: groupValue ?? null,
     order_index: orderIndex,
     inserted_at: row.inserted_at ?? row.created_at ?? null,
   };
+}
+
+async function fetchCategoriesFromRest(userId, type) {
+  const params = new URLSearchParams({
+    select: CATEGORY_REST_SELECT,
+    user_id: `eq.${userId}`,
+    order: CATEGORY_REST_ORDER,
+  });
+  if (type === "income" || type === "expense") {
+    params.set("type", `eq.${type}`);
+  }
+  const headers = buildRestHeaders();
+
+  if (!categoryViewUnavailable) {
+    const viewUrl = createRestUrl("/rest/v1/v_categories_budget", params);
+    const response = await fetch(viewUrl, { headers });
+    if (response.status === 404) {
+      categoryViewUnavailable = true;
+      if (!categoryFallbackWarned) {
+        console.warn("v_categories_budget missing — using fallback /categories");
+        categoryFallbackWarned = true;
+      }
+    } else if (!response.ok) {
+      throw await readPostgrestError(response, "Gagal memuat kategori");
+    } else {
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    }
+  }
+
+  const fallbackUrl = createRestUrl("/rest/v1/categories", params);
+  const fallbackResponse = await fetch(fallbackUrl, { headers });
+  if (fallbackResponse.status === 404) {
+    throw new Error("Endpoint kategori belum tersedia");
+  }
+  if (!fallbackResponse.ok) {
+    throw await readPostgrestError(fallbackResponse, "Gagal memuat kategori");
+  }
+  const fallbackData = await fallbackResponse.json();
+  return Array.isArray(fallbackData) ? fallbackData : [];
 }
 
 /** List kategori */
@@ -656,12 +754,8 @@ export async function listCategories(type) {
   }
 
   try {
-    const { data, error } = await supabase
-      .from("categories")
-      .select('id, user_id, type, name, order_index, inserted_at, "group"')
-      .eq("user_id", userId);
-    if (error) throw error;
-    const rows = (data || []).map((row) => mapCategoryRow(row, userId));
+    const remoteRows = await fetchCategoriesFromRest(userId, type);
+    const rows = remoteRows.map((row) => mapCategoryRow(row, userId));
     rows.sort((a, b) => {
       const orderA = a.order_index ?? Number.MAX_SAFE_INTEGER;
       const orderB = b.order_index ?? Number.MAX_SAFE_INTEGER;
