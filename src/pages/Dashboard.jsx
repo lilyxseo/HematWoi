@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import KpiCards from "../components/KpiCards";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
@@ -12,9 +12,40 @@ import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
+import DashboardSummary from "../components/dashboard/DashboardSummary";
+import PeriodPicker, {
+  getPresetRange,
+} from "../components/dashboard/PeriodPicker";
+import useDashboardBalances from "../hooks/useDashboardBalances";
+
+const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
+  const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
+  const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
+  const balances = useDashboardBalances(periodRange);
+  const {
+    income: periodIncome,
+    expense: periodExpense,
+    cashBalance,
+    nonCashBalance,
+    totalBalance,
+    loading,
+    error,
+    refresh,
+  } = balances;
+  const { start: periodStart, end: periodEnd } = periodRange;
+
+  useEffect(() => {
+    refresh({ start: periodStart, end: periodEnd });
+  }, [periodStart, periodEnd, refresh]);
+
+  const handlePeriodChange = (range, preset) => {
+    setPeriodRange(range);
+    setPeriodPreset(preset);
+  };
+
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
     let count = 0;
@@ -46,6 +77,24 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           Ringkasan keuanganmu
         </p>
       </header>
+
+      <section className="space-y-4">
+        <PeriodPicker
+          value={periodRange}
+          preset={periodPreset}
+          onChange={handlePeriodChange}
+        />
+        <DashboardSummary
+          income={periodIncome}
+          expense={periodExpense}
+          cashBalance={cashBalance}
+          nonCashBalance={nonCashBalance}
+          totalBalance={totalBalance}
+          loading={loading}
+          error={error}
+          period={periodRange}
+        />
+      </section>
 
       <KpiCards
         income={stats?.income || 0}
