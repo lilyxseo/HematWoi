@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Calendar, Plus, RefreshCw } from 'lucide-react';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
+import PageHeader from '../../layout/PageHeader';
 import { useToast } from '../../context/ToastContext';
 import SummaryCards from './components/SummaryCards';
 import BudgetTable from './components/BudgetTable';
@@ -197,72 +198,65 @@ export default function BudgetsPage() {
 
   return (
     <Page>
+      <PageHeader
+        title="Anggaran"
+        description="Atur dan pantau alokasi pengeluaranmu tiap bulan."
+      >
+        <button
+          type="button"
+          onClick={refresh}
+          className="hidden h-11 items-center gap-2 rounded-2xl border border-border bg-surface px-4 text-sm font-semibold text-text shadow-sm transition hover:-translate-y-0.5 hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:inline-flex"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Segarkan
+        </button>
+        <button
+          type="button"
+          disabled={categoriesLoading}
+          onClick={handleOpenCreate}
+          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-white shadow transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          <Plus className="h-4 w-4" />
+          Tambah anggaran
+        </button>
+      </PageHeader>
+
       <Section first>
-        <div className="flex flex-col gap-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-3xl font-semibold text-zinc-900 dark:text-zinc-50">Anggaran</h1>
-              <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                Atur dan pantau alokasi pengeluaranmu tiap bulan.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={refresh}
-                className="hidden h-11 items-center gap-2 rounded-2xl border border-white/50 px-4 text-sm font-semibold text-zinc-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-white dark:border-white/20 dark:text-zinc-200 md:inline-flex"
-              >
-                <RefreshCw className="h-4 w-4" />
-                Segarkan
-              </button>
-              <button
-                type="button"
-                disabled={categoriesLoading}
-                onClick={handleOpenCreate}
-                className="inline-flex h-11 items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 via-emerald-500 to-emerald-600 px-5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <Plus className="h-4 w-4" />
-                Tambah anggaran
-              </button>
-            </div>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {SEGMENTS.map(({ value, label }) => {
+              const active = value === segment;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => handleSegmentChange(value)}
+                  className={`h-11 rounded-2xl px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 ${
+                    active
+                      ? 'bg-brand text-white shadow'
+                      : 'border border-border bg-surface text-muted hover:-translate-y-0.5 hover:border-brand/40 hover:text-text'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-wrap gap-2">
-              {SEGMENTS.map(({ value, label }) => {
-                const active = value === segment;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => handleSegmentChange(value)}
-                    className={`h-11 rounded-2xl px-5 text-sm font-semibold transition ${
-                      active
-                        ? 'bg-zinc-900 text-white shadow-lg shadow-zinc-900/20 dark:bg-zinc-100 dark:text-zinc-900'
-                        : 'border border-white/50 bg-white/70 text-zinc-600 shadow-sm hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+          {segment === 'custom' ? (
+            <input
+              type="month"
+              value={customPeriod}
+              onChange={(event) => handleCustomPeriodChange(event.target.value)}
+              className="h-11 rounded-2xl border border-border bg-surface px-4 text-sm font-medium text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 dark:bg-zinc-900/60"
+              aria-label="Pilih periode custom"
+            />
+          ) : (
+            <div className="flex items-center gap-2 rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-medium text-muted shadow-sm">
+              <Calendar className="h-4 w-4 text-brand" />
+              <span className="text-text">{toHumanReadable(period)}</span>
             </div>
-
-            {segment === 'custom' ? (
-              <input
-                type="month"
-                value={customPeriod}
-                onChange={(event) => handleCustomPeriodChange(event.target.value)}
-                className="h-11 rounded-2xl border-0 bg-white/80 px-4 text-sm text-zinc-900 shadow-inner shadow-white/20 ring-2 ring-white/50 transition focus:outline-none focus:ring-emerald-400 dark:bg-zinc-900/60 dark:text-zinc-50 dark:ring-white/10"
-                aria-label="Pilih periode custom"
-              />
-            ) : (
-              <div className="flex items-center gap-2 rounded-2xl border border-white/50 bg-white/70 px-4 py-2 text-sm font-medium text-zinc-600 shadow-sm dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200">
-                <Calendar className="h-4 w-4" />
-                <span>{toHumanReadable(period)}</span>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </Section>
 

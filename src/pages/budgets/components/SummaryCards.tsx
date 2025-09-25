@@ -40,25 +40,25 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
       label: 'Total Anggaran',
       value: formatCurrency(summary.planned, 'IDR'),
       icon: Wallet,
-      accent: 'text-sky-600 dark:text-sky-400',
+      accent: 'text-brand',
     },
     {
       label: 'Realisasi',
       value: formatCurrency(summary.spent, 'IDR'),
       icon: TrendingDown,
-      accent: 'text-emerald-600 dark:text-emerald-400',
+      accent: 'text-brand',
     },
     {
       label: 'Sisa',
       value: formatCurrency(summary.remaining, 'IDR'),
       icon: PiggyBank,
-      accent: 'text-purple-600 dark:text-purple-400',
+      accent: 'text-brand',
     },
     {
       label: 'Persentase',
       value: `${(progress * 100).toFixed(0)}%`,
       icon: Target,
-      accent: 'text-orange-600 dark:text-orange-400',
+      accent: 'text-brand',
       progress,
     },
   ];
@@ -81,7 +81,7 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
                 </div>
                 <div className="mt-2 h-2 rounded-full bg-zinc-200/70 dark:bg-zinc-800/70">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-sky-500 via-sky-400 to-sky-300 dark:from-sky-400 dark:via-sky-500 dark:to-sky-600 transition-all"
+                    className="h-full rounded-full bg-brand transition-all"
                     style={{ width: `${cardProgress * 100}%` }}
                   />
                 </div>

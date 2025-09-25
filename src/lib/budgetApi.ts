@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { listCategories as listCategoriesFallback } from './api';
 
 type UUID = string;
 
@@ -94,15 +95,38 @@ function getMonthRange(period: string): { start: string; end: string } {
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
-  const { data, error } = await supabase
-    .from('categories')
-    .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
-    .eq('user_id', userId)
-    .eq('type', 'expense')
-    .order('order_index', { ascending: true, nullsFirst: true })
-    .order('name', { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as ExpenseCategory[];
+
+  try {
+    const { data, error } = await supabase
+      .from('categories')
+      .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
+      .eq('user_id', userId)
+      .eq('type', 'expense')
+      .order('order_index', { ascending: true, nullsFirst: true })
+      .order('name', { ascending: true });
+    if (error) throw error;
+    if (Array.isArray(data) && data.length > 0) {
+      return data as ExpenseCategory[];
+    }
+  } catch (err) {
+    console.warn('listCategoriesExpense failed, falling back to cached categories', err);
+  }
+
+  const fallback = await listCategoriesFallback('expense');
+  return fallback.map((category) => ({
+    id: category.id,
+    user_id: category.user_id,
+    type: 'expense',
+    name: category.name,
+    inserted_at: category.inserted_at ?? new Date().toISOString(),
+    group_name: category.group ?? null,
+    order_index:
+      typeof category.order_index === 'number'
+        ? category.order_index
+        : category.order_index === null || category.order_index === undefined
+        ? null
+        : Number.parseInt(String(category.order_index), 10) || null,
+  }));
 }
 
 export async function listBudgets(period: string): Promise<BudgetRow[]> {

@@ -64,7 +64,8 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
           ) : (
             <tbody className="divide-y divide-white/10 text-sm text-zinc-700 dark:text-zinc-200">
               {rows.map((row) => {
-                const remainingClass = row.remaining < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400';
+                const remainingClass =
+                  row.remaining < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-brand';
                 return (
                   <tr
                     key={row.id}
@@ -86,7 +87,7 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                           onChange={(event) => onToggleCarryover(row, event.target.checked)}
                           className="peer sr-only"
                         />
-                        <span className="absolute inset-0 rounded-full bg-zinc-200/70 transition peer-checked:bg-emerald-500/80 dark:bg-zinc-800/70 dark:peer-checked:bg-emerald-500/70" />
+                        <span className="absolute inset-0 rounded-full bg-zinc-200/70 transition peer-checked:bg-brand dark:bg-zinc-800/70" />
                         <span className="relative ml-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-6" />
                       </label>
                     </td>
