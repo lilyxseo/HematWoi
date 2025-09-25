@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import DashboardBalances from "../components/DashboardBalances";
 import KpiCards from "../components/KpiCards";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
@@ -46,6 +47,8 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           Ringkasan keuanganmu
         </p>
       </header>
+
+      <DashboardBalances />
 
       <KpiCards
         income={stats?.income || 0}
