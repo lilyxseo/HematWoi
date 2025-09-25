@@ -1,5 +1,7 @@
+// src/lib/budgets.ts (contoh nama file)
+
 import { supabase } from './supabase';
-import { getCurrentUserId } from './session';
+import { getCurrentUserId, getUserToken } from './session';
 import { listCategories as listAllCategories } from './api-categories';
 import { buildSupabaseHeaders, createRestUrl } from './supabaseRest';
 
@@ -26,8 +28,8 @@ let categoriesViewUnavailable = false;
 let categoriesFallbackWarned = false;
 
 const isDevelopment = Boolean(
-  (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ||
-    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
+  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.DEV) ||
+    (typeof process !== 'undefined' && (process as any)?.env?.NODE_ENV === 'development')
 );
 
 function isAbortError(error: unknown): boolean {
@@ -38,8 +40,8 @@ async function parsePostgrestError(response: Response, fallback: string): Promis
   let message = fallback;
   try {
     const body = await response.json();
-    if (body?.message) {
-      message = body.message;
+    if ((body as any)?.message) {
+      message = (body as any).message as string;
     }
   } catch (error) {
     if (isDevelopment) {
@@ -230,7 +232,7 @@ async function fetchExpenseCategoriesRemote(
           type: 'expense',
           inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
           group_name: (row.group_name as string | null | undefined) ?? null,
-          order_index: parseOrderIndex(row.order_index),
+          order_index: parseOrderIndex((row as any).order_index),
         })
       );
     }
@@ -253,7 +255,7 @@ async function fetchExpenseCategoriesRemote(
       type: 'expense',
       inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
       group_name: (row.group_name as string | null | undefined) ?? null,
-      order_index: parseOrderIndex(row.order_index),
+      order_index: parseOrderIndex((row as any).order_index),
     })
   );
 }
@@ -300,7 +302,7 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
     .lt('date', end);
   if (error) throw error;
   const totals: Record<string, number> = {};
-  for (const row of data ?? []) {
+  for (const row of (data ?? []) as any[]) {
     const categoryId = row?.category_id as string | null;
     if (!categoryId) continue;
     const amount = Number(row?.amount ?? 0);
@@ -313,45 +315,36 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
+
+  // Pastikan benar-benar logged-in (punya token) sebelum menulis ke cloud
+  try {
+    await getUserToken();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Not signed in') {
+      throw new Error('Silakan login untuk menyimpan anggaran');
+    }
+    throw error;
+  }
+
   const payload = {
     p_category_id: input.category_id,
-    p_amount_planned: input.amount_planned,
-    p_period_month: firstDayOfMonth(input.period),
-    p_carryover_enabled: !!input.carryover_enabled,
+    p_amount_planned: Number(input.amount_planned ?? 0),
+    p_period_month: toMonthStart(input.period), // 'YYYY-MM-01'
+    p_carryover_enabled: Boolean(input.carryover_enabled),
     p_notes: input.notes ?? null,
   };
-  const url = createRestUrl('/rest/v1/rpc/bud_upsert');
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: buildSupabaseHeaders(true),
-    body: JSON.stringify(payload),
-  });
-  if (response.status === 404) {
-    throw new Error('Fungsi bud_upsert belum tersedia. Jalankan migrasi SQL di server.');
-  }
-  if (!response.ok) {
-    throw await parsePostgrestError(response, 'Gagal menyimpan anggaran');
-  }
-  if (response.status !== 204) {
-    // Consume body if any to avoid unhandled promise rejections in some environments.
-    await response.json().catch(() => undefined);
-  }
-}
 
-export function firstDayOfMonth(ym: string): string {
-  const trimmed = (ym ?? '').toString().trim();
-  if (!trimmed) {
-    throw new Error('Periode harus dalam format YYYY-MM');
+  const { error } = await supabase.rpc('bud_upsert', payload);
+  if (error) {
+    if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
+      throw new Error('Silakan login untuk menyimpan anggaran');
+    }
+    const msg = (error.message || '').toLowerCase();
+    if (error.code === '404' || msg.includes('bud_upsert')) {
+      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
+    }
+    throw error;
   }
-  const [yearStr, monthStr] = trimmed.split('-');
-  const year = Number.parseInt(yearStr ?? '', 10);
-  const month = Number.parseInt(monthStr ?? '', 10);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
-    throw new Error('Periode harus dalam format YYYY-MM');
-  }
-  const normalizedYear = year.toString().padStart(4, '0');
-  const normalizedMonth = month.toString().padStart(2, '0');
-  return `${normalizedYear}-${normalizedMonth}-01`;
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
@@ -384,4 +377,3 @@ export function buildSummary(rows: BudgetWithSpent[]): BudgetSummary {
     percentage,
   };
 }
-
