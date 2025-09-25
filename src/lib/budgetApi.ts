@@ -2,6 +2,30 @@ import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
 import { listCategories as listAllCategories } from './api-categories';
 
+type EnvRecord = Record<string, string | undefined>;
+
+const browserEnv = (typeof import.meta !== 'undefined' ? import.meta.env ?? {} : {}) as EnvRecord;
+const nodeEnv =
+  (typeof globalThis !== 'undefined' && (globalThis as any).process?.env
+    ? (globalThis as any).process.env
+    : {}) as EnvRecord;
+
+const SUPABASE_URL =
+  browserEnv.VITE_SUPABASE_URL ?? nodeEnv.VITE_SUPABASE_URL ?? browserEnv.VITE_SUPABASE_URL ?? '';
+const SUPABASE_ANON_KEY =
+  browserEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  browserEnv.VITE_SUPABASE_ANON_KEY ??
+  nodeEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
+  nodeEnv.VITE_SUPABASE_ANON_KEY ??
+  '';
+
+type CategoryFallbackReason = 'view-missing';
+
+let categoriesViewMissing = false;
+let categoriesFallbackReason: CategoryFallbackReason | null = null;
+
+const restBaseUrl = SUPABASE_URL ? SUPABASE_URL.replace(/\/+$, '') : '';
+
 type UUID = string;
 
 type Nullable<T> = T | null;
@@ -16,12 +40,58 @@ export interface ExpenseCategory {
   order_index: Nullable<number>;
 }
 
+type RestCategoryRow = {
+  id: string;
+  user_id: string | null;
+  type: string | null;
+  name: string | null;
+  inserted_at: string | null;
+  group_name: string | null;
+  order_index: number | string | null;
+};
+
 const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
 const isDevelopment = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env?.DEV) ||
     (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development')
 );
+
+function sbHeaders(asJson = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (SUPABASE_ANON_KEY) {
+    headers.apikey = SUPABASE_ANON_KEY;
+    headers.Authorization = `Bearer ${SUPABASE_ANON_KEY}`;
+  }
+  if (asJson) {
+    headers['Content-Type'] = 'application/json';
+  }
+  return headers;
+}
+
+async function buildRestError(scope: string, response: Response): Promise<Error> {
+  let payload: any = null;
+  try {
+    payload = await response.json();
+  } catch (err) {
+    if (isDevelopment) {
+      console.warn(`[HW][${scope}] failed to parse error payload`, err);
+    }
+  }
+  const message = payload?.message || `HTTP ${response.status}`;
+  const error = new Error(message);
+  (error as any).status = response.status;
+  if (payload) {
+    (error as any).details = payload;
+  }
+  return error;
+}
+
+export function consumeCategoriesFallbackNotice(): CategoryFallbackReason | null {
+  const reason = categoriesFallbackReason;
+  categoriesFallbackReason = null;
+  return reason;
+}
 
 function mapCategoryRecordToExpense(category: {
   id: string;
@@ -46,6 +116,19 @@ function mapCategoryRecordToExpense(category: {
     group_name: category.group_name ?? null,
     order_index: (category.order_index ?? category.sort_order) ?? null,
   };
+}
+
+function toNullableNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
 }
 
 export interface BudgetRow {
@@ -96,16 +179,33 @@ function ensureAuth(userId: Nullable<string>): asserts userId is string {
   }
 }
 
-function toMonthStart(period: string): string {
-  if (!period) throw new Error('Periode tidak valid');
-  const [yearStr, monthStr] = period.split('-');
-  if (!yearStr || !monthStr) throw new Error('Periode harus dalam format YYYY-MM');
+export function firstDayOfMonth(period: string): string {
+  const normalized = (period ?? '').trim();
+  if (!normalized) {
+    throw new Error('Periode harus dalam format YYYY-MM');
+  }
+  const segments = normalized.split('-');
+  if (segments.length < 2) {
+    throw new Error('Periode harus dalam format YYYY-MM');
+  }
+  const [yearStr, monthStr] = segments;
   const year = Number.parseInt(yearStr, 10);
   const month = Number.parseInt(monthStr, 10);
-  if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) {
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
     throw new Error('Periode harus dalam format YYYY-MM');
   }
   return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-01`;
+}
+
+function toMonthStart(period: string): string {
+  const normalized = (period ?? '').trim();
+  if (!normalized) {
+    throw new Error('Periode tidak valid');
+  }
+  if (normalized.length >= 7) {
+    return firstDayOfMonth(normalized.slice(0, 7));
+  }
+  return firstDayOfMonth(normalized);
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
@@ -124,30 +224,86 @@ function getMonthRange(period: string): { start: string; end: string } {
   };
 }
 
-export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
-  async function fetchFromCloud(): Promise<ExpenseCategory[]> {
-    const userId = await getCurrentUserId();
-    ensureAuth(userId);
-    const { data, error } = await supabase
-      .from('categories')
-      .select('id,user_id,type,name,inserted_at,"group" as group_name,order_index')
-      .eq('user_id', userId)
-      .eq('type', 'expense')
-      .order('order_index', { ascending: true, nullsFirst: true })
-      .order('name', { ascending: true });
-    if (error) throw error;
-    return (data ?? []) as ExpenseCategory[];
+export async function listExpenseCategories(uid: string): Promise<ExpenseCategory[]> {
+  if (!uid) {
+    return [];
+  }
+  if (!restBaseUrl || !SUPABASE_ANON_KEY) {
+    throw new Error('Konfigurasi Supabase REST belum tersedia.');
   }
 
-  try {
-    const rows = await fetchFromCloud();
-    if (rows.length > 0) {
-      return rows;
+  const params = new URLSearchParams({
+    select: 'id,user_id,type,name,inserted_at,group_name,order_index',
+    user_id: `eq.${uid}`,
+    type: 'eq.expense',
+    order: 'order_index.asc.nullsfirst,name.asc',
+  });
+  const restEndpoint = `${restBaseUrl}/rest/v1`;
+
+  if (!categoriesViewMissing) {
+    const response = await fetch(`${restEndpoint}/v_categories_budget?${params.toString()}`, {
+      headers: sbHeaders(),
+    });
+    if (response.status === 404) {
+      categoriesViewMissing = true;
+      categoriesFallbackReason = 'view-missing';
+    } else {
+      if (!response.ok) {
+        throw await buildRestError('listExpenseCategories', response);
+      }
+      const rows = (await response.json()) as RestCategoryRow[];
+      return rows.map((row) =>
+        mapCategoryRecordToExpense({
+          id: String(row.id),
+          user_id: row.user_id,
+          name: row.name ?? '',
+          type: row.type ?? 'expense',
+          inserted_at: row.inserted_at,
+          group_name: row.group_name,
+          order_index: toNullableNumber(row.order_index),
+        })
+      );
     }
+  }
+
+  const fallbackResponse = await fetch(`${restEndpoint}/categories?${params.toString()}`, {
+    headers: sbHeaders(),
+  });
+  if (!fallbackResponse.ok) {
+    throw await buildRestError('listExpenseCategories', fallbackResponse);
+  }
+  const fallbackRows = (await fallbackResponse.json()) as RestCategoryRow[];
+  return fallbackRows.map((row) =>
+    mapCategoryRecordToExpense({
+      id: String(row.id),
+      user_id: row.user_id,
+      name: row.name ?? '',
+      type: row.type ?? 'expense',
+      inserted_at: row.inserted_at,
+      group_name: row.group_name,
+      order_index: toNullableNumber(row.order_index),
+    })
+  );
+}
+
+export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
+  let userId: string | null = null;
+  try {
+    userId = await getCurrentUserId();
+    ensureAuth(userId);
   } catch (error) {
-    // Fallback handled below when cloud fetch fails (e.g. offline or guest mode)
-    if (isDevelopment && error instanceof Error) {
-      console.warn('[HW] listCategoriesExpense fallback', error);
+    if (isDevelopment) {
+      console.warn('[HW] listCategoriesExpense auth fallback', error);
+    }
+  }
+
+  if (userId) {
+    try {
+      return await listExpenseCategories(userId);
+    } catch (error) {
+      if (isDevelopment) {
+        console.warn('[HW] listCategoriesExpense fallback', error);
+      }
     }
   }
 
@@ -161,7 +317,10 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
         name: category.name,
         type: category.type,
         created_at: category.created_at,
-        order_index: category.sort_order,
+        inserted_at: (category as any).inserted_at ?? category.created_at ?? null,
+        group_name: (category as any).group_name ?? null,
+        order_index: (category as any).order_index ?? category.sort_order ?? null,
+        sort_order: category.sort_order ?? null,
       })
     );
 }
@@ -191,6 +350,7 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
     .eq('user_id', userId)
     .is('deleted_at', null)
     .eq('type', 'expense')
+    .is('to_account_id', null)
     .gte('date', start)
     .lt('date', end);
   if (error) throw error;
@@ -208,15 +368,44 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
-  const payload = {
-    category_id: input.category_id,
-    amount_planned: input.amount_planned,
-    period_month: toMonthStart(input.period),
-    carryover_enabled: input.carryover_enabled,
-    notes: input.notes ?? null,
+  const body = {
+    p_category_id: input.category_id,
+    p_amount_planned: Number(input.amount_planned ?? 0),
+    p_period_month: firstDayOfMonth(input.period),
+    p_carryover_enabled: Boolean(input.carryover_enabled),
+    p_notes: input.notes ?? null,
   };
-  const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) throw error;
+
+  if (!restBaseUrl || !SUPABASE_ANON_KEY) {
+    const { error } = await supabase.rpc('bud_upsert', body);
+    if (error) throw error;
+    return;
+  }
+
+  const response = await fetch(`${restBaseUrl}/rest/v1/rpc/bud_upsert`, {
+    method: 'POST',
+    headers: sbHeaders(true),
+    body: JSON.stringify(body),
+  });
+
+  if (response.status === 404) {
+    const error: Error & { code?: string; status?: number } = new Error(
+      'Fungsi bud_upsert belum tersedia. Jalankan migrasi SQL di server.'
+    );
+    error.code = 'RPC_NOT_FOUND';
+    error.status = 404;
+    throw error;
+  }
+
+  if (!response.ok) {
+    throw await buildRestError('upsertBudget', response);
+  }
+
+  try {
+    await response.json();
+  } catch {
+    // Ignore bodies without JSON content
+  }
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {

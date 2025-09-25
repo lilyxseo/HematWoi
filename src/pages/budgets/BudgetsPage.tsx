@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { Calendar, Plus, RefreshCw } from 'lucide-react';
 import Page from '../../layout/Page';
@@ -11,11 +11,13 @@ import BudgetFormModal, { type BudgetFormValues } from './components/BudgetFormM
 import { useBudgets } from '../../hooks/useBudgets';
 import {
   deleteBudget,
+  consumeCategoriesFallbackNotice,
   listCategoriesExpense,
   upsertBudget,
   type BudgetWithSpent,
   type ExpenseCategory,
 } from '../../lib/budgetApi';
+import useIsAdmin from '../../hooks/useIsAdmin';
 
 const SEGMENTS = [
   { value: 'current', label: 'Bulan ini' },
@@ -71,8 +73,10 @@ export default function BudgetsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [rpcHintShown, setRpcHintShown] = useState(false);
 
   const { rows, summary, loading, error, refresh } = useBudgets(period);
+  const { isAdmin } = useIsAdmin();
 
   useEffect(() => {
     let active = true;
@@ -81,6 +85,13 @@ export default function BudgetsPage() {
       .then((data) => {
         if (!active) return;
         setCategories(data);
+        const fallbackReason = consumeCategoriesFallbackNotice();
+        if (fallbackReason === 'view-missing') {
+          addToast(
+            'View v_categories_budget belum tersedia. Menggunakan fallback /categories.',
+            'warning'
+          );
+        }
       })
       .catch((err) => {
         if (!active) return;
@@ -95,6 +106,23 @@ export default function BudgetsPage() {
       active = false;
     };
   }, [addToast]);
+
+  const notifyBudgetError = useCallback(
+    (err: unknown, fallback: string) => {
+      const code = typeof err === 'object' && err ? (err as { code?: string }).code : undefined;
+      const message = err instanceof Error ? err.message : fallback;
+      if (code === 'RPC_NOT_FOUND') {
+        addToast(message, 'error');
+        if (isAdmin && !rpcHintShown) {
+          addToast('Perlu menjalankan migrasi SQL untuk RPC bud_upsert.', 'warning');
+          setRpcHintShown(true);
+        }
+        return;
+      }
+      addToast(message, 'error');
+    },
+    [addToast, isAdmin, rpcHintShown]
+  );
 
   useEffect(() => {
     if (!error) return;
@@ -170,8 +198,7 @@ export default function BudgetsPage() {
       });
       await refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Gagal memperbarui carryover';
-      addToast(message, 'error');
+      notifyBudgetError(err, 'Gagal memperbarui carryover');
     }
   };
 
@@ -190,8 +217,7 @@ export default function BudgetsPage() {
       addToast('Anggaran tersimpan', 'success');
       await refresh();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Gagal menyimpan anggaran';
-      addToast(message, 'error');
+      notifyBudgetError(err, 'Gagal menyimpan anggaran');
     } finally {
       setSubmitting(false);
     }

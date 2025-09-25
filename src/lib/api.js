@@ -612,7 +612,8 @@ export async function deleteTransaction(id) {
 // -- CATEGORIES ----------------------------------------
 
 function mapCategoryRow(row = {}, userId) {
-  const typeFromGroup = typeof row.group === "string" ? row.group.toLowerCase() : "";
+  const groupValue = row.group_name ?? row.group;
+  const typeFromGroup = typeof groupValue === "string" ? groupValue.toLowerCase() : "";
   const rawType = row.type ?? row.category_type;
   const inferredType = rawType
     ? rawType
@@ -638,7 +639,7 @@ function mapCategoryRow(row = {}, userId) {
     user_id: row.user_id ?? userId ?? null,
     name: row.name ?? row.title ?? row.label ?? "",
     type: normalizedType,
-    group: row.group ?? null,
+    group: row.group_name ?? row.group ?? null,
     order_index: orderIndex,
     inserted_at: row.inserted_at ?? row.created_at ?? null,
   };
@@ -658,7 +659,7 @@ export async function listCategories(type) {
   try {
     const { data, error } = await supabase
       .from("categories")
-      .select('id, user_id, type, name, order_index, inserted_at, "group"')
+      .select('id, user_id, type, name, order_index, inserted_at, group_name')
       .eq("user_id", userId);
     if (error) throw error;
     const rows = (data || []).map((row) => mapCategoryRow(row, userId));

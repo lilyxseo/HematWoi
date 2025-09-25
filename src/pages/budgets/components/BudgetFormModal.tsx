@@ -48,11 +48,13 @@ export default function BudgetFormModal({
 }: BudgetFormModalProps) {
   const [values, setValues] = useState<BudgetFormValues>(initialValues);
   const [errors, setErrors] = useState<Partial<Record<keyof BudgetFormValues, string>>>({});
+  const [categorySearch, setCategorySearch] = useState('');
 
   useEffect(() => {
     if (open) {
       setValues(initialValues);
       setErrors({});
+      setCategorySearch('');
     }
   }, [open, initialValues]);
 
@@ -67,16 +69,27 @@ export default function BudgetFormModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  const filteredCategories = useMemo(() => {
+    const term = categorySearch.trim().toLowerCase();
+    if (!term) return categories;
+    return categories.filter((category) =>
+      category.name.toLowerCase().includes(term)
+    );
+  }, [categories, categorySearch]);
+
   const groupedCategories = useMemo(() => {
     const groups = new Map<string, ExpenseCategory[]>();
-    for (const category of categories) {
+    for (const category of filteredCategories) {
       const key = category.group_name ?? 'Ungrouped';
       const list = groups.get(key) ?? [];
       list.push(category);
       groups.set(key, list);
     }
     return Array.from(groups.entries());
-  }, [categories]);
+  }, [filteredCategories]);
+
+  const hasCategories = filteredCategories.length > 0;
+  const hasAnyCategories = categories.length > 0;
 
   const handleChange = (field: keyof BudgetFormValues, value: string | number | boolean) => {
     setValues((prev) => ({ ...prev, [field]: value }));
@@ -142,29 +155,57 @@ export default function BudgetFormModal({
 
             <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
               Kategori
-              <div className="relative">
-                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
-                  <PiggyBank className="h-4 w-4" />
-                </span>
-                <select
-                  value={values.category_id}
-                  onChange={(event) => handleChange('category_id', event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                  required
-                >
-                  <option value="" disabled>
-                    Pilih kategori
-                  </option>
-                  {groupedCategories.map(([groupName, groupCategories]) => (
-                    <optgroup key={groupName} label={groupName}>
-                      {groupCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+              <div className="space-y-3">
+                {hasAnyCategories ? (
+                  <div className="relative">
+                    <input
+                      type="search"
+                      value={categorySearch}
+                      onChange={(event) => setCategorySearch(event.target.value)}
+                      placeholder="Cari kategori..."
+                      className="h-10 w-full rounded-2xl border border-border bg-surface pl-4 pr-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                      aria-label="Cari kategori pengeluaran"
+                    />
+                  </div>
+                ) : null}
+
+                <div className="relative">
+                  <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
+                    <PiggyBank className="h-4 w-4" />
+                  </span>
+                  <select
+                    value={values.category_id}
+                    onChange={(event) => handleChange('category_id', event.target.value)}
+                    className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                    required
+                    disabled={!hasCategories}
+                  >
+                    <option value="" disabled>
+                      {hasCategories ? 'Pilih kategori' : 'Belum ada kategori pengeluaran'}
+                    </option>
+                    {groupedCategories.map(([groupName, groupCategories]) => (
+                      <optgroup key={groupName} label={groupName}>
+                        {groupCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+
+                {!hasAnyCategories ? (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Belum ada kategori pengeluaran.
+                  </p>
+                ) : null}
+
+                {hasAnyCategories && !hasCategories ? (
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Tidak ada kategori yang cocok dengan pencarian.
+                  </p>
+                ) : null}
               </div>
               {errors.category_id ? <span className="text-xs font-medium text-rose-500">{errors.category_id}</span> : null}
             </label>

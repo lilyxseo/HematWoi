@@ -20,9 +20,10 @@ import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
-import { listAccounts, listCategories } from '../lib/api';
+import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
 import { supabase } from '../lib/supabase';
+import { listCategoriesExpense, consumeCategoriesFallbackNotice } from '../lib/budgetApi';
 
 const TYPE_OPTIONS = [
   {
@@ -118,6 +119,7 @@ export default function TransactionAdd({ onAdd }) {
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [categorySearch, setCategorySearch] = useState('');
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
@@ -130,7 +132,7 @@ export default function TransactionAdd({ onAdd }) {
       try {
         const [accountRows, categoryRows] = await Promise.all([
           listAccounts(),
-          listCategories(),
+          listCategoriesExpense(),
         ]);
         if (!active) return;
         const sortedAccounts = (accountRows || []).slice().sort((a, b) => {
@@ -141,6 +143,13 @@ export default function TransactionAdd({ onAdd }) {
           setAccountId(sortedAccounts[0].id);
         }
         setCategories(categoryRows || []);
+        const fallbackReason = consumeCategoriesFallbackNotice();
+        if (fallbackReason === 'view-missing') {
+          addToast(
+            'View v_categories_budget belum tersedia. Menggunakan fallback /categories.',
+            'warning'
+          );
+        }
       } catch (err) {
         addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
@@ -181,24 +190,37 @@ export default function TransactionAdd({ onAdd }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [navigate]);
 
-  const categoriesByType = useMemo(() => {
-    const grouped = { income: [], expense: [] };
-    categories.forEach((item) => {
-      const key = (item.type || 'expense').toLowerCase();
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(item);
-    });
-    return grouped;
+  const expenseCategories = useMemo(() => {
+    return categories.filter((item) => (item.type || 'expense') === 'expense');
   }, [categories]);
 
+  const filteredExpenseCategories = useMemo(() => {
+    const term = categorySearch.trim().toLowerCase();
+    if (!term) return expenseCategories;
+    return expenseCategories.filter((item) =>
+      item.name.toLowerCase().includes(term)
+    );
+  }, [expenseCategories, categorySearch]);
+
   useEffect(() => {
-    if (type === 'transfer') return;
-    const list = categoriesByType[type] || [];
-    if (!list.length) return;
-    if (!categoryId || !list.some((item) => item.id === categoryId)) {
-      setCategoryId(list[0].id);
+    if (type !== 'expense') {
+      setCategoryId('');
+      return;
     }
-  }, [categoriesByType, categoryId, type]);
+    if (!expenseCategories.length) {
+      setCategoryId('');
+      return;
+    }
+    if (!categoryId || !expenseCategories.some((item) => item.id === categoryId)) {
+      setCategoryId(expenseCategories[0].id);
+    }
+  }, [type, expenseCategories, categoryId]);
+
+  useEffect(() => {
+    if (type !== 'expense') {
+      setCategorySearch('');
+    }
+  }, [type]);
 
   const selectedAccount = accounts.find((item) => item.id === accountId);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
@@ -209,6 +231,9 @@ export default function TransactionAdd({ onAdd }) {
   );
 
   const isTransfer = type === 'transfer';
+  const showCategorySelect = type === 'expense';
+  const hasExpenseCategories = expenseCategories.length > 0;
+  const hasFilteredExpenseCategories = filteredExpenseCategories.length > 0;
   const amountValue = parseAmount(amountInput);
   const trimmedTitle = title.trim();
   const trimmedNotes = notes.trim();
@@ -283,7 +308,7 @@ export default function TransactionAdd({ onAdd }) {
     } else if (toAccountId) {
       nextErrors.to_account_id = 'Akun tujuan hanya digunakan untuk transfer.';
     }
-    if (!isTransfer && type === 'expense' && !categoryId) {
+    if (type === 'expense' && !categoryId) {
       nextErrors.category_id = 'Kategori wajib diisi untuk pengeluaran.';
     }
     setErrors(nextErrors);
@@ -299,6 +324,7 @@ export default function TransactionAdd({ onAdd }) {
     setNotes('');
     setReceiptFile(null);
     setReceiptPreview('');
+    setCategorySearch('');
     setErrors({});
     if (accounts.length) {
       setAccountId(accounts[0].id);
@@ -559,28 +585,49 @@ export default function TransactionAdd({ onAdd }) {
                     {errors.to_account_id ? <p className="mt-1 text-xs text-destructive">{errors.to_account_id}</p> : null}
                   </div>
                 ) : null}
-                {!isTransfer ? (
+                {showCategorySelect ? (
                   <div>
                     <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
                       <TagIcon className="h-4 w-4" aria-hidden="true" />
                       Kategori
                     </label>
-                    <select
-                      id="category"
-                      value={categoryId}
-                      onChange={(event) => {
-                        setCategoryId(event.target.value);
-                        setErrors((prev) => ({ ...prev, category_id: undefined }));
-                      }}
-                      className={INPUT_CLASS}
-                    >
-                      <option value="">Pilih kategori</option>
-                      {(categoriesByType[type] || []).map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
+                    <div className="space-y-2">
+                      {hasExpenseCategories ? (
+                        <input
+                          type="search"
+                          value={categorySearch}
+                          onChange={(event) => setCategorySearch(event.target.value)}
+                          placeholder="Cari kategori..."
+                          className="h-10 w-full rounded-xl border border-border-subtle bg-background px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          aria-label="Cari kategori pengeluaran"
+                        />
+                      ) : null}
+                      <select
+                        id="category"
+                        value={categoryId}
+                        onChange={(event) => {
+                          setCategoryId(event.target.value);
+                          setErrors((prev) => ({ ...prev, category_id: undefined }));
+                        }}
+                        className={INPUT_CLASS}
+                        disabled={!hasFilteredExpenseCategories}
+                      >
+                        <option value="">
+                          {hasFilteredExpenseCategories ? 'Pilih kategori' : 'Belum ada kategori pengeluaran'}
                         </option>
-                      ))}
-                    </select>
+                        {filteredExpenseCategories.map((category) => (
+                          <option key={category.id} value={category.id}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                      {!hasExpenseCategories ? (
+                        <p className="text-xs text-muted">Belum ada kategori pengeluaran.</p>
+                      ) : null}
+                      {hasExpenseCategories && !hasFilteredExpenseCategories ? (
+                        <p className="text-xs text-muted">Tidak ada kategori yang cocok dengan pencarian.</p>
+                      ) : null}
+                    </div>
                     {errors.category_id ? <p className="mt-1 text-xs text-destructive">{errors.category_id}</p> : null}
                   </div>
                 ) : null}
