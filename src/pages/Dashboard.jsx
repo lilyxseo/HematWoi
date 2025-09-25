@@ -12,6 +12,7 @@ import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
+import DashboardBalances from "../components/dashboard/DashboardBalances";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
@@ -46,6 +47,8 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           Ringkasan keuanganmu
         </p>
       </header>
+
+      <DashboardBalances />
 
       <KpiCards
         income={stats?.income || 0}
