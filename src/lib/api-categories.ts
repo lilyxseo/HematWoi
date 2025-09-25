@@ -3,112 +3,29 @@ import { dbCache } from "./sync/localdb";
 import { getCurrentUserId } from "./session";
 import { LocalDriver } from "./data-driver";
 
-type CategoryType = "income" | "expense";
-type CategorySortColumn = "sort_order" | "order_index";
-type CategoryCreatedColumn = "created_at" | "inserted_at";
+export type CategoryType = "income" | "expense";
 
 export interface CategoryRecord {
   id: string;
   user_id: string | null;
   name: string;
   type: CategoryType;
-  color: string;
-  sort_order: number;
-  created_at: string | null;
-  updated_at: string | null;
+  order_index: number | null;
+  inserted_at: string | null;
+  group_name: string | null;
 }
 
-const DEFAULT_COLOR = "#64748B";
+const BASE_SELECT = `
+  id,
+  user_id,
+  name,
+  type,
+  order_index,
+  inserted_at,
+  "group" as group_name
+`;
 
-let categorySortColumn: CategorySortColumn | undefined;
-let categoryCreatedColumn: CategoryCreatedColumn | undefined;
 const guestDriver = new LocalDriver();
-
-function getCategorySortColumn(): CategorySortColumn {
-  return categorySortColumn ?? "sort_order";
-}
-
-function getCategoryBaseColumns(): string {
-  const sortColumn = getCategorySortColumn();
-  const createdColumn = getCategoryCreatedColumn();
-  return [
-    "id",
-    "user_id",
-    "name",
-    "type",
-    sortColumn,
-    ...(createdColumn === "created_at" ? ["created_at"] : []),
-    "updated_at",
-    "inserted_at",
-  ].join(", ");
-}
-
-let categoryColorSupported: boolean | undefined;
-
-function shouldUseCategoryColor(): boolean {
-  return categoryColorSupported !== false;
-}
-
-function getCategoryCreatedColumn(): CategoryCreatedColumn {
-  return categoryCreatedColumn ?? "created_at";
-}
-
-function getCategorySelectColumns(): string {
-  const baseColumns = getCategoryBaseColumns();
-  return shouldUseCategoryColor() ? `${baseColumns}, color` : baseColumns;
-}
-
-function isMissingColumnError(error: unknown, column: string): boolean {
-  if (!error || typeof error !== "object") return false;
-  const maybeCode = (error as { code?: unknown }).code;
-  const maybeMessage = (error as { message?: unknown }).message;
-  if (typeof maybeMessage === "string") {
-    const normalized = maybeMessage.toLowerCase();
-    if (
-      normalized.includes(column.toLowerCase()) &&
-      (normalized.includes("does not exist") || normalized.includes("could not find"))
-    ) {
-      return true;
-    }
-  }
-  if (maybeCode === "42703" || maybeCode === "PGRST204") {
-    if (typeof maybeMessage === "string") {
-      return maybeMessage.toLowerCase().includes(column.toLowerCase());
-    }
-    return true;
-  }
-  return false;
-}
-
-function handleMissingCategoryColor(error: unknown): boolean {
-  if (shouldUseCategoryColor() && isMissingColumnError(error, "color")) {
-    categoryColorSupported = false;
-    return true;
-  }
-  return false;
-}
-
-function handleMissingCategorySortColumn(error: unknown): boolean {
-  const current = getCategorySortColumn();
-  if (current === "sort_order" && isMissingColumnError(error, "sort_order")) {
-    categorySortColumn = "order_index";
-    return true;
-  }
-  if (current === "order_index" && isMissingColumnError(error, "order_index")) {
-    categorySortColumn = "sort_order";
-    return true;
-  }
-  return false;
-}
-
-function handleMissingCategoryCreatedColumn(error: unknown): boolean {
-  const current = getCategoryCreatedColumn();
-  if (current === "created_at" && isMissingColumnError(error, "created_at")) {
-    categoryCreatedColumn = "inserted_at";
-    return true;
-  }
-  return false;
-}
 
 const isDevelopment = Boolean(
   (typeof import.meta !== "undefined" && import.meta.env?.DEV) ||
@@ -118,19 +35,6 @@ const isDevelopment = Boolean(
 function logDevError(scope: string, error: unknown) {
   if (isDevelopment) {
     console.error(`[HW] ${scope}`, error);
-  }
-}
-
-function nowISO(): string {
-  return new Date().toISOString();
-}
-
-async function resolveUserId(): Promise<string | null> {
-  try {
-    return await getCurrentUserId();
-  } catch (error) {
-    logDevError("resolveUserId", error);
-    return null;
   }
 }
 
@@ -146,45 +50,39 @@ function toError(error: unknown, fallback: string) {
   return new Error(fallback);
 }
 
+function normalizeName(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function normalizeType(value: unknown): CategoryType {
   return value === "income" ? "income" : "expense";
 }
 
-function normalizeColor(value: unknown): string {
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) {
-      return trimmed.toUpperCase();
-    }
-  }
-  return DEFAULT_COLOR;
+function normalizeGroupName(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
-function normalizeSortOrder(value: unknown, fallback = 0): number {
+function normalizeOrderIndex(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
-  const parsed = Number.parseInt(String(value ?? ""), 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-function normalizeName(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.trim();
-}
-
-function mapCategoryRow(row: Partial<CategoryRecord> & Record<string, unknown>): CategoryRecord {
-  const sortValue =
-    typeof row.sort_order !== "undefined" ? row.sort_order : row.order_index;
+function mapCategoryRow(row: Record<string, unknown>): CategoryRecord {
   return {
     id: String(row.id ?? ""),
-    user_id: (typeof row.user_id === "string" ? row.user_id : null) ?? null,
+    user_id: typeof row.user_id === "string" ? row.user_id : null,
     name: normalizeName(row.name),
     type: normalizeType(row.type),
-    color: normalizeColor(row.color),
-    sort_order: normalizeSortOrder(sortValue),
-    created_at: (typeof row.created_at === "string" ? row.created_at : row.inserted_at) ?? null,
-    updated_at: (typeof row.updated_at === "string" ? row.updated_at : null),
+    order_index: normalizeOrderIndex(row.order_index),
+    inserted_at: typeof row.inserted_at === "string" ? row.inserted_at : null,
+    group_name: normalizeGroupName(row.group_name ?? (row as { group?: unknown }).group),
   };
 }
 
@@ -193,16 +91,32 @@ function sortCategories(rows: CategoryRecord[]): CategoryRecord[] {
     if (a.type !== b.type) {
       return a.type.localeCompare(b.type);
     }
-    const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
-    if (orderDiff !== 0) return orderDiff;
+    const orderA = a.order_index ?? Number.MAX_SAFE_INTEGER;
+    const orderB = b.order_index ?? Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
+}
+
+function nowISO(): string {
+  return new Date().toISOString();
+}
+
+async function resolveUserId(): Promise<string | null> {
+  try {
+    return await getCurrentUserId();
+  } catch (error) {
+    logDevError("resolveUserId", error);
+    return null;
+  }
 }
 
 async function listGuestCategories(): Promise<CategoryRecord[]> {
   const rows = await guestDriver.list("categories");
   const mapped = (rows ?? []).map((row) =>
-    mapCategoryRow(row as Partial<CategoryRecord> & Record<string, unknown>)
+    mapCategoryRow(row as Record<string, unknown>)
   );
   return sortCategories(mapped);
 }
@@ -229,96 +143,75 @@ async function ensureGuestUniqueName(
 async function createGuestCategory(input: {
   name: string;
   type: CategoryType;
-  color: string;
+  group_name?: string | null;
+  order_index?: number | null;
 }): Promise<CategoryRecord> {
-  const { name, type, color } = input;
-  await ensureGuestUniqueName(type, name);
-  const existing = await listGuestCategories();
-  const lastOrder = existing
-    .filter((row) => row.type === type)
-    .reduce((max, row) => Math.max(max, row.sort_order ?? 0), -1);
-  const sortOrder = lastOrder + 1;
-  const now = nowISO();
+  const rows = await listGuestCategories();
+  const nextOrder =
+    input.order_index ??
+    rows
+      .filter((row) => row.type === input.type)
+      .reduce((max, row) => Math.max(max, row.order_index ?? -1), -1) + 1;
+
+  await ensureGuestUniqueName(input.type, input.name);
+
   const payload: Record<string, unknown> = {
-    name,
-    type,
-    color,
-    sort_order: sortOrder,
-    created_at: now,
-    updated_at: now,
+    name: input.name,
+    type: input.type,
+    order_index: nextOrder,
+    inserted_at: nowISO(),
+    group_name: normalizeGroupName(input.group_name),
     user_id: null,
   };
+
   const inserted = await guestDriver.insert("categories", payload);
-  const record = mapCategoryRow(
-    inserted as Partial<CategoryRecord> & Record<string, unknown>
-  );
+  const record = mapCategoryRow(inserted as Record<string, unknown>);
   await dbCache.set("categories", record);
   return record;
 }
 
 async function updateGuestCategory(
   id: string,
-  patch: Partial<Pick<CategoryRecord, "name" | "color" | "sort_order">>
+  patch: {
+    name?: string;
+    type?: CategoryType;
+    group_name?: string | null;
+    order_index?: number | null;
+  }
 ): Promise<CategoryRecord> {
   const existing = await guestDriver.get("categories", id);
   if (!existing) {
     throw new Error("Kategori tidak ditemukan.");
   }
-  const current = mapCategoryRow(
-    existing as Partial<CategoryRecord> & Record<string, unknown>
-  );
-  const updates: Record<string, unknown> = {};
+  const current = mapCategoryRow(existing as Record<string, unknown>);
 
-  if (typeof patch.name === "string") {
+  const updates: Record<string, unknown> = {};
+  if (patch.name !== undefined) {
     const normalized = normalizeName(patch.name);
-    if (!normalized || normalized.length > 60) {
-      throw new Error("Nama kategori harus 1-60 karakter.");
+    if (!normalized) {
+      throw new Error("Nama kategori wajib.");
     }
     await ensureGuestUniqueName(current.type, normalized, current.id);
     updates.name = normalized;
   }
-
-  if (typeof patch.color === "string") {
-    updates.color = normalizeColor(patch.color);
+  if (patch.type !== undefined) {
+    updates.type = normalizeType(patch.type);
   }
-
-  if (patch.sort_order != null) {
-    updates.sort_order = normalizeSortOrder(patch.sort_order);
+  if (patch.group_name !== undefined) {
+    updates.group_name = normalizeGroupName(patch.group_name);
+  }
+  if (patch.order_index !== undefined) {
+    updates.order_index = normalizeOrderIndex(patch.order_index);
   }
 
   if (!Object.keys(updates).length) {
     return current;
   }
 
-  updates.updated_at = nowISO();
   const updated = await guestDriver.update("categories", id, updates);
-  const record = mapCategoryRow(
-    updated as Partial<CategoryRecord> & Record<string, unknown>
-  );
+  const record = mapCategoryRow(updated as Record<string, unknown>);
   await dbCache.set("categories", record);
   return record;
-}
-
-async function reorderGuestCategories(
-  type: CategoryType,
-  orderedIds: string[]
-): Promise<void> {
-  if (!Array.isArray(orderedIds) || !orderedIds.length) {
-    return;
-  }
-  const normalizedType = normalizeType(type);
-  const now = nowISO();
-  await Promise.all(
-    orderedIds.map((id, index) =>
-      guestDriver.update("categories", id, {
-        type: normalizedType,
-        sort_order: index,
-        updated_at: now,
-      })
-    )
-  );
-  const rows = await listGuestCategories();
-  await dbCache.bulkSet("categories", rows);
 }
 
 async function deleteGuestCategory(id: string): Promise<void> {
@@ -326,7 +219,51 @@ async function deleteGuestCategory(id: string): Promise<void> {
   await dbCache.remove("categories", id);
 }
 
-export async function listCategories(signal?: AbortSignal): Promise<CategoryRecord[]> {
+async function reorderGuestCategories(
+  type: CategoryType,
+  orderedIds: string[]
+): Promise<void> {
+  if (!orderedIds.length) return;
+  const normalizedType = normalizeType(type);
+  const updates = orderedIds.map((id, index) => ({
+    id,
+    type: normalizedType,
+    order_index: index,
+  }));
+  await Promise.all(
+    updates.map((item) => guestDriver.update("categories", item.id, item))
+  );
+  const rows = await listGuestCategories();
+  await dbCache.bulkSet("categories", rows);
+}
+
+async function assertUniqueName(
+  userId: string,
+  type: CategoryType,
+  name: string,
+  excludeId?: string
+) {
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id, name, type")
+    .eq("user_id", userId)
+    .eq("type", type)
+    .ilike("name", name)
+    .limit(10);
+  if (error) throw error;
+  const normalized = name.trim().toLowerCase();
+  const conflict = (data ?? []).find((row) => {
+    if (excludeId && row.id === excludeId) return false;
+    return (row.name ?? "").trim().toLowerCase() === normalized;
+  });
+  if (conflict) {
+    throw new Error("Nama kategori sudah digunakan pada tipe ini.");
+  }
+}
+
+export async function listCategories(
+  signal?: AbortSignal
+): Promise<CategoryRecord[]> {
   if (signal?.aborted) {
     return [];
   }
@@ -337,15 +274,13 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
   }
 
   try {
-    const sortColumn = getCategorySortColumn();
-    const createdColumn = getCategoryCreatedColumn();
     let query = supabase
       .from("categories")
-      .select(getCategorySelectColumns())
+      .select(BASE_SELECT)
       .eq("user_id", userId)
       .order("type", { ascending: true })
-      .order(sortColumn, { ascending: true })
-      .order(createdColumn, { ascending: true });
+      .order("order_index", { ascending: true, nullsFirst: true })
+      .order("name", { ascending: true });
 
     if (signal) {
       query = query.abortSignal(signal);
@@ -353,19 +288,10 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
 
     const { data, error } = await query;
     if (error) throw error;
-    const rows = sortCategories((data ?? []).map(mapCategoryRow));
+    const rows = (data ?? []).map((row) => mapCategoryRow(row as Record<string, unknown>));
     await dbCache.bulkSet("categories", rows);
     return rows;
   } catch (error) {
-    if (handleMissingCategoryColor(error)) {
-      return listCategories(signal);
-    }
-    if (handleMissingCategorySortColumn(error)) {
-      return listCategories(signal);
-    }
-    if (handleMissingCategoryCreatedColumn(error)) {
-      return listCategories(signal);
-    }
     if (signal?.aborted) {
       return [];
     }
@@ -381,180 +307,147 @@ export async function listCategories(signal?: AbortSignal): Promise<CategoryReco
   }
 }
 
-async function assertUniqueName(
-  userId: string,
-  type: CategoryType,
-  name: string,
-  excludeId?: string
-) {
-  const query = supabase
-    .from("categories")
-    .select("id, name")
-    .eq("user_id", userId)
-    .eq("type", type)
-    .ilike("name", name)
-    .limit(5);
-  const { data, error } = await query;
-  if (error) throw error;
-  const conflict = (data ?? []).find((row) => {
-    if (excludeId && row.id === excludeId) return false;
-    return normalizeName(row.name).toLowerCase() === name.toLowerCase();
-  });
-  if (conflict) {
-    throw new Error("Nama kategori sudah digunakan pada tipe ini.");
-  }
-}
-
-export async function createCategory(input: {
+export async function createCategory(payload: {
   name: string;
   type: CategoryType;
-  color: string;
+  group_name?: string | null;
+  order_index?: number | null;
 }): Promise<CategoryRecord> {
-  const name = normalizeName(input.name);
-  if (!name || name.length > 60) {
-    throw new Error("Nama kategori harus 1-60 karakter.");
+  const name = normalizeName(payload.name);
+  if (!name) {
+    throw new Error("Nama kategori wajib.");
   }
-  const type = normalizeType(input.type);
-  const color = normalizeColor(input.color);
+  if (!["income", "expense"].includes(payload.type)) {
+    throw new Error("Tipe kategori tidak valid.");
+  }
 
   const userId = await resolveUserId();
   if (!userId) {
-    return createGuestCategory({ name, type, color });
-  }
-
-  try {
-    await assertUniqueName(userId, type, name);
-
-    const sortColumn = getCategorySortColumn();
-    const { data: orderRows, error: orderError } = await supabase
-      .from("categories")
-      .select(sortColumn)
-      .eq("user_id", userId)
-      .eq("type", type)
-      .order(sortColumn, { ascending: false })
-      .limit(1);
-    if (orderError) throw orderError;
-    const orderRow = (orderRows?.[0] ?? {}) as Partial<
-      Record<CategorySortColumn, unknown>
-    >;
-    const nextOrder = normalizeSortOrder(orderRow[sortColumn], -1) + 1;
-
-    const insertPayload: Record<string, unknown> = {
-      user_id: userId,
+    return createGuestCategory({
       name,
-      type,
-      [sortColumn]: nextOrder,
-    };
-
-    if (shouldUseCategoryColor()) {
-      insertPayload.color = color;
-    }
-
-    const { data, error } = await supabase
-      .from("categories")
-      .insert(insertPayload)
-      .select(getCategorySelectColumns())
-      .single();
-    if (error) throw error;
-
-    const record = mapCategoryRow(data ?? {});
-    await dbCache.set("categories", record);
-    return record;
-  } catch (error) {
-    if (handleMissingCategoryColor(error)) {
-      return createCategory(input);
-    }
-    if (handleMissingCategorySortColumn(error)) {
-      return createCategory(input);
-    }
-    if (handleMissingCategoryCreatedColumn(error)) {
-      return createCategory(input);
-    }
-    logDevError("createCategory", error);
-    throw toError(error, "Gagal menambah kategori.");
+      type: normalizeType(payload.type),
+      group_name: payload.group_name ?? null,
+      order_index: normalizeOrderIndex(payload.order_index),
+    });
   }
+
+  await assertUniqueName(userId, payload.type, name);
+
+  const body: Record<string, unknown> = {
+    user_id: userId,
+    name,
+    type: payload.type,
+  };
+
+  const orderIndex = normalizeOrderIndex(payload.order_index);
+  if (orderIndex !== null) {
+    body.order_index = orderIndex;
+  } else {
+    const { data: lastRows, error: lastError } = await supabase
+      .from("categories")
+      .select("order_index")
+      .eq("user_id", userId)
+      .eq("type", payload.type)
+      .order("order_index", { ascending: false, nullsFirst: false })
+      .limit(1);
+    if (lastError) throw lastError;
+    const lastValue = normalizeOrderIndex(lastRows?.[0]?.order_index ?? null);
+    body.order_index = (lastValue ?? -1) + 1;
+  }
+
+  const groupName = normalizeGroupName(payload.group_name);
+  if (groupName !== null) {
+    body["group"] = groupName;
+  }
+
+  const { data, error } = await supabase
+    .from("categories")
+    .insert([body])
+    .select(BASE_SELECT)
+    .single();
+  if (error) throw error;
+
+  const record = mapCategoryRow((data ?? {}) as Record<string, unknown>);
+  await dbCache.set("categories", record);
+  return record;
 }
 
 export async function updateCategory(
   id: string,
-  patch: Partial<Pick<CategoryRecord, "name" | "color" | "sort_order">>
+  patch: {
+    name?: string;
+    type?: CategoryType;
+    group_name?: string | null;
+    order_index?: number | null;
+  }
 ): Promise<CategoryRecord> {
   const userId = await resolveUserId();
   if (!userId) {
     return updateGuestCategory(id, patch);
   }
 
-  const updates: Record<string, unknown> = {};
-  const nextName =
-    typeof patch.name === "string" ? normalizeName(patch.name) : undefined;
-  if (typeof nextName === "string") {
-    if (!nextName || nextName.length > 60) {
-      throw new Error("Nama kategori harus 1-60 karakter.");
+  const { data: currentRow, error: currentError } = await supabase
+    .from("categories")
+    .select("name, type")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (currentError) throw currentError;
+  if (!currentRow) {
+    throw new Error("Kategori tidak ditemukan.");
+  }
+
+  const currentType = normalizeType(currentRow.type);
+  const currentName = normalizeName(currentRow.name);
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.name !== undefined) {
+    const normalized = normalizeName(patch.name);
+    if (!normalized) {
+      throw new Error("Nama kategori wajib.");
     }
-    updates.name = nextName;
+    const typeForValidation = patch.type ? normalizeType(patch.type) : currentType;
+    await assertUniqueName(userId, typeForValidation, normalized, id);
+    dbPatch.name = normalized;
+  }
+  if (patch.type !== undefined) {
+    const normalizedTypeValue = normalizeType(patch.type);
+    dbPatch.type = normalizedTypeValue;
+    const targetName = (dbPatch.name as string | undefined) ?? currentName;
+    await assertUniqueName(userId, normalizedTypeValue, targetName, id);
+  }
+  if (patch.group_name !== undefined) {
+    dbPatch["group"] = normalizeGroupName(patch.group_name);
+  }
+  if (patch.order_index !== undefined) {
+    dbPatch.order_index = normalizeOrderIndex(patch.order_index);
   }
 
-  if (shouldUseCategoryColor() && typeof patch.color === "string") {
-    updates.color = normalizeColor(patch.color);
-  }
-
-  if (patch.sort_order != null) {
-    const sortColumn = getCategorySortColumn();
-    updates[sortColumn] = normalizeSortOrder(patch.sort_order);
-  }
-
-  if (!Object.keys(updates).length) {
+  if (!Object.keys(dbPatch).length) {
     const cached = await dbCache.get("categories", id);
     if (cached) {
-      return mapCategoryRow(cached);
+      return mapCategoryRow(cached as Record<string, unknown>);
     }
   }
 
-  try {
-    if (typeof updates.name === "string") {
-      const current = await supabase
-        .from("categories")
-        .select("type")
-        .eq("id", id)
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (current.error) throw current.error;
-      const type = normalizeType(current.data?.type);
-      await assertUniqueName(userId, type, updates.name as string, id);
-    }
+  const { data, error } = await supabase
+    .from("categories")
+    .update(dbPatch)
+    .eq("id", id)
+    .eq("user_id", userId)
+    .select(BASE_SELECT)
+    .single();
+  if (error) throw error;
 
-    const { data, error } = await supabase
-      .from("categories")
-      .update(updates)
-      .eq("id", id)
-      .eq("user_id", userId)
-      .select(getCategorySelectColumns())
-      .single();
-    if (error) throw error;
-
-    const record = mapCategoryRow(data ?? {});
-    await dbCache.set("categories", record);
-    return record;
-  } catch (error) {
-    if (handleMissingCategoryColor(error)) {
-      return updateCategory(id, patch);
-    }
-    if (handleMissingCategorySortColumn(error)) {
-      return updateCategory(id, patch);
-    }
-    if (handleMissingCategoryCreatedColumn(error)) {
-      return updateCategory(id, patch);
-    }
-    logDevError("updateCategory", error);
-    throw toError(error, "Gagal memperbarui kategori.");
-  }
+  const record = mapCategoryRow((data ?? {}) as Record<string, unknown>);
+  await dbCache.set("categories", record);
+  return record;
 }
 
 export async function reorderCategories(
   type: CategoryType,
   orderedIds: string[]
 ): Promise<void> {
-  if (!Array.isArray(orderedIds) || !orderedIds.length) return;
+  if (!orderedIds.length) return;
 
   const userId = await resolveUserId();
   if (!userId) {
@@ -562,36 +455,22 @@ export async function reorderCategories(
     return;
   }
 
-  const normalizedType = normalizeType(type);
-  const sortColumn = getCategorySortColumn();
   const payload = orderedIds.map((id, index) => ({
     id,
     user_id: userId,
-    type: normalizedType,
-    [sortColumn]: index,
+    order_index: index,
   }));
 
-  try {
-    const { data, error } = await supabase
-      .from("categories")
-      .upsert(payload, { onConflict: "id" })
-      .select(getCategorySelectColumns());
-    if (error) throw error;
-    if (data) {
-      await dbCache.bulkSet("categories", data.map((row) => mapCategoryRow(row)));
-    }
-  } catch (error) {
-    if (handleMissingCategoryColor(error)) {
-      return reorderCategories(type, orderedIds);
-    }
-    if (handleMissingCategorySortColumn(error)) {
-      return reorderCategories(type, orderedIds);
-    }
-    if (handleMissingCategoryCreatedColumn(error)) {
-      return reorderCategories(type, orderedIds);
-    }
-    logDevError("reorderCategories", error);
-    throw toError(error, "Gagal mengurutkan kategori.");
+  const { error, data } = await supabase
+    .from("categories")
+    .upsert(payload, { onConflict: "id" })
+    .select(BASE_SELECT);
+  if (error) throw error;
+  if (data) {
+    await dbCache.bulkSet(
+      "categories",
+      data.map((row) => mapCategoryRow(row as Record<string, unknown>))
+    );
   }
 }
 
@@ -602,18 +481,11 @@ export async function deleteCategory(id: string): Promise<void> {
     return;
   }
 
-  try {
-    const { error } = await supabase
-      .from("categories")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId);
-    if (error) throw error;
-    await dbCache.remove("categories", id);
-  } catch (error) {
-    logDevError("deleteCategory", error);
-    throw toError(error, "Gagal menghapus kategori.");
-  }
+  const { error } = await supabase
+    .from("categories")
+    .delete()
+    .eq("id", id)
+    .eq("user_id", userId);
+  if (error) throw error;
+  await dbCache.remove("categories", id);
 }
-
-export type { CategoryType };

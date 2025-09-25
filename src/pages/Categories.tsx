@@ -10,7 +10,6 @@ import {
   createCategory,
   deleteCategory,
   listCategories,
-  reorderCategories,
   updateCategory,
 } from "../lib/api-categories";
 import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
@@ -108,32 +107,18 @@ function ConfirmDialog({
   );
 }
 
-function sortByOrder(list: CategoryRecord[]): CategoryRecord[] {
+function sortCategories(list: CategoryRecord[]): CategoryRecord[] {
   return [...list].sort((a, b) => {
     if (a.type !== b.type) {
       return a.type.localeCompare(b.type);
     }
-    const orderDiff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
-    if (orderDiff !== 0) return orderDiff;
+    const orderA = a.order_index ?? Number.MAX_SAFE_INTEGER;
+    const orderB = b.order_index ?? Number.MAX_SAFE_INTEGER;
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   });
-}
-
-function resequenceType(records: CategoryRecord[], type: CategoryType): CategoryRecord[] {
-  const orderedIds = records
-    .filter((cat) => cat.type === type)
-    .sort((a, b) => {
-      const diff = (a.sort_order ?? 0) - (b.sort_order ?? 0);
-      if (diff !== 0) return diff;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-    })
-    .map((cat) => cat.id);
-  const orderMap = new Map(orderedIds.map((id, index) => [id, index]));
-  return records.map((cat) =>
-    cat.type === type && orderMap.has(cat.id)
-      ? { ...cat, sort_order: orderMap.get(cat.id)! }
-      : cat
-  );
 }
 
 export default function Categories() {
@@ -146,6 +131,11 @@ export default function Categories() {
   const [createFormKey, setCreateFormKey] = useState(0);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [confirming, setConfirming] = useState<CategoryRecord | null>(null);
+
+  const orderedCategories = useMemo(
+    () => sortCategories(categories),
+    [categories]
+  );
 
   const addPending = useCallback((ids: string[]) => {
     setPendingIds((prev) => {
@@ -192,12 +182,6 @@ export default function Categories() {
     return () => controller.abort();
   }, [reload]);
 
-  const grouped = useMemo(() => {
-    const income = sortByOrder(categories.filter((cat) => cat.type === "income"));
-    const expense = sortByOrder(categories.filter((cat) => cat.type === "expense"));
-    return { income, expense };
-  }, [categories]);
-
   const isDuplicateName = useCallback(
     (type: CategoryType, name: string, excludeId?: string) => {
       const normalized = name.trim().toLowerCase();
@@ -213,147 +197,103 @@ export default function Categories() {
   );
 
   const handleCreate = useCallback(
-    async (values: { name: string; color: string; type: CategoryType }) => {
-      const trimmed = values.name.trim();
-      const color = values.color.toUpperCase();
-      const type = values.type;
-      if (!trimmed || trimmed.length > 60) {
+    async (values: {
+      name: string;
+      type: CategoryType;
+      group_name: string | null;
+      order_index: number | null;
+    }) => {
+      const trimmedName = values.name.trim();
+      if (!trimmedName || trimmedName.length > 60) {
         addToast("Nama kategori harus 1-60 karakter.", "error");
         return;
       }
-      if (!/^#[0-9A-F]{6}$/i.test(color)) {
-        addToast("Gunakan warna dengan format #RRGGBB.", "error");
+      if (!["income", "expense"].includes(values.type)) {
+        addToast("Tipe kategori tidak valid.", "error");
         return;
       }
-      if (isDuplicateName(type, trimmed)) {
+      if (isDuplicateName(values.type, trimmedName)) {
         addToast("Nama kategori sudah digunakan pada tipe ini.", "error");
         return;
       }
 
-      const optimisticId =
-        globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
-      const optimistic: CategoryRecord = {
-        id: optimisticId,
-        user_id: null,
-        name: trimmed,
-        color,
-        type,
-        sort_order: grouped[type].length,
-        created_at: null,
-        updated_at: null,
-      };
-      setCategories((prev) => [...prev, optimistic]);
       setCreating(true);
       try {
-        const created = await createCategory({ name: trimmed, type, color });
-        setCategories((prev) =>
-          prev.map((cat) => (cat.id === optimisticId ? created : cat))
-        );
+        const created = await createCategory({
+          name: trimmedName,
+          type: values.type,
+          group_name: values.group_name,
+          order_index: values.order_index,
+        });
+        setCategories((prev) => sortCategories([...prev, created]));
         setCreateFormKey((prev) => prev + 1);
         addToast("Kategori berhasil ditambahkan.", "success");
       } catch (err) {
-        setCategories((prev) => prev.filter((cat) => cat.id !== optimisticId));
         logDevError("createCategory", err);
         addToast(toMessage(err, "Gagal menambah kategori."), "error");
       } finally {
         setCreating(false);
       }
     },
-    [addToast, grouped, isDuplicateName]
+    [addToast, isDuplicateName]
   );
 
   const handleSubmitEdit = useCallback(
-    async (category: CategoryRecord, values: { name: string; color: string; type: CategoryType }) => {
+    async (
+      id: string,
+      values: {
+        name: string;
+        type: CategoryType;
+        group_name: string | null;
+        order_index: number | null;
+      }
+    ) => {
       const trimmed = values.name.trim();
-      const color = values.color.toUpperCase();
       if (!trimmed || trimmed.length > 60) {
         addToast("Nama kategori harus 1-60 karakter.", "error");
         return;
       }
-      if (!/^#[0-9A-F]{6}$/i.test(color)) {
-        addToast("Gunakan warna dengan format #RRGGBB.", "error");
-        return;
-      }
-      if (isDuplicateName(category.type, trimmed, category.id)) {
+      if (isDuplicateName(values.type, trimmed, id)) {
         addToast("Nama kategori sudah digunakan pada tipe ini.", "error");
         return;
       }
 
+      addPending([id]);
       const snapshot = categories;
-      setCategories((prev) =>
-        prev.map((cat) =>
-          cat.id === category.id ? { ...cat, name: trimmed, color } : cat
-        )
-      );
-      addPending([category.id]);
       try {
-        const updated = await updateCategory(category.id, { name: trimmed, color });
+        const updated = await updateCategory(id, {
+          name: trimmed,
+          type: values.type,
+          group_name: values.group_name,
+          order_index: values.order_index,
+        });
         setCategories((prev) =>
-          prev.map((cat) => (cat.id === updated.id ? { ...cat, ...updated } : cat))
+          sortCategories(prev.map((cat) => (cat.id === updated.id ? updated : cat)))
         );
         setEditingId(null);
         addToast("Perubahan kategori disimpan.", "success");
       } catch (err) {
-        setCategories(snapshot);
         logDevError("updateCategory", err);
+        setCategories(snapshot);
         addToast(toMessage(err, "Gagal memperbarui kategori."), "error");
       } finally {
-        removePending([category.id]);
+        removePending([id]);
       }
     },
-    [addToast, addPending, categories, isDuplicateName, removePending]
-  );
-
-  const handleMove = useCallback(
-    async (type: CategoryType, id: string, direction: "up" | "down") => {
-      const ordered = type === "income" ? grouped.income : grouped.expense;
-      const index = ordered.findIndex((item) => item.id === id);
-      if (index < 0) return;
-      const targetIndex = direction === "up" ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= ordered.length) return;
-
-      const snapshot = categories;
-      const reordered = [...ordered];
-      const [moved] = reordered.splice(index, 1);
-      reordered.splice(targetIndex, 0, moved);
-      const orderedIds = reordered.map((item) => item.id);
-      const orderMap = new Map(orderedIds.map((catId, sortIndex) => [catId, sortIndex]));
-
-      setCategories((prev) =>
-        prev.map((cat) =>
-          cat.type === type && orderMap.has(cat.id)
-            ? { ...cat, sort_order: orderMap.get(cat.id)! }
-            : cat
-        )
-      );
-      addPending(orderedIds);
-
-      try {
-        await reorderCategories(type, orderedIds);
-      } catch (err) {
-        setCategories(snapshot);
-        logDevError("reorderCategories", err);
-        addToast(toMessage(err, "Gagal mengurutkan kategori."), "error");
-      } finally {
-        removePending(orderedIds);
-      }
-    },
-    [addPending, addToast, categories, grouped, removePending]
+    [addPending, addToast, categories, isDuplicateName, removePending]
   );
 
   const handleDeleteCategory = useCallback(
     async (category: CategoryRecord) => {
       const snapshot = categories;
-      const remaining = snapshot.filter((cat) => cat.id !== category.id);
-      const resequenced = resequenceType(remaining, category.type);
-      setCategories(resequenced);
+      setCategories((prev) => prev.filter((cat) => cat.id !== category.id));
       addPending([category.id]);
       try {
         await deleteCategory(category.id);
         addToast("Kategori dihapus.", "success");
       } catch (err) {
-        setCategories(snapshot);
         logDevError("deleteCategory", err);
+        setCategories(snapshot);
         addToast(toMessage(err, "Gagal menghapus kategori."), "error");
       } finally {
         removePending([category.id]);
@@ -374,19 +314,19 @@ export default function Categories() {
       <div className="rounded-2xl border border-border/60 bg-surface-1/70 p-6 shadow-sm">
         <h1 className="text-lg font-semibold text-text">Manajemen Kategori</h1>
         <p className="mt-2 text-sm text-muted">
-          Buat, ubah, hapus, dan atur urutan kategori pemasukan dan pengeluaran.
+          Buat, ubah, hapus, dan kelola urutan kategori pemasukan dan pengeluaran.
         </p>
       </div>
       <section className="rounded-2xl border border-border/60 bg-surface-1/70 p-6 shadow-sm">
         <h2 className="text-base font-semibold text-text">Tambah kategori baru</h2>
         <p className="mt-1 text-sm text-muted">
-          Pilih tipe kategori, beri nama, dan sesuaikan warnanya.
+          Nama dan tipe wajib diisi, grup serta urutan bersifat opsional.
         </p>
         <div className="mt-4">
           <CategoryForm
             key={createFormKey}
             mode="create"
-            initialValues={{ name: "", color: "#0EA5E9", type: "expense" }}
+            initialValues={{ type: "expense" }}
             onSubmit={handleCreate}
             isSubmitting={creating}
           />
@@ -406,36 +346,16 @@ export default function Categories() {
           </div>
         </div>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        <CategoryList
-          type="income"
-          title="Pemasukan"
-          items={grouped.income}
-          editingId={editingId}
-          pendingIds={pendingIds}
-          loading={loading}
-          onStartEdit={setEditingId}
-          onCancelEdit={() => setEditingId(null)}
-          onSubmitEdit={handleSubmitEdit}
-          onDelete={(category) => setConfirming(category)}
-          onMoveUp={(id) => handleMove("income", id, "up")}
-          onMoveDown={(id) => handleMove("income", id, "down")}
-        />
-        <CategoryList
-          type="expense"
-          title="Pengeluaran"
-          items={grouped.expense}
-          editingId={editingId}
-          pendingIds={pendingIds}
-          loading={loading}
-          onStartEdit={setEditingId}
-          onCancelEdit={() => setEditingId(null)}
-          onSubmitEdit={handleSubmitEdit}
-          onDelete={(category) => setConfirming(category)}
-          onMoveUp={(id) => handleMove("expense", id, "up")}
-          onMoveDown={(id) => handleMove("expense", id, "down")}
-        />
-      </div>
+      <CategoryList
+        items={orderedCategories}
+        loading={loading}
+        pendingIds={pendingIds}
+        editingId={editingId}
+        onStartEdit={(id) => setEditingId(id)}
+        onCancelEdit={() => setEditingId(null)}
+        onSubmitEdit={handleSubmitEdit}
+        onDelete={(category) => setConfirming(category)}
+      />
       <ConfirmDialog
         open={Boolean(confirming)}
         title="Hapus kategori?"
