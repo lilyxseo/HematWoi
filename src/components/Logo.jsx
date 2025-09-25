@@ -1,8 +1,14 @@
-export default function Logo() {
+import clsx from "clsx";
+
+import logoPlaceholder from "../assets/logo-placeholder.svg";
+
+export default function Logo({ className, ...props }) {
   return (
-    <div className="w-10 h-10 flex items-center justify-center bg-brand-var text-white rounded-lg font-bold">
-      HW
-      <span className="sr-only">HematWoi</span>
-    </div>
+    <img
+      src={logoPlaceholder}
+      alt="HematWoi"
+      className={clsx("h-10 w-10", className)}
+      {...props}
+    />
   );
 }
