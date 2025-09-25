@@ -1,11 +1,11 @@
 import { useEffect, useId, useState } from "react";
 import type { CategoryType } from "../../lib/api-categories";
-import ColorSwatch from "./ColorSwatch";
 
 interface CategoryFormValues {
   name: string;
-  color: string;
   type: CategoryType;
+  group_name?: string | null;
+  order_index?: number | null;
 }
 
 interface CategoryFormProps {
@@ -35,49 +35,71 @@ export default function CategoryForm({
   allowTypeChange = mode === "create",
 }: CategoryFormProps) {
   const defaultName = initialValues?.name ?? "";
-  const defaultColor = initialValues?.color ?? "#64748B";
   const defaultType = normalizeType(initialValues?.type);
+  const defaultGroup = initialValues?.group_name ?? "";
+  const defaultOrderValue =
+    typeof initialValues?.order_index === "number" && Number.isFinite(initialValues.order_index)
+      ? String(initialValues.order_index)
+      : "";
 
   const [name, setName] = useState(defaultName);
-  const [color, setColor] = useState(defaultColor);
   const [type, setType] = useState<CategoryType>(defaultType);
+  const [groupName, setGroupName] = useState(defaultGroup ?? "");
+  const [orderIndex, setOrderIndex] = useState(defaultOrderValue);
   const [nameError, setNameError] = useState<string | null>(null);
-  const [colorError, setColorError] = useState<string | null>(null);
+  const [orderError, setOrderError] = useState<string | null>(null);
 
   const nameId = useId();
   const typeId = useId();
+  const groupId = useId();
+  const orderId = useId();
 
   useEffect(() => {
     setName(defaultName);
-    setColor(defaultColor);
     setType(defaultType);
+    setGroupName(defaultGroup ?? "");
+    setOrderIndex(defaultOrderValue);
     setNameError(null);
-    setColorError(null);
-  }, [defaultName, defaultColor, defaultType]);
+    setOrderError(null);
+  }, [defaultName, defaultType, defaultGroup, defaultOrderValue]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const trimmed = name.trim();
+    const trimmedName = name.trim();
+    const trimmedGroup = groupName.trim();
     let hasError = false;
 
-    if (!trimmed || trimmed.length < 1 || trimmed.length > 60) {
+    if (!trimmedName || trimmedName.length > 60) {
       setNameError("Nama harus 1-60 karakter.");
       hasError = true;
     } else {
       setNameError(null);
     }
 
-    if (!/^#[0-9A-F]{6}$/i.test(color)) {
-      setColorError("Gunakan format #RRGGBB.");
-      hasError = true;
+    let parsedOrder: number | null | undefined = undefined;
+    if (orderIndex.trim() === "") {
+      parsedOrder = null;
+      setOrderError(null);
     } else {
-      setColorError(null);
+      const maybe = Number(orderIndex);
+      if (!Number.isFinite(maybe) || maybe < 0) {
+        setOrderError("Gunakan angka 0 atau lebih besar.");
+        hasError = true;
+      } else {
+        setOrderError(null);
+        parsedOrder = Math.trunc(maybe);
+      }
     }
 
     if (hasError) return;
 
     try {
-      await onSubmit({ name: trimmed, color: color.toUpperCase(), type });
+      await onSubmit({
+        name: trimmedName,
+        type,
+        group_name: trimmedGroup ? trimmedGroup : null,
+        order_index: parsedOrder ?? null,
+      });
     } catch (error) {
       if (import.meta.env?.DEV || process.env?.NODE_ENV === "development") {
         console.error("[HW] category form submit failed", error);
@@ -87,7 +109,7 @@ export default function CategoryForm({
 
   return (
     <form className="space-y-4" onSubmit={handleSubmit} noValidate>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid gap-3 md:grid-cols-2">
         <div className="min-w-0">
           <label htmlFor={nameId} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
             Nama kategori
@@ -124,15 +146,37 @@ export default function CategoryForm({
           </div>
         ) : null}
       </div>
-      <div className="min-w-0">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Warna</p>
-        <ColorSwatch
-          value={color}
-          onChange={setColor}
-          disabled={isSubmitting}
-          name="category-color"
-        />
-        {colorError ? <p className="mt-1 text-xs text-danger">{colorError}</p> : null}
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="min-w-0">
+          <label htmlFor={groupId} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+            Group (opsional)
+          </label>
+          <input
+            id={groupId}
+            name="category-group"
+            value={groupName}
+            onChange={(event) => setGroupName(event.target.value)}
+            disabled={isSubmitting}
+            className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-1/80 px-3 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
+            placeholder="Contoh: Rumah Tangga"
+          />
+        </div>
+        <div className="min-w-0">
+          <label htmlFor={orderId} className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+            Urutan (opsional)
+          </label>
+          <input
+            id={orderId}
+            name="category-order"
+            value={orderIndex}
+            onChange={(event) => setOrderIndex(event.target.value)}
+            disabled={isSubmitting}
+            inputMode="numeric"
+            className="h-10 w-full min-w-0 rounded-xl border border-border bg-surface-1/80 px-3 text-sm text-text placeholder:text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 disabled:cursor-not-allowed"
+            placeholder="Contoh: 1"
+          />
+          {orderError ? <p className="mt-1 text-xs text-danger">{orderError}</p> : null}
+        </div>
       </div>
       <div className="flex justify-end gap-2">
         {onCancel ? (
@@ -156,3 +200,5 @@ export default function CategoryForm({
     </form>
   );
 }
+
+export type { CategoryFormValues };
