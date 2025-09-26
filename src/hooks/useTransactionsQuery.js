@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { getTransactionsSummary, listCategories } from "../lib/api";
 import { listTransactions } from "../lib/api-transactions";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 const DEFAULT_FILTER = {
   period: { preset: "all", month: "", start: "", end: "" },
@@ -151,11 +151,7 @@ export default function useTransactionsQuery() {
       .then(({ rows, total }) => {
         if (cancelled) return;
         setTotal(total || 0);
-        setItems((prev) => {
-          if (page === 1) return rows;
-          const existing = prev.slice(0, (page - 1) * PAGE_SIZE);
-          return [...existing, ...(rows || [])];
-        });
+        setItems(rows || []);
         setLoading(false);
       })
       .catch((err) => {
@@ -204,9 +200,17 @@ export default function useTransactionsQuery() {
     [updateParams],
   );
 
+  const setPage = useCallback(
+    (nextPage) => {
+      const safePage = Number.isFinite(nextPage) && nextPage > 0 ? Math.floor(nextPage) : 1;
+      updateParams({}, safePage);
+    },
+    [updateParams],
+  );
+
   const loadMore = useCallback(() => {
-    updateParams({}, page + 1);
-  }, [page, updateParams]);
+    setPage(page + 1);
+  }, [page, setPage]);
 
   const refresh = useCallback(
     ({ keepPage = false } = {}) => {
@@ -220,7 +224,7 @@ export default function useTransactionsQuery() {
     [page, updateParams],
   );
 
-  const hasMore = items.length < total;
+  const hasMore = page * PAGE_SIZE < total;
 
   return {
     items,
@@ -232,6 +236,7 @@ export default function useTransactionsQuery() {
     filter,
     setFilter,
     loadMore,
+    setPage,
     refresh,
     categories,
     summary,
