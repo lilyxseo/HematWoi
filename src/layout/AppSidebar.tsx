@@ -78,10 +78,20 @@ export default function AppSidebar({
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-[65] inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface-1/90 text-text shadow-lg backdrop-blur lg:hidden"
-        aria-label="Buka navigasi"
+        aria-expanded={mobileOpen}
+        aria-label={mobileOpen ? "Tutup navigasi" : "Buka navigasi"}
+        className={clsx(
+          "group fixed right-5 top-5 z-[65] inline-flex h-12 w-12 items-center justify-center rounded-full border border-border/40 bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-lg backdrop-blur transition-all duration-200 lg:hidden",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary focus-visible:ring-offset-background",
+          "hover:translate-y-[-1px] hover:shadow-[0_18px_35px_-15px_hsl(var(--color-primary)/0.55)]"
+        )}
       >
-        <Menu className="h-5 w-5" />
+        <Menu
+          className={clsx(
+            "h-6 w-6 transition-transform duration-200 group-hover:scale-110",
+            mobileOpen && "rotate-90"
+          )}
+        />
       </button>
     </>
   );
