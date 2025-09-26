@@ -1649,32 +1649,75 @@ function TransactionsTable({
               Array.from({ length: 2 }).map((_, index) => <TransactionSkeletonCard key={`card-fetch-${index}`} />)}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full table-fixed border-separate border-spacing-0" aria-label="Daftar transaksi">
+          <div className="max-h-[70vh] overflow-auto">
+            <table
+              className="min-w-full table-fixed border-separate border-spacing-0 text-sm text-text"
+              aria-label="Daftar transaksi"
+            >
               <thead
-                className="sticky top-0 z-10 border-b border-border/70 bg-surface-1/95 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur"
+                className="sticky top-0 z-10 bg-slate-900 text-left text-xs font-semibold uppercase tracking-wide text-muted"
                 style={stickyHeaderStyle}
               >
                 <tr>
-                  <th scope="col" className="w-12 px-3 py-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={onToggleSelectAll}
-                      className="h-4 w-4 rounded border-border/70 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                      aria-label="Pilih semua transaksi"
-                    />
+                  <th
+                    scope="col"
+                    className="w-12 px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
+                  >
+                    <div className="flex justify-center">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={onToggleSelectAll}
+                        className="h-4 w-4 rounded border-border/70 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                        aria-label="Pilih semua transaksi"
+                      />
+                    </div>
                   </th>
-                  <th scope="col" className="min-w-[200px] px-3 py-3 text-left">Kategori</th>
-                  <th scope="col" className="min-w-[160px] px-3 py-3 text-left">Tanggal</th>
-                  <th scope="col" className="min-w-[240px] px-3 py-3 text-left">Catatan</th>
-                  <th scope="col" className="min-w-[180px] px-3 py-3 text-left">Akun</th>
-                  <th scope="col" className="min-w-[200px] px-3 py-3 text-left">Tags</th>
-                  <th scope="col" className="min-w-[140px] px-3 py-3 text-right">Jumlah</th>
-                  <th scope="col" className="w-[120px] px-3 py-3 text-right">Aksi</th>
+                  <th
+                    scope="col"
+                    className="min-w-[200px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
+                  >
+                    Kategori
+                  </th>
+                  <th
+                    scope="col"
+                    className="min-w-[160px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
+                  >
+                    Tanggal
+                  </th>
+                  <th
+                    scope="col"
+                    className="min-w-[240px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
+                  >
+                    Catatan
+                  </th>
+                  <th
+                    scope="col"
+                    className="min-w-[180px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
+                  >
+                    Akun
+                  </th>
+                  <th
+                    scope="col"
+                    className="min-w-[200px] px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide"
+                  >
+                    Tags
+                  </th>
+                  <th
+                    scope="col"
+                    className="min-w-[140px] px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide"
+                  >
+                    Jumlah
+                  </th>
+                  <th
+                    scope="col"
+                    className="w-[120px] px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide"
+                  >
+                    Aksi
+                  </th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-slate-800">
                 {items.map((item) => (
                   <TransactionItem
                     key={item.id}
@@ -1745,9 +1788,9 @@ function UndoSnackbar({ open, message, onUndo, loading }) {
 
 function TransactionSkeletonRow() {
   return (
-    <tr className="border-b border-border/60 last:border-b-0">
+    <tr>
       {Array.from({ length: 8 }).map((_, index) => (
-        <td key={index} className="px-3 py-3 align-middle">
+        <td key={index} className="px-4 py-3 align-middle">
           <div className="h-4 w-full animate-pulse rounded-full bg-border/60" />
         </td>
       ))}
@@ -1899,17 +1942,17 @@ function TransactionItem({
   return (
     <tr
       className={clsx(
-        "border-b border-border/60 last:border-b-0 transition-colors",
+        "transition-colors",
         isSelected
           ? "bg-brand/10 shadow-[inset_0_0_0_1px_hsl(var(--color-primary)/0.35)]"
           : "hover:bg-surface-2/60",
       )}
       onDoubleClick={onEdit}
     >
-      <td className="px-3 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <div className="flex items-center justify-center">{selectionCheckbox}</div>
       </td>
-      <td className="px-3 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
           <span
             className="h-2.5 w-2.5 rounded-full"
@@ -1924,10 +1967,10 @@ function TransactionItem({
           </div>
         </div>
       </td>
-      <td className="px-3 py-3 align-middle text-sm text-muted">
+      <td className="px-4 py-3 align-middle text-sm text-muted">
         <time dateTime={dateValue}>{formattedDate}</time>
       </td>
-      <td className="px-3 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <div className="flex items-start gap-2">
           <p className="line-clamp-2 text-sm text-text" title={noteDisplay}>
             {noteDisplay}
@@ -1935,7 +1978,7 @@ function TransactionItem({
           {hasAttachments && <Paperclip className="mt-0.5 h-4 w-4 text-muted" aria-hidden="true" />}
         </div>
       </td>
-      <td className="px-3 py-3 align-middle text-sm text-text">
+      <td className="px-4 py-3 align-middle text-sm text-text">
         {item.type === "transfer" ? (
           <div className="flex flex-wrap items-center gap-1">
             <span className="truncate">{item.account || "—"}</span>
@@ -1946,7 +1989,7 @@ function TransactionItem({
           <span className="truncate">{item.account || "—"}</span>
         )}
       </td>
-      <td className="px-3 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         {tags.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {tags.map((tag) => (
@@ -1962,10 +2005,10 @@ function TransactionItem({
           <span className="text-sm text-muted">—</span>
         )}
       </td>
-      <td className="px-3 py-3 align-middle">
+      <td className="px-4 py-3 align-middle text-right">
         <span className={clsx("block", amountClass)}>{formatIDR(item.amount)}</span>
       </td>
-      <td className="px-3 py-3 align-middle">
+      <td className="px-4 py-3 align-middle">
         <div className="flex items-center justify-end gap-2">
           <button
             type="button"
