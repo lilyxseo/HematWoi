@@ -22,6 +22,7 @@ import {
 import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
+import Breadcrumbs from "../layout/Breadcrumbs";
 import { addTransaction, listAccounts, listMerchants, updateTransaction } from "../lib/api";
 import {
   listTransactions,
@@ -725,7 +726,8 @@ export default function Transactions() {
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+          <div className="flex-1">
+            <Breadcrumbs />
             <h1 className="text-2xl font-semibold text-text">Transaksi</h1>
             <p className="text-sm text-muted">{PAGE_DESCRIPTION}</p>
           </div>
