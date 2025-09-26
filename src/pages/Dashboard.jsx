@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
@@ -16,11 +17,15 @@ import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
 import useDashboardBalances from "../hooks/useDashboardBalances";
+import DailyDigestModal from "../components/DailyDigestModal";
+import useDailyDigest from "../hooks/useDailyDigest";
+import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
+  const navigate = useNavigate();
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
@@ -35,6 +40,14 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
     refresh,
   } = balances;
   const { start: periodStart, end: periodEnd } = periodRange;
+
+  const digestVisibility = useShowDigestOnLogin();
+  const digestQuery = useDailyDigest({
+    userId: digestVisibility.userId,
+    enabled: digestVisibility.ready && digestVisibility.open,
+  });
+  const digestLoading =
+    (digestVisibility.open && !digestVisibility.ready) || digestQuery.isPending || digestQuery.isFetching;
 
   useEffect(() => {
     refresh({ start: periodStart, end: periodEnd });
@@ -66,16 +79,53 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
   const insights = useInsights(txs);
   const savingsTarget = stats?.savingsTarget || 1_000_000;
 
+  const handleDigestOpenChange = (nextOpen) => {
+    if (nextOpen) {
+      digestVisibility.openDigest();
+      return;
+    }
+    digestVisibility.closeDigest();
+  };
+
+  const handleOpenDigest = () => {
+    digestVisibility.openDigest();
+  };
+
+  const handleSelectCategory = (categoryId, categoryName) => {
+    if (!digestQuery.data) return;
+    const params = new URLSearchParams();
+    params.set("range", "month");
+    if (digestQuery.data.monthKey) {
+      params.set("month", digestQuery.data.monthKey);
+    }
+    if (categoryId) {
+      params.set("categories", categoryId);
+    } else if (categoryName) {
+      params.set("search", categoryName);
+    }
+    navigate(`/transactions?${params.toString()}`);
+    digestVisibility.closeDigest();
+  };
+
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted sm:text-base">
-          Ringkasan keuanganmu
-        </p>
-      </header>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <header className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            Dashboard
+          </h1>
+          <p className="text-sm text-muted sm:text-base">
+            Ringkasan keuanganmu
+          </p>
+        </header>
+        <button
+          type="button"
+          onClick={handleOpenDigest}
+          className="inline-flex items-center justify-center rounded-xl border border-slate-700/80 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-[var(--accent)]/60 hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/40"
+        >
+          Lihat Ringkasan Hari Ini
+        </button>
+      </div>
 
       <section className="space-y-4">
         <PeriodPicker
@@ -124,6 +174,18 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           <RecentTransactions txs={txs} />
         </div>
       </section>
+
+      <DailyDigestModal
+        open={digestVisibility.open}
+        onOpenChange={handleDigestOpenChange}
+        data={digestQuery.data}
+        loading={digestLoading}
+        error={digestQuery.error ?? null}
+        onRetry={() => digestQuery.refetch()}
+        onAddTransaction={() => navigate("/transaction/add")}
+        onViewMonthly={() => navigate("/budgets")}
+        onSelectCategory={handleSelectCategory}
+      />
     </div>
   );
 }

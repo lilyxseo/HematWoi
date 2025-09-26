@@ -1,404 +1,422 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
+import { supabase } from "../lib/supabase.js";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 const TIMEZONE = "Asia/Jakarta";
-const STORAGE_PREFIX = "hw:digest:last:";
-const DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TIMEZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-const HUMAN_DATE_FORMATTER = new Intl.DateTimeFormat("id-ID", {
-  timeZone: TIMEZONE,
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-});
-const CURRENCY_FORMATTER = new Intl.NumberFormat("id-ID", {
-  style: "currency",
-  currency: "IDR",
-  minimumFractionDigits: 0,
-});
+export type BudgetStatus = "safe" | "warning" | "over";
 
-export interface DigestTransaction {
-  amount?: number | string | null;
-  type?: string | null;
-  date?: string | null;
-  category?: string | null;
-  category_name?: string | null;
-  merchant?: string | null | { name?: string | null };
-  merchant_name?: string | null;
-  deleted_at?: string | null;
+export interface BalanceSummary {
+  total: number;
+  previous: number;
+  change: number;
+  direction: "up" | "down" | "flat";
+  accounts: number;
 }
 
-interface HighlightItem {
+export interface TodayExpenseSummary {
+  total: number;
+  average: number;
+  diff: number;
+}
+
+export interface BudgetCategoryProgress {
+  id: string | null;
+  name: string;
+  spent: number;
+  planned: number;
+  percent: number;
+  status: BudgetStatus;
+}
+
+export interface BudgetProgressSummary {
+  spent: number;
+  planned: number;
+  percent: number;
+  status: BudgetStatus;
+  categories: BudgetCategoryProgress[];
+}
+
+export interface TopCategorySummary {
+  id: string | null;
   name: string;
   amount: number;
+  percent: number;
+}
+
+export interface UpcomingItem {
+  id: string;
+  type: "subscription" | "debt";
+  name: string;
+  dueDate: string;
+  amount: number;
+  currency: string;
 }
 
 export interface DailyDigestData {
-  totalSpent: number;
-  transactionCount: number;
-  average7Day: number;
-  diffPercent: number;
-  diffDirection: "up" | "down" | "flat";
-  topCategories: HighlightItem[];
-  topMerchants: HighlightItem[];
-  highlightLabel: string | null;
-  suggestion: string;
-  summary: string;
-  comparisonSentence: string;
-  yesterdayLabel: string;
-  yesterdayDate: string;
+  balance: BalanceSummary;
+  today: TodayExpenseSummary;
+  budget: BudgetProgressSummary;
+  topCategories: TopCategorySummary[];
+  upcoming: UpcomingItem[];
+  todayKey: string;
+  monthKey: string;
+  monthStart: string;
+  monthLabel: string;
+  todayLabel: string;
 }
 
-export interface UseDailyDigestResult {
-  open: boolean;
-  data: DailyDigestData | null;
-  close: () => void;
-  markSeen: () => void;
-  variant: "modal" | "banner";
-  userId: string | null;
+interface UseDailyDigestOptions {
+  userId?: string | null;
+  enabled?: boolean;
 }
 
-export interface UseDailyDigestOptions {
-  transactions?: DigestTransaction[] | null;
-}
+type AccountRow = {
+  id: string;
+  balance: number | string | null;
+  is_archived?: boolean | null;
+};
 
-export function todayJakarta(): string {
-  return DATE_FORMATTER.format(new Date());
-}
+type TransactionRow = {
+  id: string;
+  type: string | null;
+  amount: number | string | null;
+  date: string | null;
+  category_id: string | null;
+  deleted_at: string | null;
+  categories?: { id: string; name: string | null } | null;
+};
 
-function formatDateInZone(date: Date): string {
-  return DATE_FORMATTER.format(date);
-}
+type BudgetRow = {
+  id: string;
+  planned: number | string | null;
+  category_id: string | null;
+  name: string | null;
+};
 
-function shiftLocalDateString(base: string, offset: number): string {
-  const [year, month, day] = base.split("-").map((part) => Number.parseInt(part, 10));
-  if (!year || !month || !day) return base;
-  const ref = new Date(Date.UTC(year, month - 1, day));
-  ref.setUTCDate(ref.getUTCDate() + offset);
-  const y = ref.getUTCFullYear();
-  const m = String(ref.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(ref.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+type SubscriptionChargeRow = {
+  id: string;
+  due_date: string | null;
+  amount: number | string | null;
+  currency: string | null;
+  status: string | null;
+  subscription?: { id: string; name: string | null } | null;
+};
 
-function getTransactionDate(tx: DigestTransaction): string | null {
-  if (!tx?.date) return null;
-  const parsed = new Date(tx.date);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return formatDateInZone(parsed);
-}
+type DebtRow = {
+  id: string;
+  title: string | null;
+  due_date: string | null;
+  amount: number | string | null;
+  status: string | null;
+  type: string | null;
+};
 
 function toNumber(value: number | string | null | undefined): number {
-  const numeric = typeof value === "string" ? Number.parseFloat(value) : Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
-}
-
-function getMerchantName(tx: DigestTransaction): string | null {
-  const candidates: Array<string | null | undefined> = [
-    tx.merchant_name,
-    typeof tx.merchant === "string" ? tx.merchant : null,
-    tx.merchant && typeof tx.merchant === "object" ? tx.merchant.name : null,
-  ];
-  for (const candidate of candidates) {
-    const trimmed = typeof candidate === "string" ? candidate.trim() : "";
-    if (trimmed) return trimmed;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
-  return null;
+  return 0;
 }
 
-function getCategoryName(tx: DigestTransaction): string | null {
-  const candidates: Array<string | null | undefined> = [
-    tx.category,
-    tx.category_name,
-  ];
-  for (const candidate of candidates) {
-    const trimmed = typeof candidate === "string" ? candidate.trim() : "";
-    if (trimmed) return trimmed;
+function asDateKey(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) return null;
+  return parsed.tz(TIMEZONE).format("YYYY-MM-DD");
+}
+
+function getTodayKey(): string {
+  return dayjs().tz(TIMEZONE).format("YYYY-MM-DD");
+}
+
+function getMonthKey(): string {
+  return dayjs().tz(TIMEZONE).format("YYYY-MM");
+}
+
+function getMonthStartDate(): string {
+  return dayjs().tz(TIMEZONE).startOf("month").format("YYYY-MM-DD");
+}
+
+function getMonthEndExclusive(): string {
+  return dayjs().tz(TIMEZONE).startOf("month").add(1, "month").format("YYYY-MM-DD");
+}
+
+function getTodayLabel(): string {
+  return dayjs().tz(TIMEZONE).format("dddd, DD MMMM YYYY");
+}
+
+function getMonthLabel(): string {
+  return dayjs().tz(TIMEZONE).format("MMMM YYYY");
+}
+
+function computeBudgetStatus(percent: number): BudgetStatus {
+  if (!Number.isFinite(percent) || percent < 0.9) {
+    return "safe";
   }
-  return null;
+  if (percent >= 1) return "over";
+  return "warning";
 }
 
-function summarizeHighlights(entries: HighlightItem[]): string | null {
-  if (!entries.length) return null;
-  if (entries.length === 1) return entries[0].name;
-  return `${entries[0].name} & ${entries[1].name}`;
+async function fetchAccounts(userId: string): Promise<AccountRow[]> {
+  const { data, error } = await supabase
+    .from<AccountRow>("accounts")
+    .select("id,balance,is_archived")
+    .or("is_archived.is.null,is_archived.eq.false")
+    .eq("user_id", userId);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
-function formatCurrency(value: number): string {
-  return CURRENCY_FORMATTER.format(Math.round(value));
+async function fetchTransactions(
+  userId: string,
+  monthStart: string,
+  monthEndExclusive: string,
+): Promise<TransactionRow[]> {
+  const { data, error } = await supabase
+    .from<TransactionRow>("transactions")
+    .select("id,type,amount,date,category_id,deleted_at,categories(id,name)")
+    .is("deleted_at", null)
+    .gte("date", monthStart)
+    .lt("date", monthEndExclusive)
+    .eq("user_id", userId)
+    .order("date", { ascending: true });
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
-function buildSummary(
-  totalSpent: number,
-  transactionCount: number,
-  diffDirection: "up" | "down" | "flat",
-  diffPercent: number,
-  average7Day: number,
-  suggestion: string,
-): { comparison: string; summary: string } {
-  const spendSentence =
-    transactionCount === 0
-      ? "Kemarin belum ada transaksi yang terekam."
-      : `Kemarin kamu belanja ${formatCurrency(totalSpent)} di ${transactionCount} transaksi.`;
-  let comparisonSentence: string;
-  if (average7Day > 0) {
-    if (diffDirection === "flat") {
-      comparisonSentence = "Itu setara dengan rata-rata 7 hari.";
-    } else if (diffDirection === "up") {
-      comparisonSentence = `Itu lebih tinggi ${Math.abs(Math.round(diffPercent))}% dari rata-rata 7 hari.`;
-    } else {
-      comparisonSentence = `Itu lebih rendah ${Math.abs(Math.round(diffPercent))}% dari rata-rata 7 hari.`;
-    }
-  } else {
-    comparisonSentence = "Belum ada cukup data untuk rata-rata 7 hari.";
-  }
-  const summary = `${spendSentence} ${comparisonSentence} ${suggestion}`.trim();
-  return { comparison: comparisonSentence, summary };
+async function fetchBudgets(userId: string, monthStart: string): Promise<BudgetRow[]> {
+  const { data, error } = await supabase
+    .from<BudgetRow>("budgets")
+    .select("id,planned,category_id,name")
+    .eq("period_month", monthStart)
+    .eq("user_id", userId);
+  if (error) throw error;
+  return Array.isArray(data) ? data : [];
 }
 
-function computeHighlights(map: Map<string, number>): HighlightItem[] {
-  return Array.from(map.entries())
-    .filter(([, amount]) => amount > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 2)
-    .map(([name, amount]) => ({ name, amount }));
-}
+async function fetchUpcoming(userId: string, windowEnd: string): Promise<UpcomingItem[]> {
+  const today = getTodayKey();
+  const items: UpcomingItem[] = [];
 
-function computeDigest(
-  transactions: DigestTransaction[] | null | undefined,
-  todayLocal: string,
-): DailyDigestData {
-  const yesterdayLocal = shiftLocalDateString(todayLocal, -1);
-  const weekStart = shiftLocalDateString(yesterdayLocal, -6);
-
-  const expenses = Array.isArray(transactions)
-    ? transactions.filter((tx) => tx && tx.type === "expense" && !tx.deleted_at)
-    : [];
-
-  let totalSpent = 0;
-  let transactionCount = 0;
-  const categoryTotals = new Map<string, number>();
-  const merchantTotals = new Map<string, number>();
-  let weekTotal = 0;
-
-  for (const tx of expenses) {
-    const date = getTransactionDate(tx);
-    if (!date) continue;
-
-    const amount = toNumber(tx.amount);
-    if (amount <= 0) continue;
-
-    if (date === yesterdayLocal) {
-      totalSpent += amount;
-      transactionCount += 1;
-      const category = getCategoryName(tx);
-      if (category) {
-        categoryTotals.set(category, (categoryTotals.get(category) || 0) + amount);
+  try {
+    const { data: charges, error: chargeError } = await supabase
+      .from<SubscriptionChargeRow>("subscription_charges")
+      .select("id,due_date,amount,currency,status,subscription(id,name)")
+      .gte("due_date", today)
+      .lte("due_date", windowEnd)
+      .in("status", ["due", "overdue"])
+      .eq("user_id", userId)
+      .order("due_date", { ascending: true })
+      .limit(20);
+    if (chargeError) throw chargeError;
+    if (Array.isArray(charges)) {
+      for (const row of charges) {
+        const dateKey = asDateKey(row.due_date);
+        if (!dateKey) continue;
+        items.push({
+          id: row.id,
+          type: "subscription",
+          name: row.subscription?.name?.trim() || "Langganan",
+          dueDate: dateKey,
+          amount: toNumber(row.amount),
+          currency: row.currency?.trim() || "IDR",
+        });
       }
-      const merchant = getMerchantName(tx);
-      if (merchant) {
-        merchantTotals.set(merchant, (merchantTotals.get(merchant) || 0) + amount);
-      }
     }
-
-    if (date >= weekStart && date <= yesterdayLocal) {
-      weekTotal += amount;
+  } catch (error) {
+    if (import.meta.env?.DEV) {
+      console.warn("[DailyDigest] Failed to fetch subscription charges", error);
     }
   }
 
-  const average7Day = weekTotal / 7;
-  const diffPercent = average7Day > 0 ? ((totalSpent - average7Day) / average7Day) * 100 : 0;
-  const diffDirection: "up" | "down" | "flat" =
-    average7Day === 0 || Math.abs(diffPercent) < 0.5
-      ? "flat"
-      : diffPercent > 0
+  try {
+    const { data: debts, error: debtError } = await supabase
+      .from<DebtRow>("debts")
+      .select("id,title,due_date,amount,status,type")
+      .not("due_date", "is", null)
+      .gte("due_date", `${today}T00:00:00Z`)
+      .lte("due_date", `${windowEnd}T23:59:59Z`)
+      .in("status", ["ongoing", "overdue"])
+      .eq("user_id", userId)
+      .limit(20);
+    if (debtError) throw debtError;
+    if (Array.isArray(debts)) {
+      for (const row of debts) {
+        const dateKey = asDateKey(row.due_date);
+        if (!dateKey) continue;
+        items.push({
+          id: row.id,
+          type: "debt",
+          name: row.title?.trim() || "Hutang",
+          dueDate: dateKey,
+          amount: toNumber(row.amount),
+          currency: "IDR",
+        });
+      }
+    }
+  } catch (error) {
+    if (import.meta.env?.DEV) {
+      console.warn("[DailyDigest] Failed to fetch debts", error);
+    }
+  }
+
+  return items
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 8);
+}
+
+async function buildDailyDigest(userId: string): Promise<DailyDigestData> {
+  const todayKey = getTodayKey();
+  const monthKey = getMonthKey();
+  const monthStart = getMonthStartDate();
+  const monthEndExclusive = getMonthEndExclusive();
+  const monthLabel = getMonthLabel();
+  const todayLabel = getTodayLabel();
+  const upcomingWindowEnd = dayjs(todayKey).add(7, "day").format("YYYY-MM-DD");
+
+  const [accounts, transactions, budgets, upcoming] = await Promise.all([
+    fetchAccounts(userId),
+    fetchTransactions(userId, monthStart, monthEndExclusive),
+    fetchBudgets(userId, monthStart),
+    fetchUpcoming(userId, upcomingWindowEnd),
+  ]);
+
+  const totalBalance = accounts
+    .filter((row) => !row.is_archived)
+    .reduce((sum, row) => sum + toNumber(row.balance), 0);
+  const todayStart = dayjs.tz(todayKey, "YYYY-MM-DD", TIMEZONE);
+  const yesterdayBalanceEstimate = transactions
+    .filter((row) => asDateKey(row.date) === todayKey)
+    .reduce((acc, row) => {
+      const amount = toNumber(row.amount);
+      if (!amount) return acc;
+      if (row.type === "income") return acc - amount;
+      if (row.type === "expense") return acc + amount;
+      return acc;
+    }, totalBalance);
+
+  const netChange = totalBalance - yesterdayBalanceEstimate;
+  const direction: "up" | "down" | "flat" = Math.abs(netChange) < 1
+    ? "flat"
+    : netChange > 0
       ? "up"
       : "down";
 
-  const topCategories = computeHighlights(categoryTotals);
-  const topMerchants = computeHighlights(merchantTotals);
+  const daysElapsed = Math.max(1, todayStart.diff(dayjs.tz(monthStart, "YYYY-MM-DD", TIMEZONE), "day") + 1);
 
-  let suggestion = "Tetap pantau pengeluaran kecil ya 😉";
-  const highlightChoices = topCategories.length ? topCategories : topMerchants;
-  const highlightLabel = summarizeHighlights(highlightChoices);
-  if (transactionCount === 0) {
-    suggestion = "Yuk catat pengeluaran biar laporan makin akurat 😉";
-  } else if (highlightLabel) {
-    suggestion = diffDirection === "down"
-      ? `Mantap! Pertahankan kontrol di ${highlightLabel} ya 😉`
-      : `Coba hemat di ${highlightLabel} ya 😉`;
+  const todayExpenseTotal = transactions
+    .filter((row) => row.type === "expense" && asDateKey(row.date) === todayKey)
+    .reduce((sum, row) => sum + toNumber(row.amount), 0);
+
+  const monthExpenseTotal = transactions
+    .filter((row) => row.type === "expense")
+    .reduce((sum, row) => sum + toNumber(row.amount), 0);
+
+  const averageDailyExpense = monthExpenseTotal / daysElapsed;
+
+  const budgetSpentByCategory = new Map<string, number>();
+  for (const row of transactions) {
+    if (row.type !== "expense") continue;
+    const key = row.category_id ?? row.categories?.id ?? "__uncategorized";
+    budgetSpentByCategory.set(key, (budgetSpentByCategory.get(key) || 0) + toNumber(row.amount));
   }
 
-  const { comparison, summary } = buildSummary(
-    totalSpent,
-    transactionCount,
-    diffDirection,
-    diffPercent,
-    average7Day,
-    suggestion,
-  );
-
-  const yesterdayDate = yesterdayLocal;
-  const yesterdayLabel = HUMAN_DATE_FORMATTER.format(
-    new Date(`${yesterdayLocal}T00:00:00+07:00`),
-  );
-
-  return {
-    totalSpent,
-    transactionCount,
-    average7Day,
-    diffPercent,
-    diffDirection,
-    topCategories,
-    topMerchants,
-    highlightLabel,
-    suggestion,
-    summary,
-    comparisonSentence: comparison,
-    yesterdayLabel,
-    yesterdayDate,
-  };
-}
-
-interface DigestState {
-  open: boolean;
-  data: DailyDigestData | null;
-  today: string;
-}
-
-const DEFAULT_STATE: DigestState = {
-  open: false,
-  data: null,
-  today: "",
-};
-
-export default function useDailyDigest({
-  transactions,
-}: UseDailyDigestOptions): UseDailyDigestResult {
-  const [{ open, data, today }, setState] = useState<DigestState>(DEFAULT_STATE);
-  const [sessionReady, setSessionReady] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  const storageKey = useMemo(
-    () => (userId ? `${STORAGE_PREFIX}${userId}` : null),
-    [userId],
-  );
-
-  const evaluateDigest = useCallback(
-    (currentUid: string) => {
-      if (!currentUid) return;
-      if (typeof window === "undefined") return;
-
-      const todayLocal = todayJakarta();
-      let lastShown = "";
-      try {
-        lastShown = window.localStorage.getItem(`${STORAGE_PREFIX}${currentUid}`) || "";
-      } catch {
-        lastShown = "";
-      }
-
-      if (lastShown === todayLocal) {
-        setState({ open: false, data: null, today: todayLocal });
-        return;
-      }
-
-      const digest = computeDigest(transactions ?? [], todayLocal);
-      setState({ open: true, data: digest, today: todayLocal });
-    },
-    [transactions],
-  );
-
-  const evaluateDigestRef = useRef(evaluateDigest);
-  useEffect(() => {
-    evaluateDigestRef.current = evaluateDigest;
-  }, [evaluateDigest]);
-
-  useEffect(() => {
-    let active = true;
-
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!active) return;
-        const session = data.session ?? null;
-        const uid = session?.user?.id ?? null;
-        setUserId(uid);
-        setSessionReady(true);
-        if (uid) {
-          evaluateDigestRef.current(uid);
-        } else {
-          setState(DEFAULT_STATE);
-        }
-      })
-      .catch(() => {
-        if (!active) return;
-        setUserId(null);
-        setSessionReady(true);
-        setState(DEFAULT_STATE);
-      });
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!active) return;
-
-      if (event === "SIGNED_OUT") {
-        setUserId(null);
-        setState(DEFAULT_STATE);
-        return;
-      }
-
-      if (event === "SIGNED_IN") {
-        const uid = session?.user?.id ?? null;
-        setUserId(uid);
-        if (uid) {
-          evaluateDigestRef.current(uid);
-        } else {
-          setState(DEFAULT_STATE);
-        }
-        return;
-      }
-
-      const uid = session?.user?.id ?? null;
-      setUserId(uid);
-    });
-
-    return () => {
-      active = false;
-      subscription.subscription?.unsubscribe();
+  const budgetCategories: BudgetCategoryProgress[] = budgets.map((row) => {
+    const spent = budgetSpentByCategory.get(row.category_id ?? "__uncategorized") ?? 0;
+    const planned = toNumber(row.planned);
+    const percent = planned > 0 ? spent / planned : 0;
+    return {
+      id: row.category_id,
+      name: row.name?.trim() || "Tanpa kategori",
+      spent,
+      planned,
+      percent,
+      status: computeBudgetStatus(percent),
     };
-  }, []);
+  });
 
-  useEffect(() => {
-    if (!sessionReady) return;
-    if (!userId) return;
-    evaluateDigest(userId);
-  }, [sessionReady, userId, evaluateDigest]);
+  const plannedTotal = budgetCategories.reduce((sum, row) => sum + row.planned, 0);
+  const budgetPercent = plannedTotal > 0 ? monthExpenseTotal / plannedTotal : 0;
+  const budgetStatus = computeBudgetStatus(budgetPercent);
 
-  const markSeen = useCallback(() => {
-    setState((prev) => ({ ...prev, open: false }));
-    if (!storageKey) return;
-    if (typeof window === "undefined") return;
-    const targetDate = today || todayJakarta();
-    try {
-      window.localStorage.setItem(storageKey, targetDate);
-    } catch {
-      /* ignore */
-    }
-  }, [storageKey, today]);
+  const topCategoryTotals = new Map<string, { id: string | null; name: string; total: number }>();
+  for (const row of transactions) {
+    if (row.type !== "expense") continue;
+    const key = row.category_id ?? row.categories?.id ?? row.categories?.name ?? "__uncategorized";
+    const name = row.categories?.name?.trim() || "Tanpa kategori";
+    const entry = topCategoryTotals.get(key) ?? { id: row.category_id, name, total: 0 };
+    entry.total += toNumber(row.amount);
+    topCategoryTotals.set(key, entry);
+  }
 
-  const close = useCallback(() => {
-    markSeen();
-  }, [markSeen]);
+  const topCategories: TopCategorySummary[] = Array.from(topCategoryTotals.values())
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 3)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      amount: item.total,
+      percent: monthExpenseTotal > 0 ? item.total / monthExpenseTotal : 0,
+    }));
 
   return {
-    open,
-    data,
-    close,
-    markSeen,
-    variant: "modal",
-    userId,
+    balance: {
+      total: totalBalance,
+      previous: yesterdayBalanceEstimate,
+      change: netChange,
+      direction,
+      accounts: accounts.filter((row) => !row.is_archived).length,
+    },
+    today: {
+      total: todayExpenseTotal,
+      average: averageDailyExpense,
+      diff: todayExpenseTotal - averageDailyExpense,
+    },
+    budget: {
+      spent: monthExpenseTotal,
+      planned: plannedTotal,
+      percent: budgetPercent,
+      status: budgetStatus,
+      categories: budgetCategories
+        .slice()
+        .sort((a, b) => b.percent - a.percent)
+        .slice(0, 3),
+    },
+    topCategories,
+    upcoming,
+    todayKey,
+    monthKey,
+    monthStart,
+    monthLabel,
+    todayLabel,
   };
 }
+
+export default function useDailyDigest(options: UseDailyDigestOptions = {}) {
+  const { userId, enabled = true } = options;
+
+  const query = useQuery<DailyDigestData, Error>({
+    queryKey: ["daily-digest", userId],
+    queryFn: async () => {
+      if (!userId) {
+        throw new Error("User ID is required to load daily digest");
+      }
+      return buildDailyDigest(userId);
+    },
+    enabled: Boolean(userId) && enabled,
+    staleTime: 60_000,
+    gcTime: 300_000,
+  });
+
+  return useMemo(() => ({ ...query }), [query]);
+}
+
+export { getTodayKey as getDigestTodayKey };
