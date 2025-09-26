@@ -58,6 +58,15 @@ export type BrandingSetting = {
   updated_at: string | null;
 };
 
+export type AdminDashboardContentSetting = {
+  breadcrumb: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  description: string;
+  updated_at: string | null;
+};
+
 export type AuditEntry = {
   id: string;
   source: 'sidebar' | 'user';
@@ -511,6 +520,27 @@ function parseBrandingValue(value: any): { primary: string; secondary: string } 
   return { primary: '#1e40af', secondary: '#0ea5e9' };
 }
 
+const DEFAULT_ADMIN_DASHBOARD_CONTENT = {
+  breadcrumb: 'Dashboard / Admin',
+  title: 'Admin Panel',
+  subtitle: '',
+  badge: 'Admin',
+  description: 'Kelola menu, pengguna, dan pengaturan aplikasi di satu tempat.',
+};
+
+function parseAdminDashboardContentValue(value: any): Omit<AdminDashboardContentSetting, 'updated_at'> {
+  if (value && typeof value === 'object') {
+    const breadcrumb = typeof value.breadcrumb === 'string' ? value.breadcrumb : DEFAULT_ADMIN_DASHBOARD_CONTENT.breadcrumb;
+    const title = typeof value.title === 'string' ? value.title : DEFAULT_ADMIN_DASHBOARD_CONTENT.title;
+    const subtitle = typeof value.subtitle === 'string' ? value.subtitle : DEFAULT_ADMIN_DASHBOARD_CONTENT.subtitle;
+    const badge = typeof value.badge === 'string' ? value.badge : DEFAULT_ADMIN_DASHBOARD_CONTENT.badge;
+    const description =
+      typeof value.description === 'string' ? value.description : DEFAULT_ADMIN_DASHBOARD_CONTENT.description;
+    return { breadcrumb, title, subtitle, badge, description };
+  }
+  return { ...DEFAULT_ADMIN_DASHBOARD_CONTENT };
+}
+
 export async function getBranding(): Promise<BrandingSetting> {
   try {
     const { data, error } = await supabase
@@ -552,6 +582,66 @@ export async function setBranding(branding: {
   } catch (error) {
     console.error('[adminApi] setBranding failed', error);
     throw new Error('Gagal menyimpan pengaturan branding');
+  }
+}
+
+export async function getAdminDashboardContent(): Promise<AdminDashboardContentSetting> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', 'admin_dashboard_content')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const parsed = parseAdminDashboardContentValue(data?.value);
+    return { ...parsed, updated_at: data?.updated_at ?? null };
+  } catch (error) {
+    console.error('[adminApi] getAdminDashboardContent failed', error);
+    throw new Error('Gagal memuat konten dashboard admin');
+  }
+}
+
+export type UpdateAdminDashboardContentInput = {
+  breadcrumb: string;
+  title: string;
+  subtitle: string;
+  badge: string;
+  description: string;
+};
+
+export async function setAdminDashboardContent(
+  content: UpdateAdminDashboardContentInput
+): Promise<AdminDashboardContentSetting> {
+  try {
+    const normalized: UpdateAdminDashboardContentInput = {
+      breadcrumb: typeof content.breadcrumb === 'string' ? content.breadcrumb : DEFAULT_ADMIN_DASHBOARD_CONTENT.breadcrumb,
+      title: typeof content.title === 'string' ? content.title : DEFAULT_ADMIN_DASHBOARD_CONTENT.title,
+      subtitle: typeof content.subtitle === 'string' ? content.subtitle : DEFAULT_ADMIN_DASHBOARD_CONTENT.subtitle,
+      badge: typeof content.badge === 'string' ? content.badge : DEFAULT_ADMIN_DASHBOARD_CONTENT.badge,
+      description:
+        typeof content.description === 'string' ? content.description : DEFAULT_ADMIN_DASHBOARD_CONTENT.description,
+    };
+
+    const response = await supabase
+      .from('app_settings')
+      .upsert(
+        {
+          key: 'admin_dashboard_content',
+          value: normalized,
+        },
+        { onConflict: 'key' }
+      )
+      .select('value, updated_at')
+      .single();
+
+    const data = ensureResponse(response);
+    const parsed = parseAdminDashboardContentValue(data.value);
+    return { ...parsed, updated_at: data.updated_at ?? null };
+  } catch (error) {
+    console.error('[adminApi] setAdminDashboardContent failed', error);
+    throw new Error('Gagal menyimpan konten dashboard admin');
   }
 }
 
