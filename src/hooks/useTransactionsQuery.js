@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { getTransactionsSummary, listCategories } from "../lib/api";
 import { listTransactions } from "../lib/api-transactions";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 20;
 
 const DEFAULT_FILTER = {
   period: { preset: "all", month: "", start: "", end: "" },
@@ -204,6 +204,14 @@ export default function useTransactionsQuery() {
     [updateParams],
   );
 
+  const setPage = useCallback(
+    (nextPage) => {
+      const safePage = Number.isFinite(nextPage) ? Math.max(1, Math.floor(nextPage)) : 1;
+      updateParams({}, safePage);
+    },
+    [updateParams],
+  );
+
   const loadMore = useCallback(() => {
     updateParams({}, page + 1);
   }, [page, updateParams]);
@@ -231,6 +239,7 @@ export default function useTransactionsQuery() {
     error,
     filter,
     setFilter,
+    setPage,
     loadMore,
     refresh,
     categories,
