@@ -326,19 +326,19 @@
   }
 
   .drawer-panel {
-    @apply fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col overflow-hidden rounded-l-3xl border border-border-subtle bg-surface shadow-[0_24px_60px_-30px_rgb(15_23_42/0.35)] transition-transform duration-300 ease-out;
+    @apply fixed inset-y-0 right-0 z-50 flex w-full max-w-full flex-col overflow-hidden rounded-none border border-border-subtle bg-surface shadow-[0_24px_60px_-30px_rgb(15_23_42/0.35)] transition-transform duration-300 ease-out sm:max-w-md sm:rounded-l-3xl;
   }
 
   .drawer-header {
-    @apply sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-6 py-4;
+    @apply sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border-subtle bg-surface px-4 py-4 sm:px-6;
   }
 
   .drawer-footer {
-    @apply sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle bg-surface px-6 py-4;
+    @apply sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-2 border-t border-border-subtle bg-surface px-4 py-4 sm:px-6;
   }
 
   .drawer-body {
-    @apply flex-1 overflow-y-auto px-6 py-5;
+    @apply flex-1 overflow-y-auto px-4 py-5 sm:px-6;
   }
 
   .chip {

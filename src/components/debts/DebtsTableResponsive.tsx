@@ -429,11 +429,11 @@ export default function DebtsTableResponsive({
                   </div>
                 </div>
 
-                <footer className="mt-4 flex items-center gap-2">
+                <footer className="mt-4 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onAddPayment(debt)}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex w-full min-w-[180px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
                     aria-label="Catat pembayaran"
                   >
                     <Wallet className="h-4 w-4" aria-hidden="true" />
@@ -442,7 +442,7 @@ export default function DebtsTableResponsive({
                   <button
                     type="button"
                     onClick={() => onEdit(debt)}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex w-full min-w-[150px] flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
                     aria-label="Ubah hutang"
                   >
                     <Pencil className="h-4 w-4" aria-hidden="true" />
@@ -451,7 +451,7 @@ export default function DebtsTableResponsive({
                   <button
                     type="button"
                     onClick={() => onDelete(debt)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border bg-card text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
                     aria-label="Hapus hutang"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
