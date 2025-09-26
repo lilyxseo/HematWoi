@@ -35,6 +35,8 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/Profile'));
     case '/auth':
       return lazy(() => import('../pages/AuthLogin'));
+    case '/auth/callback':
+      return lazy(() => import('../pages/AuthCallback'));
     default:
       return lazy(() => import('../pages/Dashboard'));
   }

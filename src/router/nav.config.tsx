@@ -134,4 +134,10 @@ export const NAV_ITEMS: NavItem[] = [
     inSidebar: false,
     protected: false,
   },
+  {
+    title: 'Auth Callback',
+    path: '/auth/callback',
+    inSidebar: false,
+    protected: false,
+  },
 ];

@@ -17,6 +17,8 @@ export default function AuthLogin() {
   const location = useLocation();
   const [checking, setChecking] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [prefilledIdentifier] = useState(() => {
     try {
       return localStorage.getItem('hw:lastEmail') ?? '';
@@ -119,6 +121,32 @@ export default function AuthLogin() {
     navigate('/', { replace: true });
   }, [navigate, syncGuestData]);
 
+  const handleGoogleSignIn = useCallback(async () => {
+    setGoogleError(null);
+    setGoogleLoading(true);
+    try {
+      const redirectTo = `${window.location.origin}/auth/callback`;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Gagal memulai login dengan Google.';
+      setGoogleError(message);
+      setGoogleLoading(false);
+    }
+  }, []);
+
   return (
     <ErrorBoundary>
       <main className="min-h-screen bg-surface-alt px-6 py-12 text-text transition-colors sm:py-16">
@@ -157,7 +185,28 @@ export default function AuthLogin() {
               {checking ? (
                 skeleton
               ) : (
-                <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    disabled={googleLoading}
+                    className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-white text-sm font-semibold text-slate-900 shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] focus-visible:ring-offset-2 disabled:opacity-60"
+                  >
+                    <span aria-hidden className="text-lg font-semibold text-[#4285F4]">G</span>
+                    <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
+                  </button>
+                  {googleError ? (
+                    <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-xs text-danger">
+                      {googleError}
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-3">
+                    <span className="h-px flex-1 bg-border-subtle" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted">atau</span>
+                    <span className="h-px flex-1 bg-border-subtle" />
+                  </div>
+                  <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
+                </div>
               )}
               <div className="rounded-3xl border border-border-subtle bg-surface px-5 py-4 shadow-sm">
                 <div className="space-y-3 text-center">
