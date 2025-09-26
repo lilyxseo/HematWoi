@@ -11,7 +11,6 @@ import {
 import AppSidebar from "./layout/AppSidebar";
 import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
-import SyncBanner from "./components/SyncBanner";
 import BootGate from "./components/BootGate";
 
 import Dashboard from "./pages/Dashboard";
@@ -194,7 +193,6 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
       }
     >
       <div className="flex min-h-full flex-col">
-        <SyncBanner />
         <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
           <Outlet />
         </div>

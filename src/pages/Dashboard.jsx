@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
 import SectionHeader from "../components/SectionHeader";
-import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
 import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
@@ -126,8 +125,7 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
 
         <section className="space-y-6 sm:space-y-8 lg:space-y-10">
           <SectionHeader title="Analisis Bulanan" />
-          <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
-            <MonthlyTrendChart data={insights.trend} />
+          <div className="grid gap-6 sm:gap-7 lg:gap-8">
             <CategoryDonut data={insights.categories} />
           </div>
           <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
