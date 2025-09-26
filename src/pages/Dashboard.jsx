@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import QuoteBoard from "../components/QuoteBoard";
-import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
-import BudgetStatusHighlights from "../components/BudgetStatusHighlights";
 import SectionHeader from "../components/SectionHeader";
 import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
@@ -22,7 +19,7 @@ import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] }) {
+export default function Dashboard({ stats, txs, budgets = [] }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
@@ -119,20 +116,13 @@ export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] 
           />
         </section>
 
-        <QuoteBoard />
-
-        <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
-          <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
-          <AchievementBadges
-            stats={stats}
-            streak={streak}
-            target={savingsTarget}
-          />
-        </div>
+        <AchievementBadges
+          stats={stats}
+          streak={streak}
+          target={savingsTarget}
+        />
 
         <QuickActions />
-
-        <BudgetStatusHighlights items={budgetStatus} />
 
         <section className="space-y-6 sm:space-y-8 lg:space-y-10">
           <SectionHeader title="Analisis Bulanan" />
