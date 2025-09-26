@@ -4,6 +4,7 @@ import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
 import QuickActions from "../components/QuickActions";
 import BudgetStatusHighlights from "../components/BudgetStatusHighlights";
+import BudgetOverview from "../components/dashboard/BudgetOverview";
 import SectionHeader from "../components/SectionHeader";
 import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
@@ -132,7 +133,10 @@ export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] 
 
         <QuickActions />
 
-        <BudgetStatusHighlights items={budgetStatus} />
+        <section className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
+          <BudgetOverview budgets={budgets} />
+          <BudgetStatusHighlights items={budgetStatus} />
+        </section>
 
         <section className="space-y-6 sm:space-y-8 lg:space-y-10">
           <SectionHeader title="Analisis Bulanan" />

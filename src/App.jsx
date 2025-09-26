@@ -86,53 +86,50 @@ const BRAND_PRESETS = {
 function normalizeBudgetRecord(budget, overrides = {}) {
   if (!budget) return null;
 
-  const {
-    amount,
-    amount_planned,
-    carryover,
-    carryover_enabled,
-    note,
-    notes,
-    limit,
-    cap,
-    month,
-    ...rest
-  } = budget;
+  const record = { ...budget, ...overrides };
 
-  const {
-    amount_planned: overridePlanned,
-    carryover_enabled: overrideCarryover,
-    notes: overrideNotes,
-    month: overrideMonth,
-    ...extra
-  } = overrides;
+  const toNumber = (value) => {
+    const parsed = Number.parseFloat(value ?? 0);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
 
   const plannedSource =
-    overridePlanned ?? amount_planned ?? amount ?? limit ?? cap ?? 0;
-  const plannedValue = Number(plannedSource);
-  const normalizedPlanned = Number.isFinite(plannedValue)
-    ? plannedValue
-    : 0;
+    record.planned ??
+    record.amount_planned ??
+    record.amount ??
+    record.limit ??
+    record.cap ??
+    0;
+  const rolloverInSource = record.rollover_in ?? record.rolloverIn ?? 0;
+  const rolloverOutSource = record.rollover_out ?? record.rolloverOut ?? 0;
+  const spentSource =
+    record.current_spent ??
+    record.currentSpent ??
+    record.actual ??
+    record.spent ??
+    0;
 
   const carryoverSource =
-    overrideCarryover ?? carryover_enabled ?? carryover ?? false;
+    record.carryover_enabled ?? record.carryover ?? record.carryoverEnabled;
   const normalizedCarryover =
     typeof carryoverSource === "string"
       ? carryoverSource === "true"
       : Boolean(carryoverSource);
 
-  const resolvedNotes = overrideNotes ?? notes ?? note ?? null;
-
-  const monthSource = overrideMonth ?? month;
-  const normalizedMonth = monthSource ? String(monthSource).slice(0, 7) : null;
+  const monthSource = record.month ?? record.period_month;
+  const periodSource = record.period_month ?? record.month;
 
   return {
-    ...rest,
-    ...extra,
-    month: normalizedMonth,
-    amount_planned: normalizedPlanned,
+    ...record,
+    month: monthSource ? String(monthSource).slice(0, 7) : null,
+    period_month: periodSource ? String(periodSource).slice(0, 7) : null,
+    amount_planned: toNumber(plannedSource),
+    planned: toNumber(plannedSource),
+    rollover_in: toNumber(rolloverInSource),
+    rollover_out: toNumber(rolloverOutSource),
+    current_spent: toNumber(spentSource),
     carryover_enabled: normalizedCarryover,
-    notes: resolvedNotes,
+    notes: record.notes ?? record.note ?? null,
   };
 }
 
@@ -601,7 +598,9 @@ function AppShell({ prefs, setPrefs }) {
       if (!sessionUser) return;
       const { data: rows, error } = await supabase
         .from("budgets")
-        .select("id, month, amount_planned, carryover_enabled, notes, category_id")
+        .select(
+          "id, month, period_month, amount_planned, planned, rollover_in, rollover_out, current_spent, carryover_enabled, notes, name, label, category_id, category_key"
+        )
         .eq("user_id", sessionUser.id)
         .order("month", { ascending: false });
       if (error) throw error;
