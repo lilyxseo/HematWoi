@@ -78,10 +78,18 @@ export default function AppSidebar({
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-[65] inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface-1/90 text-text shadow-lg backdrop-blur lg:hidden"
+        className="group fixed z-[65] inline-flex h-11 items-center gap-3 rounded-full border border-border/80 bg-surface-1/95 px-4 text-sm font-medium text-text shadow-lg shadow-black/5 backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1 lg:hidden"
         aria-label="Buka navigasi"
+        aria-expanded={mobileOpen}
+        style={{
+          top: "calc(env(safe-area-inset-top, 0px) + 1rem)",
+          left: "calc(env(safe-area-inset-left, 0px) + 1rem)",
+        }}
       >
-        <Menu className="h-5 w-5" />
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/10 text-brand transition-colors group-hover:bg-brand/15">
+          <Menu className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" />
+        </div>
+        <span className="whitespace-nowrap">Menu</span>
       </button>
     </>
   );
