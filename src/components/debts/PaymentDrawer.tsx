@@ -294,7 +294,7 @@ export default function PaymentDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="btn btn-secondary w-full sm:w-auto"
+              className="btn btn-secondary w-full min-h-[48px] sm:w-auto sm:min-h-[40px]"
             >
               Tutup
             </button>
@@ -303,7 +303,7 @@ export default function PaymentDrawer({
               form="payment-form"
               disabled={Boolean(submitting)}
               aria-busy={Boolean(submitting)}
-              className="btn btn-primary w-full sm:w-auto"
+              className="btn btn-primary w-full min-h-[48px] sm:w-auto sm:min-h-[40px]"
             >
               {submitting ? 'Menyimpan…' : 'Catat Pembayaran'}
             </button>
