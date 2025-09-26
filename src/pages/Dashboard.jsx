@@ -16,6 +16,7 @@ import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
 import useDashboardBalances from "../hooks/useDashboardBalances";
+import DailyDigestCard from "../components/DailyDigestCard";
 
 const DEFAULT_PRESET = "month";
 
@@ -76,6 +77,8 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           Ringkasan keuanganmu
         </p>
       </header>
+
+      <DailyDigestCard />
 
       <section className="space-y-4">
         <PeriodPicker

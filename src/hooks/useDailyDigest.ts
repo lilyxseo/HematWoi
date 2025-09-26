@@ -1,404 +1,684 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { PostgrestError, PostgrestResponse } from "@supabase/supabase-js"
+import { supabase } from "../lib/supabase"
+import { formatCurrency } from "../lib/format.js"
 
-const TIMEZONE = "Asia/Jakarta";
-const STORAGE_PREFIX = "hw:digest:last:";
+const TIMEZONE = "Asia/Jakarta"
+const CACHE_KEY = "hw:daily-digest:v1"
+const CACHE_TTL_MS = 90_000
+const ACTIVE_ACCOUNT_TYPES = new Set(["cash", "bank", "ewallet"])
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: TIMEZONE,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
-});
-const HUMAN_DATE_FORMATTER = new Intl.DateTimeFormat("id-ID", {
-  timeZone: TIMEZONE,
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-});
-const CURRENCY_FORMATTER = new Intl.NumberFormat("id-ID", {
-  style: "currency",
-  currency: "IDR",
-  minimumFractionDigits: 0,
-});
+})
 
-export interface DigestTransaction {
-  amount?: number | string | null;
-  type?: string | null;
-  date?: string | null;
-  category?: string | null;
-  category_name?: string | null;
-  merchant?: string | null | { name?: string | null };
-  merchant_name?: string | null;
-  deleted_at?: string | null;
+interface CacheRecord {
+  userId: string
+  data: DailyDigestData
+  expiresAt: number
 }
 
-interface HighlightItem {
-  name: string;
-  amount: number;
+let memoryCache: CacheRecord | null = null
+
+type Nullable<T> = T | null | undefined
+
+interface TransactionRow {
+  id: string
+  amount: Nullable<number | string>
+  type: Nullable<string>
+  date: Nullable<string>
+  category_id: Nullable<string>
+  category_name?: Nullable<string>
+  deleted_at?: Nullable<string>
+}
+
+interface AccountRow {
+  id: string
+  type: Nullable<string>
+  balance?: Nullable<number | string>
+  current_balance?: Nullable<number | string>
+  initial_balance?: Nullable<number | string>
+  is_archived?: Nullable<boolean>
+  archived_at?: Nullable<string>
+}
+
+interface BudgetRow {
+  id: string
+  name: Nullable<string>
+  category_id: Nullable<string>
+  planned: Nullable<number | string>
+  rollover_in: Nullable<number | string>
+  rollover_out: Nullable<number | string>
+}
+
+interface SubscriptionRow {
+  id: string
+  name: string
+  amount: Nullable<number | string>
+  next_due_date: Nullable<string>
+  status?: Nullable<string>
+}
+
+interface DebtRow {
+  id: string
+  title: string
+  amount: Nullable<number | string>
+  due_date: Nullable<string>
+  status?: Nullable<string>
+  type?: Nullable<string>
+}
+
+export interface CategoryDigestItem {
+  id: string | null
+  name: string
+  total: number
+  pctOfMTD: number
+}
+
+export interface BudgetWarningItem {
+  id: string
+  name: string
+  spent: number
+  limit: number
+  pct: number
+  status: "near" | "over"
 }
 
 export interface DailyDigestData {
-  totalSpent: number;
-  transactionCount: number;
-  average7Day: number;
-  diffPercent: number;
-  diffDirection: "up" | "down" | "flat";
-  topCategories: HighlightItem[];
-  topMerchants: HighlightItem[];
-  highlightLabel: string | null;
-  suggestion: string;
-  summary: string;
-  comparisonSentence: string;
-  yesterdayLabel: string;
-  yesterdayDate: string;
+  balance: number
+  balanceDelta: number
+  balanceDirection: "up" | "down" | "flat"
+  todayExpense: {
+    total: number
+    count: number
+    vsAvgDailyMonthPct: number
+  }
+  wtd: {
+    total: number
+    vsAvgWeekly3mPct: number
+  }
+  mtd: {
+    total: number
+    vsBudgetPct?: number
+    budgetAmount?: number
+  }
+  topCategories: CategoryDigestItem[]
+  budgetWarnings: BudgetWarningItem[]
+  upcoming: {
+    subscriptions: Array<{
+      id: string
+      name: string
+      dueDate: string
+      amount: number
+    }>
+    debts: Array<{
+      id: string
+      name: string
+      dueDate: string
+      amount: number
+    }>
+  }
+  insight: string
+  range: {
+    today: string
+    weekStart: string
+    monthStart: string
+  }
 }
 
 export interface UseDailyDigestResult {
-  open: boolean;
-  data: DailyDigestData | null;
-  close: () => void;
-  markSeen: () => void;
-  variant: "modal" | "banner";
-  userId: string | null;
+  data: DailyDigestData | null
+  loading: boolean
+  error: Error | null
+  isRefreshing: boolean
+  refresh: (options?: { skipCache?: boolean }) => Promise<void>
 }
 
-export interface UseDailyDigestOptions {
-  transactions?: DigestTransaction[] | null;
+type WeekHistory = Map<string, number>
+
+type CategoryNameMap = Map<string | null, string>
+
+interface DigestComputationContext {
+  today: string
+  weekStart: string
+  monthStart: string
+  historyStart: string
 }
 
-export function todayJakarta(): string {
-  return DATE_FORMATTER.format(new Date());
+function toNumber(value: Nullable<number | string>): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+  return 0
 }
 
-function formatDateInZone(date: Date): string {
-  return DATE_FORMATTER.format(date);
+function formatDate(date: Date): string {
+  return DATE_FORMATTER.format(date)
 }
 
-function shiftLocalDateString(base: string, offset: number): string {
-  const [year, month, day] = base.split("-").map((part) => Number.parseInt(part, 10));
-  if (!year || !month || !day) return base;
-  const ref = new Date(Date.UTC(year, month - 1, day));
-  ref.setUTCDate(ref.getUTCDate() + offset);
-  const y = ref.getUTCFullYear();
-  const m = String(ref.getUTCMonth() + 1).padStart(2, "0");
-  const d = String(ref.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+function parseParts(value: string): { year: number; month: number; day: number } | null {
+  const [yearStr, monthStr, dayStr] = value.split("-")
+  const year = Number.parseInt(yearStr, 10)
+  const month = Number.parseInt(monthStr, 10)
+  const day = Number.parseInt(dayStr, 10)
+  if (!year || !month || !day) return null
+  return { year, month, day }
 }
 
-function getTransactionDate(tx: DigestTransaction): string | null {
-  if (!tx?.date) return null;
-  const parsed = new Date(tx.date);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return formatDateInZone(parsed);
+function fromParts({ year, month, day }: { year: number; month: number; day: number }): string {
+  const d = new Date(Date.UTC(year, month - 1, day))
+  return formatDate(d)
 }
 
-function toNumber(value: number | string | null | undefined): number {
-  const numeric = typeof value === "string" ? Number.parseFloat(value) : Number(value ?? 0);
-  return Number.isFinite(numeric) ? numeric : 0;
+function shiftDate(value: string, offsetDays: number): string {
+  const parts = parseParts(value)
+  if (!parts) return value
+  const base = new Date(Date.UTC(parts.year, parts.month - 1, parts.day))
+  base.setUTCDate(base.getUTCDate() + offsetDays)
+  return formatDate(base)
 }
 
-function getMerchantName(tx: DigestTransaction): string | null {
-  const candidates: Array<string | null | undefined> = [
-    tx.merchant_name,
-    typeof tx.merchant === "string" ? tx.merchant : null,
-    tx.merchant && typeof tx.merchant === "object" ? tx.merchant.name : null,
-  ];
+function startOfWeek(value: string): string {
+  const parts = parseParts(value)
+  if (!parts) return value
+  const base = new Date(Date.UTC(parts.year, parts.month - 1, parts.day))
+  const day = base.getUTCDay()
+  const diff = day === 0 ? -6 : 1 - day
+  base.setUTCDate(base.getUTCDate() + diff)
+  return formatDate(base)
+}
+
+function startOfMonth(value: string): string {
+  const parts = parseParts(value)
+  if (!parts) return value
+  return fromParts({ year: parts.year, month: parts.month, day: 1 })
+}
+
+function toIsoDate(value: string, endOfDay = false): string {
+  const suffix = endOfDay ? "T23:59:59" : "T00:00:00"
+  return `${value}${suffix}+07:00`
+}
+
+function loadCache(userId: string | null): DailyDigestData | null {
+  if (!userId) return null
+  const now = Date.now()
+  if (memoryCache && memoryCache.userId === userId && memoryCache.expiresAt > now) {
+    return memoryCache.data
+  }
+  if (typeof window === "undefined") return null
+  try {
+    const raw = window.localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as CacheRecord
+    if (!parsed || parsed.userId !== userId) return null
+    if (parsed.expiresAt < now) return null
+    memoryCache = parsed
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+function saveCache(userId: string, data: DailyDigestData): void {
+  const record: CacheRecord = {
+    userId,
+    data,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  }
+  memoryCache = record
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(CACHE_KEY, JSON.stringify(record))
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+function normalizeError(error: unknown): Error {
+  if (error instanceof Error) return error
+  if (typeof error === "string") return new Error(error)
+  if (error && typeof error === "object" && "message" in error && typeof (error as any).message === "string") {
+    return new Error((error as any).message)
+  }
+  return new Error("Gagal memuat Daily Digest. Coba lagi nanti.")
+}
+
+function isActiveAccount(row: AccountRow): boolean {
+  const type = typeof row.type === "string" ? row.type.toLowerCase() : ""
+  if (!ACTIVE_ACCOUNT_TYPES.has(type)) return false
+  if (row.is_archived) return false
+  if (row.archived_at) return false
+  return true
+}
+
+function pickAccountBalance(row: AccountRow): number {
+  const candidates: Array<Nullable<number | string>> = [row.balance, row.current_balance, row.initial_balance]
   for (const candidate of candidates) {
-    const trimmed = typeof candidate === "string" ? candidate.trim() : "";
-    if (trimmed) return trimmed;
+    const numeric = toNumber(candidate)
+    if (numeric !== 0) return numeric
   }
-  return null;
-}
-
-function getCategoryName(tx: DigestTransaction): string | null {
-  const candidates: Array<string | null | undefined> = [
-    tx.category,
-    tx.category_name,
-  ];
-  for (const candidate of candidates) {
-    const trimmed = typeof candidate === "string" ? candidate.trim() : "";
-    if (trimmed) return trimmed;
-  }
-  return null;
-}
-
-function summarizeHighlights(entries: HighlightItem[]): string | null {
-  if (!entries.length) return null;
-  if (entries.length === 1) return entries[0].name;
-  return `${entries[0].name} & ${entries[1].name}`;
-}
-
-function formatCurrency(value: number): string {
-  return CURRENCY_FORMATTER.format(Math.round(value));
-}
-
-function buildSummary(
-  totalSpent: number,
-  transactionCount: number,
-  diffDirection: "up" | "down" | "flat",
-  diffPercent: number,
-  average7Day: number,
-  suggestion: string,
-): { comparison: string; summary: string } {
-  const spendSentence =
-    transactionCount === 0
-      ? "Kemarin belum ada transaksi yang terekam."
-      : `Kemarin kamu belanja ${formatCurrency(totalSpent)} di ${transactionCount} transaksi.`;
-  let comparisonSentence: string;
-  if (average7Day > 0) {
-    if (diffDirection === "flat") {
-      comparisonSentence = "Itu setara dengan rata-rata 7 hari.";
-    } else if (diffDirection === "up") {
-      comparisonSentence = `Itu lebih tinggi ${Math.abs(Math.round(diffPercent))}% dari rata-rata 7 hari.`;
-    } else {
-      comparisonSentence = `Itu lebih rendah ${Math.abs(Math.round(diffPercent))}% dari rata-rata 7 hari.`;
-    }
-  } else {
-    comparisonSentence = "Belum ada cukup data untuk rata-rata 7 hari.";
-  }
-  const summary = `${spendSentence} ${comparisonSentence} ${suggestion}`.trim();
-  return { comparison: comparisonSentence, summary };
-}
-
-function computeHighlights(map: Map<string, number>): HighlightItem[] {
-  return Array.from(map.entries())
-    .filter(([, amount]) => amount > 0)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 2)
-    .map(([name, amount]) => ({ name, amount }));
+  return toNumber(candidates[0])
 }
 
 function computeDigest(
-  transactions: DigestTransaction[] | null | undefined,
-  todayLocal: string,
+  accounts: AccountRow[],
+  transactions: TransactionRow[],
+  budgets: BudgetRow[],
+  subscriptions: SubscriptionRow[],
+  debts: DebtRow[],
+  context: DigestComputationContext,
 ): DailyDigestData {
-  const yesterdayLocal = shiftLocalDateString(todayLocal, -1);
-  const weekStart = shiftLocalDateString(yesterdayLocal, -6);
+  const { today, weekStart, monthStart, historyStart } = context
+  const categoryTotals = new Map<string | null, number>()
+  const categoryNames: CategoryNameMap = new Map()
+  const weekTotals: WeekHistory = new Map()
+  const categoryWeekTotals = new Map<string | null, WeekHistory>()
+  const weekCategoryCounts = new Map<string | null, number>()
 
-  const expenses = Array.isArray(transactions)
-    ? transactions.filter((tx) => tx && tx.type === "expense" && !tx.deleted_at)
-    : [];
+  let todayExpenseTotal = 0
+  let todayExpenseCount = 0
+  let todayIncomeTotal = 0
+  let wtdTotal = 0
+  let mtdTotal = 0
 
-  let totalSpent = 0;
-  let transactionCount = 0;
-  const categoryTotals = new Map<string, number>();
-  const merchantTotals = new Map<string, number>();
-  let weekTotal = 0;
+  const currentWeekKey = weekStart
 
-  for (const tx of expenses) {
-    const date = getTransactionDate(tx);
-    if (!date) continue;
+  for (const tx of transactions) {
+    const type = typeof tx.type === "string" ? tx.type.toLowerCase() : ""
+    const rawDate = typeof tx.date === "string" ? tx.date.slice(0, 10) : ""
+    if (!rawDate) continue
 
-    const amount = toNumber(tx.amount);
-    if (amount <= 0) continue;
+    const amount = Math.abs(toNumber(tx.amount))
+    if (amount <= 0) continue
 
-    if (date === yesterdayLocal) {
-      totalSpent += amount;
-      transactionCount += 1;
-      const category = getCategoryName(tx);
-      if (category) {
-        categoryTotals.set(category, (categoryTotals.get(category) || 0) + amount);
+    if (type === "income") {
+      if (rawDate === today) {
+        todayIncomeTotal += amount
       }
-      const merchant = getMerchantName(tx);
-      if (merchant) {
-        merchantTotals.set(merchant, (merchantTotals.get(merchant) || 0) + amount);
+      continue
+    }
+
+    if (type !== "expense") continue
+
+    if (rawDate === today) {
+      todayExpenseTotal += amount
+      todayExpenseCount += 1
+    }
+    if (rawDate >= weekStart && rawDate <= today) {
+      wtdTotal += amount
+      const current = weekCategoryCounts.get(tx.category_id ?? null) ?? 0
+      weekCategoryCounts.set(tx.category_id ?? null, current + 1)
+    }
+    if (rawDate >= monthStart && rawDate <= today) {
+      mtdTotal += amount
+      const prev = categoryTotals.get(tx.category_id ?? null) ?? 0
+      categoryTotals.set(tx.category_id ?? null, prev + amount)
+      if (!categoryNames.has(tx.category_id ?? null)) {
+        const name = typeof tx.category_name === "string" && tx.category_name.trim().length
+          ? tx.category_name.trim()
+          : "Tanpa Kategori"
+        categoryNames.set(tx.category_id ?? null, name)
       }
     }
 
-    if (date >= weekStart && date <= yesterdayLocal) {
-      weekTotal += amount;
+    if (rawDate >= historyStart && rawDate <= today) {
+      const weekKey = startOfWeek(rawDate)
+      weekTotals.set(weekKey, (weekTotals.get(weekKey) ?? 0) + amount)
+      if (!categoryWeekTotals.has(tx.category_id ?? null)) {
+        categoryWeekTotals.set(tx.category_id ?? null, new Map())
+      }
+      const weekMap = categoryWeekTotals.get(tx.category_id ?? null)!
+      weekMap.set(weekKey, (weekMap.get(weekKey) ?? 0) + amount)
+    }
+
+    if (!categoryNames.has(tx.category_id ?? null)) {
+      const name = typeof tx.category_name === "string" && tx.category_name.trim().length
+        ? tx.category_name.trim()
+        : "Tanpa Kategori"
+      categoryNames.set(tx.category_id ?? null, name)
     }
   }
 
-  const average7Day = weekTotal / 7;
-  const diffPercent = average7Day > 0 ? ((totalSpent - average7Day) / average7Day) * 100 : 0;
-  const diffDirection: "up" | "down" | "flat" =
-    average7Day === 0 || Math.abs(diffPercent) < 0.5
+  const avgDaily = Math.max(1, Number.parseInt(today.slice(8, 10), 10))
+  const avgDailySpending = avgDaily > 0 ? mtdTotal / avgDaily : 0
+  const vsAvgDailyMonthPct = avgDailySpending > 0 ? (todayExpenseTotal / avgDailySpending) * 100 : 0
+
+  const pastWeekEntries = Array.from(weekTotals.entries()).filter(([key]) => key !== currentWeekKey)
+  const pastWeekTotal = pastWeekEntries.reduce((sum, [, value]) => sum + value, 0)
+  const avgWeekly = pastWeekEntries.length > 0 ? pastWeekTotal / pastWeekEntries.length : wtdTotal
+  const vsAvgWeeklyPct = avgWeekly > 0 ? (wtdTotal / avgWeekly) * 100 : 0
+
+  const topCategories = Array.from(categoryTotals.entries())
+    .filter(([, total]) => total > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([id, total]) => {
+      const name = categoryNames.get(id) ?? "Tanpa Kategori"
+      const pct = mtdTotal > 0 ? (total / mtdTotal) * 100 : 0
+      return {
+        id,
+        name,
+        total,
+        pctOfMTD: pct,
+      }
+    })
+
+  const balanceTotal = accounts
+    .filter(isActiveAccount)
+    .reduce((sum, account) => sum + pickAccountBalance(account), 0)
+
+  const balanceDelta = todayIncomeTotal - todayExpenseTotal
+  const balanceDirection: DailyDigestData["balanceDirection"] =
+    Math.abs(balanceDelta) < 1
       ? "flat"
-      : diffPercent > 0
-      ? "up"
-      : "down";
+      : balanceDelta > 0
+        ? "up"
+        : "down"
 
-  const topCategories = computeHighlights(categoryTotals);
-  const topMerchants = computeHighlights(merchantTotals);
+  const budgetTotals = budgets.map((row) => {
+    const planned = toNumber(row.planned)
+    const rolloverIn = toNumber(row.rollover_in)
+    const rolloverOut = toNumber(row.rollover_out)
+    const limit = Math.max(0, planned + rolloverIn - rolloverOut)
+    const categoryId = row.category_id ?? null
+    const spent = categoryTotals.get(categoryId) ?? 0
+    const pct = limit > 0 ? (spent / limit) * 100 : 0
+    const status: BudgetWarningItem["status"] = pct >= 100 ? "over" : "near"
+    const name = typeof row.name === "string" && row.name.trim()
+      ? row.name.trim()
+      : categoryNames.get(categoryId) ?? "Tanpa Kategori"
+    return {
+      id: row.id,
+      name,
+      spent,
+      limit,
+      pct,
+      status,
+    }
+  })
 
-  let suggestion = "Tetap pantau pengeluaran kecil ya 😉";
-  const highlightChoices = topCategories.length ? topCategories : topMerchants;
-  const highlightLabel = summarizeHighlights(highlightChoices);
-  if (transactionCount === 0) {
-    suggestion = "Yuk catat pengeluaran biar laporan makin akurat 😉";
-  } else if (highlightLabel) {
-    suggestion = diffDirection === "down"
-      ? `Mantap! Pertahankan kontrol di ${highlightLabel} ya 😉`
-      : `Coba hemat di ${highlightLabel} ya 😉`;
+  const warnings = budgetTotals
+    .filter((item) => item.limit > 0 && item.pct >= 90)
+    .sort((a, b) => b.pct - a.pct)
+
+  const totalBudgetPlanned = budgetTotals.reduce((sum, item) => sum + item.limit, 0)
+  const vsBudgetPct = totalBudgetPlanned > 0 ? (mtdTotal / totalBudgetPlanned) * 100 : undefined
+
+  const upcomingSubscriptions = subscriptions
+    .filter((row) => row.next_due_date)
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      dueDate: formatDate(new Date(`${String(row.next_due_date).slice(0, 10)}T00:00:00+07:00`)),
+      amount: toNumber(row.amount),
+    }))
+    .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1))
+
+  const upcomingDebts = debts
+    .filter((row) => row.due_date)
+    .map((row) => ({
+      id: row.id,
+      name: row.title,
+      dueDate: formatDate(new Date(String(row.due_date))),
+      amount: toNumber(row.amount),
+    }))
+    .sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1))
+
+  const insight = createInsight({
+    todayExpenseTotal,
+    topCategories,
+    weekCategoryCounts,
+    categoryWeekTotals,
+    categoryNames,
+    weekKey: currentWeekKey,
+    wtdTotal,
+  })
+
+  return {
+    balance: balanceTotal,
+    balanceDelta,
+    balanceDirection,
+    todayExpense: {
+      total: todayExpenseTotal,
+      count: todayExpenseCount,
+      vsAvgDailyMonthPct: vsAvgDailyMonthPct,
+    },
+    wtd: {
+      total: wtdTotal,
+      vsAvgWeekly3mPct: vsAvgWeeklyPct,
+    },
+    mtd: {
+      total: mtdTotal,
+      vsBudgetPct,
+      budgetAmount: totalBudgetPlanned || undefined,
+    },
+    topCategories,
+    budgetWarnings: warnings,
+    upcoming: {
+      subscriptions: upcomingSubscriptions,
+      debts: upcomingDebts,
+    },
+    insight,
+    range: {
+      today,
+      weekStart,
+      monthStart,
+    },
+  }
+}
+
+interface InsightContext {
+  todayExpenseTotal: number
+  topCategories: CategoryDigestItem[]
+  weekCategoryCounts: Map<string | null, number>
+  categoryWeekTotals: Map<string | null, WeekHistory>
+  categoryNames: CategoryNameMap
+  weekKey: string
+  wtdTotal: number
+}
+
+function createInsight(context: InsightContext): string {
+  const { todayExpenseTotal, topCategories, weekCategoryCounts, categoryWeekTotals, categoryNames, weekKey, wtdTotal } = context
+
+  if (topCategories.length === 0) {
+    if (todayExpenseTotal > 0) {
+      return `Hari ini kamu mengeluarkan ${formatCurrency(todayExpenseTotal, "IDR")} secara total.`
+    }
+    if (wtdTotal > 0) {
+      return `Pengeluaran minggu ini total ${formatCurrency(wtdTotal, "IDR")}. Tetap pantau pengeluaranmu ya!`
+    }
+    return "Belum ada transaksi tercatat hari ini. Yuk catat transaksi pertamamu!"
   }
 
-  const { comparison, summary } = buildSummary(
-    totalSpent,
-    transactionCount,
-    diffDirection,
-    diffPercent,
-    average7Day,
-    suggestion,
-  );
+  const [top] = topCategories
+  const categoryId = top.id
+  const name = categoryNames.get(categoryId) ?? top.name
+  const count = weekCategoryCounts.get(categoryId ?? null) ?? 0
+  const history = categoryWeekTotals.get(categoryId ?? null)
+  const totals = history ? Array.from(history.entries()) : []
+  const otherWeeks = totals.filter(([key]) => key !== weekKey).map(([, total]) => total)
+  const avg = otherWeeks.length ? otherWeeks.reduce((sum, value) => sum + value, 0) / otherWeeks.length : 0
+  const tone = avg > 0 ? (top.total > avg ? "di atas" : "di bawah") : ""
+  const comparison = avg > 0 ? `${tone} rata-rata mingguan kategori ‘${name}’.` : ""
 
-  const yesterdayDate = yesterdayLocal;
-  const yesterdayLabel = HUMAN_DATE_FORMATTER.format(
-    new Date(`${yesterdayLocal}T00:00:00+07:00`),
-  );
+  const countLabel = count > 0 ? `${count}x` : "beberapa kali"
+  const base = `Minggu ini ${name} ${countLabel}, total ${formatCurrency(top.total, "IDR")}`
+  return comparison ? `${base}; ${comparison}` : `${base}.`
+}
 
+function createEmptyDigest(context: DigestComputationContext): DailyDigestData {
   return {
-    totalSpent,
-    transactionCount,
-    average7Day,
-    diffPercent,
-    diffDirection,
-    topCategories,
-    topMerchants,
-    highlightLabel,
-    suggestion,
-    summary,
-    comparisonSentence: comparison,
-    yesterdayLabel,
-    yesterdayDate,
-  };
-}
-
-interface DigestState {
-  open: boolean;
-  data: DailyDigestData | null;
-  today: string;
-}
-
-const DEFAULT_STATE: DigestState = {
-  open: false,
-  data: null,
-  today: "",
-};
-
-export default function useDailyDigest({
-  transactions,
-}: UseDailyDigestOptions): UseDailyDigestResult {
-  const [{ open, data, today }, setState] = useState<DigestState>(DEFAULT_STATE);
-  const [sessionReady, setSessionReady] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  const storageKey = useMemo(
-    () => (userId ? `${STORAGE_PREFIX}${userId}` : null),
-    [userId],
-  );
-
-  const evaluateDigest = useCallback(
-    (currentUid: string) => {
-      if (!currentUid) return;
-      if (typeof window === "undefined") return;
-
-      const todayLocal = todayJakarta();
-      let lastShown = "";
-      try {
-        lastShown = window.localStorage.getItem(`${STORAGE_PREFIX}${currentUid}`) || "";
-      } catch {
-        lastShown = "";
-      }
-
-      if (lastShown === todayLocal) {
-        setState({ open: false, data: null, today: todayLocal });
-        return;
-      }
-
-      const digest = computeDigest(transactions ?? [], todayLocal);
-      setState({ open: true, data: digest, today: todayLocal });
+    balance: 0,
+    balanceDelta: 0,
+    balanceDirection: "flat",
+    todayExpense: {
+      total: 0,
+      count: 0,
+      vsAvgDailyMonthPct: 0,
     },
-    [transactions],
-  );
+    wtd: {
+      total: 0,
+      vsAvgWeekly3mPct: 0,
+    },
+    mtd: {
+      total: 0,
+      vsBudgetPct: undefined,
+      budgetAmount: undefined,
+    },
+    topCategories: [],
+    budgetWarnings: [],
+    upcoming: {
+      subscriptions: [],
+      debts: [],
+    },
+    insight: "Belum ada transaksi tercatat hari ini. Yuk catat transaksi pertamamu!",
+    range: {
+      today: context.today,
+      weekStart: context.weekStart,
+      monthStart: context.monthStart,
+    },
+  }
+}
 
-  const evaluateDigestRef = useRef(evaluateDigest);
-  useEffect(() => {
-    evaluateDigestRef.current = evaluateDigest;
-  }, [evaluateDigest]);
+async function fetchDigestData(userId: string): Promise<DailyDigestData> {
+  const now = new Date()
+  const today = formatDate(now)
+  const weekStart = startOfWeek(today)
+  const monthStart = startOfMonth(today)
+  const historyStart = shiftDate(today, -84)
 
-  useEffect(() => {
-    let active = true;
+  const context = { today, weekStart, monthStart, historyStart }
 
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!active) return;
-        const session = data.session ?? null;
-        const uid = session?.user?.id ?? null;
-        setUserId(uid);
-        setSessionReady(true);
-        if (uid) {
-          evaluateDigestRef.current(uid);
-        } else {
-          setState(DEFAULT_STATE);
-        }
-      })
-      .catch(() => {
-        if (!active) return;
-        setUserId(null);
-        setSessionReady(true);
-        setState(DEFAULT_STATE);
-      });
+  const [accountsRes, transactionsRes, budgetsRes, subscriptionsRes] = await Promise.all([
+    supabase
+      .from("accounts")
+      .select("id,type,balance,current_balance,initial_balance,is_archived,archived_at"),
+    supabase
+      .from("transactions")
+      .select("id,amount,type,date,category_id,category_name,deleted_at")
+      .in("type", ["expense", "income"])
+      .is("deleted_at", null)
+      .gte("date", toIsoDate(historyStart))
+      .lte("date", toIsoDate(today, true)),
+    supabase
+      .from("budgets")
+      .select("id,name,category_id,planned,rollover_in,rollover_out")
+      .eq("period_month", monthStart),
+    supabase
+      .from("subscriptions")
+      .select("id,name,next_due_date,amount,status")
+      .or("status.eq.active,status.is.null")
+      .gte("next_due_date", today)
+      .lte("next_due_date", shiftDate(today, 7)),
+  ])
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!active) return;
+  const debtsRes = await supabase
+    .from("debts")
+    .select("id,title,due_date,amount,status,type")
+    .eq("status", "ongoing")
+    .eq("type", "debt")
+    .gte("due_date", toIsoDate(today))
+    .lte("due_date", toIsoDate(shiftDate(today, 7), true))
 
-      if (event === "SIGNED_OUT") {
-        setUserId(null);
-        setState(DEFAULT_STATE);
-        return;
-      }
+  const accounts = handleResponse<AccountRow>(accountsRes)
+  const transactions = handleResponse<TransactionRow>(transactionsRes)
+  const budgets = handleResponse<BudgetRow>(budgetsRes)
+  const subscriptions = handleResponse<SubscriptionRow>(subscriptionsRes)
+  const debts = handleResponse<DebtRow>(debtsRes)
 
-      if (event === "SIGNED_IN") {
-        const uid = session?.user?.id ?? null;
-        setUserId(uid);
-        if (uid) {
-          evaluateDigestRef.current(uid);
-        } else {
-          setState(DEFAULT_STATE);
-        }
-        return;
-      }
+  if (!transactions.length && !accounts.length) {
+    return createEmptyDigest(context)
+  }
 
-      const uid = session?.user?.id ?? null;
-      setUserId(uid);
-    });
+  return computeDigest(accounts, transactions, budgets, subscriptions, debts, context)
+}
 
-    return () => {
-      active = false;
-      subscription.subscription?.unsubscribe();
-    };
-  }, []);
+function handleResponse<T>(response: PostgrestResponse<unknown>): T[] {
+  if (response.error) {
+    throw response.error as PostgrestError
+  }
+  const rows = Array.isArray(response.data) ? (response.data as T[]) : []
+  return rows
+}
 
-  useEffect(() => {
-    if (!sessionReady) return;
-    if (!userId) return;
-    evaluateDigest(userId);
-  }, [sessionReady, userId, evaluateDigest]);
+export default function useDailyDigest(): UseDailyDigestResult {
+  const [data, setData] = useState<DailyDigestData | null>(null)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<Error | null>(null)
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false)
+  const mountedRef = useRef<boolean>(false)
 
-  const markSeen = useCallback(() => {
-    setState((prev) => ({ ...prev, open: false }));
-    if (!storageKey) return;
-    if (typeof window === "undefined") return;
-    const targetDate = today || todayJakarta();
+  const refresh = useCallback(async ({ skipCache = false } = {}) => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
     try {
-      window.localStorage.setItem(storageKey, targetDate);
-    } catch {
-      /* ignore */
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (userError) throw userError
+      const uid = userData.user?.id ?? null
+
+      if (!uid) {
+        const now = new Date()
+        const today = formatDate(now)
+        const weekStart = startOfWeek(today)
+        const monthStart = startOfMonth(today)
+        const empty = createEmptyDigest({ today, weekStart, monthStart, historyStart: shiftDate(today, -84) })
+        if (mountedRef.current) {
+          setData(empty)
+          setError(null)
+          setLoading(false)
+        }
+        return
+      }
+
+      if (!skipCache) {
+        const cached = loadCache(uid)
+        if (cached && mountedRef.current) {
+          setData(cached)
+          setLoading(false)
+        }
+      }
+
+      const digest = await fetchDigestData(uid)
+      if (!mountedRef.current) return
+      setData(digest)
+      setError(null)
+      setLoading(false)
+      saveCache(uid, digest)
+    } catch (err) {
+      const normalized = normalizeError(err)
+      if (mountedRef.current) {
+        setError(normalized)
+        setLoading(false)
+        setData((prev) => {
+          if (prev) return prev
+          const now = new Date()
+          const today = formatDate(now)
+          const week = startOfWeek(today)
+          const month = startOfMonth(today)
+          return createEmptyDigest({ today, weekStart: week, monthStart: month, historyStart: shiftDate(today, -84) })
+        })
+      }
+    } finally {
+      if (mountedRef.current) {
+        setIsRefreshing(false)
+      }
     }
-  }, [storageKey, today]);
+  }, [isRefreshing])
 
-  const close = useCallback(() => {
-    markSeen();
-  }, [markSeen]);
+  useEffect(() => {
+    mountedRef.current = true
+    refresh()
+    return () => {
+      mountedRef.current = false
+    }
+  }, [refresh])
 
-  return {
-    open,
-    data,
-    close,
-    markSeen,
-    variant: "modal",
-    userId,
-  };
+  const value = useMemo<UseDailyDigestResult>(() => ({ data, loading, error, isRefreshing, refresh }), [data, loading, error, isRefreshing, refresh])
+
+  return value
 }
