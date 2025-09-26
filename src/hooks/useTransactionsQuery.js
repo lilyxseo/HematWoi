@@ -204,9 +204,18 @@ export default function useTransactionsQuery() {
     [updateParams],
   );
 
+  const goToPage = useCallback(
+    (nextPage) => {
+      const value = Number.isFinite(nextPage) ? nextPage : page;
+      const safePage = value > 0 ? Math.floor(value) : 1;
+      updateParams({}, safePage);
+    },
+    [page, updateParams],
+  );
+
   const loadMore = useCallback(() => {
-    updateParams({}, page + 1);
-  }, [page, updateParams]);
+    goToPage(page + 1);
+  }, [goToPage, page]);
 
   const refresh = useCallback(
     ({ keepPage = false } = {}) => {
@@ -232,6 +241,7 @@ export default function useTransactionsQuery() {
     filter,
     setFilter,
     loadMore,
+    goToPage,
     refresh,
     categories,
     summary,
