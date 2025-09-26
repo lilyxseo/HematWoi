@@ -315,208 +315,209 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
-      <div
-        ref={dialogRef}
-        className="w-full max-w-2xl rounded-3xl border border-border/60 bg-card/95 p-6 text-text shadow-xl backdrop-blur"
-      >
-        <header className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">{mode === 'create' ? 'Tambah Goal' : 'Edit Goal'}</p>
-            <h2 className="mt-1 text-2xl font-bold text-text">{mode === 'create' ? 'Goal baru' : values.title || 'Perbarui goal'}</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-            aria-label="Tutup form goal"
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </header>
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black/40" role="dialog" aria-modal="true">
+      <div className="flex min-h-full items-center justify-center px-4 py-8">
+        <div
+          ref={dialogRef}
+          className="w-full max-w-2xl rounded-3xl border border-border/60 bg-card/95 p-6 text-text shadow-xl backdrop-blur"
+        >
+          <header className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">{mode === 'create' ? 'Tambah Goal' : 'Edit Goal'}</p>
+              <h2 className="mt-1 text-2xl font-bold text-text">{mode === 'create' ? 'Goal baru' : values.title || 'Perbarui goal'}</h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+              aria-label="Tutup form goal"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </header>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Nama goal
-              <input
-                ref={firstFieldRef}
-                name="title"
-                type="text"
-                value={values.title}
-                onChange={handleChange('title')}
-                placeholder="Contoh: Dana darurat"
-                className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
-                  errors.title ? 'border-danger/70' : 'border-border bg-surface-1'
-                }`}
-                required
-              />
-              {errors.title ? <span className="text-xs text-danger">{errors.title}</span> : null}
-            </label>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Nama goal
+                <input
+                  ref={firstFieldRef}
+                  name="title"
+                  type="text"
+                  value={values.title}
+                  onChange={handleChange('title')}
+                  placeholder="Contoh: Dana darurat"
+                  className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
+                    errors.title ? 'border-danger/70' : 'border-border bg-surface-1'
+                  }`}
+                  required
+                />
+                {errors.title ? <span className="text-xs text-danger">{errors.title}</span> : null}
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Target nominal
-              <input
-                name="target_amount"
-                type="number"
-                inputMode="decimal"
-                min="0"
-                value={values.target_amount}
-                onChange={handleChange('target_amount')}
-                placeholder="10000000"
-                className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
-                  errors.target_amount ? 'border-danger/70' : 'border-border bg-surface-1'
-                }`}
-                required
-              />
-              {errors.target_amount ? <span className="text-xs text-danger">{errors.target_amount}</span> : null}
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Target nominal
+                <input
+                  name="target_amount"
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  value={values.target_amount}
+                  onChange={handleChange('target_amount')}
+                  placeholder="10000000"
+                  className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
+                    errors.target_amount ? 'border-danger/70' : 'border-border bg-surface-1'
+                  }`}
+                  required
+                />
+                {errors.target_amount ? <span className="text-xs text-danger">{errors.target_amount}</span> : null}
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text md:col-span-2">
-              Deskripsi
-              <textarea
-                name="description"
-                value={values.description}
-                onChange={handleChange('description')}
-                rows={3}
-                className="min-h-[92px] rounded-xl border border-border bg-surface-1 px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                placeholder="Catatan singkat atau detail target"
-              />
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text md:col-span-2">
+                Deskripsi
+                <textarea
+                  name="description"
+                  value={values.description}
+                  onChange={handleChange('description')}
+                  rows={3}
+                  className="min-h-[92px] rounded-xl border border-border bg-surface-1 px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                  placeholder="Catatan singkat atau detail target"
+                />
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Mulai sejak
-              <input
-                name="start_date"
-                type="date"
-                value={values.start_date}
-                onChange={handleChange('start_date')}
-                className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-              />
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Mulai sejak
+                <input
+                  name="start_date"
+                  type="date"
+                  value={values.start_date}
+                  onChange={handleChange('start_date')}
+                  className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                />
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Target selesai
-              <input
-                name="due_date"
-                type="date"
-                value={values.due_date}
-                onChange={handleChange('due_date')}
-                className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
-                  errors.due_date ? 'border-danger/70' : 'border-border bg-surface-1'
-                }`}
-              />
-              {errors.due_date ? <span className="text-xs text-danger">{errors.due_date}</span> : null}
-              {dateWarning ? <span className="text-xs text-amber-500">{dateWarning}</span> : null}
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Target selesai
+                <input
+                  name="due_date"
+                  type="date"
+                  value={values.due_date}
+                  onChange={handleChange('due_date')}
+                  className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
+                    errors.due_date ? 'border-danger/70' : 'border-border bg-surface-1'
+                  }`}
+                />
+                {errors.due_date ? <span className="text-xs text-danger">{errors.due_date}</span> : null}
+                {dateWarning ? <span className="text-xs text-amber-500">{dateWarning}</span> : null}
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Prioritas
-              <select
-                name="priority"
-                value={values.priority}
-                onChange={handleChange('priority')}
-                className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-              >
-                <option value="low">Rendah</option>
-                <option value="normal">Normal</option>
-                <option value="high">Tinggi</option>
-                <option value="urgent">Mendesak</option>
-              </select>
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Prioritas
+                <select
+                  name="priority"
+                  value={values.priority}
+                  onChange={handleChange('priority')}
+                  className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                >
+                  <option value="low">Rendah</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">Tinggi</option>
+                  <option value="urgent">Mendesak</option>
+                </select>
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Status
-              <select
-                name="status"
-                value={values.status}
-                onChange={handleChange('status')}
-                className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-              >
-                <option value="active">Aktif</option>
-                <option value="paused">Ditahan</option>
-                <option value="achieved">Tercapai</option>
-                <option value="archived">Diarsipkan</option>
-              </select>
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Status
+                <select
+                  name="status"
+                  value={values.status}
+                  onChange={handleChange('status')}
+                  className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                >
+                  <option value="active">Aktif</option>
+                  <option value="paused">Ditahan</option>
+                  <option value="achieved">Tercapai</option>
+                  <option value="archived">Diarsipkan</option>
+                </select>
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Kategori
-              <select
-                name="category_id"
-                value={values.category_id}
-                onChange={handleChange('category_id')}
-                className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-              >
-                <option value="">Tanpa kategori</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Kategori
+                <select
+                  name="category_id"
+                  value={values.category_id}
+                  onChange={handleChange('category_id')}
+                  className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                >
+                  <option value="">Tanpa kategori</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Warna kartu
-              <input
-                name="color"
-                type="color"
-                value={values.color}
-                onChange={handleChange('color')}
-                className="h-[44px] w-full rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-              />
-            </label>
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Warna kartu
+                <input
+                  name="color"
+                  type="color"
+                  value={values.color}
+                  onChange={handleChange('color')}
+                  className="h-[44px] w-full rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                />
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm font-medium text-text">
-              Ikon (emoji atau teks)
-              <input
-                name="icon"
-                type="text"
-                value={values.icon}
-                onChange={handleChange('icon')}
-                placeholder="Contoh: 💰"
-                className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-              />
-            </label>
-          </div>
-
-          <section className="space-y-3 rounded-2xl border border-border/60 bg-surface-1/80 p-4">
-            <header className="flex flex-col gap-1">
-              <h3 className="text-sm font-semibold text-text">Milestones progres</h3>
-              <p className="text-xs text-muted">
-                Pilih milestone persentase atau tambahkan milestone khusus untuk checklist progres.
-              </p>
-            </header>
-
-            <div className="flex flex-wrap gap-2">
-              {PRESET_PERCENTAGES.map((percent) => {
-                const checked = presets.has(percent);
-                const amountValue = targetAmountNumber > 0 ? Math.round((targetAmountNumber * percent) / 100) : 0;
-                return (
-                  <label
-                    key={`preset-${percent}`}
-                    className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
-                      checked ? 'border-brand bg-brand/10 text-brand' : 'border-border bg-surface-1 text-muted'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={togglePreset(percent)}
-                      className="sr-only"
-                    />
-                    {percent}%
-                    <span className="text-[11px] text-muted">{amountValue ? amountValue.toLocaleString('id-ID') : '-'}</span>
-                  </label>
-                );
-              })}
+              <label className="flex flex-col gap-1 text-sm font-medium text-text">
+                Ikon (emoji atau teks)
+                <input
+                  name="icon"
+                  type="text"
+                  value={values.icon}
+                  onChange={handleChange('icon')}
+                  placeholder="Contoh: 💰"
+                  className="h-[44px] rounded-xl border border-border bg-surface-1 px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                />
+              </label>
             </div>
 
-            <div className="space-y-3">
-              {custom.map((item) => (
-                <div key={item.id} className="grid grid-cols-[1fr,minmax(120px,1fr),auto] items-center gap-2">
-                  <input
+            <section className="space-y-3 rounded-2xl border border-border/60 bg-surface-1/80 p-4">
+              <header className="flex flex-col gap-1">
+                <h3 className="text-sm font-semibold text-text">Milestones progres</h3>
+                <p className="text-xs text-muted">
+                  Pilih milestone persentase atau tambahkan milestone khusus untuk checklist progres.
+                </p>
+              </header>
+
+              <div className="flex flex-wrap gap-2">
+                {PRESET_PERCENTAGES.map((percent) => {
+                  const checked = presets.has(percent);
+                  const amountValue = targetAmountNumber > 0 ? Math.round((targetAmountNumber * percent) / 100) : 0;
+                  return (
+                    <label
+                      key={`preset-${percent}`}
+                      className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+                        checked ? 'border-brand bg-brand/10 text-brand' : 'border-border bg-surface-1 text-muted'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={togglePreset(percent)}
+                        className="sr-only"
+                      />
+                      {percent}%
+                      <span className="text-[11px] text-muted">{amountValue ? amountValue.toLocaleString('id-ID') : '-'}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-3">
+                {custom.map((item) => (
+                  <div key={item.id} className="grid grid-cols-[1fr,minmax(120px,1fr),auto] items-center gap-2">
+                    <input
                     data-error-id={`milestone-${item.id}`}
                     type="text"
                     value={item.label}
@@ -578,7 +579,8 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
           </footer>
         </form>
       </div>
-    </div>,
+    </div>
+  </div>,
     document.body,
   );
 }
