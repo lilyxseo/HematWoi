@@ -18,6 +18,7 @@ import PeriodPicker, {
 import useDashboardBalances from "../hooks/useDashboardBalances";
 import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
+import BudgetWidget from "../components/dashboard/BudgetWidget";
 
 const DEFAULT_PRESET = "month";
 
@@ -120,6 +121,8 @@ export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] 
         </section>
 
         <QuoteBoard />
+
+        <BudgetWidget />
 
         <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
           <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
