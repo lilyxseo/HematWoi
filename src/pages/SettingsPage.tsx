@@ -5,6 +5,7 @@ import Toggle from '../components/settings/Toggle';
 import Select from '../components/settings/Select';
 import NumberField from '../components/settings/NumberField';
 import DangerZone from '../components/settings/DangerZone';
+import AccentPicker from '../components/AccentPicker';
 import { getPrefs, setPrefs, resetPrefs } from '../lib/preferences';
 import { useDataMode, useRepo } from '../context/DataContext';
 
@@ -74,6 +75,9 @@ export default function SettingsPage() {
           ]}
           onChange={(v) => setLocalPrefs({ ...prefs, language: v })}
         />
+      </SettingsGroup>
+      <SettingsGroup title="Warna Aksen">
+        <AccentPicker />
       </SettingsGroup>
       <SettingsGroup title="Gamification">
         <Toggle

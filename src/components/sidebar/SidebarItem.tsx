@@ -28,14 +28,14 @@ export default function SidebarItem({
       title={collapsed ? label : undefined}
       className={({ isActive }) =>
         clsx(
-          "relative isolate flex h-11 min-w-0 items-center gap-3 rounded-xl px-3 text-sm font-medium tracking-tight text-muted transition-[background-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
-          "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-full before:bg-brand before:opacity-0 before:transition-opacity before:content-['']",
+          "relative isolate flex h-11 min-w-0 items-center gap-3 rounded-xl px-3 text-sm font-medium tracking-tight text-muted transition-[background-color,color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent-ring,rgba(56,152,248,0.35))]",
+          "before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-1 before:rounded-full before:bg-[var(--accent,#3898f8)] before:opacity-0 before:transition-opacity before:content-['']",
           !collapsed && "justify-start",
           collapsed && "justify-center px-2",
           disabled && "pointer-events-none opacity-40",
-          !disabled && "hover:bg-muted/20",
+          !disabled && "hover:bg-[var(--accent-soft,rgba(56,152,248,0.12))]",
           isActive &&
-            "bg-brand/10 text-brand ring-1 ring-brand/20 before:opacity-100"
+            "bg-[var(--accent-soft,rgba(56,152,248,0.12))] text-[var(--accent,#3898f8)] shadow-[inset_0_0_0_1px_var(--accent-ring,rgba(56,152,248,0.35))] before:opacity-100"
         )
       }
       onClick={onNavigate}

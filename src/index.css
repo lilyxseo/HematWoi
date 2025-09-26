@@ -27,6 +27,14 @@
     --color-surface-alt-hover: 241 238 232;
     --color-surface-elevated: 255 255 255;
 
+    --accent: #3898f8;
+    --accent-rgb: 56 152 248;
+    --accent-soft: rgba(56, 152, 248, 0.12);
+    --accent-ring: rgba(56, 152, 248, 0.35);
+    --accent-hover: #2584e4;
+    --accent-active: #1f6ecc;
+    --accent-foreground: #ffffff;
+
     --color-border-subtle: 228 231 236;
     --color-border-strong: 102 112 133;
 
@@ -83,6 +91,9 @@
     --color-surface-alt: 36 41 55;
     --color-surface-alt-hover: 42 47 62;
     --color-surface-elevated: 33 37 49;
+
+    --accent-soft: rgba(56, 152, 248, 0.18);
+    --accent-ring: rgba(56, 152, 248, 0.5);
 
     --color-border-subtle: 46 51 64;
     --color-border-strong: 100 108 136;
@@ -270,19 +281,27 @@
   }
 
   .btn {
-    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text transition-colors duration-200 ease-out shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text transition-colors duration-200 ease-out shadow-sm disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--accent-ring, rgba(56, 152, 248, 0.35));
   }
 
   .btn-primary {
-    @apply border-transparent bg-primary text-text-inverse shadow-sm;
+    border-color: transparent;
+    background-color: var(--accent, #3898f8);
+    color: var(--accent-foreground, #ffffff);
+    box-shadow: 0 1px 2px 0 rgb(15 23 42 / 0.12);
   }
 
   .btn-primary:hover:not(:disabled) {
-    background-color: hsl(var(--color-primary-hover));
+    background-color: var(--accent-hover, #2584e4);
   }
 
   .btn-primary:active:not(:disabled) {
-    background-color: hsl(var(--color-primary-active));
+    background-color: var(--accent-active, #1f6ecc);
   }
 
   .btn-secondary {
@@ -298,7 +317,8 @@
   }
 
   .btn-ghost:hover:not(:disabled) {
-    @apply bg-primary/10 text-text;
+    background-color: var(--accent-soft, rgba(56, 152, 248, 0.12));
+    color: var(--accent, #3898f8);
   }
 
   .btn-danger {
@@ -314,7 +334,10 @@
   }
 
   .badge {
-    @apply inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/15 px-3 py-1 text-xs font-medium text-primary;
+    @apply inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium;
+    border: 1px solid var(--accent-ring, rgba(56, 152, 248, 0.35));
+    background-color: var(--accent-soft, rgba(56, 152, 248, 0.12));
+    color: var(--accent, #3898f8);
   }
 
   .badge-muted {
@@ -342,7 +365,10 @@
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded-full border border-border-subtle bg-primary/10 px-3 py-1 text-xs font-medium text-primary ring-1 ring-primary/20;
+    @apply inline-flex items-center gap-1 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium;
+    background-color: var(--accent-soft, rgba(56, 152, 248, 0.12));
+    color: var(--accent, #3898f8);
+    box-shadow: 0 0 0 1px var(--accent-ring, rgba(56, 152, 248, 0.2));
   }
 }
 

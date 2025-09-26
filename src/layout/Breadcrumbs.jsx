@@ -13,7 +13,7 @@ export default function Breadcrumbs() {
     <nav aria-label="Breadcrumb" className="mb-2 text-xs text-muted">
       <ol className="flex items-center gap-1">
         <li>
-          <NavLink to="/" className="hover:text-brand">
+          <NavLink to="/" className="hover:text-[var(--accent,#3898f8)]">
             Home
           </NavLink>
         </li>
@@ -26,7 +26,7 @@ export default function Breadcrumbs() {
               {isLast ? (
                 <span>{capitalize(seg)}</span>
               ) : (
-                <NavLink to={path} className="hover:text-brand">
+                <NavLink to={path} className="hover:text-[var(--accent,#3898f8)]">
                   {capitalize(seg)}
                 </NavLink>
               )}
