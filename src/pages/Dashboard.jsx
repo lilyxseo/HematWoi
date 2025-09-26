@@ -9,6 +9,8 @@ import MonthlyTrendChart from "../components/MonthlyTrendChart";
 import CategoryDonut from "../components/CategoryDonut";
 import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
+import DailyDigestModal from "../components/DailyDigestModal";
+import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
@@ -23,6 +25,7 @@ const DEFAULT_PRESET = "month";
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
+  const digest = useShowDigestOnLogin({ transactions: txs });
   const balances = useDashboardBalances(periodRange);
   const {
     income: periodIncome,
@@ -68,13 +71,22 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
 
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted sm:text-base">
-          Ringkasan keuanganmu
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            Dashboard
+          </h1>
+          <p className="text-sm text-muted sm:text-base">
+            Ringkasan keuanganmu
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={digest.reopen}
+          className="inline-flex h-11 items-center justify-center rounded-2xl border border-border bg-surface px-4 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+        >
+          Lihat Ringkasan Hari Ini
+        </button>
       </header>
 
       <section className="space-y-4">
@@ -124,6 +136,8 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           <RecentTransactions txs={txs} />
         </div>
       </section>
+
+      <DailyDigestModal open={digest.open && Boolean(digest.data)} data={digest.data} onClose={digest.close} />
     </div>
   );
 }

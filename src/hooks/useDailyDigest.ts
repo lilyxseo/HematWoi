@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 const TIMEZONE = "Asia/Jakarta";
-const STORAGE_PREFIX = "hw:digest:last:";
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
   timeZone: TIMEZONE,
   year: "numeric",
@@ -60,6 +59,7 @@ export interface UseDailyDigestResult {
   markSeen: () => void;
   variant: "modal" | "banner";
   userId: string | null;
+  reopen: () => void;
 }
 
 export interface UseDailyDigestOptions {
@@ -68,6 +68,10 @@ export interface UseDailyDigestOptions {
 
 export function todayJakarta(): string {
   return DATE_FORMATTER.format(new Date());
+}
+
+function buildSeenKey(date: string, userId: string): string {
+  return `hw_digest_seen_${date}_${userId}`;
 }
 
 function formatDateInZone(date: Date): string {
@@ -280,39 +284,36 @@ export default function useDailyDigest({
   transactions,
 }: UseDailyDigestOptions): UseDailyDigestResult {
   const [{ open, data, today }, setState] = useState<DigestState>(DEFAULT_STATE);
-  const [sessionReady, setSessionReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const storageKey = useMemo(
-    () => (userId ? `${STORAGE_PREFIX}${userId}` : null),
-    [userId],
-  );
-
   const evaluateDigest = useCallback(
-    (currentUid: string) => {
+    (currentUid: string, mode: "auto" | "manual" = "auto") => {
       if (!currentUid) return;
       if (typeof window === "undefined") return;
 
       const todayLocal = todayJakarta();
-      let lastShown = "";
-      try {
-        lastShown = window.localStorage.getItem(`${STORAGE_PREFIX}${currentUid}`) || "";
-      } catch {
-        lastShown = "";
-      }
-
-      if (lastShown === todayLocal) {
-        setState({ open: false, data: null, today: todayLocal });
+      const digest = computeDigest(transactions ?? [], todayLocal);
+      if (mode === "manual") {
+        setState({ open: true, data: digest, today: todayLocal });
         return;
       }
 
-      const digest = computeDigest(transactions ?? [], todayLocal);
-      setState({ open: true, data: digest, today: todayLocal });
+      let hasSeenToday = false;
+      try {
+        hasSeenToday =
+          window.localStorage.getItem(buildSeenKey(todayLocal, currentUid)) === "1";
+      } catch {
+        hasSeenToday = false;
+      }
+
+      setState({ open: !hasSeenToday, data: digest, today: todayLocal });
     },
     [transactions],
   );
 
-  const evaluateDigestRef = useRef(evaluateDigest);
+  const evaluateDigestRef = useRef<(uid: string, mode?: "auto" | "manual") => void>(
+    () => {},
+  );
   useEffect(() => {
     evaluateDigestRef.current = evaluateDigest;
   }, [evaluateDigest]);
@@ -327,7 +328,6 @@ export default function useDailyDigest({
         const session = data.session ?? null;
         const uid = session?.user?.id ?? null;
         setUserId(uid);
-        setSessionReady(true);
         if (uid) {
           evaluateDigestRef.current(uid);
         } else {
@@ -337,7 +337,6 @@ export default function useDailyDigest({
       .catch(() => {
         if (!active) return;
         setUserId(null);
-        setSessionReady(true);
         setState(DEFAULT_STATE);
       });
 
@@ -371,27 +370,26 @@ export default function useDailyDigest({
     };
   }, []);
 
-  useEffect(() => {
-    if (!sessionReady) return;
-    if (!userId) return;
-    evaluateDigest(userId);
-  }, [sessionReady, userId, evaluateDigest]);
-
   const markSeen = useCallback(() => {
     setState((prev) => ({ ...prev, open: false }));
-    if (!storageKey) return;
+    if (!userId) return;
     if (typeof window === "undefined") return;
     const targetDate = today || todayJakarta();
     try {
-      window.localStorage.setItem(storageKey, targetDate);
+      window.localStorage.setItem(buildSeenKey(targetDate, userId), "1");
     } catch {
       /* ignore */
     }
-  }, [storageKey, today]);
+  }, [today, userId]);
 
   const close = useCallback(() => {
     markSeen();
   }, [markSeen]);
+
+  const reopen = useCallback(() => {
+    if (!userId) return;
+    evaluateDigestRef.current(userId, "manual");
+  }, [userId]);
 
   return {
     open,
@@ -400,5 +398,6 @@ export default function useDailyDigest({
     markSeen,
     variant: "modal",
     userId,
+    reopen,
   };
 }
