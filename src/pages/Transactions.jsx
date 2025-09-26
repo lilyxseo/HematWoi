@@ -22,6 +22,7 @@ import {
 import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
+import PageHeader from "../layout/PageHeader";
 import { addTransaction, listAccounts, listMerchants, updateTransaction } from "../lib/api";
 import {
   listTransactions,
@@ -723,41 +724,35 @@ export default function Transactions() {
 
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
-      <div className="space-y-6 sm:space-y-7 lg:space-y-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-text">Transaksi</h1>
-            <p className="text-sm text-muted">{PAGE_DESCRIPTION}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleNavigateToAdd}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              aria-label="Tambah transaksi (Ctrl+T)"
-            >
-              <Plus className="h-4 w-4" /> Tambah Transaksi
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              aria-label="Import CSV (Ctrl+I)"
-            >
-              <Upload className="h-4 w-4" /> Import CSV
-            </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={exporting}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Export CSV (Ctrl+E)"
-            >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
-            </button>
-          </div>
-        </header>
+      <PageHeader title="Transaksi" description={PAGE_DESCRIPTION}>
+        <button
+          type="button"
+          onClick={handleNavigateToAdd}
+          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          aria-label="Tambah transaksi (Ctrl+T)"
+        >
+          <Plus className="h-4 w-4" /> Tambah Transaksi
+        </button>
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          aria-label="Import CSV (Ctrl+I)"
+        >
+          <Upload className="h-4 w-4" /> Import CSV
+        </button>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Export CSV (Ctrl+E)"
+        >
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
+        </button>
+      </PageHeader>
 
+      <div className="space-y-6 sm:space-y-7 lg:space-y-8">
         <div
           ref={filterBarRef}
           className="sticky z-20"
@@ -810,20 +805,20 @@ export default function Transactions() {
               WebkitBackdropFilter: "blur(6px)",
             }}
           >
-          <TransactionsFilterBar
-            filter={filter}
-            categories={categories}
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            onFilterChange={setFilter}
-            searchInputRef={searchInputRef}
-            onOpenAdd={handleNavigateToAdd}
-          />
+            <TransactionsFilterBar
+              filter={filter}
+              categories={categories}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              onFilterChange={setFilter}
+              searchInputRef={searchInputRef}
+              onOpenAdd={handleNavigateToAdd}
+            />
+          </div>
         </div>
-      </div>
 
-      {showSyncBadge && (
-        <div className="flex items-center justify-between rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+        {showSyncBadge && (
+          <div className="flex items-center justify-between rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
               <span>
@@ -844,133 +839,133 @@ export default function Transactions() {
           </div>
         )}
 
-      <SummaryCards summary={summary} loading={loading && items.length === 0} />
+        <SummaryCards summary={summary} loading={loading && items.length === 0} />
 
-      {activeChips.length > 0 && (
-        <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
-      )}
+        {activeChips.length > 0 && (
+          <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
+        )}
 
-      {selectedIds.size > 0 && (
-        <SelectionToolbar
-          count={selectedIds.size}
-          onClear={() => {
-            setSelectedIds(new Set());
-            lastSelectedIdRef.current = null;
-          }}
-          onDelete={handleRequestBulkDelete}
-          onEditCategory={() => setBulkEditMode("category")}
-          onEditAccount={() => setBulkEditMode("account")}
-          deleting={deleteInProgress}
-          updating={bulkUpdating}
-          topOffset={selectionToolbarOffset}
+        {selectedIds.size > 0 && (
+          <SelectionToolbar
+            count={selectedIds.size}
+            onClear={() => {
+              setSelectedIds(new Set());
+              lastSelectedIdRef.current = null;
+            }}
+            onDelete={handleRequestBulkDelete}
+            onEditCategory={() => setBulkEditMode("category")}
+            onEditAccount={() => setBulkEditMode("account")}
+            deleting={deleteInProgress}
+            updating={bulkUpdating}
+            topOffset={selectionToolbarOffset}
+          />
+        )}
+
+        <TransactionsTable
+          items={items}
+          loading={loading}
+          error={error}
+          onRetry={() => refresh({ keepPage: true })}
+          onLoadMore={loadMore}
+          hasMore={hasMore}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+          allSelected={allSelected}
+          selectedIds={selectedIds}
+          onDelete={handleRequestDelete}
+          onEdit={handleEditTransaction}
+          tableStickyTop={tableStickyTop}
+          variant={tableVariant}
+          onResetFilters={handleResetFilters}
+          total={total}
+          onOpenAdd={handleNavigateToAdd}
+          deleteDisabled={deleteInProgress}
         />
-      )}
 
-      <TransactionsTable
-        items={items}
-        loading={loading}
-        error={error}
-        onRetry={() => refresh({ keepPage: true })}
-        onLoadMore={loadMore}
-        hasMore={hasMore}
-        onToggleSelect={toggleSelect}
-        onToggleSelectAll={toggleSelectAll}
-        allSelected={allSelected}
-        selectedIds={selectedIds}
-        onDelete={handleRequestDelete}
-        onEdit={handleEditTransaction}
-        tableStickyTop={tableStickyTop}
-        variant={tableVariant}
-        onResetFilters={handleResetFilters}
-        total={total}
-        onOpenAdd={handleNavigateToAdd}
-        deleteDisabled={deleteInProgress}
-      />
-
-      {confirmState && (
-        <Modal open={Boolean(confirmState)} onClose={handleCloseConfirm} title="Konfirmasi Hapus">
-          <div className="space-y-4 text-white">
-            <p className="text-sm text-white/80">
-              {confirmState.ids.length === 1
-                ? 'Hapus transaksi ini? Tindakan dapat diurungkan selama 6 detik.'
-                : `Hapus ${confirmState.ids.length} transaksi? Tindakan dapat diurungkan selama 6 detik.`}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={handleCloseConfirm}
-                disabled={deleteInProgress}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={deleteInProgress}
-                className="inline-flex h-11 items-center justify-center rounded-2xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:bg-[color:var(--color-danger-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {deleteInProgress ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : 'Hapus'}
-              </button>
+        {confirmState && (
+          <Modal open={Boolean(confirmState)} onClose={handleCloseConfirm} title="Konfirmasi Hapus">
+            <div className="space-y-4 text-white">
+              <p className="text-sm text-white/80">
+                {confirmState.ids.length === 1
+                  ? 'Hapus transaksi ini? Tindakan dapat diurungkan selama 6 detik.'
+                  : `Hapus ${confirmState.ids.length} transaksi? Tindakan dapat diurungkan selama 6 detik.`}
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={handleCloseConfirm}
+                  disabled={deleteInProgress}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleteInProgress}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:bg-[color:var(--color-danger-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {deleteInProgress ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : 'Hapus'}
+                </button>
+              </div>
             </div>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        )}
 
-      {snackbar && (
-        <UndoSnackbar
-          open
-          message={snackbar.message}
-          onUndo={handleUndoClick}
-          loading={undoLoading}
-        />
-      )}
+        {snackbar && (
+          <UndoSnackbar
+            open
+            message={snackbar.message}
+            onUndo={handleUndoClick}
+            loading={undoLoading}
+          />
+        )}
 
-      {bulkEditMode && (
-        <BulkEditDialog
-          open={Boolean(bulkEditMode)}
-          mode={bulkEditMode}
-          onClose={() => {
-            if (!bulkUpdating) setBulkEditMode(null);
-          }}
-          onSubmit={(selectedValue) => {
-            const field = bulkEditMode === "category" ? "category_id" : "account_id";
-            handleBulkUpdateField(field, selectedValue);
-          }}
-          categories={categories}
-          submitting={bulkUpdating}
-          addToast={addToast}
-        />
-      )}
+        {bulkEditMode && (
+          <BulkEditDialog
+            open={Boolean(bulkEditMode)}
+            mode={bulkEditMode}
+            onClose={() => {
+              if (!bulkUpdating) setBulkEditMode(null);
+            }}
+            onSubmit={(selectedValue) => {
+              const field = bulkEditMode === "category" ? "category_id" : "account_id";
+              handleBulkUpdateField(field, selectedValue);
+            }}
+            categories={categories}
+            submitting={bulkUpdating}
+            addToast={addToast}
+          />
+        )}
 
-      {editTarget && (
-        <TransactionFormDialog
-          open={Boolean(editTarget)}
-          onClose={() => setEditTarget(null)}
-          initialData={editTarget}
-          categories={categories}
-          onSuccess={() => {
-            refresh({ keepPage: true });
-            setSelectedIds(new Set());
-            lastSelectedIdRef.current = null;
-            setEditTarget(null);
-          }}
-          addToast={addToast}
-        />
-      )}
+        {editTarget && (
+          <TransactionFormDialog
+            open={Boolean(editTarget)}
+            onClose={() => setEditTarget(null)}
+            initialData={editTarget}
+            categories={categories}
+            onSuccess={() => {
+              refresh({ keepPage: true });
+              setSelectedIds(new Set());
+              lastSelectedIdRef.current = null;
+              setEditTarget(null);
+            }}
+            addToast={addToast}
+          />
+        )}
 
-      {importOpen && (
-        <ImportCSVDialog
-          open={importOpen}
-          onClose={() => setImportOpen(false)}
-          categories={categories}
-          onImported={() => {
-            refresh();
-            setImportOpen(false);
-          }}
-          addToast={addToast}
-        />
-      )}
+        {importOpen && (
+          <ImportCSVDialog
+            open={importOpen}
+            onClose={() => setImportOpen(false)}
+            categories={categories}
+            onImported={() => {
+              refresh();
+              setImportOpen(false);
+            }}
+            addToast={addToast}
+          />
+        )}
       </div>
     </main>
   );
