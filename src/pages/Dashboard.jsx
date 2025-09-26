@@ -12,6 +12,7 @@ import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
+import BudgetOverviewWidget from "../components/dashboard/BudgetOverviewWidget";
 import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
@@ -132,7 +133,16 @@ export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] 
 
         <QuickActions />
 
-        <BudgetStatusHighlights items={budgetStatus} />
+        <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
+          <BudgetOverviewWidget
+            budgets={budgets}
+            transactions={txs}
+            month={periodStart}
+          />
+          <div className="h-full">
+            <BudgetStatusHighlights items={budgetStatus} />
+          </div>
+        </div>
 
         <section className="space-y-6 sm:space-y-8 lg:space-y-10">
           <SectionHeader title="Analisis Bulanan" />
