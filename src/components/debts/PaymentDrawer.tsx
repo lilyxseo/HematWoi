@@ -169,7 +169,7 @@ export default function PaymentDrawer({
       <div className="drawer-overlay" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
-        className="drawer-panel w-full max-w-[100%] sm:max-w-[480px] md:max-w-[520px]"
+        className="drawer-panel w-full max-w-full rounded-none sm:max-w-[480px] sm:rounded-l-3xl md:max-w-[520px]"
         role="dialog"
         aria-modal="true"
       >

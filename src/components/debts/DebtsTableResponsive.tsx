@@ -429,33 +429,35 @@ export default function DebtsTableResponsive({
                   </div>
                 </div>
 
-                <footer className="mt-4 flex items-center gap-2">
+                <footer className="mt-4 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onAddPayment(debt)}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex min-h-[40px] basis-full min-w-0 items-center justify-center gap-2 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:basis-auto sm:flex-1"
                     aria-label="Catat pembayaran"
                   >
                     <Wallet className="h-4 w-4" aria-hidden="true" />
-                    Catat pembayaran
+                    <span className="truncate">Catat pembayaran</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => onEdit(debt)}
-                    className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex min-h-[40px] basis-full min-w-0 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:basis-auto sm:flex-1"
                     aria-label="Ubah hutang"
                   >
                     <Pencil className="h-4 w-4" aria-hidden="true" />
-                    Edit
+                    <span className="truncate">Edit</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onDelete(debt)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                    aria-label="Hapus hutang"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
+                  <div className="ml-auto flex basis-full justify-end sm:ml-0 sm:basis-auto">
+                    <button
+                      type="button"
+                      onClick={() => onDelete(debt)}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-card text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:h-9 sm:w-9 sm:rounded-full"
+                      aria-label="Hapus hutang"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </div>
                 </footer>
               </article>
             );
