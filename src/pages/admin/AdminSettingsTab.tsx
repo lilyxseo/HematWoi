@@ -4,10 +4,13 @@ import { useToast } from '../../context/ToastContext.jsx';
 import {
   getAppDescription,
   getBranding,
+  getDashboardHeroSettings,
   setAppDescription,
   setBranding,
+  setDashboardHeroSettings,
   type AppDescriptionSetting,
   type BrandingSetting,
+  type DashboardHeroSetting,
 } from '../../lib/adminApi';
 
 const TEXTAREA_CLASS =
@@ -26,27 +29,54 @@ type BrandingForm = {
   secondary: string;
 };
 
+type DashboardHeroForm = {
+  title: string;
+  subtitle: string;
+  showDigestButton: boolean;
+  digestButtonLabel: string;
+};
+
 export default function AdminSettingsTab() {
   const { addToast } = useToast();
   const [description, setDescription] = useState('');
   const [descriptionMeta, setDescriptionMeta] = useState<string | null>(null);
   const [branding, setBrandingState] = useState<BrandingForm>({ primary: '#1e40af', secondary: '#0ea5e9' });
   const [brandingMeta, setBrandingMeta] = useState<string | null>(null);
+  const [dashboardHero, setDashboardHero] = useState<DashboardHeroForm>({
+    title: 'Dashboard',
+    subtitle: 'Ringkasan keuanganmu',
+    showDigestButton: true,
+    digestButtonLabel: 'Lihat Ringkasan Hari Ini',
+  });
+  const [dashboardHeroMeta, setDashboardHeroMeta] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingDesc, setSavingDesc] = useState(false);
   const [savingBrand, setSavingBrand] = useState(false);
+  const [savingHero, setSavingHero] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       setLoading(true);
       try {
-        const [desc, brand] = await Promise.all([getAppDescription(), getBranding()]);
+        const [desc, brand, hero] = await Promise.all([
+          getAppDescription(),
+          getBranding(),
+          getDashboardHeroSettings(),
+        ]);
         if (!mounted) return;
         setDescription(desc.text ?? '');
         setDescriptionMeta(desc.updated_at ?? null);
         setBrandingState({ primary: brand.primary, secondary: brand.secondary });
         setBrandingMeta(brand.updated_at ?? null);
+        const heroDefaults: DashboardHeroForm = {
+          title: hero.title,
+          subtitle: hero.subtitle,
+          showDigestButton: hero.showDigestButton,
+          digestButtonLabel: hero.digestButtonLabel,
+        };
+        setDashboardHero(heroDefaults);
+        setDashboardHeroMeta(hero.updated_at ?? null);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Gagal memuat pengaturan';
         if (mounted) {
@@ -110,16 +140,53 @@ export default function AdminSettingsTab() {
     }
   };
 
+  const handleDashboardHeroSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (savingHero) return;
+    setSavingHero(true);
+    try {
+      const result: DashboardHeroSetting = await setDashboardHeroSettings({
+        title: dashboardHero.title,
+        subtitle: dashboardHero.subtitle,
+        showDigestButton: dashboardHero.showDigestButton,
+        digestButtonLabel: dashboardHero.digestButtonLabel,
+      });
+      setDashboardHero({
+        title: result.title,
+        subtitle: result.subtitle,
+        showDigestButton: result.showDigestButton,
+        digestButtonLabel: result.digestButtonLabel,
+      });
+      setDashboardHeroMeta(result.updated_at ?? null);
+      addToast('Pengaturan dashboard disimpan', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan pengaturan dashboard';
+      addToast(message, 'error');
+    } finally {
+      setSavingHero(false);
+    }
+  };
+
   const renderSkeleton = () => (
     <div className="grid gap-6 lg:grid-cols-2">
-      {Array.from({ length: 2 }).map((_, index) => (
-        <div key={index} className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-6">
-          <div className="h-6 w-32 animate-pulse rounded-full bg-muted/40" />
-          <div className="h-5 w-48 animate-pulse rounded-full bg-muted/40" />
-          <div className="h-24 w-full animate-pulse rounded-2xl bg-muted/30" />
-          <div className="h-11 w-32 animate-pulse rounded-2xl bg-muted/30" />
-        </div>
-      ))}
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-6 lg:col-span-2">
+        <div className="h-6 w-40 animate-pulse rounded-full bg-muted/40" />
+        <div className="h-5 w-64 animate-pulse rounded-full bg-muted/40" />
+        <div className="h-24 w-full animate-pulse rounded-2xl bg-muted/30" />
+        <div className="h-11 w-40 animate-pulse rounded-2xl bg-muted/30" />
+      </div>
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-6">
+        <div className="h-6 w-32 animate-pulse rounded-full bg-muted/40" />
+        <div className="h-5 w-44 animate-pulse rounded-full bg-muted/40" />
+        <div className="h-20 w-full animate-pulse rounded-2xl bg-muted/30" />
+        <div className="h-11 w-32 animate-pulse rounded-2xl bg-muted/30" />
+      </div>
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-6">
+        <div className="h-6 w-32 animate-pulse rounded-full bg-muted/40" />
+        <div className="h-5 w-40 animate-pulse rounded-full bg-muted/40" />
+        <div className="h-16 w-full animate-pulse rounded-2xl bg-muted/30" />
+        <div className="h-11 w-32 animate-pulse rounded-2xl bg-muted/30" />
+      </div>
     </div>
   );
 
@@ -138,7 +205,7 @@ export default function AdminSettingsTab() {
         <div className="grid gap-6 lg:grid-cols-2">
           <form
             onSubmit={handleDescriptionSubmit}
-            className="space-y-4 rounded-2xl border border-border/60 bg-background p-6 shadow-sm"
+            className="space-y-4 rounded-2xl border border-border/60 bg-background p-6 shadow-sm lg:col-span-2"
           >
             <div>
               <h3 className="text-base font-semibold">Deskripsi Aplikasi</h3>
@@ -162,6 +229,79 @@ export default function AdminSettingsTab() {
                 disabled={savingDesc}
               >
                 Simpan Deskripsi
+              </button>
+            </div>
+          </form>
+
+          <form
+            onSubmit={handleDashboardHeroSubmit}
+            className="space-y-4 rounded-2xl border border-border/60 bg-background p-6 shadow-sm"
+          >
+            <div>
+              <h3 className="text-base font-semibold">Tampilan Dashboard</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Atur judul, deskripsi, dan tombol ringkasan harian yang tampil pada halaman dashboard utama pengguna.
+              </p>
+            </div>
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-muted-foreground">
+                Judul
+                <input
+                  value={dashboardHero.title}
+                  onChange={(event) =>
+                    setDashboardHero((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  className={clsx(INPUT_CLASS, 'mt-1')}
+                  placeholder="Dashboard"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-muted-foreground">
+                Deskripsi
+                <textarea
+                  value={dashboardHero.subtitle}
+                  onChange={(event) =>
+                    setDashboardHero((prev) => ({ ...prev, subtitle: event.target.value }))
+                  }
+                  className={clsx(TEXTAREA_CLASS, 'mt-1 min-h-[100px]')}
+                  placeholder="Ringkasan keuanganmu"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-muted-foreground">
+                Label Tombol Ringkasan
+                <input
+                  value={dashboardHero.digestButtonLabel}
+                  onChange={(event) =>
+                    setDashboardHero((prev) => ({ ...prev, digestButtonLabel: event.target.value }))
+                  }
+                  className={clsx(INPUT_CLASS, 'mt-1')}
+                  placeholder="Lihat Ringkasan Hari Ini"
+                  disabled={!dashboardHero.showDigestButton}
+                />
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={dashboardHero.showDigestButton}
+                  onChange={(event) =>
+                    setDashboardHero((prev) => ({ ...prev, showDigestButton: event.target.checked }))
+                  }
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-2 focus:ring-primary"
+                />
+                Tampilkan tombol ringkasan harian
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>
+                {dashboardHeroMeta
+                  ? `Terakhir diperbarui ${dateFormatter.format(new Date(dashboardHeroMeta))}`
+                  : 'Belum pernah disimpan'}
+              </span>
+              <button
+                type="submit"
+                className="h-11 rounded-2xl bg-primary px-6 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+                disabled={savingHero}
+              >
+                Simpan Pengaturan Dashboard
               </button>
             </div>
           </form>

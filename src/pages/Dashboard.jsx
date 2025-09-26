@@ -8,6 +8,7 @@ import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
+import { getDashboardHeroSettings } from "../lib/adminApi";
 import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
@@ -16,11 +17,18 @@ import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 
 const DEFAULT_PRESET = "month";
+const DEFAULT_HERO = {
+  title: "Dashboard",
+  subtitle: "Ringkasan keuanganmu",
+  digestButtonLabel: "Lihat Ringkasan Hari Ini",
+  showDigestButton: true,
+};
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgets = [] }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
+  const [heroContent, setHeroContent] = useState(DEFAULT_HERO);
   const balances = useDashboardBalances(periodRange);
   const {
     income: periodIncome,
@@ -39,6 +47,31 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
     budgets,
     balanceHint: stats?.balance ?? null,
   });
+
+  useEffect(() => {
+    let mounted = true;
+    const loadHeroSettings = async () => {
+      try {
+        const settings = await getDashboardHeroSettings();
+        if (!mounted) return;
+        setHeroContent({
+          title: settings.title || DEFAULT_HERO.title,
+          subtitle: settings.subtitle || DEFAULT_HERO.subtitle,
+          digestButtonLabel: settings.digestButtonLabel || DEFAULT_HERO.digestButtonLabel,
+          showDigestButton:
+            typeof settings.showDigestButton === "boolean"
+              ? settings.showDigestButton
+              : DEFAULT_HERO.showDigestButton,
+        });
+      } catch (error) {
+        console.error("[Dashboard] Failed to load hero settings", error);
+      }
+    };
+    void loadHeroSettings();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     refresh({ start: periodStart, end: periodEnd });
@@ -81,20 +114,22 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-              Dashboard
+              {heroContent.title}
             </h1>
             <p className="text-sm text-muted sm:text-base">
-              Ringkasan keuanganmu
+              {heroContent.subtitle}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={digest.openManual}
-            aria-haspopup="dialog"
-            className="inline-flex h-10 items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-          >
-            Lihat Ringkasan Hari Ini
-          </button>
+          {heroContent.showDigestButton ? (
+            <button
+              type="button"
+              onClick={digest.openManual}
+              aria-haspopup="dialog"
+              className="inline-flex h-10 items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            >
+              {heroContent.digestButtonLabel}
+            </button>
+          ) : null}
         </header>
 
         <section className="space-y-4">

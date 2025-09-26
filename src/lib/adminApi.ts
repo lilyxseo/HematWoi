@@ -58,6 +58,21 @@ export type BrandingSetting = {
   updated_at: string | null;
 };
 
+export type DashboardHeroSetting = {
+  title: string;
+  subtitle: string;
+  digestButtonLabel: string;
+  showDigestButton: boolean;
+  updated_at: string | null;
+};
+
+export type DashboardHeroPayload = {
+  title: string;
+  subtitle: string;
+  digestButtonLabel: string;
+  showDigestButton: boolean;
+};
+
 export type AuditEntry = {
   id: string;
   source: 'sidebar' | 'user';
@@ -457,6 +472,70 @@ function parseDescriptionValue(value: any): string {
   return '';
 }
 
+const DASHBOARD_HERO_DEFAULT: DashboardHeroPayload = {
+  title: 'Dashboard',
+  subtitle: 'Ringkasan keuanganmu',
+  digestButtonLabel: 'Lihat Ringkasan Hari Ini',
+  showDigestButton: true,
+};
+
+function parseDashboardHeroValue(value: any): DashboardHeroPayload {
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return parseDashboardHeroValue(parsed);
+    } catch (error) {
+      return {
+        ...DASHBOARD_HERO_DEFAULT,
+        title: value.trim() ? value : DASHBOARD_HERO_DEFAULT.title,
+      };
+    }
+  }
+
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const titleCandidates = [obj.title, obj.heading, obj.headline];
+    const subtitleCandidates = [obj.subtitle, obj.description, obj.body];
+    const buttonLabelCandidates = [obj.digestButtonLabel, obj.buttonLabel, obj.ctaLabel, obj.button_text];
+    const showButtonCandidates = [
+      obj.showDigestButton,
+      obj.show_button,
+      obj.showDigest,
+      obj.show_button_digest,
+      obj.showButton,
+      obj.show_digest_button,
+      obj.enableButton,
+    ];
+
+    const pickString = (candidates: unknown[], fallback: string): string => {
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string' && candidate.trim()) {
+          return candidate;
+        }
+      }
+      return fallback;
+    };
+
+    const pickBoolean = (candidates: unknown[], fallback: boolean): boolean => {
+      for (const candidate of candidates) {
+        if (candidate !== undefined) {
+          return sanitizeBoolean(candidate, fallback);
+        }
+      }
+      return fallback;
+    };
+
+    return {
+      title: pickString(titleCandidates, DASHBOARD_HERO_DEFAULT.title),
+      subtitle: pickString(subtitleCandidates, DASHBOARD_HERO_DEFAULT.subtitle),
+      digestButtonLabel: pickString(buttonLabelCandidates, DASHBOARD_HERO_DEFAULT.digestButtonLabel),
+      showDigestButton: pickBoolean(showButtonCandidates, DASHBOARD_HERO_DEFAULT.showDigestButton),
+    };
+  }
+
+  return { ...DASHBOARD_HERO_DEFAULT };
+}
+
 export async function getAppDescription(): Promise<AppDescriptionSetting> {
   try {
     const { data, error } = await supabase
@@ -552,6 +631,57 @@ export async function setBranding(branding: {
   } catch (error) {
     console.error('[adminApi] setBranding failed', error);
     throw new Error('Gagal menyimpan pengaturan branding');
+  }
+}
+
+export async function getDashboardHeroSettings(): Promise<DashboardHeroSetting> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', 'dashboard_hero')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const parsed = parseDashboardHeroValue(data?.value);
+    return {
+      ...parsed,
+      updated_at: data?.updated_at ?? null,
+    };
+  } catch (error) {
+    console.error('[adminApi] getDashboardHeroSettings failed', error);
+    throw new Error('Gagal memuat pengaturan dashboard');
+  }
+}
+
+export async function setDashboardHeroSettings(payload: DashboardHeroPayload): Promise<DashboardHeroSetting> {
+  const normalized: DashboardHeroPayload = {
+    title: payload.title.trim() || DASHBOARD_HERO_DEFAULT.title,
+    subtitle: payload.subtitle.trim() || DASHBOARD_HERO_DEFAULT.subtitle,
+    digestButtonLabel: payload.digestButtonLabel.trim() || DASHBOARD_HERO_DEFAULT.digestButtonLabel,
+    showDigestButton: Boolean(payload.showDigestButton),
+  };
+
+  try {
+    const response = await supabase
+      .from('app_settings')
+      .upsert(
+        {
+          key: 'dashboard_hero',
+          value: normalized,
+        },
+        { onConflict: 'key' }
+      )
+      .select('value, updated_at')
+      .single();
+
+    const data = ensureResponse(response);
+    const parsed = parseDashboardHeroValue(data.value);
+    return { ...parsed, updated_at: data.updated_at ?? null };
+  } catch (error) {
+    console.error('[adminApi] setDashboardHeroSettings failed', error);
+    throw new Error('Gagal menyimpan pengaturan dashboard');
   }
 }
 
