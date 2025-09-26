@@ -44,14 +44,19 @@ type BudgetRecord = {
   planned?: number | string | null
   amount_planned?: number | string | null
   rollover_in?: number | string | null
+  current_spent?: number | string | null
   category?: { name?: string | null } | null
 }
 
 type BudgetActualRecord = {
   category_id?: string | null
   category_key?: string | null
-  actual?: number | string | null
   period_month?: string | null
+  actual?: number | string | null
+  spent?: number | string | null
+  current_spent?: number | string | null
+  realization?: number | string | null
+  amount_spent?: number | string | null
 }
 
 interface LoadResult {
@@ -108,6 +113,15 @@ function extractLabel(record: BudgetRecord): string {
   return "Tanpa kategori"
 }
 
+function resolveActualValue(row: BudgetActualRecord): number {
+  const candidates = [row.actual, row.spent, row.current_spent, row.realization, row.amount_spent]
+  for (const value of candidates) {
+    const num = toNumber(value)
+    if (num !== 0) return num
+  }
+  return toNumber(row.actual ?? row.spent ?? row.current_spent ?? row.realization ?? row.amount_spent)
+}
+
 function deriveOverview(
   budgets: BudgetRecord[],
   actuals: BudgetActualRecord[]
@@ -116,7 +130,7 @@ function deriveOverview(
   const actualByCategory = new Map<string, number>()
 
   for (const row of actuals) {
-    const actual = toNumber(row.actual)
+    const actual = resolveActualValue(row)
     if (!actual) continue
     const categoryKey = typeof row.category_key === "string" ? row.category_key : null
     const categoryId = typeof row.category_id === "string" ? row.category_id : null
@@ -131,13 +145,17 @@ function deriveOverview(
   const categories: BudgetCategoryOverview[] = budgets.map((budget) => {
     const categoryId = typeof budget.category_id === "string" ? budget.category_id : null
     const categoryKey = typeof budget.category_key === "string" ? budget.category_key : null
-    const plannedBase =
-      toNumber(budget.amount_planned ?? budget.planned) + toNumber(budget.rollover_in)
-    const actual = categoryKey && actualByKey.has(categoryKey)
+    const plannedRaw = toNumber(budget.planned)
+    const plannedAmount = plannedRaw > 0 ? plannedRaw : toNumber(budget.amount_planned)
+    const plannedBase = plannedAmount + toNumber(budget.rollover_in)
+    let actual = categoryKey && actualByKey.has(categoryKey)
       ? actualByKey.get(categoryKey) ?? 0
       : categoryId && actualByCategory.has(categoryId)
         ? actualByCategory.get(categoryId) ?? 0
         : 0
+    if (!actual) {
+      actual = toNumber(budget.current_spent)
+    }
     const remaining = plannedBase - actual
     const utilization = plannedBase > 0 ? actual / plannedBase : 0
     return {
@@ -199,13 +217,13 @@ export function useBudgetOverview(period?: string): BudgetOverviewState {
       supabase
         .from("budgets")
         .select(
-          "id,category_id,category_key,name,label,planned,amount_planned,rollover_in,category:categories(name)"
+          "id,category_id,category_key,name,label,planned,amount_planned,rollover_in,current_spent,category:categories(name)"
         )
         .eq("user_id", userId)
         .eq("period_month", monthStart),
       supabase
         .from("budget_actuals_v")
-        .select("category_id,category_key,actual,period_month")
+        .select("*")
         .eq("user_id", userId)
         .eq("period_month", monthStart),
     ])
