@@ -451,6 +451,31 @@ function AppShell({ prefs, setPrefs }) {
     if (preset) setBrand(preset);
   }, [prefs.accent]);
 
+  const handleBrandChange = useCallback(
+    (nextBrand) => {
+      setBrand(nextBrand);
+      setPrefs((prev) => {
+        const matchedEntry = Object.entries(BRAND_PRESETS).find(
+          ([, preset]) =>
+            preset.h === nextBrand?.h &&
+            preset.s === nextBrand?.s &&
+            preset.l === nextBrand?.l
+        );
+
+        if (!matchedEntry) return prev;
+
+        const [accent] = matchedEntry;
+        if (prev.accent === accent) return prev;
+
+        return {
+          ...prev,
+          accent,
+        };
+      });
+    },
+    [setBrand, setPrefs]
+  );
+
   useEffect(() => {
     localStorage.setItem("hematwoi:v3:prefs", JSON.stringify(prefs));
     window.__hw_prefs = prefs;
@@ -1004,7 +1029,7 @@ function AppShell({ prefs, setPrefs }) {
                     theme={theme}
                     setTheme={setTheme}
                     brand={brand}
-                    setBrand={setBrand}
+                    setBrand={handleBrandChange}
                   />
                 }
               >
