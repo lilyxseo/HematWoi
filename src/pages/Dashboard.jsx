@@ -12,6 +12,7 @@ import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
+import BudgetOverviewCard from "../components/dashboard/BudgetOverviewCard";
 import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
@@ -121,13 +122,14 @@ export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] 
 
         <QuoteBoard />
 
-        <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
+        <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-3">
           <SavingsProgress current={stats?.balance || 0} target={savingsTarget} />
           <AchievementBadges
             stats={stats}
             streak={streak}
             target={savingsTarget}
           />
+          <BudgetOverviewCard />
         </div>
 
         <QuickActions />
