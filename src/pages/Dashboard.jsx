@@ -12,6 +12,7 @@ import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
+import BudgetOverviewWidget from "../components/dashboard/BudgetOverviewWidget";
 import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
@@ -131,6 +132,12 @@ export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] 
         </div>
 
         <QuickActions />
+
+        <BudgetOverviewWidget
+          budgets={budgets}
+          transactions={txs}
+          period={periodRange}
+        />
 
         <BudgetStatusHighlights items={budgetStatus} />
 
