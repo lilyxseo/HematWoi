@@ -169,11 +169,11 @@ export default function PaymentDrawer({
       <div className="drawer-overlay" onClick={onClose} aria-hidden="true" />
       <div
         ref={panelRef}
-        className="drawer-panel w-full max-w-[100%] sm:max-w-[480px] md:max-w-[520px]"
+        className="drawer-panel w-full max-w-full rounded-none border-0 sm:max-w-[480px] sm:rounded-l-3xl sm:border sm:border-border-subtle md:max-w-[520px]"
         role="dialog"
         aria-modal="true"
       >
-        <header className="drawer-header">
+        <header className="drawer-header px-5 sm:px-6">
           <div className="flex items-start justify-between gap-3 sm:gap-4">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Catat Pembayaran</p>
@@ -194,9 +194,9 @@ export default function PaymentDrawer({
           </div>
         </header>
 
-        <div className="drawer-body">
+        <div className="drawer-body px-5 sm:px-6">
           <div className="min-w-0 space-y-5">
-            <section className="grid min-w-0 grid-cols-2 gap-3 rounded-3xl border border-border-subtle bg-surface-alt/80 p-4 shadow-sm sm:gap-4">
+            <section className="grid min-w-0 grid-cols-1 gap-3 rounded-3xl border border-border-subtle bg-surface-alt/80 p-4 shadow-sm sm:grid-cols-2 sm:gap-4">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Tagihan</p>
                 <p className="mt-1 text-lg font-semibold text-text tabular-nums">{remainingLabel}</p>
@@ -289,7 +289,7 @@ export default function PaymentDrawer({
           </div>
         </div>
 
-        <footer className="drawer-footer">
+        <footer className="drawer-footer px-5 sm:px-6">
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
             <button
               type="button"
@@ -303,7 +303,7 @@ export default function PaymentDrawer({
               form="payment-form"
               disabled={Boolean(submitting)}
               aria-busy={Boolean(submitting)}
-              className="btn btn-primary w-full sm:w-auto"
+              className="btn btn-primary w-full flex-wrap justify-center text-center leading-snug sm:w-auto"
             >
               {submitting ? 'Menyimpan…' : 'Catat Pembayaran'}
             </button>
