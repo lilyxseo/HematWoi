@@ -40,6 +40,7 @@ type SidebarFormState = {
   access_level: SidebarAccessLevel;
   is_enabled: boolean;
   icon_name: string;
+  category: string;
 };
 
 const EMPTY_FORM: SidebarFormState = {
@@ -48,6 +49,7 @@ const EMPTY_FORM: SidebarFormState = {
   access_level: 'public',
   is_enabled: true,
   icon_name: '',
+  category: '',
 };
 
 function Switch({
@@ -187,6 +189,7 @@ export default function AdminSidebarTab() {
         access_level: form.access_level,
         is_enabled: form.is_enabled,
         icon_name: form.icon_name,
+        category: form.category,
       });
       setItems((prev) => [...prev, newItem].sort((a, b) => a.position - b.position));
       addToast('Menu berhasil ditambahkan', 'success');
@@ -207,6 +210,7 @@ export default function AdminSidebarTab() {
       access_level: item.access_level,
       is_enabled: item.is_enabled,
       icon_name: item.icon_name ?? '',
+      category: item.category ?? '',
     });
   };
 
@@ -234,6 +238,7 @@ export default function AdminSidebarTab() {
         access_level: editDraft.access_level,
         is_enabled: editDraft.is_enabled,
         icon_name: editDraft.icon_name,
+        category: editDraft.category,
       });
       setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       addToast('Menu berhasil diperbarui', 'success');
@@ -278,8 +283,8 @@ export default function AdminSidebarTab() {
   const renderSkeleton = () => (
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, index) => (
-        <div key={index} className="grid gap-3 rounded-2xl bg-muted/20 p-4 md:grid-cols-6">
-          {Array.from({ length: 6 }).map((__, col) => (
+        <div key={index} className="grid gap-3 rounded-2xl bg-muted/20 p-4 md:grid-cols-8">
+          {Array.from({ length: 8 }).map((__, col) => (
             <div key={col} className="h-11 animate-pulse rounded-2xl bg-muted/40" />
           ))}
         </div>
@@ -308,6 +313,9 @@ export default function AdminSidebarTab() {
               <div>
                 <p className="text-sm font-semibold">{item.title}</p>
                 <p className="text-xs text-muted-foreground">{item.route}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Kategori: {item.category ? item.category : '-'}
+                </p>
               </div>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
@@ -355,6 +363,7 @@ export default function AdminSidebarTab() {
               <th className="px-4 py-3 text-left font-semibold">Ikon</th>
               <th className="px-4 py-3 text-left font-semibold">Judul</th>
               <th className="px-4 py-3 text-left font-semibold">Route</th>
+              <th className="px-4 py-3 text-left font-semibold">Kategori</th>
               <th className="px-4 py-3 text-left font-semibold">Akses</th>
               <th className="px-4 py-3 text-left font-semibold">Status</th>
               <th className="px-4 py-3 text-left font-semibold">Aksi</th>
@@ -371,6 +380,9 @@ export default function AdminSidebarTab() {
                 </td>
                 <td className="px-4 py-3 text-sm font-medium">{item.title}</td>
                 <td className="px-4 py-3 text-xs font-medium text-muted-foreground">{item.route}</td>
+                <td className="px-4 py-3 text-xs font-medium text-muted-foreground">
+                  {item.category || '-'}
+                </td>
                 <td className="px-4 py-3">
                   <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
                     {ACCESS_LABEL[item.access_level]}
@@ -420,7 +432,7 @@ export default function AdminSidebarTab() {
       </div>
 
       <form onSubmit={handleCreate} className="space-y-4 rounded-2xl border border-border/60 bg-muted/10 p-4 md:p-6">
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <label className="text-sm font-semibold text-muted-foreground">
             Judul
             <input
@@ -439,6 +451,15 @@ export default function AdminSidebarTab() {
               onChange={(event) => setForm((prev) => ({ ...prev, route: event.target.value }))}
               className={clsx(INPUT_CLASS, 'mt-1')}
               placeholder="/dashboard"
+            />
+          </label>
+          <label className="text-sm font-semibold text-muted-foreground">
+            Kategori
+            <input
+              value={form.category}
+              onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))}
+              className={clsx(INPUT_CLASS, 'mt-1')}
+              placeholder="Contoh: Navigasi Utama"
             />
           </label>
         </div>
@@ -535,7 +556,7 @@ export default function AdminSidebarTab() {
               Batal
             </button>
           </div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-3">
             <label className="text-sm font-semibold text-muted-foreground">
               Judul
               <input
@@ -555,6 +576,18 @@ export default function AdminSidebarTab() {
                 onChange={(event) =>
                   setEditDraft((prev) =>
                     prev ? { ...prev, route: event.target.value } : prev
+                  )
+                }
+                className={clsx(INPUT_CLASS, 'mt-1')}
+              />
+            </label>
+            <label className="text-sm font-semibold text-muted-foreground">
+              Kategori
+              <input
+                value={editDraft.category}
+                onChange={(event) =>
+                  setEditDraft((prev) =>
+                    prev ? { ...prev, category: event.target.value } : prev
                   )
                 }
                 className={clsx(INPUT_CLASS, 'mt-1')}

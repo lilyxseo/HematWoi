@@ -11,6 +11,7 @@ export type SidebarItemRecord = {
   is_enabled: boolean;
   icon_name: string | null;
   position: number;
+  category: string | null;
 };
 
 export type CreateSidebarItemInput = {
@@ -19,10 +20,11 @@ export type CreateSidebarItemInput = {
   access_level: SidebarAccessLevel;
   is_enabled?: boolean;
   icon_name?: string | null;
+  category?: string | null;
 };
 
 export type UpdateSidebarItemInput = Partial<
-  Pick<SidebarItemRecord, 'title' | 'route' | 'access_level' | 'is_enabled' | 'icon_name'>
+  Pick<SidebarItemRecord, 'title' | 'route' | 'access_level' | 'is_enabled' | 'icon_name' | 'category'>
 >;
 
 export type UserRole = 'user' | 'admin';
@@ -99,6 +101,16 @@ function normalizeIcon(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+function normalizeCategory(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  const converted = String(value ?? '').trim();
+  return converted ? converted : null;
+}
+
 function normalizeRoute(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return '';
@@ -120,6 +132,7 @@ function mapSidebarRow(row: any): SidebarItemRecord {
     is_enabled: sanitizeBoolean(row?.is_enabled, true),
     icon_name: normalizeIcon(row?.icon_name),
     position: sanitizeNumber(row?.position, 0),
+    category: normalizeCategory(row?.category),
   };
 }
 
@@ -139,7 +152,7 @@ export async function listSidebarItems(): Promise<SidebarItemRecord[]> {
   try {
     const { data, error } = await supabase
       .from('app_sidebar_items')
-      .select('id, title, route, access_level, is_enabled, icon_name, position')
+      .select('id, title, route, access_level, is_enabled, icon_name, position, category')
       .order('position', { ascending: true });
 
     if (error) throw error;
@@ -189,13 +202,14 @@ export async function createSidebarItem(payload: CreateSidebarItemInput): Promis
       is_enabled: payload.is_enabled ?? true,
       icon_name: normalizeIcon(payload.icon_name),
       position: nextPosition,
+      category: normalizeCategory(payload.category),
       user_id: auth.user.id,
     };
 
     const response = await supabase
       .from('app_sidebar_items')
       .insert(insertPayload)
-      .select('id, title, route, access_level, is_enabled, icon_name, position')
+      .select('id, title, route, access_level, is_enabled, icon_name, position, category')
       .single();
 
     const data = ensureResponse(response);
@@ -244,11 +258,15 @@ export async function updateSidebarItem(
       payload.icon_name = normalizeIcon(patch.icon_name ?? null);
     }
 
+    if (Object.prototype.hasOwnProperty.call(patch, 'category')) {
+      payload.category = normalizeCategory(patch.category ?? null);
+    }
+
     const response = await supabase
       .from('app_sidebar_items')
       .update(payload)
       .eq('id', id)
-      .select('id, title, route, access_level, is_enabled, icon_name, position')
+      .select('id, title, route, access_level, is_enabled, icon_name, position, category')
       .single();
 
     const data = ensureResponse(response);
