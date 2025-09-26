@@ -10,7 +10,8 @@ import PrivacyDataCard from '../components/profile/PrivacyDataCard';
 import IntegrationsCard from '../components/profile/IntegrationsCard';
 import useNetworkStatus from '../hooks/useNetworkStatus';
 import { useToast } from '../context/ToastContext';
-import Breadcrumbs from '../layout/Breadcrumbs';
+import Page from '../layout/Page';
+import PageHeader from '../layout/PageHeader';
 import {
   changePassword,
   checkUsernameAvailability,
@@ -540,13 +541,12 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <Breadcrumbs />
-        <h1 className="text-2xl font-semibold text-foreground">Profil</h1>
-        <p className="mt-1 text-sm text-muted">Kelola akun &amp; preferensi kamu dalam satu tempat.</p>
-      </div>
+    <Page>
+      <PageHeader
+        title="Profil"
+        description="Kelola akun & preferensi kamu dalam satu tempat."
+      />
       {renderContent()}
-    </div>
+    </Page>
   );
 }

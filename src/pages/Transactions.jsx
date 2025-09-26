@@ -22,7 +22,7 @@ import {
 import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
-import Breadcrumbs from "../layout/Breadcrumbs";
+import PageHeader from "../layout/PageHeader";
 import { addTransaction, listAccounts, listMerchants, updateTransaction } from "../lib/api";
 import {
   listTransactions,
@@ -724,42 +724,34 @@ export default function Transactions() {
 
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
+      <PageHeader title="Transaksi" description={PAGE_DESCRIPTION}>
+        <button
+          type="button"
+          onClick={handleNavigateToAdd}
+          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          aria-label="Tambah transaksi (Ctrl+T)"
+        >
+          <Plus className="h-4 w-4" /> Tambah Transaksi
+        </button>
+        <button
+          type="button"
+          onClick={() => setImportOpen(true)}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+          aria-label="Import CSV (Ctrl+I)"
+        >
+          <Upload className="h-4 w-4" /> Import CSV
+        </button>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={exporting}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Export CSV (Ctrl+E)"
+        >
+          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
+        </button>
+      </PageHeader>
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex-1">
-            <Breadcrumbs />
-            <h1 className="text-2xl font-semibold text-text">Transaksi</h1>
-            <p className="text-sm text-muted">{PAGE_DESCRIPTION}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleNavigateToAdd}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              aria-label="Tambah transaksi (Ctrl+T)"
-            >
-              <Plus className="h-4 w-4" /> Tambah Transaksi
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              aria-label="Import CSV (Ctrl+I)"
-            >
-              <Upload className="h-4 w-4" /> Import CSV
-            </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={exporting}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Export CSV (Ctrl+E)"
-            >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
-            </button>
-          </div>
-        </header>
-
         <div
           ref={filterBarRef}
           className="sticky z-20"

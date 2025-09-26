@@ -4,7 +4,9 @@ import { createPortal } from "react-dom";
 import CategoryForm from "../components/categories/CategoryForm";
 import CategoryList from "../components/categories/CategoryList";
 import { useToast } from "../context/ToastContext";
-import Breadcrumbs from "../layout/Breadcrumbs";
+import Page from "../layout/Page";
+import PageHeader from "../layout/PageHeader";
+import Section from "../layout/Section";
 import {
   CategoryRecord,
   CategoryType,
@@ -371,73 +373,96 @@ export default function Categories() {
   }, [confirming, handleDeleteCategory]);
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4">
-      <div className="rounded-2xl border border-border/60 bg-surface-1/70 p-6 shadow-sm">
-        <Breadcrumbs />
-        <h1 className="text-lg font-semibold text-text">Manajemen Kategori</h1>
-        <p className="mt-2 text-sm text-muted">
-          Buat, ubah, hapus, dan atur urutan kategori pemasukan dan pengeluaran.
-        </p>
-      </div>
-      <section className="rounded-2xl border border-border/60 bg-surface-1/70 p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-text">Tambah kategori baru</h2>
-        <p className="mt-1 text-sm text-muted">
-          Pilih tipe kategori, beri nama, dan sesuaikan warnanya.
-        </p>
-        <div className="mt-4">
-          <CategoryForm
-            key={createFormKey}
-            mode="create"
-            initialValues={{ name: "", color: "#0EA5E9", type: "expense" }}
-            onSubmit={handleCreate}
-            isSubmitting={creating}
-          />
-        </div>
-      </section>
-      {error ? (
-        <div className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
-          <div className="flex items-center justify-between gap-3">
-            <span>{error}</span>
-            <button
-              type="button"
-              onClick={() => reload()}
-              className="inline-flex items-center gap-2 rounded-full border border-danger/40 px-3 py-1 text-xs font-semibold text-danger transition-colors hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60"
-            >
-              Coba lagi
-            </button>
+    <Page>
+      <PageHeader
+        title="Manajemen Kategori"
+        description="Buat, ubah, hapus, dan atur urutan kategori pemasukan dan pengeluaran."
+      />
+      <Section first>
+        <div className="rounded-2xl border border-border/60 bg-surface-1/70 p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-text">Tambah kategori baru</h2>
+          <p className="mt-1 text-sm text-muted">
+            Pilih tipe kategori, beri nama, dan sesuaikan warnanya.
+          </p>
+          <div className="mt-4">
+            <CategoryForm
+              key={createFormKey}
+              mode="create"
+              initialValues={{ name: "", color: "#0EA5E9", type: "expense" }}
+              onSubmit={handleCreate}
+              isSubmitting={creating}
+            />
           </div>
         </div>
+      </Section>
+      {error ? (
+        <Section>
+          <div className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
+            <div className="flex items-center justify-between gap-3">
+              <span>{error}</span>
+              <button
+                type="button"
+                onClick={() => reload()}
+                className="inline-flex items-center gap-2 rounded-full border border-danger/40 px-3 py-1 text-xs font-semibold text-danger transition-colors hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/60"
+              >
+                Coba lagi
+              </button>
+            </div>
+          </div>
+        </Section>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-2">
-        <CategoryList
-          type="income"
-          title="Pemasukan"
-          items={grouped.income}
-          editingId={editingId}
-          pendingIds={pendingIds}
-          loading={loading}
-          onStartEdit={setEditingId}
-          onCancelEdit={() => setEditingId(null)}
-          onSubmitEdit={handleSubmitEdit}
-          onDelete={(category) => setConfirming(category)}
-          onMoveUp={(id) => handleMove("income", id, "up")}
-          onMoveDown={(id) => handleMove("income", id, "down")}
-        />
-        <CategoryList
-          type="expense"
-          title="Pengeluaran"
-          items={grouped.expense}
-          editingId={editingId}
-          pendingIds={pendingIds}
-          loading={loading}
-          onStartEdit={setEditingId}
-          onCancelEdit={() => setEditingId(null)}
-          onSubmitEdit={handleSubmitEdit}
-          onDelete={(category) => setConfirming(category)}
-          onMoveUp={(id) => handleMove("expense", id, "up")}
-          onMoveDown={(id) => handleMove("expense", id, "down")}
-        />
-      </div>
+      <Section>
+        <div className="grid gap-4 md:grid-cols-2">
+          <CategoryList
+            type="income"
+            title="Pemasukan"
+            items={grouped.income}
+            editingId={editingId}
+            pendingIds={pendingIds}
+            loading={loading}
+            onStartEdit={setEditingId}
+            onCancelEdit={() => setEditingId(null)}
+            onSubmitEdit={handleSubmitEdit}
+            onDelete={(category) => setConfirming(category)}
+            onMoveUp={(id) => handleMove("income", id, "up")}
+            onMoveDown={(id) => handleMove("income", id, "down")}
+          />
+          <CategoryList
+            type="expense"
+            title="Pengeluaran"
+            items={grouped.expense}
+            editingId={editingId}
+            pendingIds={pendingIds}
+            loading={loading}
+            onStartEdit={setEditingId}
+            onCancelEdit={() => setEditingId(null)}
+            onSubmitEdit={handleSubmitEdit}
+            onDelete={(category) => setConfirming(category)}
+            onMoveUp={(id) => handleMove("expense", id, "up")}
+            onMoveDown={(id) => handleMove("expense", id, "down")}
+          />
+        </div>
+      </Section>
+      <CategoryForm
+        key={`modal-${editingId ?? "new"}`}
+        mode="edit"
+        dialog
+        open={Boolean(editingId)}
+        initialValues={(() => {
+          if (!editingId) return null;
+          const original = categories.find((cat) => cat.id === editingId);
+          if (!original) return null;
+          return {
+            id: original.id,
+            name: original.name,
+            color: original.color,
+            type: original.type,
+          };
+        })()}
+        onSubmit={handleSubmitEdit}
+        onDismiss={() => setEditingId(null)}
+        isSubmitting={Boolean(editingId && pendingIds.has(editingId))}
+      />
       <ConfirmDialog
         open={Boolean(confirming)}
         title="Hapus kategori?"
@@ -446,6 +471,6 @@ export default function Categories() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setConfirming(null)}
       />
-    </main>
+    </Page>
   );
 }
