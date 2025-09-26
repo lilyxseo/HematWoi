@@ -1,0 +1,134 @@
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import ErrorBoundary from '../components/system/ErrorBoundary';
+import { supabase } from '../lib/supabase';
+import { syncGuestToCloud } from '../lib/sync';
+
+const DIGEST_TRIGGER_KEY = 'hw:digest:trigger';
+
+type StatusState = 'processing' | 'error';
+
+export default function AuthCallback() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<StatusState>('processing');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const code = searchParams.get('code');
+  const authError = searchParams.get('error');
+  const errorDescription = searchParams.get('error_description');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const markOnlineMode = () => {
+      try {
+        localStorage.setItem('hw:connectionMode', 'online');
+        localStorage.setItem('hw:mode', 'online');
+        localStorage.setItem(DIGEST_TRIGGER_KEY, '1');
+      } catch {
+        /* ignore */
+      }
+    };
+
+    if (authError) {
+      const message = errorDescription || 'Login dengan Google dibatalkan. Silakan coba lagi.';
+      setErrorMessage(message);
+      setStatus('error');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!code) {
+      setErrorMessage('Kode otorisasi tidak ditemukan. Silakan coba login ulang.');
+      setStatus('error');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const exchange = async () => {
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
+        if (error) throw error;
+        markOnlineMode();
+        const userId = data.session?.user?.id ?? null;
+        if (userId) {
+          try {
+            await syncGuestToCloud(supabase, userId);
+          } catch (error) {
+            console.error('[AuthCallback] Failed to sync guest data', error);
+          }
+        }
+        if (!cancelled) {
+          navigate('/', { replace: true });
+        }
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Gagal menukarkan kode sesi. Silakan coba lagi.';
+        setErrorMessage(message);
+        setStatus('error');
+      }
+    };
+
+    void exchange();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authError, code, errorDescription, navigate]);
+
+  const handleRetry = () => {
+    navigate('/auth', { replace: true });
+  };
+
+  return (
+    <ErrorBoundary>
+      <main className="flex min-h-screen items-center justify-center bg-surface-alt px-6 py-16 text-text">
+        <div className="w-full max-w-md space-y-4 rounded-3xl border border-border-subtle bg-surface p-8 text-center shadow-sm">
+          {status === 'processing' ? (
+            <>
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-border-subtle">
+                <span
+                  className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent"
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-lg font-semibold">Menghubungkan akun…</h1>
+                <p className="text-sm text-muted">
+                  Kami sedang menuntaskan sesi loginmu. Jangan tutup halaman ini.
+                </p>
+              </div>
+            </>
+          ) : null}
+          {status === 'error' ? (
+            <>
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-danger/30 bg-danger/10 text-danger">
+                !
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-lg font-semibold">Gagal menghubungkan</h1>
+                <p className="text-sm text-danger" aria-live="assertive">
+                  {errorMessage}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              >
+                Kembali ke halaman masuk
+              </button>
+            </>
+          ) : null}
+        </div>
+      </main>
+    </ErrorBoundary>
+  );
+}
