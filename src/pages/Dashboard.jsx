@@ -18,6 +18,7 @@ import PeriodPicker, {
 import useDashboardBalances from "../hooks/useDashboardBalances";
 import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
+import BudgetOverview from "../components/dashboard/BudgetOverview";
 
 const DEFAULT_PRESET = "month";
 
@@ -131,6 +132,8 @@ export default function Dashboard({ stats, txs, budgets = [], budgetStatus = [] 
         </div>
 
         <QuickActions />
+
+        <BudgetOverview budgets={budgets} transactions={txs} period={periodRange} />
 
         <BudgetStatusHighlights items={budgetStatus} />
 
