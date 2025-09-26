@@ -6,6 +6,8 @@ import { getSession, onAuthStateChange } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
 
+const isDev = import.meta.env.MODE === 'development';
+
 const heroTips = [
   'Pantau cash flow harian tanpa ribet.',
   'Sinkronkan data lintas perangkat secara otomatis.',
@@ -35,15 +37,8 @@ export default function AuthLogin() {
       console.error('[AuthLogin] Gagal memindahkan data tamu ke cloud', error);
     }
   }, []);
-  const handleContinueAsGuest = useCallback(() => {
-    try {
-      localStorage.setItem('hw:connectionMode', 'local');
-      localStorage.setItem('hw:mode', 'local');
-    } catch {
-      /* ignore */
-    }
-    navigate('/', { replace: true });
-  }, [navigate]);
+  const [devLoginLoading, setDevLoginLoading] = useState(false);
+  const [devLoginError, setDevLoginError] = useState<string | null>(null);
 
   const handleGoogleSignIn = useCallback(async () => {
     if (googleLoading) return;
@@ -150,6 +145,63 @@ export default function AuthLogin() {
     navigate('/', { replace: true });
   }, [navigate, syncGuestData]);
 
+  const handleDevLogin = useCallback(async () => {
+    if (!isDev || devLoginLoading) {
+      return;
+    }
+
+    const email = import.meta.env.VITE_DEV_TEST_EMAIL;
+    const password = import.meta.env.VITE_DEV_TEST_PASSWORD;
+
+    if (!email || !password) {
+      setDevLoginError('ENV dev belum di-set');
+      return;
+    }
+
+    setDevLoginError(null);
+    setDevLoginLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      try {
+        localStorage.setItem('hw:connectionMode', 'online');
+        localStorage.setItem('hw:mode', 'online');
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        const { data } = await supabase.auth.getSession();
+        const uid = data.session?.user?.id ?? null;
+        if (uid) {
+          void syncGuestData(uid);
+        }
+      } catch (error) {
+        console.error('[AuthLogin] Gagal membaca sesi setelah login (dev)', error);
+      }
+
+      navigate('/dashboard', { replace: true });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Gagal login otomatis. Silakan coba lagi.';
+      setDevLoginError(message);
+      setDevLoginLoading(false);
+      return;
+    }
+
+    setDevLoginLoading(false);
+  }, [devLoginLoading, navigate, syncGuestData]);
+
   return (
     <ErrorBoundary>
       <main className="min-h-screen bg-surface-alt px-6 py-12 text-text transition-colors sm:py-16">
@@ -238,23 +290,35 @@ export default function AuthLogin() {
                   </div>
                 </div>
               )}
-              <div className="rounded-3xl border border-border-subtle bg-surface px-5 py-4 shadow-sm">
-                <div className="space-y-3 text-center">
-                  <div>
-                    <p className="text-sm font-semibold text-text">Gunakan tanpa akun</p>
-                    <p className="mt-1 text-xs text-muted">
-                      Data kamu akan disimpan di perangkat ini dan otomatis dipindah ke cloud saat kamu masuk nanti.
-                    </p>
+              {isDev ? (
+                <div className="rounded-3xl border border-border-subtle bg-surface px-5 py-4 shadow-sm">
+                  <div className="space-y-3 text-center">
+                    <div>
+                      <p className="text-sm font-semibold text-text">Mode Development</p>
+                      <p className="mt-1 text-xs text-muted">
+                        Hanya tampil saat development. Kredensial dari .env.development.local.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        aria-label="Login Mode Development"
+                        title="Login Mode Development"
+                        onClick={handleDevLogin}
+                        disabled={devLoginLoading}
+                        className="h-11 w-full rounded-xl bg-slate-900 text-sm font-medium text-white transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/70 focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {devLoginLoading ? 'Masuk (DEV)…' : 'Mode Development — Login Otomatis'}
+                      </button>
+                      {devLoginError ? (
+                        <p className="text-xs font-medium text-danger" aria-live="assertive">
+                          {devLoginError}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleContinueAsGuest}
-                    className="btn btn-secondary w-full"
-                  >
-                    Lanjut sebagai tamu
-                  </button>
                 </div>
-              </div>
+              ) : null}
             </div>
           </section>
         </div>
