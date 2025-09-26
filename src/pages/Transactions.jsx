@@ -1,24 +1,19 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
-  ArrowRight,
-  ArrowRightLeft,
   ChevronDown,
-  Check,
   Download,
-  Inbox,
   Loader2,
-  Paperclip,
-  Pencil,
   Plus,
-  Search,
-  Trash2,
-  Upload,
   X,
+  Upload,
 } from "lucide-react";
+import TransactionsFilters from "../components/transactions/TransactionsFilters";
+import TransactionsTable from "../components/transactions/TransactionsTable";
+import TransactionsCardList from "../components/transactions/TransactionsCardList";
+import BatchToolbar from "../components/transactions/BatchToolbar";
 import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
@@ -59,46 +54,14 @@ const PAGE_DESCRIPTION = "Kelola catatan keuangan";
 
 const FILTER_PANEL_BREAKPOINT = 768;
 const FILTER_PANEL_STORAGE_KEY = "transactions-filter-open";
-const MOBILE_BREAKPOINT = 992;
-
-function detectTableVariant() {
-  if (typeof window === "undefined") return "table";
-  return window.innerWidth < MOBILE_BREAKPOINT ? "card" : "table";
-}
 
 function toDateInput(value) {
   if (!value) return "";
   return String(value).slice(0, 10);
 }
 
-function currentMonthValue() {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
 function formatIDR(value) {
   return formatCurrency(Number(value ?? 0), "IDR");
-}
-
-const TRANSACTION_DATE_FORMATTER =
-  typeof Intl !== "undefined"
-    ? new Intl.DateTimeFormat("id-ID", {
-        weekday: "short",
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      })
-    : null;
-
-function formatTransactionDate(value) {
-  if (!value) return "";
-  try {
-    const date = new Date(value);
-    if (!Number.isFinite(date.getTime())) return String(value);
-    return TRANSACTION_DATE_FORMATTER ? TRANSACTION_DATE_FORMATTER.format(date) : String(value);
-  } catch {
-    return String(value);
-  }
 }
 
 function chunk(arr, size) {
@@ -113,16 +76,16 @@ export default function Transactions() {
   const {
     items: queryItems,
     total,
-    hasMore,
+    page,
     loading,
     error,
     filter,
     setFilter,
-    loadMore,
     refresh,
     categories,
     summary,
     pageSize,
+    setPage,
   } = useTransactionsQuery();
   const { addToast } = useToast();
   const online = useNetworkStatus();
@@ -142,7 +105,6 @@ export default function Transactions() {
   const lastSelectedIdRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(filter.search);
   const [filterBarStuck, setFilterBarStuck] = useState(false);
-  const [tableVariant, setTableVariant] = useState(() => detectTableVariant());
   const [deleteInProgress, setDeleteInProgress] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const undoTimerRef = useRef(null);
@@ -170,18 +132,14 @@ export default function Transactions() {
     setItems(queryItems);
   }, [queryItems]);
 
+  const currentPageItems = useMemo(() => {
+    const startIndex = Math.max(0, (page - 1) * pageSize);
+    return items.slice(startIndex, startIndex + pageSize);
+  }, [items, page, pageSize]);
+
   useEffect(() => {
     setSearchTerm(filter.search);
   }, [filter.search]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setTableVariant(detectTableVariant());
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -302,6 +260,7 @@ export default function Transactions() {
       ) {
         event.preventDefault();
         searchInputRef.current?.focus();
+        searchInputRef.current?.select?.();
       }
     };
     window.addEventListener("keydown", handler);
@@ -345,7 +304,8 @@ export default function Transactions() {
     [items, selectedIds],
   );
 
-  const allSelected = items.length > 0 && items.every((item) => selectedIds.has(item.id));
+  const allSelected =
+    currentPageItems.length > 0 && currentPageItems.every((item) => selectedIds.has(item.id));
 
   const activeChips = useMemo(() => {
     const chips = [];
@@ -374,6 +334,14 @@ export default function Transactions() {
     return chips;
   }, [filter, categoriesById]);
 
+  const dateRange = useMemo(
+    () => ({
+      start: filter.period.preset === "custom" ? filter.period.start || "" : "",
+      end: filter.period.preset === "custom" ? filter.period.end || "" : "",
+    }),
+    [filter.period],
+  );
+
   const toggleSelect = useCallback(
     (id, event) => {
       let desiredState = null;
@@ -382,13 +350,13 @@ export default function Transactions() {
         const next = new Set(prev);
         const currentlySelected = next.has(id);
         desiredState = event?.target?.checked ?? !currentlySelected;
-        if (!items.length) {
+        if (!currentPageItems.length) {
           if (desiredState) next.add(id);
           else next.delete(id);
           return next;
         }
         if (isShiftKey && lastSelectedIdRef.current) {
-          const ids = items.map((item) => item.id);
+          const ids = currentPageItems.map((item) => item.id);
           const currentIndex = ids.indexOf(id);
           const lastIndex = ids.indexOf(lastSelectedIdRef.current);
           if (currentIndex !== -1 && lastIndex !== -1) {
@@ -410,7 +378,7 @@ export default function Transactions() {
         lastSelectedIdRef.current = id;
       }
     },
-    [items],
+    [currentPageItems],
   );
 
   const toggleSelectAll = useCallback(() => {
@@ -419,11 +387,11 @@ export default function Transactions() {
         lastSelectedIdRef.current = null;
         return new Set();
       }
-      const ids = items.map((item) => item.id);
+      const ids = currentPageItems.map((item) => item.id);
       lastSelectedIdRef.current = ids[ids.length - 1] ?? null;
       return new Set(ids);
     });
-  }, [allSelected, items]);
+  }, [allSelected, currentPageItems]);
 
   const handleRemoveChip = useCallback(
     (chip) => {
@@ -709,7 +677,6 @@ export default function Transactions() {
   }, [navigate]);
 
   const tableStickyTop = `calc(var(--app-header-height, var(--app-topbar-h, 64px)) + ${filterBarHeight}px + 16px)`;
-  const selectionToolbarOffset = tableStickyTop ? `calc(${tableStickyTop} + 12px)` : "16px";
   const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
   const activeFilterCount = activeChips.length;
 
@@ -717,6 +684,56 @@ export default function Transactions() {
     if (isDesktopFilterView) return;
     setFilterPanelOpen((prev) => !prev);
   };
+
+  const handleTypeFilterChange = useCallback(
+    (value) => {
+      setFilter({ type: value });
+    },
+    [setFilter],
+  );
+
+  const handleCategoryFilterChange = useCallback(
+    (value) => {
+      setFilter({ categories: value });
+    },
+    [setFilter],
+  );
+
+  const handleSortChange = useCallback(
+    (nextSort) => {
+      if (!nextSort) return;
+      setFilter({ sort: nextSort });
+    },
+    [setFilter],
+  );
+
+  const handleDateRangeChange = useCallback(
+    (start, end) => {
+      const startValue = toDateInput(start);
+      const endValue = toDateInput(end);
+      const preset = startValue || endValue ? "custom" : "all";
+      setFilter({
+        period: {
+          preset,
+          month: preset === "month" ? filter.period.month : "",
+          start: startValue,
+          end: endValue,
+        },
+      });
+    },
+    [filter.period.month, setFilter],
+  );
+
+  const totalPages = Math.max(1, Math.ceil((total || 0) / pageSize) || 1);
+
+  const handlePageChange = useCallback(
+    (nextPage) => {
+      if (!Number.isFinite(nextPage)) return;
+      const target = Math.min(Math.max(1, Math.floor(nextPage)), totalPages);
+      setPage(target);
+    },
+    [setPage, totalPages],
+  );
 
   const handleEditTransaction = useCallback((item) => {
     setEditTarget(item);
@@ -805,14 +822,18 @@ export default function Transactions() {
               WebkitBackdropFilter: "blur(6px)",
             }}
           >
-            <TransactionsFilterBar
-              filter={filter}
-              categories={categories}
+            <TransactionsFilters
               searchTerm={searchTerm}
               onSearchChange={setSearchTerm}
-              onFilterChange={setFilter}
+              type={filter.type}
+              onTypeChange={handleTypeFilterChange}
+              categories={categories}
+              selectedCategories={filter.categories}
+              onCategoriesChange={handleCategoryFilterChange}
+              dateRange={dateRange}
+              onDateRangeChange={handleDateRangeChange}
+              onClear={handleResetFilters}
               searchInputRef={searchInputRef}
-              onOpenAdd={handleNavigateToAdd}
             />
           </div>
         </div>
@@ -845,29 +866,11 @@ export default function Transactions() {
           <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
         )}
 
-        {selectedIds.size > 0 && (
-          <SelectionToolbar
-            count={selectedIds.size}
-            onClear={() => {
-              setSelectedIds(new Set());
-              lastSelectedIdRef.current = null;
-            }}
-            onDelete={handleRequestBulkDelete}
-            onEditCategory={() => setBulkEditMode("category")}
-            onEditAccount={() => setBulkEditMode("account")}
-            deleting={deleteInProgress}
-            updating={bulkUpdating}
-            topOffset={selectionToolbarOffset}
-          />
-        )}
-
         <TransactionsTable
-          items={items}
+          items={currentPageItems}
           loading={loading}
           error={error}
           onRetry={() => refresh({ keepPage: true })}
-          onLoadMore={loadMore}
-          hasMore={hasMore}
           onToggleSelect={toggleSelect}
           onToggleSelectAll={toggleSelectAll}
           allSelected={allSelected}
@@ -875,11 +878,48 @@ export default function Transactions() {
           onDelete={handleRequestDelete}
           onEdit={handleEditTransaction}
           tableStickyTop={tableStickyTop}
-          variant={tableVariant}
-          onResetFilters={handleResetFilters}
           total={total}
+          sort={filter.sort}
+          onSortChange={handleSortChange}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={handlePageChange}
+          onResetFilters={handleResetFilters}
           onOpenAdd={handleNavigateToAdd}
           deleteDisabled={deleteInProgress}
+        />
+
+        <TransactionsCardList
+          items={currentPageItems}
+          loading={loading}
+          error={error}
+          onRetry={() => refresh({ keepPage: true })}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onDelete={handleRequestDelete}
+          onEdit={handleEditTransaction}
+          sort={filter.sort}
+          onSortChange={handleSortChange}
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={handlePageChange}
+          deleteDisabled={deleteInProgress}
+          onResetFilters={handleResetFilters}
+          onOpenAdd={handleNavigateToAdd}
+        />
+
+        <BatchToolbar
+          count={selectedIds.size}
+          onClear={() => {
+            setSelectedIds(new Set());
+            lastSelectedIdRef.current = null;
+          }}
+          onDelete={handleRequestBulkDelete}
+          onChangeCategory={() => setBulkEditMode("category")}
+          onChangeAccount={() => setBulkEditMode("account")}
+          deleting={deleteInProgress}
+          updating={bulkUpdating}
         />
 
         {confirmState && (
@@ -971,510 +1011,6 @@ export default function Transactions() {
   );
 }
 
-function TransactionsFilterBar({
-  filter,
-  categories,
-  searchTerm,
-  onSearchChange,
-  onFilterChange,
-  searchInputRef,
-  onOpenAdd = () => {},
-}) {
-  const currentMonth = currentMonthValue();
-  const customButtonRef = useRef(null);
-  const actualSearchInputRef = useRef(null);
-  const [customOpen, setCustomOpen] = useState(false);
-  const typeSelectId = useId();
-  const sortSelectId = useId();
-  const searchInputId = useId();
-
-  useEffect(() => {
-    if (!searchInputRef) return;
-    searchInputRef.current = {
-      focus: () => {
-        actualSearchInputRef.current?.focus();
-        actualSearchInputRef.current?.select();
-      },
-    };
-  }, [searchInputRef]);
-
-  useEffect(() => {
-    if (filter.period.preset !== "custom") {
-      setCustomOpen(false);
-    }
-  }, [filter.period.preset]);
-
-  const handlePresetChange = (preset) => {
-    if (preset === "custom" && filter.period.preset === "custom") {
-      setCustomOpen((prev) => !prev);
-      return;
-    }
-    if (preset === "all") {
-      onFilterChange({ period: { preset: "all", month: "", start: "", end: "" } });
-      setCustomOpen(false);
-      return;
-    }
-    if (preset === "month") {
-      onFilterChange({ period: { preset: "month", month: filter.period.month || currentMonth, start: "", end: "" } });
-      setCustomOpen(false);
-      return;
-    }
-    if (preset === "week") {
-      onFilterChange({ period: { preset: "week", month: "", start: "", end: "" } });
-      setCustomOpen(false);
-      return;
-    }
-    if (preset === "custom") {
-      const today = new Date().toISOString().slice(0, 10);
-      onFilterChange({ period: { preset: "custom", month: "", start: filter.period.start || today, end: filter.period.end || today } });
-      setCustomOpen(true);
-    }
-  };
-
-  const handleCategoryChange = (selected) => {
-    onFilterChange({ categories: selected });
-  };
-
-  const handleReset = () => {
-    onFilterChange({
-      period: { preset: "all", month: "", start: "", end: "" },
-      categories: [],
-      type: "all",
-      sort: "date-desc",
-      search: "",
-    });
-    onSearchChange("");
-  };
-
-  const handleSearchChange = (value) => {
-    onSearchChange(value);
-  };
-
-  const handleTypeChange = (value) => {
-    onFilterChange({ type: value });
-  };
-
-  const handleSortChange = (value) => {
-    onFilterChange({ sort: value });
-  };
-
-  return (
-    <div className="space-y-4 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-white shadow">
-      <div
-        role="toolbar"
-        aria-label="Filter transaksi"
-        className="grid grid-cols-2 items-center gap-3 md:grid-cols-6"
-      >
-        <div className="col-span-2 min-w-0 md:col-span-2">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/60">
-            Rentang Waktu
-          </p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-2 lg:grid-cols-4">
-            {Object.entries(PERIOD_LABELS).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => handlePresetChange(value)}
-                ref={value === "custom" ? customButtonRef : undefined}
-                className={clsx(
-                  "inline-flex h-[40px] items-center justify-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-semibold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
-                  filter.period.preset === value
-                    ? "bg-brand text-white shadow"
-                    : "text-white/70 hover:bg-white/10",
-                )}
-                aria-pressed={filter.period.preset === value}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="col-span-2 min-w-0 md:col-span-1">
-          <CategoryMultiSelect
-            categories={categories}
-            selected={filter.categories}
-            onChange={handleCategoryChange}
-            ariaLabel="Filter kategori transaksi"
-          />
-        </div>
-        <div className="col-span-2 min-w-0 md:col-span-1">
-          <label htmlFor={typeSelectId} className="sr-only">
-            Filter jenis transaksi
-          </label>
-          <select
-            id={typeSelectId}
-            value={filter.type}
-            onChange={(event) => handleTypeChange(event.target.value)}
-            aria-label="Filter jenis transaksi"
-            className="h-[40px] w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          >
-            <option value="all">Semua</option>
-            <option value="expense">Pengeluaran</option>
-            <option value="income">Pemasukan</option>
-            <option value="transfer">Transfer</option>
-          </select>
-        </div>
-        <div className="col-span-2 min-w-0 md:col-span-1">
-          <label htmlFor={sortSelectId} className="sr-only">
-            Urutkan transaksi
-          </label>
-          <select
-            id={sortSelectId}
-            value={filter.sort}
-            onChange={(event) => handleSortChange(event.target.value)}
-            aria-label="Urutkan transaksi"
-            className="h-[40px] w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          >
-            <option value="date-desc">Terbaru</option>
-            <option value="date-asc">Terlama</option>
-            <option value="amount-desc">Terbesar</option>
-            <option value="amount-asc">Terkecil</option>
-          </select>
-        </div>
-        <div className="col-span-2 min-w-0 md:col-span-1">
-          <div className="relative min-w-0">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" aria-hidden="true" />
-            <input
-              id={searchInputId}
-              ref={actualSearchInputRef}
-              type="search"
-              value={searchTerm}
-              onChange={(event) => handleSearchChange(event.target.value)}
-              placeholder="Cari judul/catatan…"
-              aria-label="Cari transaksi"
-              className="h-[40px] w-full rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white placeholder:text-white/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            />
-          </div>
-        </div>
-        <div className="col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 md:col-span-6 md:flex-nowrap md:gap-3">
-          <button
-            type="button"
-            onClick={handleReset}
-            className="inline-flex h-[40px] items-center rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white/80 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            aria-label="Reset semua filter"
-          >
-            Reset
-          </button>
-          <button
-            type="button"
-            onClick={onOpenAdd}
-            className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-white shadow transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            aria-label="Tambah transaksi"
-          >
-            <Plus className="h-4 w-4" /> Tambah Transaksi
-          </button>
-        </div>
-      </div>
-      {customOpen && filter.period.preset === "custom" && (
-        <CustomRangePopover
-          anchorRef={customButtonRef}
-          period={filter.period}
-          onChange={(next) => onFilterChange({ period: next })}
-          onClose={() => setCustomOpen(false)}
-        />
-      )}
-    </div>
-  );
-}
-
-
-function CategoryMultiSelect({ categories = [], selected = [], onChange, ariaLabel }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-  const triggerRef = useRef(null);
-  const panelRef = useRef(null);
-  const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
-
-  useEffect(() => {
-    if (!open) return;
-    const updatePosition = () => {
-      const anchor = triggerRef.current;
-      if (!anchor) return;
-      const rect = anchor.getBoundingClientRect();
-      const preferredWidth = Math.min(320, Math.max(260, rect.width || 260));
-      const left = Math.min(
-        Math.max(16, rect.left),
-        window.innerWidth - preferredWidth - 16,
-      );
-      setPosition({
-        top: rect.bottom + 8,
-        left,
-        width: preferredWidth,
-      });
-    };
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (event) => {
-      if (triggerRef.current?.contains(event.target)) return;
-      if (panelRef.current?.contains(event.target)) return;
-      setOpen(false);
-    };
-    const handleKey = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (open) {
-      setQuery("");
-    }
-  }, [open]);
-
-  const toggle = (id) => {
-    const set = new Set(selected);
-    if (set.has(id)) set.delete(id);
-    else set.add(id);
-    onChange(Array.from(set));
-  };
-
-  const clearAll = () => {
-    onChange([]);
-  };
-
-  const filteredCategories = useMemo(() => {
-    const term = query.trim().toLowerCase();
-    if (!term) return categories;
-    return categories.filter((cat) => {
-      return (
-        cat.name?.toLowerCase().includes(term) ||
-        (TYPE_LABELS[cat.type] || "").toLowerCase().includes(term)
-      );
-    });
-  }, [categories, query]);
-
-  const summaryLabel = useMemo(() => {
-    if (!selected.length) return "Semua kategori";
-    if (selected.length === 1) {
-      const match = categories.find((cat) => cat.id === selected[0]);
-      return match?.name || "1 dipilih";
-    }
-    return `${selected.length} dipilih`;
-  }, [categories, selected]);
-
-  const label = ariaLabel || "Pilih kategori transaksi";
-
-  return (
-    <>
-      <button
-        type="button"
-        ref={triggerRef}
-        onClick={() => setOpen((prev) => !prev)}
-        className="inline-flex h-[40px] w-full min-w-0 flex-shrink-0 items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-medium text-white transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={label}
-      >
-        <span className="truncate">{summaryLabel}</span>
-        <ChevronDown className="h-4 w-4 text-white/60" aria-hidden="true" />
-      </button>
-      {open &&
-        createPortal(
-          <div className="fixed inset-0 z-40" role="presentation">
-            <div
-              ref={panelRef}
-              role="listbox"
-              aria-multiselectable="true"
-              className="absolute max-h-[320px] w-[min(320px,calc(100%-32px))] overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur"
-              style={{ top: position.top, left: position.left, width: position.width || undefined }}
-              data-role="category-panel"
-            >
-              <div className="flex items-center justify-between px-3 pt-3">
-                <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  className="rounded-full px-2 py-1 text-xs text-white/60 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-                >
-                  Reset
-                </button>
-              </div>
-              <div className="px-3 pb-2">
-                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3">
-                  <Search className="h-4 w-4 text-white/40" aria-hidden="true" />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Cari kategori"
-                    className="h-9 w-full bg-transparent text-sm text-white placeholder:text-white/40 focus-visible:outline-none"
-                    aria-label="Cari kategori"
-                  />
-                </div>
-              </div>
-              <div className="max-h-[220px] overflow-y-auto px-1 pb-3">
-                {filteredCategories.length ? (
-                  filteredCategories.map((cat) => {
-                    const checked = selected.includes(cat.id);
-                    return (
-                      <button
-                        key={cat.id}
-                        type="button"
-                        onClick={() => toggle(cat.id)}
-                        className={clsx(
-                          "flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
-                          checked ? "bg-white/10 text-white" : "text-white/80 hover:bg-white/5",
-                        )}
-                        role="option"
-                        aria-selected={checked}
-                      >
-                      <div className="flex flex-col text-left">
-                        <span className="font-medium text-white">{cat.name}</span>
-                      </div>
-                        {checked ? (
-                          <Check className="h-4 w-4 text-brand" aria-hidden="true" />
-                        ) : (
-                          <span className="h-4 w-4 rounded-full border border-white/30" aria-hidden="true" />
-                        )}
-                      </button>
-                    );
-                  })
-                ) : (
-                  <p className="px-3 py-6 text-center text-sm text-white/50">Tidak ada kategori ditemukan.</p>
-                )}
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
-  );
-}
-
-function CustomRangePopover({ anchorRef, period, onChange, onClose }) {
-  const popoverRef = useRef(null);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-
-  const updatePosition = useCallback(() => {
-    const anchor = anchorRef?.current;
-    if (!anchor) return;
-    const rect = anchor.getBoundingClientRect();
-    const width = Math.min(360, Math.max(280, rect.width + 120));
-    const left = Math.min(
-      Math.max(16, rect.left - (width - rect.width) / 2),
-      window.innerWidth - width - 16,
-    );
-    setPosition({
-      top: rect.bottom + 8,
-      left,
-      width,
-    });
-  }, [anchorRef]);
-
-  useEffect(() => {
-    updatePosition();
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [updatePosition]);
-
-  useEffect(() => {
-    const handleClick = (event) => {
-      if (anchorRef?.current?.contains(event.target)) return;
-      if (popoverRef.current?.contains(event.target)) return;
-      onClose();
-    };
-    const handleKey = (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("mousedown", handleClick);
-      document.removeEventListener("keydown", handleKey);
-    };
-  }, [anchorRef, onClose]);
-
-  const content = (
-    <div className="fixed inset-0 z-40" role="presentation">
-      <div
-        ref={popoverRef}
-        className="absolute w-[min(360px,calc(100%-32px))] rounded-2xl border border-white/10 bg-slate-900/95 p-4 shadow-2xl backdrop-blur"
-        style={{ top: position.top, left: position.left, width: position.width || undefined }}
-        data-role="custom-range"
-      >
-        <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Rentang custom</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-2 text-xs text-white/60">
-            <span className="font-medium text-white/70">Mulai</span>
-            <input
-              type="date"
-              value={period.start || ""}
-              onChange={(event) => onChange({ ...period, start: event.target.value })}
-              className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-xs text-white/60">
-            <span className="font-medium text-white/70">Selesai</span>
-            <input
-              type="date"
-              value={period.end || ""}
-              min={period.start || undefined}
-              onChange={(event) => onChange({ ...period, end: event.target.value })}
-              className="h-11 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-            />
-          </label>
-        </div>
-        <div className="mt-3 flex items-center justify-between text-xs text-white/50">
-          <span>Pilih rentang tanggal sesuai kebutuhan.</span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full px-3 py-1 text-xs font-semibold text-white/80 transition-colors hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          >
-            Selesai
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  return createPortal(content, document.body);
-}
-
-function ActiveFilterChips({ chips, onRemove }) {
-  if (!chips?.length) return null;
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {chips.map((chip) => (
-        <button
-          key={chip.key}
-          type="button"
-          onClick={() => onRemove(chip)}
-          className="group inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:bg-brand/5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          aria-label={`Hapus filter ${chip.label}`}
-        >
-          <span className="truncate">{chip.label}</span>
-          <X className="h-3.5 w-3.5 transition group-hover:text-brand" aria-hidden="true" />
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function SummaryCards({ summary, loading }) {
   const cards = [
     {
@@ -1516,522 +1052,44 @@ function SummaryCards({ summary, loading }) {
   );
 }
 
-function SelectionToolbar({
-  count,
-  onClear,
-  onDelete,
-  onEditCategory,
-  onEditAccount,
-  deleting,
-  updating,
-  topOffset,
-}) {
+function ActiveFilterChips({ chips = [], onRemove }) {
+  if (!chips.length) return null;
+
   return (
-    <div
-      className="pointer-events-none sticky bottom-4 z-30 md:bottom-auto md:top-0 md:sticky"
-      style={topOffset ? { top: topOffset } : undefined}
-      aria-live="polite"
-    >
-      <div className="pointer-events-auto mx-auto flex w-full max-w-[720px] flex-col gap-3 rounded-2xl border border-border bg-surface/95 p-4 shadow-lg shadow-black/5 md:flex-row md:items-center md:justify-between md:px-6">
-        <div className="flex flex-1 flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-2 rounded-full bg-brand/10 px-3 py-1 text-sm font-semibold text-brand">
-            {count} dipilih
-          </span>
-          <button
-            type="button"
-            onClick={onClear}
-            className="text-sm font-medium text-muted transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          >
-            Batal
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onEditCategory}
-            disabled={updating}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}
-            Ubah kategori
-          </button>
-          <button
-            type="button"
-            onClick={onEditAccount}
-            disabled={updating}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />}
-            Ubah akun
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleting}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:bg-[color:var(--color-danger-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-70"
-          >
-            {deleting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
-            Hapus
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TransactionsTable({
-  items,
-  loading,
-  error,
-  onRetry,
-  onLoadMore,
-  hasMore,
-  onToggleSelect,
-  onToggleSelectAll,
-  allSelected,
-  selectedIds,
-  onDelete,
-  onEdit,
-  tableStickyTop,
-  total,
-  variant = "table",
-  onResetFilters = () => {},
-  onOpenAdd = () => {},
-  deleteDisabled = false,
-}) {
-  const isCardVariant = variant === "card";
-  const isInitialLoading = loading && items.length === 0;
-  const isFetchingMore = loading && items.length > 0;
-  const displayStart = items.length > 0 ? 1 : 0;
-  const displayEnd = items.length;
-  const stickyHeaderStyle = tableStickyTop ? { top: tableStickyTop } : undefined;
-
-  if (error && !items.length) {
-    return (
-      <div className="rounded-2xl border border-danger/30 bg-danger/10 p-6 text-center">
-        <p className="mb-3 text-sm font-medium text-danger">Gagal memuat data transaksi.</p>
+    <div className="flex flex-wrap items-center gap-2">
+      {chips.map((chip) => (
         <button
+          key={chip.key}
           type="button"
-          onClick={onRetry}
-          className="inline-flex h-11 items-center justify-center rounded-2xl border border-danger/40 bg-white/80 px-4 text-sm font-semibold text-danger transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)]"
+          onClick={() => onRemove?.(chip)}
+          className="inline-flex items-center gap-2 rounded-full bg-slate-900/70 px-3 py-1 text-xs font-medium text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
-          Coba lagi
+          <span>{chip.label}</span>
+          <X className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
-      </div>
-    );
-  }
-
-  if (!loading && !items.length) {
-    return <EmptyTransactionsState onResetFilters={onResetFilters} onOpenAdd={onOpenAdd} />;
-  }
-
-  return (
-    <section className="space-y-4">
-      <div className={clsx("rounded-2xl border border-border bg-surface shadow-sm", isCardVariant ? "p-3" : "") }>
-        {isCardVariant ? (
-          <div className="flex flex-col gap-3">
-            {items.map((item) => (
-              <TransactionItem
-                key={item.id}
-                item={item}
-                variant="card"
-                isSelected={selectedIds.has(item.id)}
-                onToggleSelect={(event) => onToggleSelect(item.id, event)}
-                onDelete={() => onDelete(item.id)}
-                onEdit={() => onEdit(item)}
-                deleteDisabled={deleteDisabled}
-              />
-            ))}
-            {isInitialLoading &&
-              Array.from({ length: 6 }).map((_, index) => <TransactionSkeletonCard key={`card-skeleton-${index}`} />)}
-            {isFetchingMore &&
-              !isInitialLoading &&
-              Array.from({ length: 2 }).map((_, index) => <TransactionSkeletonCard key={`card-fetch-${index}`} />)}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full table-fixed border-separate border-spacing-0" aria-label="Daftar transaksi">
-              <thead
-                className="sticky top-0 z-10 border-b border-border/70 bg-surface-1/95 text-xs font-semibold uppercase tracking-wide text-muted backdrop-blur"
-                style={stickyHeaderStyle}
-              >
-                <tr>
-                  <th scope="col" className="w-12 px-3 py-3 text-center">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={onToggleSelectAll}
-                      className="h-4 w-4 rounded border-border/70 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                      aria-label="Pilih semua transaksi"
-                    />
-                  </th>
-                  <th scope="col" className="min-w-[200px] px-3 py-3 text-left">Kategori</th>
-                  <th scope="col" className="min-w-[160px] px-3 py-3 text-left">Tanggal</th>
-                  <th scope="col" className="min-w-[240px] px-3 py-3 text-left">Catatan</th>
-                  <th scope="col" className="min-w-[180px] px-3 py-3 text-left">Akun</th>
-                  <th scope="col" className="min-w-[200px] px-3 py-3 text-left">Tags</th>
-                  <th scope="col" className="min-w-[140px] px-3 py-3 text-right">Jumlah</th>
-                  <th scope="col" className="w-[120px] px-3 py-3 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <TransactionItem
-                    key={item.id}
-                    item={item}
-                    variant="table"
-                    isSelected={selectedIds.has(item.id)}
-                    onToggleSelect={(event) => onToggleSelect(item.id, event)}
-                    onDelete={() => onDelete(item.id)}
-                    onEdit={() => onEdit(item)}
-                    deleteDisabled={deleteDisabled}
-                  />
-                ))}
-                {isInitialLoading &&
-                  Array.from({ length: 6 }).map((_, index) => <TransactionSkeletonRow key={`row-skeleton-${index}`} />)}
-                {isFetchingMore &&
-                  !isInitialLoading &&
-                  Array.from({ length: 2 }).map((_, index) => <TransactionSkeletonRow key={`row-fetch-${index}`} />)}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-        <span>
-          {total
-            ? `Menampilkan ${displayStart || 0}–${displayEnd} dari ${total}`
-            : `Menampilkan ${displayEnd} transaksi`}
-        </span>
-        {hasMore ? (
-          <button
-            type="button"
-            onClick={onLoadMore}
-            disabled={isFetchingMore}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isFetchingMore && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-            {isFetchingMore ? "Memuat…" : "Muat lagi"}
-          </button>
-        ) : null}
-      </div>
-    </section>
+      ))}
+    </div>
   );
 }
 
 function UndoSnackbar({ open, message, onUndo, loading }) {
   if (!open) return null;
-  return createPortal(
-    <div
-      className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 sm:bottom-6"
-      role="status"
-      aria-live="polite"
-    >
-      <div className="flex w-full max-w-sm items-center gap-3 rounded-2xl border border-border bg-surface/95 px-4 py-3 text-sm text-text shadow-lg shadow-black/20">
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-2xl bg-slate-900/95 px-4 py-3 text-sm text-slate-100 shadow-lg ring-1 ring-slate-800 backdrop-blur">
+      <div className="flex items-center justify-between gap-3">
         <span className="flex-1">{message}</span>
         <button
           type="button"
           onClick={onUndo}
           disabled={loading}
-          className="inline-flex h-11 items-center justify-center rounded-xl border border-brand/50 px-4 text-sm font-semibold text-brand transition hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center rounded-full bg-[var(--accent)] px-4 text-xs font-semibold text-slate-950 transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : 'Urungkan'}
-        </button>
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function TransactionSkeletonRow() {
-  return (
-    <tr className="border-b border-border/60 last:border-b-0">
-      {Array.from({ length: 8 }).map((_, index) => (
-        <td key={index} className="px-3 py-3 align-middle">
-          <div className="h-4 w-full animate-pulse rounded-full bg-border/60" />
-        </td>
-      ))}
-    </tr>
-  );
-}
-
-function TransactionSkeletonCard() {
-  return (
-    <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="h-4 w-32 animate-pulse rounded-full bg-border/60" />
-        <div className="h-5 w-20 animate-pulse rounded-full bg-border/60" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="h-4 w-full animate-pulse rounded-full bg-border/60" />
-        <div className="h-4 w-full animate-pulse rounded-full bg-border/60" />
-      </div>
-      <div className="mt-4 h-12 w-full animate-pulse rounded-2xl bg-border/60" />
-    </div>
-  );
-}
-
-function TransactionItem({
-  item,
-  variant = "table",
-  isSelected,
-  onToggleSelect,
-  onDelete,
-  onEdit,
-  deleteDisabled = false,
-}) {
-  const amountTone =
-    item.type === "income"
-      ? "text-success"
-      : item.type === "transfer"
-        ? "text-info"
-        : "text-danger";
-  const amountClass = clsx("text-right text-sm font-semibold tabular-nums", amountTone);
-  const amountCardClass = clsx("text-lg font-semibold tabular-nums", amountTone);
-  const note = item.notes ?? item.note ?? item.title ?? "";
-  const noteDisplay = note.trim() ? note.trim() : "—";
-  const formattedDate = formatTransactionDate(item.date);
-  const dateValue = toDateInput(item.date);
-  const categoryName = item.category || "(Tanpa kategori)";
-  const tags = useMemo(() => parseTags(item.tags), [item.tags]);
-  const hasAttachments = Boolean(item.receipt_url) || (Array.isArray(item.receipts) && item.receipts.length > 0);
-
-  const selectionCheckbox = (
-    <input
-      type="checkbox"
-      checked={isSelected}
-      onChange={onToggleSelect}
-      className="h-4 w-4 rounded border-border/70 text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-      aria-label="Pilih transaksi"
-    />
-  );
-
-  if (variant === "card") {
-    return (
-      <article
-        className={clsx(
-          "rounded-2xl border border-border bg-surface/90 p-4 shadow-sm transition-colors",
-          isSelected && "border-brand/40 bg-brand/5 ring-2 ring-brand/40",
-        )}
-        onDoubleClick={onEdit}
-      >
-        <div className="flex items-start gap-3">
-          <div className="pt-1">{selectionCheckbox}</div>
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={item.category_color ? { backgroundColor: item.category_color } : undefined}
-                  aria-hidden="true"
-                />
-                <p className="text-sm font-semibold text-text" title={categoryName}>
-                  {categoryName}
-                </p>
-                {hasAttachments && <Paperclip className="h-4 w-4 text-muted" aria-hidden="true" />}
-              </div>
-              <span className={clsx("text-right", amountCardClass)}>{formatIDR(item.amount)}</span>
-            </div>
-            <div className="grid grid-cols-1 gap-3 text-sm text-muted sm:grid-cols-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide">Tanggal</p>
-                <p className="font-medium text-text">
-                  <time dateTime={dateValue}>{formattedDate}</time>
-                </p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide">Akun</p>
-                <p className="font-medium text-text">
-                  {item.type === "transfer" ? (
-                    <span className="flex items-center gap-1">
-                      <span className="truncate">{item.account || "—"}</span>
-                      <ArrowRight className="h-4 w-4 text-muted" aria-hidden="true" />
-                      <span className="truncate">{item.to_account || "—"}</span>
-                    </span>
-                  ) : (
-                    <span className="truncate">{item.account || "—"}</span>
-                  )}
-                </p>
-              </div>
-            </div>
-            <p className="line-clamp-2 text-sm text-muted" title={noteDisplay}>
-              {noteDisplay}
-            </p>
-            {tags.length > 0 && (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-text"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-            aria-label="Edit transaksi"
-          >
-            <Pencil className="h-4 w-4" aria-hidden="true" />
-            Edit
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleteDisabled}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-danger/40 bg-danger/10 px-4 text-sm font-medium text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Hapus transaksi"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-            Hapus
-          </button>
-        </div>
-      </article>
-    );
-  }
-
-  return (
-    <tr
-      className={clsx(
-        "border-b border-border/60 last:border-b-0 transition-colors",
-        isSelected
-          ? "bg-brand/10 shadow-[inset_0_0_0_1px_hsl(var(--color-primary)/0.35)]"
-          : "hover:bg-surface-2/60",
-      )}
-      onDoubleClick={onEdit}
-    >
-      <td className="px-3 py-3 align-middle">
-        <div className="flex items-center justify-center">{selectionCheckbox}</div>
-      </td>
-      <td className="px-3 py-3 align-middle">
-        <div className="flex items-center gap-3">
-          <span
-            className="h-2.5 w-2.5 rounded-full"
-            style={item.category_color ? { backgroundColor: item.category_color } : undefined}
-            aria-hidden="true"
-          />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-text" title={categoryName}>
-              {categoryName}
-            </p>
-            <p className="text-xs uppercase tracking-wide text-muted">{TYPE_LABELS[item.type] || item.type}</p>
-          </div>
-        </div>
-      </td>
-      <td className="px-3 py-3 align-middle text-sm text-muted">
-        <time dateTime={dateValue}>{formattedDate}</time>
-      </td>
-      <td className="px-3 py-3 align-middle">
-        <div className="flex items-start gap-2">
-          <p className="line-clamp-2 text-sm text-text" title={noteDisplay}>
-            {noteDisplay}
-          </p>
-          {hasAttachments && <Paperclip className="mt-0.5 h-4 w-4 text-muted" aria-hidden="true" />}
-        </div>
-      </td>
-      <td className="px-3 py-3 align-middle text-sm text-text">
-        {item.type === "transfer" ? (
-          <div className="flex flex-wrap items-center gap-1">
-            <span className="truncate">{item.account || "—"}</span>
-            <ArrowRight className="h-4 w-4 text-muted" aria-hidden="true" />
-            <span className="truncate">{item.to_account || "—"}</span>
-          </div>
-        ) : (
-          <span className="truncate">{item.account || "—"}</span>
-        )}
-      </td>
-      <td className="px-3 py-3 align-middle">
-        {tags.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-text"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <span className="text-sm text-muted">—</span>
-        )}
-      </td>
-      <td className="px-3 py-3 align-middle">
-        <span className={clsx("block", amountClass)}>{formatIDR(item.amount)}</span>
-      </td>
-      <td className="px-3 py-3 align-middle">
-        <div className="flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-muted transition hover:border-brand/40 hover:bg-brand/5 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-            aria-label="Edit transaksi"
-          >
-            <Pencil className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleteDisabled}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-danger/40 bg-danger/10 text-danger transition hover:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--color-ring-danger)] disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Hapus transaksi"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-      </td>
-    </tr>
-  );
-}
-
-function EmptyTransactionsState({ onResetFilters, onOpenAdd }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-surface/80 px-6 py-16 text-center">
-      <span className="rounded-full bg-brand/10 p-3 text-brand">
-        <Inbox className="h-6 w-6" aria-hidden="true" />
-      </span>
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-text">Belum ada transaksi sesuai filter</h2>
-        <p className="text-sm text-muted">Coba atur ulang filter atau tambahkan transaksi baru.</p>
-      </div>
-      <div className="flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={onResetFilters}
-          className="inline-flex h-11 items-center justify-center rounded-2xl border border-border px-4 text-sm font-medium text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-        >
-          Reset filter
-        </button>
-        <button
-          type="button"
-          onClick={onOpenAdd}
-          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah Transaksi
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : "Urungkan"}
         </button>
       </div>
     </div>
   );
-}
-
-function parseTags(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value
-      .map((tag) => String(tag).trim())
-      .filter(Boolean);
-  }
-  return String(value)
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
 }
 
 function BulkEditDialog({
