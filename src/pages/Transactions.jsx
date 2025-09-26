@@ -33,6 +33,7 @@ import {
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
+import Breadcrumbs from "../layout/Breadcrumbs";
 
 const TYPE_LABELS = {
   income: "Pemasukan",
@@ -724,39 +725,42 @@ export default function Transactions() {
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-text">Transaksi</h1>
-            <p className="text-sm text-muted">{PAGE_DESCRIPTION}</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={handleNavigateToAdd}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              aria-label="Tambah transaksi (Ctrl+T)"
-            >
-              <Plus className="h-4 w-4" /> Tambah Transaksi
-            </button>
-            <button
-              type="button"
-              onClick={() => setImportOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              aria-label="Import CSV (Ctrl+I)"
-            >
-              <Upload className="h-4 w-4" /> Import CSV
-            </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={exporting}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label="Export CSV (Ctrl+E)"
-            >
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
-            </button>
-          </div>
-        </header>
+        <div className="space-y-2">
+          <Breadcrumbs />
+          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-text">Transaksi</h1>
+              <p className="text-sm text-muted">{PAGE_DESCRIPTION}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleNavigateToAdd}
+                className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                aria-label="Tambah transaksi (Ctrl+T)"
+              >
+                <Plus className="h-4 w-4" /> Tambah Transaksi
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                aria-label="Import CSV (Ctrl+I)"
+              >
+                <Upload className="h-4 w-4" /> Import CSV
+              </button>
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exporting}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Export CSV (Ctrl+E)"
+              >
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
+              </button>
+            </div>
+          </header>
+        </div>
 
         <div
           ref={filterBarRef}
