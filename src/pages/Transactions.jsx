@@ -33,6 +33,7 @@ import {
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
+import Breadcrumbs from "../layout/Breadcrumbs";
 
 const TYPE_LABELS = {
   income: "Pemasukan",
@@ -724,6 +725,7 @@ export default function Transactions() {
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
+        <Breadcrumbs />
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-text">Transaksi</h1>

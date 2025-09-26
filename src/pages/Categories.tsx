@@ -14,6 +14,7 @@ import {
   updateCategory,
 } from "../lib/api-categories";
 import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
+import Breadcrumbs from "../layout/Breadcrumbs";
 
 function toMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message;
@@ -371,6 +372,7 @@ export default function Categories() {
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4">
+      <Breadcrumbs />
       <div className="rounded-2xl border border-border/60 bg-surface-1/70 p-6 shadow-sm">
         <h1 className="text-lg font-semibold text-text">Manajemen Kategori</h1>
         <p className="mt-2 text-sm text-muted">
