@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createSearchParams, useNavigate } from "react-router-dom";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
@@ -16,11 +17,15 @@ import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
 import useDashboardBalances from "../hooks/useDashboardBalances";
+import DailyDigestModal from "../components/DailyDigestModal";
+import useDailyDigest from "../hooks/useDailyDigest";
+import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
+  const navigate = useNavigate();
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
@@ -35,6 +40,12 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
     refresh,
   } = balances;
   const { start: periodStart, end: periodEnd } = periodRange;
+  const [digestOpen, setDigestOpen] = useState(false);
+  const digest = useDailyDigest();
+  const { markSeen: markDigestSeen } = useShowDigestOnLogin({
+    userId: digest.userId,
+    onOpen: () => setDigestOpen(true),
+  });
 
   useEffect(() => {
     refresh({ start: periodStart, end: periodEnd });
@@ -66,15 +77,71 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
   const insights = useInsights(txs);
   const savingsTarget = stats?.savingsTarget || 1_000_000;
 
+  const handleOpenDigest = useCallback(() => {
+    setDigestOpen(true);
+  }, []);
+
+  const handleCloseDigest = useCallback(() => {
+    markDigestSeen();
+    setDigestOpen(false);
+  }, [markDigestSeen]);
+
+  const handleAddTransaction = useCallback(() => {
+    markDigestSeen();
+    setDigestOpen(false);
+    navigate("/transactions/add");
+  }, [markDigestSeen, navigate]);
+
+  const handleViewMonthly = useCallback(() => {
+    markDigestSeen();
+    setDigestOpen(false);
+    navigate("/budgets");
+  }, [markDigestSeen, navigate]);
+
+  const handleSelectCategory = useCallback(
+    (categoryId) => {
+      if (!categoryId) {
+        handleCloseDigest();
+        return;
+      }
+      if (categoryId.startsWith("custom:")) {
+        handleCloseDigest();
+        return;
+      }
+      const monthParam = digest.data
+        ? new Date(digest.data.generatedAt).toISOString().slice(0, 7)
+        : new Date().toISOString().slice(0, 7);
+      const params = createSearchParams({
+        range: "month",
+        month: monthParam,
+        type: "expense",
+        categories: categoryId,
+      });
+      markDigestSeen();
+      setDigestOpen(false);
+      navigate({ pathname: "/transactions", search: params.toString() });
+    },
+    [digest.data, handleCloseDigest, markDigestSeen, navigate],
+  );
+
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted sm:text-base">
-          Ringkasan keuanganmu
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            Dashboard
+          </h1>
+          <p className="text-sm text-muted sm:text-base">
+            Ringkasan keuanganmu
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleOpenDigest}
+          className="inline-flex items-center justify-center rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        >
+          Lihat Ringkasan Hari Ini
+        </button>
       </header>
 
       <section className="space-y-4">
@@ -124,6 +191,19 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           <RecentTransactions txs={txs} />
         </div>
       </section>
+
+      <DailyDigestModal
+        open={digestOpen}
+        data={digest.data}
+        isLoading={digest.isLoading}
+        isFetching={digest.isFetching}
+        error={digest.error ?? null}
+        onClose={handleCloseDigest}
+        onRetry={digest.refetch}
+        onAddTransaction={handleAddTransaction}
+        onViewMonthly={handleViewMonthly}
+        onSelectCategory={handleSelectCategory}
+      />
     </div>
   );
 }
