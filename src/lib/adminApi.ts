@@ -1,4 +1,5 @@
 import type { PostgrestSingleResponse } from '@supabase/supabase-js';
+import { DEFAULT_DASHBOARD_CONTENT, parseDashboardContentValue, type DashboardContent } from './appSettings';
 import { supabase } from './supabase';
 
 export type SidebarAccessLevel = 'public' | 'user' | 'admin';
@@ -55,6 +56,10 @@ export type AppDescriptionSetting = {
 export type BrandingSetting = {
   primary: string;
   secondary: string;
+  updated_at: string | null;
+};
+
+export type DashboardContentSetting = DashboardContent & {
   updated_at: string | null;
 };
 
@@ -552,6 +557,53 @@ export async function setBranding(branding: {
   } catch (error) {
     console.error('[adminApi] setBranding failed', error);
     throw new Error('Gagal menyimpan pengaturan branding');
+  }
+}
+
+export async function getDashboardContent(): Promise<DashboardContentSetting> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', 'dashboard_content')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const content = parseDashboardContentValue(data?.value);
+    return { ...content, updated_at: data?.updated_at ?? null };
+  } catch (error) {
+    console.error('[adminApi] getDashboardContent failed', error);
+    throw new Error('Gagal memuat konten dashboard');
+  }
+}
+
+export async function setDashboardContent(content: DashboardContent): Promise<DashboardContentSetting> {
+  try {
+    const payload: DashboardContent = {
+      title: content.title.trim() || DEFAULT_DASHBOARD_CONTENT.title,
+      subtitle: content.subtitle.trim(),
+      ctaLabel: content.ctaLabel.trim() || DEFAULT_DASHBOARD_CONTENT.ctaLabel,
+    };
+
+    const response = await supabase
+      .from('app_settings')
+      .upsert(
+        {
+          key: 'dashboard_content',
+          value: payload,
+        },
+        { onConflict: 'key' }
+      )
+      .select('value, updated_at')
+      .single();
+
+    const data = ensureResponse(response);
+    const parsed = parseDashboardContentValue(data.value);
+    return { ...parsed, updated_at: data.updated_at ?? null };
+  } catch (error) {
+    console.error('[adminApi] setDashboardContent failed', error);
+    throw new Error('Gagal menyimpan konten dashboard');
   }
 }
 

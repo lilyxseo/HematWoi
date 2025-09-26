@@ -14,6 +14,10 @@ import PeriodPicker, {
 import useDashboardBalances from "../hooks/useDashboardBalances";
 import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
+import {
+  DEFAULT_DASHBOARD_CONTENT,
+  fetchDashboardContent,
+} from "../lib/appSettings";
 
 const DEFAULT_PRESET = "month";
 
@@ -22,6 +26,7 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
+  const [heroContent, setHeroContent] = useState(DEFAULT_DASHBOARD_CONTENT);
   const {
     income: periodIncome,
     expense: periodExpense,
@@ -43,6 +48,27 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
   useEffect(() => {
     refresh({ start: periodStart, end: periodEnd });
   }, [periodStart, periodEnd, refresh]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadContent = async () => {
+      try {
+        const content = await fetchDashboardContent();
+        if (active) {
+          setHeroContent(content);
+        }
+      } catch (error) {
+        console.error('[Dashboard] gagal memuat konten dashboard', error);
+      }
+    };
+
+    void loadContent();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handlePeriodChange = (range, preset) => {
     setPeriodRange(range);
@@ -81,20 +107,22 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-              Dashboard
+              {heroContent.title}
             </h1>
             <p className="text-sm text-muted sm:text-base">
-              Ringkasan keuanganmu
+              {heroContent.subtitle}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={digest.openManual}
-            aria-haspopup="dialog"
-            className="inline-flex h-10 items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-          >
-            Lihat Ringkasan Hari Ini
-          </button>
+          {heroContent.ctaLabel ? (
+            <button
+              type="button"
+              onClick={digest.openManual}
+              aria-haspopup="dialog"
+              className="inline-flex h-10 items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            >
+              {heroContent.ctaLabel}
+            </button>
+          ) : null}
         </header>
 
         <section className="space-y-4">

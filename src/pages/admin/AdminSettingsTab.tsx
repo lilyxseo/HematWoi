@@ -3,12 +3,16 @@ import clsx from 'clsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
   getAppDescription,
+  getDashboardContent,
   getBranding,
   setAppDescription,
+  setDashboardContent,
   setBranding,
   type AppDescriptionSetting,
+  type DashboardContentSetting,
   type BrandingSetting,
 } from '../../lib/adminApi';
+import { DEFAULT_DASHBOARD_CONTENT } from '../../lib/appSettings';
 
 const TEXTAREA_CLASS =
   'min-h-[140px] w-full rounded-2xl border border-border bg-background px-3 py-3 text-sm transition focus:outline-none focus:ring-2 focus:ring-primary';
@@ -26,27 +30,50 @@ type BrandingForm = {
   secondary: string;
 };
 
+type DashboardContentForm = {
+  title: string;
+  subtitle: string;
+  ctaLabel: string;
+};
+
 export default function AdminSettingsTab() {
   const { addToast } = useToast();
   const [description, setDescription] = useState('');
   const [descriptionMeta, setDescriptionMeta] = useState<string | null>(null);
   const [branding, setBrandingState] = useState<BrandingForm>({ primary: '#1e40af', secondary: '#0ea5e9' });
   const [brandingMeta, setBrandingMeta] = useState<string | null>(null);
+  const [dashboardContent, setDashboardContentState] = useState<DashboardContentForm>({
+    title: DEFAULT_DASHBOARD_CONTENT.title,
+    subtitle: DEFAULT_DASHBOARD_CONTENT.subtitle,
+    ctaLabel: DEFAULT_DASHBOARD_CONTENT.ctaLabel,
+  });
+  const [dashboardMeta, setDashboardMeta] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingDesc, setSavingDesc] = useState(false);
   const [savingBrand, setSavingBrand] = useState(false);
+  const [savingDashboard, setSavingDashboard] = useState(false);
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       setLoading(true);
       try {
-        const [desc, brand] = await Promise.all([getAppDescription(), getBranding()]);
+        const [desc, brand, dashboard] = await Promise.all([
+          getAppDescription(),
+          getBranding(),
+          getDashboardContent(),
+        ]);
         if (!mounted) return;
         setDescription(desc.text ?? '');
         setDescriptionMeta(desc.updated_at ?? null);
         setBrandingState({ primary: brand.primary, secondary: brand.secondary });
         setBrandingMeta(brand.updated_at ?? null);
+        setDashboardContentState({
+          title: dashboard.title,
+          subtitle: dashboard.subtitle,
+          ctaLabel: dashboard.ctaLabel,
+        });
+        setDashboardMeta(dashboard.updated_at ?? null);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Gagal memuat pengaturan';
         if (mounted) {
@@ -110,9 +137,35 @@ export default function AdminSettingsTab() {
     }
   };
 
+  const handleDashboardSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (savingDashboard) return;
+    setSavingDashboard(true);
+    try {
+      const payload = {
+        title: dashboardContent.title,
+        subtitle: dashboardContent.subtitle,
+        ctaLabel: dashboardContent.ctaLabel,
+      };
+      const result: DashboardContentSetting = await setDashboardContent(payload);
+      setDashboardContentState({
+        title: result.title,
+        subtitle: result.subtitle,
+        ctaLabel: result.ctaLabel,
+      });
+      setDashboardMeta(result.updated_at ?? null);
+      addToast('Konten dashboard diperbarui', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan konten dashboard';
+      addToast(message, 'error');
+    } finally {
+      setSavingDashboard(false);
+    }
+  };
+
   const renderSkeleton = () => (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {Array.from({ length: 2 }).map((_, index) => (
+    <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+      {Array.from({ length: 3 }).map((_, index) => (
         <div key={index} className="space-y-4 rounded-2xl border border-border/60 bg-muted/20 p-6">
           <div className="h-6 w-32 animate-pulse rounded-full bg-muted/40" />
           <div className="h-5 w-48 animate-pulse rounded-full bg-muted/40" />
@@ -135,7 +188,7 @@ export default function AdminSettingsTab() {
       {loading ? (
         renderSkeleton()
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
           <form
             onSubmit={handleDescriptionSubmit}
             className="space-y-4 rounded-2xl border border-border/60 bg-background p-6 shadow-sm"
@@ -212,6 +265,65 @@ export default function AdminSettingsTab() {
                 disabled={savingBrand}
               >
                 Simpan Branding
+              </button>
+            </div>
+          </form>
+
+          <form
+            onSubmit={handleDashboardSubmit}
+            className="space-y-4 rounded-2xl border border-border/60 bg-background p-6 shadow-sm"
+          >
+            <div>
+              <h3 className="text-base font-semibold">Konten Dashboard</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Sesuaikan judul, deskripsi, dan tombol aksi yang tampil di header halaman dashboard pengguna.
+              </p>
+            </div>
+            <label className="block text-sm font-semibold text-muted-foreground">
+              Judul Halaman
+              <input
+                value={dashboardContent.title}
+                onChange={(event) =>
+                  setDashboardContentState((prev) => ({ ...prev, title: event.target.value }))
+                }
+                className={clsx(INPUT_CLASS, 'mt-1')}
+                placeholder={DEFAULT_DASHBOARD_CONTENT.title}
+              />
+            </label>
+            <label className="block text-sm font-semibold text-muted-foreground">
+              Deskripsi Singkat
+              <textarea
+                value={dashboardContent.subtitle}
+                onChange={(event) =>
+                  setDashboardContentState((prev) => ({ ...prev, subtitle: event.target.value }))
+                }
+                className={clsx(TEXTAREA_CLASS, 'mt-1')}
+                placeholder={DEFAULT_DASHBOARD_CONTENT.subtitle}
+              />
+            </label>
+            <label className="block text-sm font-semibold text-muted-foreground">
+              Teks Tombol Aksi
+              <input
+                value={dashboardContent.ctaLabel}
+                onChange={(event) =>
+                  setDashboardContentState((prev) => ({ ...prev, ctaLabel: event.target.value }))
+                }
+                className={clsx(INPUT_CLASS, 'mt-1')}
+                placeholder={DEFAULT_DASHBOARD_CONTENT.ctaLabel}
+              />
+            </label>
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+              <span>
+                {dashboardMeta
+                  ? `Terakhir diperbarui ${dateFormatter.format(new Date(dashboardMeta))}`
+                  : 'Belum pernah disimpan'}
+              </span>
+              <button
+                type="submit"
+                className="h-11 rounded-2xl bg-primary px-6 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+                disabled={savingDashboard}
+              >
+                Simpan Konten Dashboard
               </button>
             </div>
           </form>
