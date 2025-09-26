@@ -341,7 +341,7 @@ export default function useShowDigestOnLogin({
         autoOpenRef.current = false;
         return;
       }
-      if (event === 'SIGNED_IN') {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
         const uid = session?.user?.id ?? null;
         setUserId(uid);
         tryOpenForUser(uid, true);
