@@ -51,6 +51,7 @@ import { removeTransaction as apiDelete } from "./lib/api-transactions";
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
 import UserProfileProvider from "./context/UserProfileContext.jsx";
+import { AccentProvider } from "./context/AccentContext";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
 import MoneyTalkProvider, {
@@ -1188,9 +1189,11 @@ export default function App() {
     <ModeProvider>
       <UserProfileProvider>
         <ToastProvider>
-          <DataProvider>
-            <AppContent />
-          </DataProvider>
+          <AccentProvider>
+            <DataProvider>
+              <AppContent />
+            </DataProvider>
+          </AccentProvider>
         </ToastProvider>
       </UserProfileProvider>
     </ModeProvider>

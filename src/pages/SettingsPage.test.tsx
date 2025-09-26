@@ -5,9 +5,21 @@ import { MemoryRouter } from 'react-router-dom';
 import '@testing-library/jest-dom/vitest';
 import SettingsPage from './SettingsPage';
 import { DataProvider } from '../context/DataContext';
+import { AccentProvider } from '../context/AccentContext';
+import ToastProvider from '../context/ToastContext';
 import { vi } from 'vitest';
 
-vi.mock('../lib/supabase', () => ({ supabase: {} }));
+vi.mock('../lib/supabase', () => {
+  const unsubscribe = vi.fn();
+  return {
+    supabase: {
+      auth: {
+        getSession: vi.fn().mockResolvedValue({ data: { session: null }, error: null }),
+        onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe } } }),
+      },
+    },
+  };
+});
 
 const store: Record<string, string> = {};
 (global as any).localStorage = {
@@ -23,9 +35,13 @@ const renderWithMode = (mode: 'online' | 'local') => {
   localStorage.setItem('hw:connectionMode', mode);
   return render(
     <MemoryRouter>
-      <DataProvider initialMode={mode}>
-        <SettingsPage />
-      </DataProvider>
+      <ToastProvider>
+        <AccentProvider>
+          <DataProvider initialMode={mode}>
+            <SettingsPage />
+          </DataProvider>
+        </AccentProvider>
+      </ToastProvider>
     </MemoryRouter>
   );
 };

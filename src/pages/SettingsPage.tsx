@@ -7,6 +7,7 @@ import NumberField from '../components/settings/NumberField';
 import DangerZone from '../components/settings/DangerZone';
 import { getPrefs, setPrefs, resetPrefs } from '../lib/preferences';
 import { useDataMode, useRepo } from '../context/DataContext';
+import AccentPicker from '../components/settings/AccentPicker';
 
 export default function SettingsPage() {
   const { mode, setMode } = useDataMode();
@@ -74,6 +75,7 @@ export default function SettingsPage() {
           ]}
           onChange={(v) => setLocalPrefs({ ...prefs, language: v })}
         />
+        <AccentPicker />
       </SettingsGroup>
       <SettingsGroup title="Gamification">
         <Toggle

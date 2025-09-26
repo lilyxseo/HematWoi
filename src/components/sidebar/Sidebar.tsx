@@ -394,7 +394,7 @@ export default function Sidebar({
                       className={clsx(
                         "flex items-center justify-center gap-2 rounded-xl border border-border px-2 py-2 text-xs font-medium transition-colors duration-200",
                         isActive
-                          ? "border-brand/60 bg-brand/15 text-brand"
+                          ? "border-[var(--accent)] bg-[color:rgb(var(--accent-rgb)/0.12)] text-[var(--accent)]"
                           : "bg-transparent text-muted hover:border-border/80 hover:bg-muted/10",
                         collapsed && "flex-col gap-1 px-1 py-1 text-[11px]"
                       )}
@@ -437,7 +437,7 @@ export default function Sidebar({
                       className={clsx(
                         "relative flex h-8 w-full items-center justify-center rounded-full border border-border transition-all duration-200",
                         isActive
-                          ? "ring-2 ring-brand/70"
+                          ? "ring-2 ring-[var(--accent)]"
                           : "hover:border-border/70"
                       )}
                     >
@@ -473,7 +473,7 @@ export default function Sidebar({
                     className={clsx(
                       "flex items-center justify-center gap-2 rounded-xl border border-border px-2 py-2 text-xs font-semibold transition-colors duration-200",
                       isActive
-                        ? "border-brand/60 bg-brand/15 text-brand"
+                        ? "border-[var(--accent)] bg-[color:rgb(var(--accent-rgb)/0.12)] text-[var(--accent)]"
                         : "bg-transparent text-muted hover:border-border/80 hover:bg-muted/10"
                     )}
                   >
@@ -519,7 +519,7 @@ export default function Sidebar({
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text transition-colors duration-200 hover:border-brand/50 hover:text-brand"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text transition-colors duration-200 hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 >
                   <LogOut className="h-4 w-4" />
                   {!collapsed && <span>Keluar</span>}
@@ -532,7 +532,7 @@ export default function Sidebar({
                     navigate("/auth");
                     onNavigate?.();
                   }}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text transition-colors duration-200 hover:border-brand/50 hover:text-brand"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text transition-colors duration-200 hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 >
                   <LogIn className="h-4 w-4" />
                   {!collapsed && <span>Masuk</span>}
@@ -542,7 +542,7 @@ export default function Sidebar({
               <button
                 type="button"
                 onClick={() => onToggle?.(!collapsed)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-text transition-colors duration-200 hover:border-brand/40 hover:text-brand"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-text transition-colors duration-200 hover:border-[var(--accent)] hover:text-[var(--accent)]"
                 title={collapsed ? "Perluas" : "Ciutkan"}
                 aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
               >
