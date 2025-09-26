@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import QuoteBoard from "../components/QuoteBoard";
 import SavingsProgress from "../components/SavingsProgress";
 import AchievementBadges from "../components/AchievementBadges";
@@ -16,14 +17,29 @@ import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
 import useDashboardBalances from "../hooks/useDashboardBalances";
+import DailyDigestModal from "../components/DailyDigestModal";
+import useDailyDigest, { markDailyDigestSeen } from "../hooks/useDailyDigest";
+import { useShowDigestOnLogin } from "../hooks/useShowDigestOnLogin";
 
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
 export default function Dashboard({ stats, txs, budgetStatus = [] }) {
+  const navigate = useNavigate();
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
+  const digest = useDailyDigest();
+  const {
+    data: digestData,
+    isLoading: digestLoading,
+    isFetching: digestFetching,
+    error: digestError,
+    refetch: refetchDigest,
+    userId: digestUserId,
+    todayKey: digestTodayKey,
+  } = digest;
+  const [digestOpen, setDigestOpen] = useState(false);
   const {
     income: periodIncome,
     expense: periodExpense,
@@ -44,6 +60,50 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
     setPeriodRange(range);
     setPeriodPreset(preset);
   };
+
+  const handleDigestOpen = useCallback(() => {
+    setDigestOpen(true);
+    if (digestUserId && digestTodayKey) {
+      markDailyDigestSeen(digestTodayKey, digestUserId);
+    }
+    void refetchDigest();
+  }, [digestTodayKey, digestUserId, refetchDigest]);
+
+  const handleDigestClose = useCallback(() => {
+    setDigestOpen(false);
+  }, []);
+
+  const handleManualDigest = useCallback(() => {
+    handleDigestOpen();
+  }, [handleDigestOpen]);
+
+  const handleAddTransaction = useCallback(() => {
+    navigate("/transaction/add");
+  }, [navigate]);
+
+  const handleViewMonthly = useCallback(() => {
+    navigate("/budgets");
+  }, [navigate]);
+
+  const handleSelectCategory = useCallback(
+    (categoryId, name) => {
+      const params = new URLSearchParams();
+      params.set("range", "month");
+      if (categoryId) {
+        params.set("categories", categoryId);
+      } else if (name) {
+        params.set("search", name);
+      }
+      navigate({ pathname: "/transactions", search: params.toString() });
+    },
+    [navigate],
+  );
+
+  useShowDigestOnLogin({
+    userId: digestUserId,
+    todayKey: digestTodayKey,
+    onRequestOpen: handleDigestOpen,
+  });
 
   const streak = useMemo(() => {
     const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
@@ -68,13 +128,22 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
 
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          Dashboard
-        </h1>
-        <p className="text-sm text-muted sm:text-base">
-          Ringkasan keuanganmu
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            Dashboard
+          </h1>
+          <p className="text-sm text-muted sm:text-base">
+            Ringkasan keuanganmu
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleManualDigest}
+          className="inline-flex items-center gap-2 rounded-full border border-transparent bg-[var(--accent)]/15 px-4 py-2 text-sm font-semibold text-[var(--accent)] transition hover:bg-[var(--accent)]/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+        >
+          Lihat Ringkasan Hari Ini
+        </button>
       </header>
 
       <section className="space-y-4">
@@ -124,6 +193,20 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           <RecentTransactions txs={txs} />
         </div>
       </section>
+
+      <DailyDigestModal
+        open={digestOpen}
+        data={digestData}
+        loading={digestLoading || digestFetching}
+        error={digestError ? digestError.message : null}
+        onRetry={() => {
+          void refetchDigest();
+        }}
+        onClose={handleDigestClose}
+        onAddTransaction={handleAddTransaction}
+        onViewMonthly={handleViewMonthly}
+        onSelectCategory={handleSelectCategory}
+      />
     </div>
   );
 }

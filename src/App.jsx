@@ -11,7 +11,6 @@ import {
 import AppSidebar from "./layout/AppSidebar";
 import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
-import DailyDigest from "./components/DailyDigest";
 import SyncBanner from "./components/SyncBanner";
 import BootGate from "./components/BootGate";
 
@@ -57,7 +56,6 @@ import MoneyTalkProvider, {
   useMoneyTalk,
 } from "./context/MoneyTalkContext.jsx";
 import { ModeProvider, useMode } from "./hooks/useMode";
-import useDailyDigest from "./hooks/useDailyDigest";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -83,23 +81,6 @@ const BRAND_PRESETS = {
   amber: { h: 38, s: 92, l: 50 },
   rose: { h: 347, s: 77, l: 60 },
 };
-
-function DailyDigestLayer({ transactions }) {
-  const digest = useDailyDigest({ transactions });
-
-  if (!digest.open || !digest.data || !digest.userId) {
-    return null;
-  }
-
-  return (
-    <DailyDigest
-      open={digest.open}
-      data={digest.data}
-      variant={digest.variant}
-      onClose={digest.close}
-    />
-  );
-}
 
 function normalizeBudgetRecord(budget, overrides = {}) {
   if (!budget) return null;
@@ -1018,7 +999,6 @@ function AppShell({ prefs, setPrefs }) {
     <CategoryProvider catMeta={catMeta}>
       <BootGate>
         <>
-          <DailyDigestLayer transactions={data.txs} />
           <Routes>
             <Route path="/auth" element={<AuthLogin />} />
             <Route element={<AuthGuard />}>
