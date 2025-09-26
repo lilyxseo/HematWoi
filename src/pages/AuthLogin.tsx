@@ -24,6 +24,9 @@ export default function AuthLogin() {
       return '';
     }
   });
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+  const [showEmailLogin, setShowEmailLogin] = useState(() => Boolean(prefilledIdentifier));
   const syncGuestData = useCallback(async (userId?: string | null) => {
     if (!userId) return;
     try {
@@ -41,6 +44,34 @@ export default function AuthLogin() {
     }
     navigate('/', { replace: true });
   }, [navigate]);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    if (googleLoading) return;
+    setGoogleError(null);
+    setGoogleLoading(true);
+    try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const redirectTo = origin ? `${origin.replace(/\/$/, '')}/auth/callback` : undefined;
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+      if (error) throw error;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Gagal memulai proses login Google. Silakan coba lagi.';
+      setGoogleError(message);
+      setGoogleLoading(false);
+    }
+  }, [googleLoading]);
 
   useEffect(() => {
     let isMounted = true;
@@ -154,10 +185,58 @@ export default function AuthLogin() {
                   {sessionError}
                 </div>
               ) : null}
+              {googleError ? (
+                <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="assertive">
+                  {googleError}
+                </div>
+              ) : null}
               {checking ? (
                 skeleton
               ) : (
-                <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
+                <div className="space-y-5 rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm">
+                  <div className="space-y-3 text-center">
+                    <button
+                      type="button"
+                      onClick={handleGoogleSignIn}
+                      disabled={googleLoading}
+                      className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {googleLoading ? (
+                        <span
+                          className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <span
+                          aria-hidden="true"
+                          className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
+                        >
+                          G
+                        </span>
+                      )}
+                      <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
+                    </button>
+                    <p className="text-xs text-muted">
+                      Jika pop-up ditutup atau kamu memilih akun berbeda, kamu bisa mencoba lagi atau gunakan email/password.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowEmailLogin((value) => !value)}
+                      className="inline-flex w-full items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 py-2 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    >
+                      {showEmailLogin ? 'Sembunyikan login email' : 'Masuk dengan email/password'}
+                    </button>
+                    {showEmailLogin ? (
+                      <LoginCard
+                        defaultIdentifier={prefilledIdentifier}
+                        onSuccess={handleSuccess}
+                        hideSocialProviders
+                      />
+                    ) : null}
+                  </div>
+                </div>
               )}
               <div className="rounded-3xl border border-border-subtle bg-surface px-5 py-4 shadow-sm">
                 <div className="space-y-3 text-center">

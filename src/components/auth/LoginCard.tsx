@@ -23,6 +23,7 @@ import SocialButtons from './SocialButtons';
 type LoginCardProps = {
   defaultIdentifier?: string;
   onSuccess?: (identifier: string) => void;
+  hideSocialProviders?: boolean;
 };
 
 type TabKey = 'password' | 'magic';
@@ -144,7 +145,11 @@ function PasswordInput({ error, hint, ...props }: Omit<InputProps, 'trailing'>) 
   );
 }
 
-export default function LoginCard({ defaultIdentifier = '', onSuccess }: LoginCardProps) {
+export default function LoginCard({
+  defaultIdentifier = '',
+  onSuccess,
+  hideSocialProviders = false,
+}: LoginCardProps) {
   const [tab, setTab] = useState<TabKey>('password');
   const [mode, setMode] = useState<ModeKey>('login');
   const [identifier, setIdentifier] = useState(defaultIdentifier);
@@ -163,7 +168,8 @@ export default function LoginCard({ defaultIdentifier = '', onSuccess }: LoginCa
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'github' | null>(null);
 
   const availableSocial = useMemo(() => getAvailableSocialProviders(), []);
-  const hasSocialProviders = availableSocial.google || availableSocial.github;
+  const hasSocialProviders =
+    !hideSocialProviders && (availableSocial.google || availableSocial.github);
 
   const submitGuardRef = useRef(0);
   const otpGuardRef = useRef(0);
