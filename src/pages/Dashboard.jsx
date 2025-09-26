@@ -16,6 +16,8 @@ import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
 import useDashboardBalances from "../hooks/useDashboardBalances";
+import DailyDigestCard from "../components/DailyDigestCard";
+import useDailyDigest from "../hooks/useDailyDigest";
 
 const DEFAULT_PRESET = "month";
 
@@ -24,6 +26,7 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
+  const dailyDigest = useDailyDigest();
   const {
     income: periodIncome,
     expense: periodExpense,
@@ -76,6 +79,13 @@ export default function Dashboard({ stats, txs, budgetStatus = [] }) {
           Ringkasan keuanganmu
         </p>
       </header>
+
+      <DailyDigestCard
+        data={dailyDigest.data}
+        loading={dailyDigest.loading}
+        error={dailyDigest.error}
+        onRetry={dailyDigest.refresh}
+      />
 
       <section className="space-y-4">
         <PeriodPicker
