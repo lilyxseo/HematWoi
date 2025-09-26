@@ -315,25 +315,30 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
-      <div
-        ref={dialogRef}
-        className="w-full max-w-2xl rounded-3xl border border-border/60 bg-card/95 p-6 text-text shadow-xl backdrop-blur"
-      >
-        <header className="mb-6 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted">{mode === 'create' ? 'Tambah Goal' : 'Edit Goal'}</p>
-            <h2 className="mt-1 text-2xl font-bold text-text">{mode === 'create' ? 'Goal baru' : values.title || 'Perbarui goal'}</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-            aria-label="Tutup form goal"
-          >
-            <X className="h-5 w-5" aria-hidden="true" />
-          </button>
-        </header>
+    <div
+      className="fixed inset-0 z-[80] overflow-y-auto bg-black/40 px-4 py-6 sm:px-6 sm:py-12"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="mx-auto flex min-h-full w-full items-center justify-center">
+        <div
+          ref={dialogRef}
+          className="w-full max-w-2xl max-h-[calc(100vh-3rem)] overflow-y-auto rounded-3xl border border-border/60 bg-card/95 p-6 text-text shadow-xl backdrop-blur"
+        >
+          <header className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">{mode === 'create' ? 'Tambah Goal' : 'Edit Goal'}</p>
+              <h2 className="mt-1 text-2xl font-bold text-text">{mode === 'create' ? 'Goal baru' : values.title || 'Perbarui goal'}</h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+              aria-label="Tutup form goal"
+            >
+              <X className="h-5 w-5" aria-hidden="true" />
+            </button>
+          </header>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-6">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -578,6 +583,7 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
           </footer>
         </form>
       </div>
+    </div>
     </div>,
     document.body,
   );
