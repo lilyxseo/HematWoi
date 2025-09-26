@@ -220,10 +220,14 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 py-6" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[80] flex items-end justify-center overflow-y-auto bg-black/40 px-4 py-6 sm:items-center sm:py-10"
+      role="dialog"
+      aria-modal="true"
+    >
       <div
         ref={dialogRef}
-        className="w-full max-w-2xl rounded-3xl border border-border/60 bg-surface-1/95 p-6 shadow-2xl backdrop-blur"
+        className="w-full max-w-2xl rounded-t-3xl border border-border/60 bg-surface-1/95 p-5 shadow-2xl backdrop-blur sm:rounded-3xl sm:p-6 max-h-[calc(100vh-3rem)] overflow-y-auto"
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">

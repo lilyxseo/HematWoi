@@ -326,7 +326,13 @@
   }
 
   .drawer-panel {
-    @apply fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col overflow-hidden rounded-l-3xl border border-border-subtle bg-surface shadow-[0_24px_60px_-30px_rgb(15_23_42/0.35)] transition-transform duration-300 ease-out;
+    @apply fixed inset-x-0 bottom-0 z-50 flex w-full max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-t-3xl border border-border-subtle bg-surface shadow-[0_24px_60px_-30px_rgb(15_23_42/0.35)] transition-transform duration-300 ease-out;
+  }
+
+  @screen sm {
+    .drawer-panel {
+      @apply inset-y-0 right-0 left-auto top-0 bottom-0 max-h-full max-w-md rounded-none rounded-l-3xl;
+    }
   }
 
   .drawer-header {
