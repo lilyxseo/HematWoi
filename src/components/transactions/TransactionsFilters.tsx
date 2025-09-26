@@ -354,6 +354,7 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
         <ChevronDown className="ml-3 h-4 w-4 text-slate-500" aria-hidden="true" />
       </button>
       {open &&
+        typeof document !== "undefined" &&
         createPortal(
           <div className="fixed inset-0 z-50" role="presentation">
             <div
@@ -414,6 +415,7 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
               </div>
             </div>
           </div>,
+          document.body,
         )}
     </div>
   );
