@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Menu } from "lucide-react";
 import Sidebar from "../components/sidebar/Sidebar";
 import MobileDrawer from "../components/sidebar/MobileDrawer";
 
@@ -75,14 +74,25 @@ export default function AppSidebar({
           {...sidebarProps}
         />
       </MobileDrawer>
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-4 z-[65] inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface-1/90 text-text shadow-lg backdrop-blur lg:hidden"
-        aria-label="Buka navigasi"
-      >
-        <Menu className="h-5 w-5" />
-      </button>
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-[65] flex justify-between px-4 pt-[max(env(safe-area-inset-top),1rem)] lg:hidden">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          className="group pointer-events-auto inline-flex items-center gap-3 rounded-full bg-surface-1/95 px-4 py-2 text-sm font-medium text-text shadow-lg ring-1 ring-border/80 backdrop-blur transition-all duration-200 hover:-translate-y-0.5 hover:ring-ring-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary"
+          aria-label="Buka navigasi"
+          aria-expanded={mobileOpen}
+        >
+          <span className="relative flex h-10 w-10 items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/15 via-primary/10 to-surface-1 shadow-inner ring-1 ring-border/70 transition-all duration-200 group-hover:ring-primary/50 group-active:scale-95" />
+            <span className="relative flex flex-col items-center justify-center gap-1.5">
+              <span className="h-0.5 w-6 rounded-full bg-text transition-all duration-200 group-hover:w-7" />
+              <span className="h-0.5 w-4 rounded-full bg-text/70 transition-all duration-200 group-hover:w-6" />
+              <span className="h-0.5 w-5 rounded-full bg-text/50 transition-all duration-200 group-hover:w-7" />
+            </span>
+          </span>
+          <span className="leading-none">Menu</span>
+        </button>
+      </div>
     </>
   );
 }
