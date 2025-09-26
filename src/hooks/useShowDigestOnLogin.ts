@@ -309,7 +309,7 @@ export default function useShowDigestOnLogin({
       if (seenToday) {
         return;
       }
-      if (trigger || fromAuthEvent) {
+      if (trigger || fromAuthEvent || !autoOpenRef.current) {
         setOpen(true);
         autoOpenRef.current = true;
       }
