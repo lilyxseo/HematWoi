@@ -30,15 +30,6 @@ export interface DigestTransactionLike {
   category?: string | null;
 }
 
-export interface DigestBudgetLike {
-  amount_planned?: number | string | null;
-  planned?: number | string | null;
-  limit?: number | string | null;
-  cap?: number | string | null;
-  amount?: number | string | null;
-  month?: string | null;
-}
-
 export interface DigestUpcomingItem {
   name: string;
   amount: number;
@@ -55,17 +46,12 @@ export interface DailyDigestModalData {
   todayExpense: number;
   todayNet: number;
   todayCount: number;
-  monthExpense: number;
-  monthBudget: number;
-  monthVariance: number;
-  monthProgress: number;
-  topCategory: { name: string; amount: number } | null;
+  topTodayExpenses: Array<{ name: string; amount: number }>;
   upcoming: DigestUpcomingItem[];
 }
 
 export interface UseShowDigestOnLoginOptions {
   transactions?: DigestTransactionLike[] | null;
-  budgets?: DigestBudgetLike[] | null;
   balanceHint?: number | null;
 }
 
@@ -103,26 +89,6 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function resolveBudgetAmount(budget: DigestBudgetLike | null | undefined): number {
-  if (!budget) return 0;
-  const fields: Array<keyof DigestBudgetLike> = [
-    'amount_planned',
-    'planned',
-    'limit',
-    'cap',
-    'amount',
-  ];
-  for (const field of fields) {
-    const raw = budget[field];
-    if (raw === null || raw === undefined) continue;
-    const numeric = toNumber(raw);
-    if (Number.isFinite(numeric)) {
-      return numeric;
-    }
-  }
-  return 0;
-}
-
 function loadUpcoming(): DigestUpcomingItem[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -142,7 +108,6 @@ function loadUpcoming(): DigestUpcomingItem[] {
 
 function buildDigestData(
   transactions: DigestTransactionLike[] | null | undefined,
-  budgets: DigestBudgetLike[] | null | undefined,
   balanceHint: number | null | undefined,
 ): DailyDigestModalData {
   const todayKey = getTodayKey();
@@ -154,8 +119,7 @@ function buildDigestData(
   let todayIncome = 0;
   let todayExpense = 0;
   let todayCount = 0;
-  let monthExpense = 0;
-  const categoryTotals = new Map<string, number>();
+  const todayCategoryTotals = new Map<string, number>();
 
   for (const tx of transactions ?? []) {
     const type = typeof tx?.type === 'string' ? tx.type.toLowerCase() : '';
@@ -175,13 +139,9 @@ function buildDigestData(
         if (amount > 0) {
           todayCount += 1;
         }
-      }
-      if (dateKey.startsWith(monthKey)) {
-        monthExpense += amount;
         const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
-        if (category) {
-          categoryTotals.set(category, (categoryTotals.get(category) || 0) + amount);
-        }
+        const label = category || 'Tanpa kategori';
+        todayCategoryTotals.set(label, (todayCategoryTotals.get(label) || 0) + amount);
       }
     }
   }
@@ -191,24 +151,10 @@ function buildDigestData(
       ? balanceHint
       : computedBalance;
 
-  const monthBudget = (budgets ?? [])
-    .filter((budget) => {
-      if (!budget?.month) return true;
-      const normalized = String(budget.month).slice(0, 7);
-      return normalized === monthKey;
-    })
-    .reduce((sum, budget) => sum + resolveBudgetAmount(budget), 0);
-
-  const monthVariance = monthBudget - monthExpense;
-  const monthProgress = monthBudget > 0 ? Math.min(1, monthExpense / monthBudget) : 0;
-
-  const topCategoryEntry = Array.from(categoryTotals.entries())
+  const topTodayExpenses = Array.from(todayCategoryTotals.entries())
     .sort((a, b) => b[1] - a[1])
-    .at(0);
-
-  const topCategory = topCategoryEntry
-    ? { name: topCategoryEntry[0], amount: topCategoryEntry[1] }
-    : null;
+    .slice(0, 3)
+    .map(([name, amount]) => ({ name, amount }));
 
   const todayNet = todayIncome - todayExpense;
 
@@ -222,11 +168,7 @@ function buildDigestData(
     todayExpense,
     todayNet,
     todayCount,
-    monthExpense,
-    monthBudget,
-    monthVariance,
-    monthProgress,
-    topCategory,
+    topTodayExpenses,
     upcoming: loadUpcoming(),
   };
 }
@@ -264,7 +206,6 @@ function safeRemove(key: string): void {
 
 export default function useShowDigestOnLogin({
   transactions,
-  budgets,
   balanceHint,
 }: UseShowDigestOnLoginOptions): UseShowDigestOnLoginResult {
   const [open, setOpen] = useState(false);
@@ -272,8 +213,8 @@ export default function useShowDigestOnLogin({
   const autoOpenRef = useRef(false);
 
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, budgets ?? null, balanceHint ?? null),
-    [transactions, budgets, balanceHint],
+    () => buildDigestData(transactions ?? null, balanceHint ?? null),
+    [transactions, balanceHint],
   );
 
   const markSeen = useCallback(
