@@ -58,6 +58,14 @@ export type BrandingSetting = {
   updated_at: string | null;
 };
 
+export type AppIdentitySetting = {
+  title: string;
+  tagline: string;
+  logo_url: string;
+  favicon_url: string;
+  updated_at: string | null;
+};
+
 export type AuditEntry = {
   id: string;
   source: 'sidebar' | 'user';
@@ -499,6 +507,105 @@ export async function setAppDescription(text: string): Promise<AppDescriptionSet
   } catch (error) {
     console.error('[adminApi] setAppDescription failed', error);
     throw new Error('Gagal menyimpan deskripsi aplikasi');
+  }
+}
+
+type RawIdentityValue = {
+  title?: unknown;
+  tagline?: unknown;
+  logo_url?: unknown;
+  favicon_url?: unknown;
+};
+
+function parseIdentityValue(value: any): {
+  title: string;
+  tagline: string;
+  logo_url: string;
+  favicon_url: string;
+} {
+  if (value && typeof value === 'object') {
+    const raw = value as RawIdentityValue;
+    const title = typeof raw.title === 'string' && raw.title.trim() ? raw.title.trim() : 'HematWoi';
+    const tagline = typeof raw.tagline === 'string' ? raw.tagline.trim() : '';
+    const logoUrl = typeof raw.logo_url === 'string' ? raw.logo_url.trim() : '';
+    const faviconUrl = typeof raw.favicon_url === 'string' ? raw.favicon_url.trim() : '';
+    return {
+      title,
+      tagline,
+      logo_url: logoUrl,
+      favicon_url: faviconUrl,
+    };
+  }
+
+  return {
+    title: 'HematWoi',
+    tagline: '',
+    logo_url: '',
+    favicon_url: '',
+  };
+}
+
+type AppIdentityPayload = {
+  title: string;
+  tagline: string;
+  logo_url: string;
+  favicon_url: string;
+};
+
+function normalizeIdentityPayload(payload: AppIdentityPayload): AppIdentityPayload {
+  return {
+    title: payload.title.trim() || 'HematWoi',
+    tagline: payload.tagline.trim(),
+    logo_url: payload.logo_url.trim(),
+    favicon_url: payload.favicon_url.trim(),
+  };
+}
+
+export async function getAppIdentity(): Promise<AppIdentitySetting> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', 'app_identity')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const identity = parseIdentityValue(data?.value);
+    return {
+      ...identity,
+      updated_at: data?.updated_at ?? null,
+    };
+  } catch (error) {
+    console.error('[adminApi] getAppIdentity failed', error);
+    throw new Error('Gagal memuat identitas aplikasi');
+  }
+}
+
+export async function setAppIdentity(payload: AppIdentityPayload): Promise<AppIdentitySetting> {
+  try {
+    const normalized = normalizeIdentityPayload(payload);
+    const response = await supabase
+      .from('app_settings')
+      .upsert(
+        {
+          key: 'app_identity',
+          value: normalized,
+        },
+        { onConflict: 'key' }
+      )
+      .select('value, updated_at')
+      .single();
+
+    const data = ensureResponse(response);
+    const identity = parseIdentityValue(data.value);
+    return {
+      ...identity,
+      updated_at: data.updated_at ?? null,
+    };
+  } catch (error) {
+    console.error('[adminApi] setAppIdentity failed', error);
+    throw new Error('Gagal menyimpan identitas aplikasi');
   }
 }
 
