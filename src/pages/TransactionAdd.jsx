@@ -4,9 +4,12 @@ import {
   ArrowRight,
   ArrowLeftRight,
   Banknote,
+  Bus,
   Calendar,
+  Coffee,
   FileText,
   Loader2,
+  PiggyBank,
   Receipt,
   RotateCcw,
   Save,
@@ -14,6 +17,7 @@ import {
   Tag as TagIcon,
   TrendingDown,
   TrendingUp,
+  UtensilsCrossed,
   Wallet,
 } from 'lucide-react';
 import Page from '../layout/Page';
@@ -63,6 +67,53 @@ const QUICK_AMOUNT_OPTIONS = [50000, 100000, 200000, 500000];
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
+
+const TRANSACTION_TEMPLATES = [
+  {
+    id: 'lunch',
+    name: 'Makan Siang Kantor',
+    description: 'Pengeluaran rutin saat bekerja',
+    type: 'expense',
+    amount: 35000,
+    categoryName: 'Makan',
+    title: 'Makan siang',
+    notes: 'Makan siang di kantin',
+    icon: UtensilsCrossed,
+  },
+  {
+    id: 'coffee',
+    name: 'Ngopi Pagi',
+    description: 'Kopi favorit sebelum mulai aktivitas',
+    type: 'expense',
+    amount: 25000,
+    categoryName: 'Makan',
+    title: 'Ngopi pagi',
+    notes: 'Pesan kopi susu',
+    icon: Coffee,
+  },
+  {
+    id: 'commute',
+    name: 'Transport Harian',
+    description: 'Biaya transportasi ke kantor',
+    type: 'expense',
+    amount: 15000,
+    categoryName: 'Transport',
+    title: 'Transport kerja',
+    notes: 'Ongkos MRT / bus',
+    icon: Bus,
+  },
+  {
+    id: 'salary',
+    name: 'Gaji Bulanan',
+    description: 'Catat pemasukan gaji bulanan',
+    type: 'income',
+    amount: 8000000,
+    categoryName: 'Gaji',
+    title: 'Gaji bulan ini',
+    notes: 'Penerimaan gaji',
+    icon: PiggyBank,
+  },
+];
 
 function getDateWithOffset(offset = 0) {
   const date = new Date();
@@ -119,6 +170,7 @@ export default function TransactionAdd({ onAdd }) {
   const [categoryQuery, setCategoryQuery] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
@@ -264,6 +316,70 @@ export default function TransactionAdd({ onAdd }) {
     : 'Unggah struk untuk dokumentasi dan audit.';
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
 
+  const handleTemplateSelect = useCallback(
+    (template) => {
+      if (!template) return;
+      setSelectedTemplateId(template.id);
+      const nextType = template.type || 'expense';
+      setType(nextType);
+      if (typeof template.amount === 'number') {
+        setAmountInput(CURRENCY_FORMATTER.format(template.amount));
+      } else {
+        setAmountInput('');
+      }
+      const resolvedDate =
+        typeof template.dateOffset === 'number'
+          ? getDateWithOffset(template.dateOffset)
+          : template.date || getDateWithOffset(0);
+      setDate(resolvedDate);
+      if (typeof template.title === 'string') {
+        setTitle(template.title);
+      }
+      if (typeof template.notes === 'string') {
+        setNotes(template.notes);
+      }
+
+      const normalizedAccount = template.accountName?.toLowerCase();
+      if (normalizedAccount || !accountId) {
+        const matchedAccount = normalizedAccount
+          ? accounts.find((item) => (item.name || '').toLowerCase() === normalizedAccount)
+          : accounts[0];
+        if (matchedAccount) {
+          setAccountId(matchedAccount.id);
+        }
+      }
+
+      if (nextType === 'transfer') {
+        const normalizedToAccount = template.toAccountName?.toLowerCase();
+        const matchedToAccount = normalizedToAccount
+          ? accounts.find((item) => (item.name || '').toLowerCase() === normalizedToAccount)
+          : null;
+        setToAccountId(matchedToAccount ? matchedToAccount.id : '');
+        setCategoryId('');
+      } else {
+        setToAccountId('');
+        const list = categories.filter(
+          (item) => (item.type || 'expense').toLowerCase() === nextType,
+        );
+        const normalizedCategory = template.categoryName?.toLowerCase();
+        let matchedCategory = null;
+        if (normalizedCategory) {
+          matchedCategory = list.find(
+            (item) => (item.name || '').toLowerCase() === normalizedCategory,
+          );
+        }
+        if (!matchedCategory && list.length) {
+          matchedCategory = list[0];
+        }
+        setCategoryId(matchedCategory ? matchedCategory.id : '');
+      }
+
+      setCategoryQuery('');
+      setErrors({});
+    },
+    [accounts, accountId, categories],
+  );
+
   const handleAmountChange = (event) => {
     const value = event.target.value;
     setAmountInput(value.replace(/[^0-9.,]/g, ''));
@@ -330,6 +446,7 @@ export default function TransactionAdd({ onAdd }) {
     setReceiptFile(null);
     setReceiptPreview('');
     setErrors({});
+    setSelectedTemplateId(null);
     if (accounts.length) {
       setAccountId(accounts[0].id);
     }
@@ -434,7 +551,14 @@ export default function TransactionAdd({ onAdd }) {
       </PageHeader>
 
       <Section first>
-        <form id="add-transaction-form" onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-6">
+          <TemplatePicker
+            templates={TRANSACTION_TEMPLATES}
+            onSelect={handleTemplateSelect}
+            activeId={selectedTemplateId}
+          />
+
+          <form id="add-transaction-form" onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
           <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
             <CardBody className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
@@ -793,7 +917,62 @@ export default function TransactionAdd({ onAdd }) {
             </Card>
           </div>
         </form>
+        </div>
       </Section>
     </Page>
+  );
+}
+
+function TemplatePicker({ templates, onSelect, activeId }) {
+  if (!templates?.length) {
+    return null;
+  }
+
+  return (
+    <Card className="rounded-2xl border border-border-subtle bg-white/80 shadow-sm backdrop-blur dark:bg-zinc-900/40">
+      <CardBody className="space-y-4">
+        <div>
+          <p className="text-sm font-semibold text-muted">Template Transaksi</p>
+          <p className="mt-1 text-xs text-muted">
+            Pilih template untuk mengisi formulir secara otomatis.
+          </p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {templates.map((template) => {
+            const Icon = template.icon;
+            const isActive = activeId === template.id;
+            return (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => onSelect(template)}
+                className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  isActive
+                    ? 'border-primary/70 bg-primary/10 text-text'
+                    : 'border-border-subtle text-text hover:border-primary/60 hover:bg-muted/40'
+                }`}
+              >
+                <span
+                  className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${
+                    isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {Icon ? <Icon className="h-5 w-5" aria-hidden="true" /> : null}
+                </span>
+                <span className="space-y-1">
+                  <span className="block text-sm font-semibold">{template.name}</span>
+                  <span className="block text-xs text-muted">{template.description}</span>
+                  {typeof template.amount === 'number' ? (
+                    <span className="block text-xs font-semibold text-primary">
+                      {formatAmountDisplay(template.amount)}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </CardBody>
+    </Card>
   );
 }
