@@ -5,6 +5,7 @@ import SectionHeader from "../components/SectionHeader";
 import CategoryDonut from "../components/CategoryDonut";
 import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
+import BudgetHighlightsCard from "../components/dashboard/BudgetHighlightsCard";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
@@ -121,6 +122,8 @@ export default function Dashboard({ stats, txs }) {
         />
 
         <QuickActions />
+
+        <BudgetHighlightsCard />
 
         <section className="space-y-6 sm:space-y-8 lg:space-y-10">
           <SectionHeader title="Analisis Bulanan" />
