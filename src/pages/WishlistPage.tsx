@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowDownToLine,
   CheckCircle2,
   CircleDollarSign,
-  FileUp,
   Layers3,
   Plus,
   Sparkles,
@@ -65,65 +64,6 @@ function escapeCsvValue(value: string | number | null | undefined): string {
   return stringValue;
 }
 
-function parseCsv(content: string): Record<string, string>[] {
-  const rows: string[][] = [];
-  let current = '';
-  let row: string[] = [];
-  let insideQuotes = false;
-
-  for (let i = 0; i < content.length; i += 1) {
-    const char = content[i];
-    if (char === '"') {
-      const nextChar = content[i + 1];
-      if (insideQuotes && nextChar === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        insideQuotes = !insideQuotes;
-      }
-      continue;
-    }
-
-    if (char === ',' && !insideQuotes) {
-      row.push(current);
-      current = '';
-      continue;
-    }
-
-    if ((char === '\n' || char === '\r') && !insideQuotes) {
-      if (char === '\r' && content[i + 1] === '\n') {
-        i += 1;
-      }
-      row.push(current);
-      rows.push(row);
-      row = [];
-      current = '';
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0 || row.length) {
-    row.push(current);
-    rows.push(row);
-  }
-
-  if (rows.length === 0) return [];
-  const header = rows.shift() ?? [];
-  const cleanedHeader = header.map((cell) => cell.trim());
-
-  return rows
-    .filter((cells) => cells.some((cell) => cell.trim().length > 0))
-    .map((cells) => {
-      const record: Record<string, string> = {};
-      cleanedHeader.forEach((key, index) => {
-        record[key] = (cells[index] ?? '').trim();
-      });
-      return record;
-    });
-}
-
 export default function WishlistPage() {
   const { addToast } = useToast();
   const navigate = useNavigate();
@@ -132,9 +72,7 @@ export default function WishlistPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editingItem, setEditingItem] = useState<WishlistItem | null>(null);
-  const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
@@ -444,65 +382,6 @@ export default function WishlistPage() {
     }
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const records = parseCsv(text);
-      if (!records.length) {
-        addToast('CSV kosong atau tidak valid', 'warning');
-        return;
-      }
-      let successCount = 0;
-      const allowedStatus: WishlistStatus[] = ['planned', 'deferred', 'purchased', 'archived'];
-      for (const record of records) {
-        if (!record.title) continue;
-        const estimated = record.estimated_price ? Number(record.estimated_price) : null;
-        const priority = record.priority ? Number(record.priority) : null;
-        const status = allowedStatus.includes(record.status as WishlistStatus)
-          ? (record.status as WishlistStatus)
-          : 'planned';
-        const payload: WishlistCreatePayload = {
-          title: record.title,
-          estimated_price: Number.isFinite(estimated ?? NaN) && (estimated ?? 0) >= 0 ? estimated : null,
-          priority: Number.isInteger(priority ?? NaN) && priority != null && priority >= 1 && priority <= 5 ? priority : null,
-          status,
-          category_id: record.category_id || null,
-          store_url: record.store_url || undefined,
-          note: record.note || undefined,
-          image_url: record.image_url || undefined,
-        };
-        try {
-          await createItem(payload);
-          successCount += 1;
-        } catch (err) {
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.error('[Wishlist] import item error', err);
-          }
-        }
-      }
-      addToast(`Berhasil mengimpor ${successCount} wishlist`, successCount ? 'success' : 'warning');
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.error('[Wishlist] import error', err);
-      }
-      addToast('Gagal mengimpor CSV', 'error');
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
@@ -615,14 +494,6 @@ export default function WishlistPage() {
           </button>
           <button
             type="button"
-            onClick={handleImportClick}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:border-border-strong hover:bg-surface-alt/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={importing || isMutating}
-          >
-            <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
-          </button>
-          <button
-            type="button"
             onClick={handleExport}
             className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:border-border-strong hover:bg-surface-alt/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={exporting}
@@ -652,14 +523,6 @@ export default function WishlistPage() {
           );
         })}
       </section>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleImportFile}
-      />
 
       <div className="space-y-6">
         <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />

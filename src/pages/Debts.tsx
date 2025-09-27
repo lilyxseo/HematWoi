@@ -447,21 +447,21 @@ export default function Debts() {
         <PageHeader title="Hutang" description={pageDescription}>
           <button
             type="button"
-            onClick={handleExport}
-            disabled={exporting || disableActions}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Download className="h-4 w-4" aria-hidden="true" />
-            {exporting ? 'Mengekspor…' : 'Export CSV'}
-          </button>
-          <button
-            type="button"
             onClick={handleCreateClick}
             disabled={disableActions}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
           >
             <Plus className="h-4 w-4" aria-hidden="true" />
             Tambah Hutang/Piutang
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || disableActions}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" />
+            {exporting ? 'Mengekspor…' : 'Export CSV'}
           </button>
         </PageHeader>
 
