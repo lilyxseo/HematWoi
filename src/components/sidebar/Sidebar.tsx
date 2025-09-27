@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   ChevronLeft,
   ChevronRight,
   Cloud,
   CloudOff,
-  LogIn,
-  LogOut,
   Monitor,
   Moon,
   Sun,
@@ -51,12 +48,6 @@ interface SidebarProps {
 function isBrandSelected(current: BrandConfig, candidate: BrandConfig) {
   return current.h === candidate.h && current.s === candidate.s && current.l === candidate.l;
 }
-
-function formatEmail(email?: string | null) {
-  if (!email) return "";
-  return email.length > 24 ? `${email.slice(0, 21)}…` : email;
-}
-
 
 type SidebarMenuEntry = {
   id: string;
@@ -102,7 +93,6 @@ export default function Sidebar({
   onNavigate,
   onClose,
 }: SidebarProps) {
-  const navigate = useNavigate();
   const { mode, setMode } = useMode();
   const [sessionUser, setSessionUser] = useState<User | null>(null);
   const [menuItems, setMenuItems] = useState<SidebarMenuEntry[]>([]);
@@ -226,11 +216,6 @@ export default function Sidebar({
       cancelled = true;
     };
   }, [sessionUser]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    onNavigate?.();
-  };
 
   const themeOptions: { value: ThemeMode; label: string; icon: JSX.Element }[] = [
     { value: "light", label: "Sun", icon: <Sun className="h-4 w-4" /> },
@@ -492,67 +477,20 @@ export default function Sidebar({
             collapsed ? "px-2" : "px-4"
           )}
         >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              {sessionUser ? (
-                <p
-                  className={clsx(
-                    "truncate text-sm font-medium",
-                    collapsed && "sr-only"
-                  )}
-                >
-                  {formatEmail(sessionUser.email)}
-                </p>
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => onToggle?.(!collapsed)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-text transition-colors duration-200 hover:border-brand/40 hover:text-brand"
+              title={collapsed ? "Perluas" : "Ciutkan"}
+              aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
+            >
+              {collapsed ? (
+                <ChevronRight className="h-4 w-4" />
               ) : (
-                <p
-                  className={clsx(
-                    "text-sm text-muted",
-                    collapsed && "sr-only"
-                  )}
-                >
-                  Belum masuk
-                </p>
+                <ChevronLeft className="h-4 w-4" />
               )}
-            </div>
-            <div className="flex items-center gap-2">
-              {sessionUser ? (
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text transition-colors duration-200 hover:border-brand/50 hover:text-brand"
-                >
-                  <LogOut className="h-4 w-4" />
-                  {!collapsed && <span>Keluar</span>}
-                  {collapsed && <span className="sr-only">Keluar</span>}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate("/auth");
-                    onNavigate?.();
-                  }}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-text transition-colors duration-200 hover:border-brand/50 hover:text-brand"
-                >
-                  <LogIn className="h-4 w-4" />
-                  {!collapsed && <span>Masuk</span>}
-                  {collapsed && <span className="sr-only">Masuk</span>}
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => onToggle?.(!collapsed)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-text transition-colors duration-200 hover:border-brand/40 hover:text-brand"
-                title={collapsed ? "Perluas" : "Ciutkan"}
-                aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
-              >
-                {collapsed ? (
-                  <ChevronRight className="h-4 w-4" />
-                ) : (
-                  <ChevronLeft className="h-4 w-4" />
-                )}
-              </button>
-            </div>
+            </button>
           </div>
         </footer>
       </nav>

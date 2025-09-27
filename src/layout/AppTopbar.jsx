@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogOut, Menu, Settings, UserRound } from "lucide-react";
+import { Bell, LogIn, LogOut, Menu, Settings, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -130,33 +130,50 @@ export default function AppTopbar() {
                 role="menu"
                 className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-border/70 bg-surface-1 text-sm shadow-lg focus:outline-none"
               >
-                <button
-                  type="button"
-                  onClick={() => handleNavigate("/profile")}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
-                  role="menuitem"
-                >
-                  <UserRound className="h-4 w-4" />
-                  Profil Saya
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleNavigate("/settings")}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
-                  role="menuitem"
-                >
-                  <Settings className="h-4 w-4" />
-                  Pengaturan
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:bg-danger/10"
-                  role="menuitem"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Keluar
-                </button>
+                {user ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate("/profile")}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
+                      role="menuitem"
+                    >
+                      <UserRound className="h-4 w-4" />
+                      Profil Saya
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate("/settings")}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
+                      role="menuitem"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Pengaturan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:bg-danger/10"
+                      role="menuitem"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Keluar
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-2 px-4 py-3" role="none">
+                    <p className="text-sm text-muted">Silakan masuk untuk melanjutkan.</p>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate("/auth")}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-medium text-text transition hover:border-brand/60 hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      role="menuitem"
+                    >
+                      <LogIn className="h-4 w-4" />
+                      Masuk ke akun
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
