@@ -15,12 +15,6 @@ const HUMAN_FORMATTER = new Intl.DateTimeFormat('id-ID', {
   day: 'numeric',
   month: 'long',
 });
-const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat('id-ID', {
-  timeZone: TIMEZONE,
-  month: 'long',
-  year: 'numeric',
-});
-
 const DIGEST_TRIGGER_KEY = 'hw:digest:trigger';
 
 export interface DigestTransactionLike {
@@ -28,15 +22,9 @@ export interface DigestTransactionLike {
   type?: string | null;
   date?: string | null;
   category?: string | null;
-}
-
-export interface DigestBudgetLike {
-  amount_planned?: number | string | null;
-  planned?: number | string | null;
-  limit?: number | string | null;
-  cap?: number | string | null;
-  amount?: number | string | null;
-  month?: string | null;
+  title?: string | null;
+  note?: string | null;
+  notes?: string | null;
 }
 
 export interface DigestUpcomingItem {
@@ -48,24 +36,17 @@ export interface DigestUpcomingItem {
 export interface DailyDigestModalData {
   todayKey: string;
   todayLabel: string;
-  monthKey: string;
-  monthLabel: string;
   balance: number;
   todayIncome: number;
   todayExpense: number;
   todayNet: number;
   todayCount: number;
-  monthExpense: number;
-  monthBudget: number;
-  monthVariance: number;
-  monthProgress: number;
-  topCategory: { name: string; amount: number } | null;
+  topExpensesToday: Array<{ label: string; amount: number }>;
   upcoming: DigestUpcomingItem[];
 }
 
 export interface UseShowDigestOnLoginOptions {
   transactions?: DigestTransactionLike[] | null;
-  budgets?: DigestBudgetLike[] | null;
   balanceHint?: number | null;
 }
 
@@ -103,26 +84,6 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function resolveBudgetAmount(budget: DigestBudgetLike | null | undefined): number {
-  if (!budget) return 0;
-  const fields: Array<keyof DigestBudgetLike> = [
-    'amount_planned',
-    'planned',
-    'limit',
-    'cap',
-    'amount',
-  ];
-  for (const field of fields) {
-    const raw = budget[field];
-    if (raw === null || raw === undefined) continue;
-    const numeric = toNumber(raw);
-    if (Number.isFinite(numeric)) {
-      return numeric;
-    }
-  }
-  return 0;
-}
-
 function loadUpcoming(): DigestUpcomingItem[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -140,22 +101,29 @@ function loadUpcoming(): DigestUpcomingItem[] {
   }
 }
 
+function getTransactionLabel(tx: DigestTransactionLike | null | undefined): string {
+  if (!tx) return 'Tanpa catatan';
+  const candidates = [tx.title, tx.note, tx.notes, tx.category];
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') continue;
+    const trimmed = candidate.trim();
+    if (trimmed) return trimmed;
+  }
+  return 'Tanpa catatan';
+}
+
 function buildDigestData(
   transactions: DigestTransactionLike[] | null | undefined,
-  budgets: DigestBudgetLike[] | null | undefined,
   balanceHint: number | null | undefined,
 ): DailyDigestModalData {
   const todayKey = getTodayKey();
-  const monthKey = todayKey.slice(0, 7);
   const todayLabel = HUMAN_FORMATTER.format(new Date(`${todayKey}T00:00:00+07:00`));
-  const monthLabel = MONTH_LABEL_FORMATTER.format(new Date(`${todayKey}T00:00:00+07:00`));
 
   let computedBalance = 0;
   let todayIncome = 0;
   let todayExpense = 0;
   let todayCount = 0;
-  let monthExpense = 0;
-  const categoryTotals = new Map<string, number>();
+  const todayExpenseItems: Array<{ label: string; amount: number }> = [];
 
   for (const tx of transactions ?? []) {
     const type = typeof tx?.type === 'string' ? tx.type.toLowerCase() : '';
@@ -174,13 +142,10 @@ function buildDigestData(
         todayExpense += amount;
         if (amount > 0) {
           todayCount += 1;
-        }
-      }
-      if (dateKey.startsWith(monthKey)) {
-        monthExpense += amount;
-        const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
-        if (category) {
-          categoryTotals.set(category, (categoryTotals.get(category) || 0) + amount);
+          todayExpenseItems.push({
+            label: getTransactionLabel(tx),
+            amount,
+          });
         }
       }
     }
@@ -191,42 +156,23 @@ function buildDigestData(
       ? balanceHint
       : computedBalance;
 
-  const monthBudget = (budgets ?? [])
-    .filter((budget) => {
-      if (!budget?.month) return true;
-      const normalized = String(budget.month).slice(0, 7);
-      return normalized === monthKey;
-    })
-    .reduce((sum, budget) => sum + resolveBudgetAmount(budget), 0);
-
-  const monthVariance = monthBudget - monthExpense;
-  const monthProgress = monthBudget > 0 ? Math.min(1, monthExpense / monthBudget) : 0;
-
-  const topCategoryEntry = Array.from(categoryTotals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .at(0);
-
-  const topCategory = topCategoryEntry
-    ? { name: topCategoryEntry[0], amount: topCategoryEntry[1] }
-    : null;
+  const topExpensesToday = todayExpenseItems
+    .filter((item) => Number.isFinite(item.amount) && item.amount > 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 5)
+    .map((item) => ({ ...item, label: item.label || 'Tanpa catatan' }));
 
   const todayNet = todayIncome - todayExpense;
 
   return {
     todayKey,
     todayLabel,
-    monthKey,
-    monthLabel,
     balance: resolvedBalance,
     todayIncome,
     todayExpense,
     todayNet,
     todayCount,
-    monthExpense,
-    monthBudget,
-    monthVariance,
-    monthProgress,
-    topCategory,
+    topExpensesToday,
     upcoming: loadUpcoming(),
   };
 }
@@ -264,7 +210,6 @@ function safeRemove(key: string): void {
 
 export default function useShowDigestOnLogin({
   transactions,
-  budgets,
   balanceHint,
 }: UseShowDigestOnLoginOptions): UseShowDigestOnLoginResult {
   const [open, setOpen] = useState(false);
@@ -272,8 +217,8 @@ export default function useShowDigestOnLogin({
   const autoOpenRef = useRef(false);
 
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, budgets ?? null, balanceHint ?? null),
-    [transactions, budgets, balanceHint],
+    () => buildDigestData(transactions ?? null, balanceHint ?? null),
+    [transactions, balanceHint],
   );
 
   const markSeen = useCallback(

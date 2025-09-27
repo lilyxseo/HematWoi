@@ -1,7 +1,6 @@
 import type { MouseEvent } from 'react';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import clsx from 'clsx';
 import { DailyDigestModalData } from '../hooks/useShowDigestOnLogin';
 import { useLockBodyScroll } from '../hooks/useLockBodyScroll';
 
@@ -100,11 +99,6 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
     [onClose],
   );
 
-  const monthProgressPercent = useMemo(() => {
-    if (!data) return 0;
-    return Math.round(Math.min(100, Math.max(0, data.monthProgress * 100)));
-  }, [data]);
-
   if (!open) return null;
 
   const hasData = Boolean(data);
@@ -138,43 +132,26 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
           </p>
         </div>
 
-        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
-          <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
-            <span>MTD vs Budget</span>
-            <span>{monthProgressPercent}%</span>
-          </div>
-          <div className="mt-2 text-lg font-semibold text-text">
-            {formatCurrency(data!.monthExpense)} / {formatCurrency(data!.monthBudget)}
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            {data!.monthBudget > 0
-              ? data!.monthVariance >= 0
-                ? `Sisa ${formatCurrency(data!.monthVariance)}`
-                : `Lebih ${formatCurrency(Math.abs(data!.monthVariance))}`
-              : 'Belum ada anggaran bulan ini'}
-          </p>
-          <p className="text-[11px] text-muted/80">Periode {data!.monthLabel}</p>
-          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-border-subtle">
-            <div
-              className={clsx('h-full rounded-full', {
-                'bg-brand': data!.monthProgress <= 1,
-                'bg-danger': data!.monthProgress > 1,
-              })}
-              style={{ width: `${monthProgressPercent}%` }}
-              aria-hidden="true"
-            />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Top kategori</div>
-          {data!.topCategory ? (
-            <>
-              <div className="mt-2 text-lg font-semibold text-text">{data!.topCategory.name}</div>
-              <p className="text-xs text-muted">{formatCurrency(data!.topCategory.amount)} bulan ini</p>
-            </>
+        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Top pengeluaran hari ini</div>
+          {data!.topExpensesToday.length ? (
+            <ul className="mt-3 space-y-2 text-sm text-text">
+              {data!.topExpensesToday.map((item) => (
+                <li
+                  key={`${item.label}-${item.amount}`}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-surface p-3"
+                >
+                  <span className="truncate font-medium" title={item.label}>
+                    {item.label}
+                  </span>
+                  <span className="text-sm font-semibold text-danger">
+                    -{formatCurrency(item.amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <p className="mt-2 text-sm text-muted">Belum ada pengeluaran yang tercatat bulan ini.</p>
+            <p className="mt-2 text-sm text-muted">Belum ada pengeluaran hari ini.</p>
           )}
         </div>
 

@@ -18,7 +18,7 @@ import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs, budgets = [] }) {
+export default function Dashboard({ stats, txs }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
@@ -36,7 +36,6 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
 
   const digest = useShowDigestOnLogin({
     transactions: txs,
-    budgets,
     balanceHint: stats?.balance ?? null,
   });
 

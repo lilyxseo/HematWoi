@@ -1025,7 +1025,6 @@ function AppShell({ prefs, setPrefs }) {
                         filter.month === "all" ? currentMonth : filter.month
                       }
                       txs={data.txs}
-                      budgets={data.budgets}
                       budgetStatus={data.budgetStatus}
                       months={months}
                       challenges={challenges}
