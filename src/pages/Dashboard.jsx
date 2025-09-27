@@ -8,6 +8,7 @@ import RecentTransactions from "../components/RecentTransactions";
 import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
+import BudgetNearLimitWidget from "../components/dashboard/BudgetNearLimitWidget";
 import PeriodPicker, {
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
@@ -18,7 +19,12 @@ import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs, budgets = [] }) {
+export default function Dashboard({
+  stats,
+  txs,
+  budgets = [],
+  budgetStatus = [],
+}) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
@@ -122,6 +128,8 @@ export default function Dashboard({ stats, txs, budgets = [] }) {
         />
 
         <QuickActions />
+
+        <BudgetNearLimitWidget data={budgetStatus} />
 
         <section className="space-y-6 sm:space-y-8 lg:space-y-10">
           <SectionHeader title="Analisis Bulanan" />
