@@ -66,6 +66,12 @@ export const NAV_ITEMS: NavItem[] = [
     inSidebar: true,
     protected: true,
   },
+  {
+    title: 'Anggaran',
+    path: '/budget',
+    inSidebar: false,
+    protected: true,
+  },
   {  
     title: 'Goals',
     path: '/goals',

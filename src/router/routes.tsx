@@ -17,6 +17,7 @@ function loadComponent(path: string) {
     case '/accounts':
       return lazy(() => import('../pages/AccountsPage'));
     case '/budgets':
+    case '/budget':
       return lazy(() => import('../pages/Budgets'));
     case '/goals':
       return lazy(() => import('../pages/Goals'));
