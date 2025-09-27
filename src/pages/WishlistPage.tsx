@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowDownToLine, FileUp, Plus } from 'lucide-react';
+import { ArrowDownToLine, FileUp, Plus, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -489,12 +489,12 @@ export default function WishlistPage() {
 
   const renderSkeletons = () => {
     return (
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {Array.from({ length: 6 }).map((_, index) => (
           <div
             // eslint-disable-next-line react/no-array-index-key
             key={index}
-            className="h-48 animate-pulse rounded-2xl bg-slate-900/60 ring-1 ring-slate-800"
+            className="h-52 animate-pulse rounded-3xl border border-border-subtle bg-surface/60"
           />
         ))}
       </div>
@@ -502,17 +502,17 @@ export default function WishlistPage() {
   };
 
   const renderEmptyState = () => (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-slate-800 bg-slate-950/60 px-6 py-16 text-center">
-      <div className="rounded-full border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm text-slate-400">
-        Wishlist Anda masih kosong
-      </div>
-      <p className="max-w-sm text-balance text-sm text-slate-400">
+    <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-border-subtle/80 bg-surface/60 px-6 py-16 text-center shadow-sm">
+      <span className="inline-flex items-center gap-2 rounded-full border border-border-subtle bg-surface-elevated/80 px-4 py-2 text-sm font-medium text-muted">
+        <Sparkles className="h-4 w-4" aria-hidden="true" /> Wishlist Anda masih kosong
+      </span>
+      <p className="max-w-sm text-balance text-sm text-muted">
         Simpan ide belanja tanpa komitmen finansial. Tambahkan item wishlist dan ubah menjadi goal atau transaksi kapan saja.
       </p>
       <button
         type="button"
         onClick={handleAdd}
-        className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
       >
         <Plus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
       </button>
@@ -524,29 +524,31 @@ export default function WishlistPage() {
   return (
     <Page>
       <PageHeader title="Wishlist" description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun.">
-        <button
-          type="button"
-          onClick={handleImportClick}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={importing || isMutating}
-        >
-          <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={exporting}
-        >
-          <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
-        </button>
+        <div className="flex flex-wrap justify-end gap-2 rounded-full bg-surface-elevated/80 p-1.5 shadow-sm shadow-black/5 backdrop-blur supports-[backdrop-filter]:backdrop-blur">
+          <button
+            type="button"
+            onClick={handleImportClick}
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-border-subtle bg-surface px-4 text-sm font-medium text-text transition hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            disabled={importing || isMutating}
+          >
+            <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-border-subtle bg-surface px-4 text-sm font-medium text-text transition hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            disabled={exporting}
+          >
+            <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground shadow transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
+          </button>
+        </div>
       </PageHeader>
 
       <input
@@ -557,16 +559,16 @@ export default function WishlistPage() {
         onChange={handleImportFile}
       />
 
-      <div className="space-y-6">
+      <div className="space-y-8">
         <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />
 
         {hasError ? (
-          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             Terjadi kesalahan saat memuat wishlist. {error instanceof Error ? error.message : ''}
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="ml-3 inline-flex items-center text-rose-100 underline-offset-4 hover:underline"
+              className="ml-3 inline-flex items-center text-danger underline-offset-4 hover:underline"
             >
               Muat ulang
             </button>
@@ -578,8 +580,8 @@ export default function WishlistPage() {
         ) : items.length === 0 ? (
           renderEmptyState()
         ) : (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-8">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {items.map((item) => (
                 <WishlistCard
                   key={item.id}
@@ -597,13 +599,16 @@ export default function WishlistPage() {
             </div>
             {hasNextPage ? (
               <div className="flex justify-center">
-                <div ref={loadMoreRef} className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-slate-500">
+                <div
+                  ref={loadMoreRef}
+                  className="h-10 w-full max-w-[240px] rounded-full border border-dashed border-border-subtle/80 text-center text-sm text-muted"
+                >
                   {isFetchingNextPage ? 'Memuat…' : 'Memuat lainnya'}
                 </div>
               </div>
             ) : null}
             {total ? (
-              <p className="text-center text-xs text-slate-500">
+              <p className="text-center text-xs text-muted">
                 Menampilkan {items.length} dari {total} wishlist
               </p>
             ) : null}

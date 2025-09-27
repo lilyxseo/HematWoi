@@ -35,10 +35,10 @@ const STATUS_OPTIONS: { value: WishlistStatus; label: string }[] = [
 ];
 
 const INPUT_CLASS =
-  'h-11 w-full rounded-2xl border-none bg-slate-900/80 px-4 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60';
+  'h-11 w-full rounded-2xl border border-border-subtle bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60';
 
 const TEXTAREA_CLASS =
-  'w-full rounded-2xl border-none bg-slate-900/80 px-4 py-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60';
+  'w-full rounded-2xl border border-border-subtle bg-surface px-4 py-3 text-sm text-text shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60';
 
 export default function WishlistFormDialog({
   open,
@@ -166,20 +166,20 @@ export default function WishlistFormDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-10 backdrop-blur">
-      <div className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/95 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.8)]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 px-4 py-10 backdrop-blur">
+      <div className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-border-subtle bg-surface-elevated shadow-[0_30px_80px_-40px_rgba(15,23,42,0.4)]">
         <form onSubmit={handleSubmit} className="flex max-h-[85vh] flex-col">
-          <header className="flex items-start justify-between gap-3 border-b border-slate-800/70 bg-slate-950/80 px-6 py-4">
+          <header className="flex items-start justify-between gap-3 border-b border-border-subtle bg-surface px-6 py-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-100">
+              <h2 className="text-lg font-semibold text-text">
                 {mode === 'create' ? 'Tambah Wishlist' : 'Edit Wishlist'}
               </h2>
-              <p className="text-xs text-slate-400">Kelola item wishlist Anda dengan mudah.</p>
+              <p className="text-xs text-muted">Kelola item wishlist Anda dengan mudah.</p>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               aria-label="Tutup form wishlist"
             >
               ✕
@@ -187,7 +187,7 @@ export default function WishlistFormDialog({
           </header>
           <div className="flex-1 space-y-4 overflow-y-auto px-6 py-5">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-title">
+              <label className="text-sm font-medium text-text" htmlFor="wishlist-title">
                 Judul*
               </label>
               <input
@@ -200,12 +200,12 @@ export default function WishlistFormDialog({
                 required
                 disabled={submitting}
               />
-              {errors.title ? <p className="text-sm text-rose-300">{errors.title}</p> : null}
+              {errors.title ? <p className="text-sm text-danger">{errors.title}</p> : null}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-price">
+                <label className="text-sm font-medium text-text" htmlFor="wishlist-price">
                   Perkiraan harga (Rp)
                 </label>
                 <input
@@ -219,10 +219,10 @@ export default function WishlistFormDialog({
                   placeholder="0"
                   disabled={submitting}
                 />
-                {errors.estimated_price ? <p className="text-sm text-rose-300">{errors.estimated_price}</p> : null}
+                {errors.estimated_price ? <p className="text-sm text-danger">{errors.estimated_price}</p> : null}
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-priority">
+                <label className="text-sm font-medium text-text" htmlFor="wishlist-priority">
                   Prioritas (1-5)
                 </label>
                 <select
@@ -239,13 +239,13 @@ export default function WishlistFormDialog({
                   <option value="4">4</option>
                   <option value="5">5 - Nice to have</option>
                 </select>
-                {errors.priority ? <p className="text-sm text-rose-300">{errors.priority}</p> : null}
+                {errors.priority ? <p className="text-sm text-danger">{errors.priority}</p> : null}
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-category">
+                <label className="text-sm font-medium text-text" htmlFor="wishlist-category">
                   Kategori
                 </label>
                 <select
@@ -262,10 +262,10 @@ export default function WishlistFormDialog({
                     </option>
                   ))}
                 </select>
-                {errors.category_id ? <p className="text-sm text-rose-300">{errors.category_id}</p> : null}
+                {errors.category_id ? <p className="text-sm text-danger">{errors.category_id}</p> : null}
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-status">
+                <label className="text-sm font-medium text-text" htmlFor="wishlist-status">
                   Status
                 </label>
                 <select
@@ -281,13 +281,13 @@ export default function WishlistFormDialog({
                     </option>
                   ))}
                 </select>
-                {errors.status ? <p className="text-sm text-rose-300">{errors.status}</p> : null}
+                {errors.status ? <p className="text-sm text-danger">{errors.status}</p> : null}
               </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-store">
+                <label className="text-sm font-medium text-text" htmlFor="wishlist-store">
                   URL toko
                 </label>
                 <input
@@ -299,10 +299,10 @@ export default function WishlistFormDialog({
                   placeholder="https://"
                   disabled={submitting}
                 />
-                {errors.store_url ? <p className="text-sm text-rose-300">{errors.store_url}</p> : null}
+                {errors.store_url ? <p className="text-sm text-danger">{errors.store_url}</p> : null}
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-image">
+                <label className="text-sm font-medium text-text" htmlFor="wishlist-image">
                   URL gambar
                 </label>
                 <input
@@ -314,12 +314,12 @@ export default function WishlistFormDialog({
                   placeholder="https://"
                   disabled={submitting}
                 />
-                {errors.image_url ? <p className="text-sm text-rose-300">{errors.image_url}</p> : null}
+                {errors.image_url ? <p className="text-sm text-danger">{errors.image_url}</p> : null}
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-note">
+              <label className="text-sm font-medium text-text" htmlFor="wishlist-note">
                 Catatan
               </label>
               <textarea
@@ -333,18 +333,18 @@ export default function WishlistFormDialog({
               />
             </div>
           </div>
-          <footer className="flex items-center justify-between gap-3 border-t border-slate-800/70 bg-slate-950/80 px-6 py-4">
+          <footer className="flex items-center justify-between gap-3 border-t border-border-subtle bg-surface px-6 py-4">
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-11 items-center justify-center rounded-2xl px-4 text-sm font-semibold text-slate-300 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="inline-flex h-11 items-center justify-center rounded-full border border-border-subtle bg-surface px-4 text-sm font-semibold text-text transition hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               disabled={submitting}
             >
               Batal
             </button>
             <button
               type="submit"
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="inline-flex h-11 items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
               disabled={submitting}
             >
               {submitting ? 'Menyimpan…' : mode === 'create' ? 'Tambah Wishlist' : 'Simpan Perubahan'}

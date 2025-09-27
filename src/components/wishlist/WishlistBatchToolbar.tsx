@@ -24,10 +24,10 @@ export default function WishlistBatchToolbar({
 
   return (
     <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
-      <div className="flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-3xl border border-slate-800/80 bg-slate-950/90 px-5 py-3 shadow-2xl backdrop-blur">
-        <div className="flex flex-1 flex-wrap items-center gap-3 text-sm text-slate-200">
-          <span className="font-semibold text-slate-100">{selectedCount} dipilih</span>
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+      <div className="flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-3xl border border-border-subtle bg-surface-elevated/95 px-5 py-3 shadow-2xl shadow-black/20 backdrop-blur">
+        <div className="flex flex-1 flex-wrap items-center gap-3 text-sm text-muted">
+          <span className="font-semibold text-text">{selectedCount} dipilih</span>
+          <div className="flex items-center gap-2 text-xs text-muted">
             <label className="flex items-center gap-2">
               <span>Status</span>
               <select
@@ -40,7 +40,7 @@ export default function WishlistBatchToolbar({
                     setTimeout(() => setStatusValue(''), 200);
                   }
                 }}
-                className="h-9 rounded-2xl border-none bg-slate-900/80 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
+                className="h-9 rounded-2xl border border-border-subtle bg-surface px-3 text-sm text-text shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 disabled={disabled}
               >
                 <option value="">Ubah status…</option>
@@ -62,7 +62,7 @@ export default function WishlistBatchToolbar({
                     setTimeout(() => setPriorityValue(''), 200);
                   }
                 }}
-                className="h-9 rounded-2xl border-none bg-slate-900/80 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
+                className="h-9 rounded-2xl border border-border-subtle bg-surface px-3 text-sm text-text shadow-sm transition focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 disabled={disabled}
               >
                 <option value="">Set prioritas…</option>
@@ -79,7 +79,7 @@ export default function WishlistBatchToolbar({
           <button
             type="button"
             onClick={onClear}
-            className="inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-medium text-slate-300 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="inline-flex h-10 items-center justify-center rounded-full border border-border-subtle bg-surface px-4 text-sm font-medium text-text transition hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             disabled={disabled}
           >
             Batalkan
@@ -87,7 +87,7 @@ export default function WishlistBatchToolbar({
           <button
             type="button"
             onClick={onDelete}
-            className="inline-flex h-10 items-center gap-2 rounded-2xl bg-rose-500/90 px-4 text-sm font-semibold text-white transition hover:bg-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+            className="inline-flex h-10 items-center gap-2 rounded-full bg-danger px-4 text-sm font-semibold text-inverse shadow transition hover:bg-danger/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/40"
             disabled={disabled}
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus
