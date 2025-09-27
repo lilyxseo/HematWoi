@@ -61,6 +61,75 @@ const SEGMENT_ITEM_CLASS =
 
 const QUICK_AMOUNT_OPTIONS = [50000, 100000, 200000, 500000];
 
+const TRANSACTION_TEMPLATES = [
+  {
+    id: 'template-lunch',
+    type: 'expense',
+    label: 'Makan Siang',
+    description: 'Pengeluaran makan siang di kantor',
+    amount: 35000,
+    title: 'Makan Siang',
+    notes: 'Makan siang bersama tim',
+    categoryName: 'Makanan & Minuman',
+    accountName: 'Cash',
+  },
+  {
+    id: 'template-ride',
+    type: 'expense',
+    label: 'Transportasi',
+    description: 'Transport pulang-pergi kerja',
+    amount: 20000,
+    title: 'Transportasi',
+    notes: 'Transport kerja harian',
+    categoryName: 'Transportasi',
+    accountName: 'Cash',
+  },
+  {
+    id: 'template-groceries',
+    type: 'expense',
+    label: 'Belanja Harian',
+    description: 'Belanja kebutuhan pokok',
+    amount: 250000,
+    title: 'Belanja Harian',
+    notes: 'Belanja mingguan',
+    categoryName: 'Belanja Rumah Tangga',
+    accountName: 'Kartu Debit',
+  },
+  {
+    id: 'template-salary',
+    type: 'income',
+    label: 'Gaji Bulanan',
+    description: 'Pemasukan gaji rutin',
+    amount: 5500000,
+    title: 'Gaji Bulanan',
+    notes: 'Gaji bulan berjalan',
+    categoryName: 'Gaji',
+    accountName: 'Rekening Utama',
+  },
+  {
+    id: 'template-freelance',
+    type: 'income',
+    label: 'Proyek Freelance',
+    description: 'Pendapatan proyek sampingan',
+    amount: 1200000,
+    title: 'Proyek Freelance',
+    notes: 'Pembayaran proyek freelance',
+    categoryName: 'Penghasilan Tambahan',
+    accountName: 'Rekening Utama',
+  },
+  {
+    id: 'template-savings-transfer',
+    type: 'transfer',
+    label: 'Transfer ke Tabungan',
+    description: 'Pindahkan dana ke tabungan bulanan',
+    amount: 500000,
+    title: 'Transfer Tabungan',
+    notes: 'Setoran tabungan rutin',
+    accountName: 'Rekening Utama',
+    toAccountName: 'Tabungan',
+  },
+];
+
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
 
@@ -220,6 +289,80 @@ export default function TransactionAdd({ onAdd }) {
     }
     return null;
   }, [type, categoriesByType, filteredCategories.length, categoryQuery]);
+
+  const templateOptions = useMemo(
+    () => TRANSACTION_TEMPLATES.filter((template) => template.type === type),
+    [type],
+  );
+
+  const handleTemplateApply = useCallback(
+    (template) => {
+      if (!template) return;
+      setErrors({});
+      setType(template.type);
+
+      if (typeof template.amount === 'number' && template.amount > 0) {
+        setAmountInput(CURRENCY_FORMATTER.format(template.amount));
+      } else {
+        setAmountInput('');
+      }
+
+      if (template.title !== undefined) {
+        setTitle(template.title || '');
+      }
+      if (template.notes !== undefined) {
+        setNotes(template.notes || '');
+      }
+
+      if (typeof template.dateOffset === 'number') {
+        setDate(getDateWithOffset(template.dateOffset));
+      } else if (template.date) {
+        setDate(template.date);
+      }
+
+      const normalize = (value) => (value || '').toLowerCase();
+
+      if (template.accountName) {
+        const sourceAccount = accounts.find(
+          (account) => normalize(account.name) === normalize(template.accountName),
+        );
+        if (sourceAccount) {
+          setAccountId(sourceAccount.id);
+        }
+      }
+
+      if (template.type === 'transfer') {
+        if (template.toAccountName) {
+          const destinationAccount = accounts.find(
+            (account) => normalize(account.name) === normalize(template.toAccountName),
+          );
+          setToAccountId(destinationAccount ? destinationAccount.id : '');
+        } else {
+          setToAccountId('');
+        }
+        setCategoryId('');
+        setCategoryQuery('');
+      } else {
+        setToAccountId('');
+        if (template.categoryName) {
+          const categoryList = categoriesByType[template.type] || [];
+          const matchedCategory = categoryList.find(
+            (item) => normalize(item.name) === normalize(template.categoryName),
+          );
+          if (matchedCategory) {
+            setCategoryId(matchedCategory.id);
+            setCategoryQuery('');
+          } else {
+            setCategoryId('');
+            setCategoryQuery(template.categoryName);
+          }
+        } else {
+          setCategoryId('');
+        }
+      }
+    },
+    [accounts, categoriesByType],
+  );
 
   useEffect(() => {
     if (type === 'transfer') return;
@@ -508,6 +651,35 @@ export default function TransactionAdd({ onAdd }) {
                   {errors.date ? <p className="mt-1 text-xs text-destructive">{errors.date}</p> : null}
                 </div>
               </div>
+
+              {templateOptions.length ? (
+                <div className="rounded-2xl border border-border-subtle bg-muted/20 p-4">
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-text">Template transaksi</p>
+                    <p className="text-xs text-muted">Pilih salah satu template untuk mengisi formulir secara otomatis.</p>
+                  </div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {templateOptions.map((template) => (
+                      <button
+                        key={template.id}
+                        type="button"
+                        onClick={() => handleTemplateApply(template)}
+                        className="flex flex-col gap-1 rounded-xl border border-border-subtle bg-background px-3 py-3 text-left transition hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <span className="text-sm font-semibold text-text">{template.label}</span>
+                        {template.description ? (
+                          <span className="text-xs text-muted">{template.description}</span>
+                        ) : null}
+                        {typeof template.amount === 'number' ? (
+                          <span className="text-xs font-semibold text-primary">
+                            {`Rp ${CURRENCY_FORMATTER.format(template.amount)}`}
+                          </span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <div>
                 <label className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
