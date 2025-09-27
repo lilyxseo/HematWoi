@@ -1,24 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowDownToLine, FileUp, Plus } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
-import WishlistFilterBar, {
-  type WishlistFilterState,
-} from '../components/wishlist/WishlistFilterBar';
+import WishlistFilterBar, { type WishlistFilterState } from '../components/wishlist/WishlistFilterBar';
 import WishlistCard from '../components/wishlist/WishlistCard';
-import WishlistFormDialog from '../components/wishlist/WishlistFormDialog';
 import WishlistBatchToolbar from '../components/wishlist/WishlistBatchToolbar';
+import WishlistForm, { type CategoryOption } from '../components/wishlist/WishlistForm';
 import { useToast } from '../context/ToastContext';
 import { useWishlist } from '../hooks/useWishlist';
 import { listCategories } from '../lib/api-categories';
-import type { WishlistCreatePayload, WishlistItem, WishlistStatus } from '../lib/wishlistApi';
-import { listWishlist } from '../lib/wishlistApi';
-
-interface CategoryOption {
-  id: string;
-  name: string;
-}
+import {
+  listWishlist,
+  type WishlistCreatePayload,
+  type WishlistItem,
+  type WishlistStatus,
+} from '../lib/wishlistApi';
 
 const INITIAL_FILTERS: WishlistFilterState = {
   search: '',
@@ -42,72 +38,52 @@ function normalizeFilters(filters: WishlistFilterState) {
   } as const;
 }
 
-function escapeCsvValue(value: string | number | null | undefined): string {
-  if (value == null) return '';
-  const stringValue = String(value);
-  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-    return `"${stringValue.replace(/"/g, '""')}"`;
-  }
-  return stringValue;
+function PlusIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className={className}>
+      <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+    </svg>
+  );
 }
 
-function parseCsv(content: string): Record<string, string>[] {
-  const rows: string[][] = [];
-  let current = '';
-  let row: string[] = [];
-  let insideQuotes = false;
+function SkeletonCard() {
+  return (
+    <div className="flex animate-pulse flex-col gap-4 rounded-2xl bg-slate-900/40 p-4 ring-1 ring-slate-800/70">
+      <div className="aspect-video w-full rounded-xl bg-slate-800/60" />
+      <div className="h-4 w-3/4 rounded-full bg-slate-800" />
+      <div className="space-y-2">
+        <div className="h-3 w-1/2 rounded-full bg-slate-800/80" />
+        <div className="h-3 w-2/3 rounded-full bg-slate-800/60" />
+      </div>
+      <div className="flex gap-2">
+        <div className="h-10 flex-1 rounded-xl bg-slate-800/70" />
+        <div className="h-10 flex-1 rounded-xl bg-slate-800/70" />
+      </div>
+    </div>
+  );
+}
 
-  for (let i = 0; i < content.length; i += 1) {
-    const char = content[i];
-    if (char === '"') {
-      const nextChar = content[i + 1];
-      if (insideQuotes && nextChar === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        insideQuotes = !insideQuotes;
-      }
-      continue;
-    }
-
-    if (char === ',' && !insideQuotes) {
-      row.push(current);
-      current = '';
-      continue;
-    }
-
-    if ((char === '\n' || char === '\r') && !insideQuotes) {
-      if (char === '\r' && content[i + 1] === '\n') {
-        i += 1;
-      }
-      row.push(current);
-      rows.push(row);
-      row = [];
-      current = '';
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0 || row.length) {
-    row.push(current);
-    rows.push(row);
-  }
-
-  if (rows.length === 0) return [];
-  const header = rows.shift() ?? [];
-  const cleanedHeader = header.map((cell) => cell.trim());
-
-  return rows
-    .filter((cells) => cells.some((cell) => cell.trim().length > 0))
-    .map((cells) => {
-      const record: Record<string, string> = {};
-      cleanedHeader.forEach((key, index) => {
-        record[key] = (cells[index] ?? '').trim();
-      });
-      return record;
-    });
+function EmptyState({ onAdd }: { onAdd: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-4 rounded-3xl border border-dashed border-slate-700/80 bg-slate-900/40 p-10 text-center">
+      <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-[var(--accent)]/10 text-[var(--accent)]">
+        <PlusIcon className="h-8 w-8" />
+      </div>
+      <div className="space-y-2">
+        <h2 className="text-lg font-semibold text-slate-100">Belum ada wishlist</h2>
+        <p className="max-w-sm text-sm text-slate-400">
+          Buat daftar barang impianmu, tetapkan prioritas, dan wujudkan satu per satu.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onAdd}
+        className="inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+      >
+        <PlusIcon className="h-4 w-4" /> Tambah Wishlist
+      </button>
+    </div>
+  );
 }
 
 export default function WishlistPage() {
@@ -118,11 +94,11 @@ export default function WishlistPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editingItem, setEditingItem] = useState<WishlistItem | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   const normalizedFilters = useMemo(() => normalizeFilters(filters), [filters]);
 
@@ -186,8 +162,8 @@ export default function WishlistPage() {
     if (!node) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const firstEntry = entries[0];
-        if (firstEntry?.isIntersecting && !isFetchingNextPage) {
+        const first = entries[0];
+        if (first?.isIntersecting && !isFetchingNextPage) {
           fetchNextPage();
         }
       },
@@ -199,6 +175,41 @@ export default function WishlistPage() {
     };
   }, [hasNextPage, fetchNextPage, isFetchingNextPage, items.length]);
 
+  useEffect(() => {
+    if (!formOpen) return;
+    const node = modalRef.current;
+    if (!node) return;
+    const focusable = node.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (first) {
+      setTimeout(() => first.focus(), 0);
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeForm();
+      }
+      if (event.key === 'Tab' && focusable.length) {
+        if (event.shiftKey) {
+          if (document.activeElement === first) {
+            event.preventDefault();
+            (last ?? first)?.focus();
+          }
+        } else if (document.activeElement === last) {
+          event.preventDefault();
+          (first ?? last)?.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [formOpen]);
+
   const handleFilterChange = (next: WishlistFilterState) => {
     setFilters(next);
   };
@@ -207,16 +218,52 @@ export default function WishlistPage() {
     setFilters(INITIAL_FILTERS);
   };
 
-  const handleAdd = () => {
-    setFormMode('create');
-    setEditingItem(null);
+  const openForm = (mode: 'create' | 'edit', item: WishlistItem | null, trigger?: HTMLElement | null) => {
+    triggerRef.current = trigger ?? null;
+    setFormMode(mode);
+    setEditingItem(item);
+    setFormError(null);
     setFormOpen(true);
   };
 
-  const handleEdit = (item: WishlistItem) => {
-    setFormMode('edit');
-    setEditingItem(item);
-    setFormOpen(true);
+  const closeForm = () => {
+    setFormOpen(false);
+    setFormError(null);
+    setEditingItem(null);
+    const trigger = triggerRef.current;
+    if (trigger) {
+      setTimeout(() => trigger.focus(), 0);
+    }
+    triggerRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!formOpen) {
+      return;
+    }
+    const handleFocusOut = (event: FocusEvent) => {
+      if (!modalRef.current) return;
+      if (modalRef.current.contains(event.relatedTarget as Node)) return;
+      const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const first = focusable[0];
+      if (first) {
+        setTimeout(() => first.focus(), 0);
+      }
+    };
+    modalRef.current.addEventListener('focusout', handleFocusOut);
+    return () => {
+      modalRef.current?.removeEventListener('focusout', handleFocusOut);
+    };
+  }, [formOpen]);
+
+  const handleAdd = (event?: MouseEvent<HTMLButtonElement>) => {
+    openForm('create', null, event?.currentTarget ?? null);
+  };
+
+  const handleEdit = (item: WishlistItem, event: MouseEvent<HTMLButtonElement>) => {
+    openForm('edit', item, event.currentTarget);
   };
 
   const handleSelectChange = (id: string, selected: boolean) => {
@@ -250,16 +297,18 @@ export default function WishlistPage() {
   };
 
   const handleFormSubmit = async (payload: WishlistCreatePayload) => {
+    setFormError(null);
     if (formMode === 'create') {
       try {
         await createItem(payload);
         addToast('Wishlist berhasil ditambahkan', 'success');
-        setFormOpen(false);
+        closeForm();
       } catch (err) {
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console
           console.error('[Wishlist] create error', err);
         }
+        setFormError(err instanceof Error ? err.message : 'Gagal menambahkan wishlist.');
         addToast('Gagal menambahkan wishlist', 'error');
       }
       return;
@@ -270,12 +319,13 @@ export default function WishlistPage() {
     try {
       await updateItem({ id: editingItem.id, patch: payload });
       addToast('Wishlist berhasil diperbarui', 'success');
-      setFormOpen(false);
+      closeForm();
     } catch (err) {
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.error('[Wishlist] update error', err);
       }
+      setFormError(err instanceof Error ? err.message : 'Gagal memperbarui wishlist.');
       addToast('Gagal memperbarui wishlist', 'error');
     }
   };
@@ -364,201 +414,97 @@ export default function WishlistPage() {
     }
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const records = parseCsv(text);
-      if (!records.length) {
-        addToast('CSV kosong atau tidak valid', 'warning');
-        return;
-      }
-      let successCount = 0;
-      const allowedStatus: WishlistStatus[] = ['planned', 'deferred', 'purchased', 'archived'];
-      for (const record of records) {
-        if (!record.title) continue;
-        const estimated = record.estimated_price ? Number(record.estimated_price) : null;
-        const priority = record.priority ? Number(record.priority) : null;
-        const status = allowedStatus.includes(record.status as WishlistStatus)
-          ? (record.status as WishlistStatus)
-          : 'planned';
-        const payload: WishlistCreatePayload = {
-          title: record.title,
-          estimated_price: Number.isFinite(estimated ?? NaN) && (estimated ?? 0) >= 0 ? estimated : null,
-          priority: Number.isInteger(priority ?? NaN) && priority != null && priority >= 1 && priority <= 5 ? priority : null,
-          status,
-          category_id: record.category_id || null,
-          store_url: record.store_url || undefined,
-          note: record.note || undefined,
-          image_url: record.image_url || undefined,
-        };
-        try {
-          await createItem(payload);
-          successCount += 1;
-        } catch (err) {
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.error('[Wishlist] import item error', err);
-          }
-        }
-      }
-      addToast(`Berhasil mengimpor ${successCount} wishlist`, successCount ? 'success' : 'warning');
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.error('[Wishlist] import error', err);
-      }
-      addToast('Gagal mengimpor CSV', 'error');
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
   const handleExport = useCallback(async () => {
-    setExporting(true);
-    try {
-      const rows: WishlistItem[] = [];
-      let page = 1;
-      const filterPayload = normalizeFilters(filters);
-      for (let i = 0; i < 20; i += 1) {
-        const result = await listWishlist({ ...filterPayload, page, pageSize: 200 });
-        rows.push(...result.items);
-        if (!result.hasMore) break;
-        page += 1;
-      }
-      const header = [
-        'title',
-        'estimated_price',
-        'priority',
-        'status',
-        'category_id',
-        'category_name',
-        'store_url',
-        'note',
-        'image_url',
-        'created_at',
-        'updated_at',
-      ];
-      const lines = [header.join(',')];
-      for (const row of rows) {
-        lines.push(
-          [
-            escapeCsvValue(row.title),
-            escapeCsvValue(row.estimated_price ?? ''),
-            escapeCsvValue(row.priority ?? ''),
-            escapeCsvValue(row.status),
-            escapeCsvValue(row.category_id ?? ''),
-            escapeCsvValue(row.category?.name ?? ''),
-            escapeCsvValue(row.store_url ?? ''),
-            escapeCsvValue(row.note ?? ''),
-            escapeCsvValue(row.image_url ?? ''),
-            escapeCsvValue(row.created_at),
-            escapeCsvValue(row.updated_at),
-          ].join(',')
-        );
-      }
-      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `wishlist-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      addToast('Wishlist diekspor sebagai CSV', 'success');
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.error('[Wishlist] export error', err);
-      }
-      addToast('Gagal mengekspor wishlist', 'error');
-    } finally {
-      setExporting(false);
+    const rows: WishlistItem[] = [];
+    let page = 1;
+    const filterPayload = normalizeFilters(filters);
+    for (let i = 0; i < 20; i += 1) {
+      const result = await listWishlist({ ...filterPayload, page, pageSize: 200 });
+      rows.push(...result.items);
+      if (!result.hasMore) break;
+      page += 1;
     }
+    const header = [
+      'title',
+      'estimated_price',
+      'priority',
+      'status',
+      'category_id',
+      'store_url',
+      'note',
+      'image_url',
+      'created_at',
+      'updated_at',
+    ];
+    const csvContent = [header.join(',')]
+      .concat(
+        rows.map((item) =>
+          [
+            item.title,
+            item.estimated_price ?? '',
+            item.priority ?? '',
+            item.status,
+            item.category_id ?? '',
+            item.store_url ?? '',
+            item.note ?? '',
+            item.image_url ?? '',
+            item.created_at,
+            item.updated_at,
+          ]
+            .map((value) => {
+              const text = String(value);
+              if (/[",\n]/.test(text)) {
+                return `"${text.replace(/"/g, '""')}"`;
+              }
+              return text;
+            })
+            .join(',')
+        )
+      )
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'wishlist.csv';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+    addToast('Wishlist diekspor ke CSV', 'success');
   }, [filters, addToast]);
-
-  const renderSkeletons = () => {
-    return (
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div
-            // eslint-disable-next-line react/no-array-index-key
-            key={index}
-            className="h-48 animate-pulse rounded-2xl bg-slate-900/60 ring-1 ring-slate-800"
-          />
-        ))}
-      </div>
-    );
-  };
-
-  const renderEmptyState = () => (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-slate-800 bg-slate-950/60 px-6 py-16 text-center">
-      <div className="rounded-full border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm text-slate-400">
-        Wishlist Anda masih kosong
-      </div>
-      <p className="max-w-sm text-balance text-sm text-slate-400">
-        Simpan ide belanja tanpa komitmen finansial. Tambahkan item wishlist dan ubah menjadi goal atau transaksi kapan saja.
-      </p>
-      <button
-        type="button"
-        onClick={handleAdd}
-        className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      >
-        <Plus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
-      </button>
-    </div>
-  );
 
   const hasError = isError && !isLoading;
 
   return (
     <Page>
-      <PageHeader title="Wishlist" description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun.">
-        <button
-          type="button"
-          onClick={handleImportClick}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={importing || isMutating}
+      <div className="flex flex-col gap-6">
+        <PageHeader
+          title="Wishlist"
+          description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun."
         >
-          <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={exporting}
-        >
-          <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
-        </button>
-      </PageHeader>
+          <button
+            type="button"
+            onClick={(event) => handleAdd(event)}
+            className="hidden items-center gap-2 rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] md:inline-flex"
+          >
+            <PlusIcon className="h-4 w-4" /> Tambah Wishlist
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-900/60 px-4 py-2 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Ekspor CSV
+          </button>
+        </PageHeader>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleImportFile}
-      />
-
-      <div className="space-y-6">
-        <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />
+        <WishlistFilterBar
+          filters={filters}
+          categories={categories}
+          onChange={handleFilterChange}
+          onReset={handleResetFilters}
+        />
 
         {hasError ? (
           <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
@@ -574,9 +520,13 @@ export default function WishlistPage() {
         ) : null}
 
         {isLoading ? (
-          renderSkeletons()
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <SkeletonCard key={index} />
+            ))}
+          </div>
         ) : items.length === 0 ? (
-          renderEmptyState()
+          <EmptyState onAdd={() => handleAdd()} />
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -586,7 +536,7 @@ export default function WishlistPage() {
                   item={item}
                   selected={selectedIds.has(item.id)}
                   onSelectChange={(selected) => handleSelectChange(item.id, selected)}
-                  onEdit={handleEdit}
+                  onEdit={(current, event) => handleEdit(current, event)}
                   onDelete={handleDelete}
                   onMarkPurchased={handleMarkPurchased}
                   onMakeGoal={handleMakeGoal}
@@ -597,19 +547,29 @@ export default function WishlistPage() {
             </div>
             {hasNextPage ? (
               <div className="flex justify-center">
-                <div ref={loadMoreRef} className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-slate-500">
-                  {isFetchingNextPage ? 'Memuat…' : 'Memuat lainnya'}
+                <div
+                  ref={loadMoreRef}
+                  className="h-10 w-full max-w-[200px] rounded-full bg-slate-900/60 text-center text-sm text-slate-500"
+                >
+                  {isFetchingNextPage ? 'Memuat…' : 'Gulir untuk memuat lagi'}
                 </div>
               </div>
             ) : null}
             {total ? (
-              <p className="text-center text-xs text-slate-500">
-                Menampilkan {items.length} dari {total} wishlist
-              </p>
+              <p className="text-center text-xs text-slate-500">Menampilkan {items.length} dari {total} wishlist</p>
             ) : null}
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        onClick={(event) => handleAdd(event)}
+        className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/40 ring-2 ring-slate-900/40 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 md:hidden"
+        aria-label="Tambah wishlist"
+      >
+        <PlusIcon className="h-6 w-6" />
+      </button>
 
       {selectedCount > 0 ? (
         <WishlistBatchToolbar
@@ -622,15 +582,35 @@ export default function WishlistPage() {
         />
       ) : null}
 
-      <WishlistFormDialog
-        open={formOpen}
-        mode={formMode}
-        initialData={editingItem}
-        categories={categories}
-        submitting={isMutating}
-        onClose={() => setFormOpen(false)}
-        onSubmit={handleFormSubmit}
-      />
+      {formOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={(event: MouseEvent<HTMLDivElement>) => {
+              if (event.target === event.currentTarget) {
+                closeForm();
+              }
+            }}
+          />
+          <div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wishlist-form-title"
+            className="relative z-10 w-full max-w-lg rounded-2xl bg-slate-900 p-5 md:p-6 shadow-2xl ring-1 ring-slate-800"
+          >
+            <WishlistForm
+              mode={formMode}
+              initialData={editingItem}
+              categories={categories}
+              submitting={isMutating}
+              errorMessage={formError}
+              onSubmit={handleFormSubmit}
+              onCancel={closeForm}
+            />
+          </div>
+        </div>
+      ) : null}
     </Page>
   );
 }

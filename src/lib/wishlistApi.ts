@@ -57,7 +57,24 @@ const DEFAULT_PAGE_SIZE = 20;
 function sanitizeNumber(value: number | null | undefined): number | null {
   if (value == null) return null;
   if (!Number.isFinite(value)) return null;
-  return value;
+  const numeric = Number(value);
+  if (numeric < 0) return null;
+  return numeric;
+}
+
+function sanitizeUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.toString();
+    }
+  } catch (error) {
+    return null;
+  }
+  return null;
 }
 
 function mapWishlistRow(row: Record<string, any>): WishlistItem {
@@ -214,10 +231,10 @@ export async function createWishlistItem(payload: WishlistCreatePayload): Promis
     estimated_price: sanitizeNumber(estimated_price) ?? null,
     priority: priority != null ? Math.min(Math.max(priority, 1), 5) : null,
     category_id: category_id || null,
-    store_url: store_url?.trim() || null,
+    store_url: sanitizeUrl(store_url) || null,
     note: note?.trim() || null,
     status,
-    image_url: image_url?.trim() || null,
+    image_url: sanitizeUrl(image_url) || null,
   };
 
   const { data, error } = await supabase
@@ -266,7 +283,7 @@ export async function updateWishlistItem(id: string, payload: WishlistUpdatePayl
     patch.category_id = payload.category_id || null;
   }
   if (payload.store_url !== undefined) {
-    patch.store_url = payload.store_url?.trim() || null;
+    patch.store_url = sanitizeUrl(payload.store_url) || null;
   }
   if (payload.note !== undefined) {
     patch.note = payload.note?.trim() || null;
@@ -275,7 +292,7 @@ export async function updateWishlistItem(id: string, payload: WishlistUpdatePayl
     patch.status = payload.status;
   }
   if (payload.image_url !== undefined) {
-    patch.image_url = payload.image_url?.trim() || null;
+    patch.image_url = sanitizeUrl(payload.image_url) || null;
   }
   patch.updated_at = new Date().toISOString();
 
