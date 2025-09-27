@@ -4,17 +4,19 @@ import {
   ArrowRight,
   ArrowLeftRight,
   Banknote,
+  BookmarkPlus,
   Calendar,
   FileText,
   Loader2,
   Receipt,
   RotateCcw,
   Save,
-  Search,
   Tag as TagIcon,
+  Trash2,
   TrendingDown,
   TrendingUp,
   Wallet,
+  Wand2,
 } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -24,6 +26,11 @@ import { useToast } from '../context/ToastContext';
 import { listAccounts, listCategories } from '../lib/api';
 import { listCategoriesExpense } from '../lib/budgetApi';
 import { createTransaction } from '../lib/transactionsApi';
+import {
+  createTransactionTemplate,
+  deleteTransactionTemplate,
+  listTransactionTemplates,
+} from '../lib/transactionTemplatesApi';
 import { supabase } from '../lib/supabase';
 
 const TYPE_OPTIONS = [
@@ -63,6 +70,16 @@ const QUICK_AMOUNT_OPTIONS = [50000, 100000, 200000, 500000];
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
+
+function formatAmountInputValue(raw) {
+  const digits = String(raw ?? '')
+    .replace(/[^0-9]/g, '')
+    .replace(/^0+(?=\d)/, '');
+  if (!digits) return '';
+  const numericValue = Number.parseInt(digits, 10);
+  if (!Number.isFinite(numericValue)) return '';
+  return CURRENCY_FORMATTER.format(numericValue);
+}
 
 function getDateWithOffset(offset = 0) {
   const date = new Date();
@@ -116,7 +133,6 @@ export default function TransactionAdd({ onAdd }) {
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [categoryQuery, setCategoryQuery] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
@@ -125,6 +141,11 @@ export default function TransactionAdd({ onAdd }) {
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [templateName, setTemplateName] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -149,7 +170,6 @@ export default function TransactionAdd({ onAdd }) {
           ...((incomeRows || []).filter(Boolean)),
         ];
         setCategories(combinedCategories);
-        setCategoryQuery('');
       } catch (err) {
         addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
@@ -162,14 +182,29 @@ export default function TransactionAdd({ onAdd }) {
     };
   }, [addToast]);
 
+  const loadTemplates = useCallback(async () => {
+    try {
+      setTemplatesLoading(true);
+      const records = await listTransactionTemplates();
+      setTemplates(records);
+    } catch (err) {
+      const message = err?.message || 'Gagal memuat template transaksi';
+      setTemplates([]);
+      addToast(message, 'error');
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, [loadTemplates]);
+
   useEffect(() => {
     if (type !== 'transfer') {
       setToAccountId('');
     } else {
       setCategoryId('');
-    }
-    if (type === 'transfer') {
-      setCategoryQuery('');
     }
   }, [type]);
 
@@ -204,11 +239,8 @@ export default function TransactionAdd({ onAdd }) {
   }, [categories]);
 
   const filteredCategories = useMemo(() => {
-    const list = categoriesByType[type] || [];
-    const keyword = categoryQuery.trim().toLowerCase();
-    if (!keyword) return list;
-    return list.filter((item) => (item.name || '').toLowerCase().includes(keyword));
-  }, [categoriesByType, type, categoryQuery]);
+    return categoriesByType[type] || [];
+  }, [categoriesByType, type]);
 
   const categoryEmptyMessage = useMemo(() => {
     if (type === 'transfer') return null;
@@ -216,10 +248,10 @@ export default function TransactionAdd({ onAdd }) {
     const baseList = categoriesByType[type] || [];
     if (!baseList.length) return baseMessage;
     if (!filteredCategories.length) {
-      return categoryQuery.trim() ? 'Tidak ada kategori yang cocok dengan pencarian' : baseMessage;
+      return baseMessage;
     }
     return null;
-  }, [type, categoriesByType, filteredCategories.length, categoryQuery]);
+  }, [type, categoriesByType, filteredCategories.length]);
 
   useEffect(() => {
     if (type === 'transfer') return;
@@ -265,13 +297,13 @@ export default function TransactionAdd({ onAdd }) {
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
 
   const handleAmountChange = (event) => {
-    const value = event.target.value;
-    setAmountInput(value.replace(/[^0-9.,]/g, ''));
+    const formatted = formatAmountInputValue(event.target.value);
+    setAmountInput(formatted);
     setErrors((prev) => ({ ...prev, amount: undefined }));
   };
 
   const handleQuickAmountSelect = (value) => {
-    setAmountInput(CURRENCY_FORMATTER.format(value));
+    setAmountInput(formatAmountInputValue(value));
     setErrors((prev) => ({ ...prev, amount: undefined }));
   };
 
@@ -291,6 +323,113 @@ export default function TransactionAdd({ onAdd }) {
     event.preventDefault();
     setDragOver(false);
     handleReceiptFiles(event.dataTransfer.files);
+  };
+
+  const handleSaveTemplate = async () => {
+    const name = templateName.trim();
+    if (!name) {
+      addToast('Nama template wajib diisi.', 'error');
+      return;
+    }
+    if (!Number.isFinite(amountValue) || amountValue <= 0) {
+      addToast('Nominal harus diisi sebelum membuat template.', 'error');
+      return;
+    }
+    if (!accountId) {
+      addToast('Pilih akun sumber untuk template.', 'error');
+      return;
+    }
+    if (type === 'transfer' && !toAccountId) {
+      addToast('Pilih akun tujuan untuk template transfer.', 'error');
+      return;
+    }
+    if (type === 'expense' && !categoryId) {
+      addToast('Pilih kategori untuk template pengeluaran.', 'error');
+      return;
+    }
+    setSavingTemplate(true);
+    try {
+      await createTransactionTemplate({
+        name,
+        type,
+        amount: amountValue,
+        account_id: accountId,
+        to_account_id: type === 'transfer' ? toAccountId || null : null,
+        category_id: type === 'transfer' ? null : categoryId || null,
+        title: trimmedTitle || null,
+        notes: trimmedNotes || null,
+      });
+      setTemplateName('');
+      addToast('Template transaksi tersimpan.', 'success');
+      await loadTemplates();
+    } catch (err) {
+      addToast(err?.message || 'Gagal menyimpan template transaksi.', 'error');
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
+  const handleApplyTemplate = (template) => {
+    if (!template) return;
+    const accountExists = template.account_id
+      ? accounts.some((item) => item.id === template.account_id)
+      : false;
+    const targetAccountExists = template.to_account_id
+      ? accounts.some((item) => item.id === template.to_account_id)
+      : false;
+    const categoryExists = template.category_id
+      ? categories.some((item) => item.id === template.category_id)
+      : false;
+
+    setType(template.type);
+    if (Number.isFinite(template.amount) && template.amount > 0) {
+      setAmountInput(formatAmountInputValue(template.amount));
+    }
+    if (accountExists) {
+      setAccountId(template.account_id);
+    }
+    if (template.type === 'transfer') {
+      if (targetAccountExists) {
+        setToAccountId(template.to_account_id || '');
+      } else {
+        setToAccountId('');
+      }
+      setCategoryId('');
+    } else {
+      if (categoryExists) {
+        setCategoryId(template.category_id || '');
+      }
+      setToAccountId('');
+    }
+    setTitle(template.title || '');
+    setNotes(template.notes || '');
+    setErrors({});
+
+    if (!accountExists && template.account_id) {
+      addToast('Akun pada template tidak ditemukan dan dilewati.', 'warning');
+    }
+    if (template.type === 'transfer' && !targetAccountExists && template.to_account_id) {
+      addToast('Akun tujuan pada template tidak ditemukan dan dilewati.', 'warning');
+    }
+    if (template.type !== 'transfer' && template.category_id && !categoryExists) {
+      addToast('Kategori pada template tidak ditemukan dan dilewati.', 'warning');
+    }
+
+    addToast('Template transaksi diterapkan.', 'success');
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    if (!id) return;
+    setDeletingTemplateId(id);
+    try {
+      await deleteTransactionTemplate(id);
+      addToast('Template transaksi dihapus.', 'success');
+      await loadTemplates();
+    } catch (err) {
+      addToast(err?.message || 'Gagal menghapus template transaksi.', 'error');
+    } finally {
+      setDeletingTemplateId(null);
+    }
   };
 
   const validate = useCallback(() => {
@@ -435,8 +574,9 @@ export default function TransactionAdd({ onAdd }) {
 
       <Section first>
         <form id="add-transaction-form" onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
-          <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
-            <CardBody className="space-y-6">
+          <div className="space-y-6">
+            <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
+              <CardBody className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tipe</span>
@@ -590,28 +730,11 @@ export default function TransactionAdd({ onAdd }) {
                   </div>
                 ) : null}
                 {!isTransfer ? (
-                <div>
-                  <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                    <TagIcon className="h-4 w-4" aria-hidden="true" />
-                    Kategori
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    <div className="relative">
-                      <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted">
-                        <Search className="h-4 w-4" aria-hidden="true" />
-                      </span>
-                      <label htmlFor="transaction-category-search" className="sr-only">
-                        Cari kategori
-                      </label>
-                      <input
-                        id="transaction-category-search"
-                        type="search"
-                        value={categoryQuery}
-                        onChange={(event) => setCategoryQuery(event.target.value)}
-                        placeholder="Cari kategori…"
-                        className="h-10 w-full rounded-2xl border bg-background pl-9 pr-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      />
-                    </div>
+                  <div>
+                    <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                      <TagIcon className="h-4 w-4" aria-hidden="true" />
+                      Kategori
+                    </label>
                     <select
                       id="category"
                       value={categoryId}
@@ -629,14 +752,13 @@ export default function TransactionAdd({ onAdd }) {
                         </option>
                       ))}
                     </select>
+                    {errors.category_id ? (
+                      <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
+                    ) : categoryEmptyMessage ? (
+                      <p className="mt-1 text-xs text-muted">{categoryEmptyMessage}</p>
+                    ) : null}
                   </div>
-                  {errors.category_id ? (
-                    <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
-                  ) : categoryEmptyMessage ? (
-                    <p className="mt-1 text-xs text-muted">{categoryEmptyMessage}</p>
-                  ) : null}
-                </div>
-              ) : null}
+                ) : null}
               </div>
 
               <div>
@@ -716,8 +838,132 @@ export default function TransactionAdd({ onAdd }) {
                   </button>
                 ) : null}
               </div>
-            </CardBody>
-          </Card>
+              </CardBody>
+            </Card>
+
+            <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
+              <CardBody className="space-y-5">
+                <div>
+                  <h2 className="text-base font-semibold text-text">Template transaksi</h2>
+                  <p className="mt-1 text-sm text-muted">
+                    Simpan pengaturan formulir favorit dan gunakan kembali kapan pun dibutuhkan.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3 rounded-2xl border border-border-subtle bg-background p-3 sm:flex-row sm:items-end">
+                  <div className="flex-1">
+                    <label htmlFor="template-name" className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                      <BookmarkPlus className="h-4 w-4" aria-hidden="true" />
+                      Nama template
+                    </label>
+                    <input
+                      id="template-name"
+                      value={templateName}
+                      onChange={(event) => setTemplateName(event.target.value)}
+                      placeholder="Contoh: Langganan streaming"
+                      className={INPUT_CLASS}
+                      disabled={savingTemplate}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleSaveTemplate}
+                    disabled={savingTemplate}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingTemplate ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
+                    Simpan template
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {templatesLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                      Memuat template...
+                    </div>
+                  ) : templates.length === 0 ? (
+                    <p className="text-sm text-muted">
+                      Belum ada template. Isi formulir di atas lalu simpan sebagai template untuk mempercepat pencatatan transaksi berikutnya.
+                    </p>
+                  ) : (
+                    <ul className="space-y-3">
+                      {templates.map((template) => {
+                        const typeMeta = TYPE_OPTIONS.find((option) => option.value === template.type);
+                        const accountName = accounts.find((item) => item.id === template.account_id)?.name || 'Akun tidak ditemukan';
+                        const toAccountName = template.to_account_id
+                          ? accounts.find((item) => item.id === template.to_account_id)?.name || 'Akun tidak ditemukan'
+                          : null;
+                        const categoryName = template.category_id
+                          ? categories.find((item) => item.id === template.category_id)?.name || 'Kategori tidak ditemukan'
+                          : null;
+                        return (
+                          <li key={template.id} className="space-y-3 rounded-2xl border border-border-subtle p-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="text-sm font-semibold text-text">{template.name}</p>
+                                <p className="text-xs text-muted">{typeMeta?.label || 'Template'}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyTemplate(template)}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                >
+                                  <Wand2 className="h-4 w-4" aria-hidden="true" />
+                                  Gunakan
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTemplate(template.id)}
+                                  disabled={deletingTemplateId === template.id}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-border-subtle px-3 py-1.5 text-xs font-medium text-muted transition hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {deletingTemplateId === template.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                  )}
+                                  Hapus
+                                </button>
+                              </div>
+                            </div>
+                            <div className="grid gap-2 text-xs text-muted sm:grid-cols-2">
+                              <div>
+                                <span className="font-medium text-text">{formatAmountDisplay(template.amount)}</span>
+                                <p>Nominal</p>
+                              </div>
+                              <div>
+                                <span className="font-medium text-text">{accountName || '—'}</span>
+                                <p>Akun sumber</p>
+                              </div>
+                              {template.type === 'transfer' ? (
+                                <div>
+                                  <span className="font-medium text-text">{toAccountName || '—'}</span>
+                                  <p>Akun tujuan</p>
+                                </div>
+                              ) : (
+                                <div>
+                                  <span className="font-medium text-text">{categoryName || '—'}</span>
+                                  <p>Kategori</p>
+                                </div>
+                              )}
+                              <div>
+                                <span className="font-medium text-text">{template.title || '—'}</span>
+                                <p>Judul</p>
+                              </div>
+                              <div className="sm:col-span-2">
+                                <span className="font-medium text-text">{template.notes ? template.notes.slice(0, 80) + (template.notes.length > 80 ? '…' : '') : '—'}</span>
+                                <p>Catatan</p>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          </div>
 
           <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
