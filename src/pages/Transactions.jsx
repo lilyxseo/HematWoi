@@ -12,7 +12,6 @@ import {
   Pencil,
   Plus,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
 import TransactionsFilters from "../components/transactions/TransactionsFilters";
@@ -720,14 +719,6 @@ export default function Transactions() {
           aria-label="Tambah transaksi (Ctrl+T)"
         >
           <Plus className="h-4 w-4" /> Tambah Transaksi
-        </button>
-        <button
-          type="button"
-          onClick={() => setImportOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          aria-label="Import CSV (Ctrl+I)"
-        >
-          <Upload className="h-4 w-4" /> Import CSV
         </button>
         <button
           type="button"

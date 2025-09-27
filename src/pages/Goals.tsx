@@ -337,19 +337,19 @@ export default function Goals() {
       >
         <button
           type="button"
-          onClick={handleExportCsv}
-          className="inline-flex h-[40px] items-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-        >
-          <Download className="h-4 w-4" aria-hidden="true" />
-          Export CSV
-        </button>
-        <button
-          type="button"
           onClick={handleCreateClick}
           className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           Tambah Goal
+        </button>
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          className="inline-flex h-[40px] items-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+        >
+          <Download className="h-4 w-4" aria-hidden="true" />
+          Export CSV
         </button>
       </PageHeader>
 
