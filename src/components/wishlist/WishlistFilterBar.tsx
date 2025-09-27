@@ -1,5 +1,10 @@
-import { ChangeEvent, FormEvent } from 'react';
-import { RotateCcw, Search } from 'lucide-react';
+/**
+ * WishlistFilterBar renders the responsive filter and sort controls used on the wishlist page.
+ * It receives the current filter state along with category options, then notifies the parent
+ * component whenever any control changes so that the query parameters can be updated.
+ */
+import type { ChangeEvent } from 'react';
+import { IconFunnel, IconSort, IconSearch, IconX } from '../icons/WishlistIcons';
 import type { WishlistStatus } from '../../lib/wishlistApi';
 import type { WishlistFilters } from '../../hooks/useWishlist';
 
@@ -51,11 +56,11 @@ const SORT_OPTIONS: { value: WishlistFilterState['sort']; label: string }[] = [
   { value: 'priority-asc', label: 'Prioritas rendah' },
 ];
 
+const CONTROL_CLASS =
+  'h-11 w-full rounded-2xl bg-slate-950/80 px-4 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]';
+
 export default function WishlistFilterBar({ filters, categories, onChange, onReset }: WishlistFilterBarProps) {
-  const handleSelect = <Key extends keyof WishlistFilterState>(
-    event: ChangeEvent<HTMLSelectElement>,
-    key: Key
-  ) => {
+  const handleSelect = <Key extends keyof WishlistFilterState>(event: ChangeEvent<HTMLSelectElement>, key: Key) => {
     const value = event.target.value as WishlistFilterState[Key];
     onChange({ ...filters, [key]: value });
   };
@@ -65,98 +70,117 @@ export default function WishlistFilterBar({ filters, categories, onChange, onRes
     onChange({ ...filters, [key]: value });
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-  };
-
-  const handleReset = () => {
-    onReset?.();
-  };
-
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="min-w-0 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-sm backdrop-blur"
-    >
-      <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-8">
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Status</span>
-          <select
-            value={filters.status}
-            onChange={(event) => handleSelect(event, 'status')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+    <form className="rounded-3xl border border-slate-800/80 bg-slate-950/60 p-4 shadow-sm backdrop-blur">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 rounded-2xl bg-slate-900/70 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <IconFunnel className="h-4 w-4" aria-hidden="true" /> Filter
+        </div>
+        <label className="sr-only" htmlFor="wishlist-filter-status">
+          Status wishlist
         </label>
+        <select
+          id="wishlist-filter-status"
+          value={filters.status}
+          onChange={(event) => handleSelect(event, 'status')}
+          className={`${CONTROL_CLASS} md:w-40`}
+        >
+          {STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
 
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Prioritas</span>
-          <select
-            value={filters.priority}
-            onChange={(event) => handleSelect(event, 'priority')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            {PRIORITY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+        <label className="sr-only" htmlFor="wishlist-filter-priority">
+          Prioritas wishlist
         </label>
+        <select
+          id="wishlist-filter-priority"
+          value={filters.priority}
+          onChange={(event) => handleSelect(event, 'priority')}
+          className={`${CONTROL_CLASS} md:w-44`}
+        >
+          {PRIORITY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
 
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Kategori</span>
-          <select
-            value={filters.categoryId}
-            onChange={(event) => handleSelect(event, 'categoryId')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            <option value="all">Semua kategori</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+        <label className="sr-only" htmlFor="wishlist-filter-category">
+          Kategori wishlist
         </label>
+        <select
+          id="wishlist-filter-category"
+          value={filters.categoryId}
+          onChange={(event) => handleSelect(event, 'categoryId')}
+          className={`${CONTROL_CLASS} md:w-48`}
+        >
+          <option value="all">Semua kategori</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
 
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Harga minimum</span>
+        <div className="flex w-full flex-1 min-w-[200px] items-center gap-2 rounded-2xl bg-slate-900/70 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400 md:w-auto">
+          Harga
+          <label className="sr-only" htmlFor="wishlist-filter-price-min">
+            Harga minimum
+          </label>
           <input
+            id="wishlist-filter-price-min"
             type="number"
             inputMode="decimal"
             min="0"
             value={filters.priceMin}
             onChange={(event) => handleInput(event, 'priceMin')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            placeholder="0"
+            placeholder="Min"
+            className="h-9 w-24 rounded-xl bg-slate-950/70 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
           />
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Harga maksimum</span>
+          <span className="text-slate-500">—</span>
+          <label className="sr-only" htmlFor="wishlist-filter-price-max">
+            Harga maksimum
+          </label>
           <input
+            id="wishlist-filter-price-max"
             type="number"
             inputMode="decimal"
             min="0"
             value={filters.priceMax}
             onChange={(event) => handleInput(event, 'priceMax')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            placeholder="0"
+            placeholder="Max"
+            className="h-9 w-24 rounded-xl bg-slate-950/70 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
           />
-        </label>
+        </div>
 
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Urutkan</span>
+        <div className="flex min-w-[200px] flex-1 items-center gap-3 rounded-2xl bg-slate-950/80 px-3 py-2 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
+          <IconSearch className="h-4 w-4 text-slate-500" aria-hidden="true" />
+          <label className="sr-only" htmlFor="wishlist-filter-search">
+            Cari wishlist
+          </label>
+          <input
+            id="wishlist-filter-search"
+            type="search"
+            value={filters.search}
+            onChange={(event) => handleInput(event, 'search')}
+            placeholder="Cari judul atau catatan"
+            className="h-9 w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-none"
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <IconSort className="h-5 w-5 text-slate-500" aria-hidden="true" />
+          <label className="sr-only" htmlFor="wishlist-filter-sort">
+            Urutkan wishlist
+          </label>
           <select
+            id="wishlist-filter-sort"
             value={filters.sort}
             onChange={(event) => handleSelect(event, 'sort')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className={`${CONTROL_CLASS} md:w-48`}
           >
             {SORT_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -164,29 +188,17 @@ export default function WishlistFilterBar({ filters, categories, onChange, onRes
               </option>
             ))}
           </select>
-        </label>
-
-        <div className="col-span-2 flex h-11 min-w-0 items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-within:ring-2 focus-within:ring-[var(--accent)] md:col-span-2 lg:col-span-3">
-          <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
-          <input
-            type="search"
-            value={filters.search}
-            onChange={(event) => handleInput(event, 'search')}
-            placeholder="Cari judul atau catatan"
-            className="h-full w-full min-w-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-none"
-            aria-label="Pencarian wishlist"
-          />
-          {onReset ? (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              aria-label="Reset filter wishlist"
-            >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : null}
         </div>
+
+        {onReset ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-900/80 px-4 text-sm font-medium text-slate-200 transition hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <IconX className="h-4 w-4" aria-hidden="true" /> Reset
+          </button>
+        ) : null}
       </div>
     </form>
   );
