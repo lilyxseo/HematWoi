@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Banknote,
   CheckCircle2,
   EllipsisVertical,
   ExternalLink,
   Goal,
+  Link2,
   NotebookPen,
   ShoppingBag,
+  Tag,
   Trash2,
 } from 'lucide-react';
 import type { WishlistItem, WishlistStatus } from '../../lib/wishlistApi';
@@ -110,8 +113,8 @@ export default function WishlistCard({
 
   return (
     <article
-      className={`group relative flex h-full flex-col overflow-hidden rounded-2xl bg-slate-950/80 ring-1 ring-slate-800 transition hover:ring-[var(--accent)]/70 ${
-        selected ? 'ring-2 ring-[var(--accent)]/80' : ''
+      className={`group relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800/70 bg-slate-950/80 shadow-lg shadow-slate-950/40 transition duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)]/60 ${
+        selected ? 'border-2 border-[var(--accent)]/70 shadow-[var(--accent)]/20' : ''
       } ${disabled ? 'opacity-60' : ''}`}
     >
       {hasImage ? (
@@ -122,9 +125,10 @@ export default function WishlistCard({
             loading="lazy"
             className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]"
           />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" aria-hidden="true" />
         </div>
       ) : null}
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-4 p-5">
         <div className="flex items-start gap-3">
           <label className="mt-0.5 flex items-center">
             <input
@@ -148,17 +152,33 @@ export default function WishlistCard({
                 </span>
               </div>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-              <span className="font-medium text-slate-100">{formatCurrencyIDR(item.estimated_price)}</span>
-              {item.category?.name ? <span className="text-xs uppercase tracking-wide text-slate-500">{item.category.name}</span> : null}
+            <div className="mt-3 space-y-2 text-sm text-slate-400">
+              <div className="flex items-center gap-2 text-slate-300">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80">
+                  <Banknote className="h-3.5 w-3.5 text-[var(--accent)]" aria-hidden="true" />
+                </span>
+                <span className="font-semibold text-slate-100">{formatCurrencyIDR(item.estimated_price)}</span>
+              </div>
+              {item.category?.name ? (
+                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-400">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80">
+                    <Tag className="h-3.5 w-3.5 text-[var(--accent)]" aria-hidden="true" />
+                  </span>
+                  <span>{item.category.name}</span>
+                </div>
+              ) : null}
               {item.store_url ? (
                 <a
                   href={item.store_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-[var(--accent)] transition hover:text-[var(--accent)]/80"
+                  className="flex items-center gap-2 text-xs font-medium text-[var(--accent)] transition hover:text-[var(--accent)]/80"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Toko
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent)]/10">
+                    <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                  Lihat toko
+                  <ExternalLink className="h-3 w-3" aria-hidden="true" />
                 </a>
               ) : null}
             </div>
@@ -166,7 +186,7 @@ export default function WishlistCard({
           <div className="relative" ref={menuRef}>
             <button
               type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900/70 text-slate-400 transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               aria-label={`Menu tindakan untuk ${item.title}`}
               onClick={() => setMenuOpen((prev) => !prev)}
               disabled={disabled}
