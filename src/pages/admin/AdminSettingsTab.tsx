@@ -1,12 +1,12 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
-  getAppDescription,
+  getAppMetadata,
   getBranding,
-  setAppDescription,
+  setAppMetadata,
   setBranding,
-  type AppDescriptionSetting,
+  type AppMetadataSetting,
   type BrandingSetting,
 } from '../../lib/adminApi';
 
@@ -26,14 +26,26 @@ type BrandingForm = {
   secondary: string;
 };
 
+type MetadataForm = {
+  title: string;
+  description: string;
+  tagline: string;
+  logoUrl: string;
+};
+
 export default function AdminSettingsTab() {
   const { addToast } = useToast();
-  const [description, setDescription] = useState('');
-  const [descriptionMeta, setDescriptionMeta] = useState<string | null>(null);
+  const [metadata, setMetadataState] = useState<MetadataForm>({
+    title: '',
+    description: '',
+    tagline: '',
+    logoUrl: '',
+  });
+  const [metadataMeta, setMetadataMeta] = useState<string | null>(null);
   const [branding, setBrandingState] = useState<BrandingForm>({ primary: '#1e40af', secondary: '#0ea5e9' });
   const [brandingMeta, setBrandingMeta] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [savingDesc, setSavingDesc] = useState(false);
+  const [savingMetadata, setSavingMetadata] = useState(false);
   const [savingBrand, setSavingBrand] = useState(false);
 
   useEffect(() => {
@@ -41,10 +53,15 @@ export default function AdminSettingsTab() {
     const load = async () => {
       setLoading(true);
       try {
-        const [desc, brand] = await Promise.all([getAppDescription(), getBranding()]);
+        const [meta, brand] = await Promise.all([getAppMetadata(), getBranding()]);
         if (!mounted) return;
-        setDescription(desc.text ?? '');
-        setDescriptionMeta(desc.updated_at ?? null);
+        setMetadataState({
+          title: meta.title ?? '',
+          description: meta.description ?? '',
+          tagline: meta.tagline ?? '',
+          logoUrl: meta.logoUrl ?? '',
+        });
+        setMetadataMeta(meta.updated_at ?? null);
         setBrandingState({ primary: brand.primary, secondary: brand.secondary });
         setBrandingMeta(brand.updated_at ?? null);
       } catch (err) {
@@ -64,20 +81,32 @@ export default function AdminSettingsTab() {
     };
   }, [addToast]);
 
-  const handleDescriptionSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const normalizedLogoUrl = useMemo(() => metadata.logoUrl.trim(), [metadata.logoUrl]);
+
+  const handleMetadataSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (savingDesc) return;
-    setSavingDesc(true);
+    if (savingMetadata) return;
+    setSavingMetadata(true);
     try {
-      const result: AppDescriptionSetting = await setAppDescription(description);
-      setDescription(result.text);
-      setDescriptionMeta(result.updated_at ?? null);
-      addToast('Deskripsi aplikasi disimpan', 'success');
+      const result: AppMetadataSetting = await setAppMetadata({
+        title: metadata.title,
+        description: metadata.description,
+        tagline: metadata.tagline,
+        logoUrl: normalizedLogoUrl || null,
+      });
+      setMetadataState({
+        title: result.title,
+        description: result.description,
+        tagline: result.tagline,
+        logoUrl: result.logoUrl ?? '',
+      });
+      setMetadataMeta(result.updated_at ?? null);
+      addToast('Identitas aplikasi disimpan', 'success');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Gagal menyimpan deskripsi';
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan identitas aplikasi';
       addToast(message, 'error');
     } finally {
-      setSavingDesc(false);
+      setSavingMetadata(false);
     }
   };
 
@@ -128,7 +157,7 @@ export default function AdminSettingsTab() {
       <div>
         <h2 className="text-lg font-semibold">Pengaturan Aplikasi</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Kelola deskripsi aplikasi dan elemen branding agar konsisten dengan identitas produk.
+          Kelola judul, deskripsi, logo, dan elemen branding agar konsisten dengan identitas produk.
         </p>
       </div>
 
@@ -137,31 +166,91 @@ export default function AdminSettingsTab() {
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           <form
-            onSubmit={handleDescriptionSubmit}
-            className="space-y-4 rounded-2xl border border-border/60 bg-background p-6 shadow-sm"
+            onSubmit={handleMetadataSubmit}
+            className="space-y-5 rounded-2xl border border-border/60 bg-background p-6 shadow-sm"
           >
-            <div>
-              <h3 className="text-base font-semibold">Deskripsi Aplikasi</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Teks ini akan tampil sebagai penjelasan singkat aplikasi pada halaman publik atau meta data.
+            <div className="space-y-1">
+              <h3 className="text-base font-semibold">Identitas Aplikasi</h3>
+              <p className="text-sm text-muted-foreground">
+                Perbarui informasi utama yang ditampilkan pada halaman publik, seperti judul dan deskripsi.
               </p>
             </div>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              className={TEXTAREA_CLASS}
-              placeholder="Tuliskan deskripsi aplikasi di sini"
-            />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-muted-foreground">
+                Judul Aplikasi
+                <input
+                  value={metadata.title}
+                  onChange={(event) =>
+                    setMetadataState((prev) => ({ ...prev, title: event.target.value }))
+                  }
+                  className={clsx(INPUT_CLASS, 'mt-1')}
+                  placeholder="Contoh: HematWoi"
+                />
+              </label>
+              <label className="text-sm font-semibold text-muted-foreground">
+                Tagline / Slogan
+                <input
+                  value={metadata.tagline}
+                  onChange={(event) =>
+                    setMetadataState((prev) => ({ ...prev, tagline: event.target.value }))
+                  }
+                  className={clsx(INPUT_CLASS, 'mt-1')}
+                  placeholder="Contoh: Kelola keuangan tanpa ribet"
+                />
+              </label>
+            </div>
+
+            <label className="text-sm font-semibold text-muted-foreground">
+              Deskripsi Singkat
+              <textarea
+                value={metadata.description}
+                onChange={(event) =>
+                  setMetadataState((prev) => ({ ...prev, description: event.target.value }))
+                }
+                className={clsx(TEXTAREA_CLASS, 'mt-1')}
+                placeholder="Tuliskan deskripsi aplikasi di sini"
+              />
+            </label>
+
+            <div className="space-y-3">
+              <label className="block text-sm font-semibold text-muted-foreground">
+                Logo (URL gambar)
+                <input
+                  value={metadata.logoUrl}
+                  onChange={(event) =>
+                    setMetadataState((prev) => ({ ...prev, logoUrl: event.target.value }))
+                  }
+                  className={clsx(INPUT_CLASS, 'mt-1')}
+                  placeholder="https://.../logo.png"
+                />
+              </label>
+              <div className="flex items-center gap-4 rounded-2xl border border-dashed border-border/70 bg-muted/10 p-4 text-xs text-muted-foreground">
+                <div className="h-12 w-12 overflow-hidden rounded-xl border border-border/60 bg-background">
+                  {normalizedLogoUrl ? (
+                    <img src={normalizedLogoUrl} alt="Logo aplikasi" className="h-full w-full object-contain" loading="lazy" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-muted-foreground/70">Logo</div>
+                  )}
+                </div>
+                <p className="leading-relaxed">
+                  Unggah logo Anda ke penyimpanan publik terlebih dahulu, lalu tempel URL-nya di sini. Kami akan menampilkannya pada area publik yang relevan.
+                </p>
+              </div>
+            </div>
+
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
               <span>
-                {descriptionMeta ? `Terakhir diperbarui ${dateFormatter.format(new Date(descriptionMeta))}` : 'Belum pernah disimpan'}
+                {metadataMeta
+                  ? `Terakhir diperbarui ${dateFormatter.format(new Date(metadataMeta))}`
+                  : 'Belum pernah disimpan'}
               </span>
               <button
                 type="submit"
                 className="h-11 rounded-2xl bg-primary px-6 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
-                disabled={savingDesc}
+                disabled={savingMetadata}
               >
-                Simpan Deskripsi
+                Simpan Identitas
               </button>
             </div>
           </form>

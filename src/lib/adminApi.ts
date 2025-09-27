@@ -47,14 +47,22 @@ export type ListUsersParams = {
 
 export type UpdateUserProfileInput = Partial<Pick<UserProfileRecord, 'role' | 'is_active'>>;
 
-export type AppDescriptionSetting = {
-  text: string;
-  updated_at: string | null;
-};
-
 export type BrandingSetting = {
   primary: string;
   secondary: string;
+  updated_at: string | null;
+};
+
+export type AppMetadataSetting = {
+  title: string;
+  description: string;
+  tagline: string;
+  logoUrl: string | null;
+  updated_at: string | null;
+};
+
+export type AppDescriptionSetting = {
+  text: string;
   updated_at: string | null;
 };
 
@@ -457,19 +465,169 @@ function parseDescriptionValue(value: any): string {
   return '';
 }
 
-export async function getAppDescription(): Promise<AppDescriptionSetting> {
+function parseBrandingValue(value: any): { primary: string; secondary: string } {
+  if (value && typeof value === 'object') {
+    const primary = typeof value.primary === 'string' ? value.primary : '#1e40af';
+    const secondary = typeof value.secondary === 'string' ? value.secondary : '#0ea5e9';
+    return { primary, secondary };
+  }
+  return { primary: '#1e40af', secondary: '#0ea5e9' };
+}
+
+function parseMetadataValue(value: any): {
+  title: string;
+  description: string;
+  tagline: string;
+  logoUrl: string | null;
+} {
+  const ensureString = (input: unknown): string => (typeof input === 'string' ? input : '');
+
+  if (value && typeof value === 'object') {
+    const raw = value as Record<string, unknown>;
+    const logoCandidate =
+      typeof raw.logo_url === 'string'
+        ? raw.logo_url
+        : typeof raw.logoUrl === 'string'
+          ? raw.logoUrl
+          : typeof raw.logo === 'string'
+            ? raw.logo
+            : null;
+
+    const logoUrl = logoCandidate && logoCandidate.trim() ? logoCandidate.trim() : null;
+
+    return {
+      title: ensureString(raw.title ?? raw.name ?? ''),
+      description: ensureString(raw.description ?? (raw.text as string | undefined) ?? ''),
+      tagline: ensureString(raw.tagline ?? raw.subtitle ?? ''),
+      logoUrl,
+    };
+  }
+
+  const fallback = ensureString(value);
+  return {
+    title: fallback,
+    description: fallback,
+    tagline: '',
+    logoUrl: null,
+  };
+}
+
+function mapMetadataRecord(record: { value: any; updated_at?: string | null }): AppMetadataSetting {
+  const metadata = parseMetadataValue(record?.value);
+  return { ...metadata, updated_at: record?.updated_at ?? null };
+}
+
+export async function getAppMetadata(): Promise<AppMetadataSetting> {
   try {
     const { data, error } = await supabase
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', 'app_metadata')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    if (data) {
+      return mapMetadataRecord(data);
+    }
+
+    const { data: legacyData, error: legacyError } = await supabase
       .from('app_settings')
       .select('value, updated_at')
       .eq('key', 'app_description')
       .maybeSingle();
 
-    if (error) throw error;
+    if (legacyError) throw legacyError;
+
+    if (legacyData) {
+      const description = parseDescriptionValue(legacyData.value);
+      return {
+        title: '',
+        description,
+        tagline: '',
+        logoUrl: null,
+        updated_at: legacyData.updated_at ?? null,
+      };
+    }
 
     return {
-      text: parseDescriptionValue(data?.value),
-      updated_at: data?.updated_at ?? null,
+      title: '',
+      description: '',
+      tagline: '',
+      logoUrl: null,
+      updated_at: null,
+    };
+  } catch (error) {
+    console.error('[adminApi] getAppMetadata failed', error);
+    throw new Error('Gagal memuat pengaturan aplikasi');
+  }
+}
+
+export async function setAppMetadata(update: {
+  title?: string;
+  description?: string;
+  tagline?: string;
+  logoUrl?: string | null;
+}): Promise<AppMetadataSetting> {
+  try {
+    const current = await getAppMetadata();
+
+    const payload = {
+      title: typeof update.title === 'string' ? update.title : current.title,
+      description: typeof update.description === 'string' ? update.description : current.description,
+      tagline: typeof update.tagline === 'string' ? update.tagline : current.tagline,
+      logoUrl: update.logoUrl !== undefined ? update.logoUrl : current.logoUrl,
+    };
+
+    const normalized = {
+      title: payload.title.trim(),
+      description: payload.description.trim(),
+      tagline: payload.tagline.trim(),
+      logo_url: payload.logoUrl && payload.logoUrl.trim() ? payload.logoUrl.trim() : null,
+    };
+
+    const response = await supabase
+      .from('app_settings')
+      .upsert(
+        {
+          key: 'app_metadata',
+          value: normalized,
+        },
+        { onConflict: 'key' }
+      )
+      .select('value, updated_at')
+      .single();
+
+    const data = ensureResponse(response);
+    const metadata = mapMetadataRecord(data);
+
+    try {
+      await supabase
+        .from('app_settings')
+        .upsert(
+          {
+            key: 'app_description',
+            value: { text: metadata.description },
+          },
+          { onConflict: 'key' }
+        );
+    } catch (syncError) {
+      console.warn('[adminApi] Failed to sync legacy app_description', syncError);
+    }
+
+    return metadata;
+  } catch (error) {
+    console.error('[adminApi] setAppMetadata failed', error);
+    throw new Error('Gagal menyimpan pengaturan aplikasi');
+  }
+}
+
+export async function getAppDescription(): Promise<AppDescriptionSetting> {
+  try {
+    const metadata = await getAppMetadata();
+    return {
+      text: metadata.description,
+      updated_at: metadata.updated_at,
     };
   } catch (error) {
     console.error('[adminApi] getAppDescription failed', error);
@@ -479,36 +637,15 @@ export async function getAppDescription(): Promise<AppDescriptionSetting> {
 
 export async function setAppDescription(text: string): Promise<AppDescriptionSetting> {
   try {
-    const response = await supabase
-      .from('app_settings')
-      .upsert(
-        {
-          key: 'app_description',
-          value: { text },
-        },
-        { onConflict: 'key' }
-      )
-      .select('value, updated_at')
-      .single();
-
-    const data = ensureResponse(response);
+    const metadata = await setAppMetadata({ description: text });
     return {
-      text: parseDescriptionValue(data.value),
-      updated_at: data.updated_at ?? null,
+      text: metadata.description,
+      updated_at: metadata.updated_at,
     };
   } catch (error) {
     console.error('[adminApi] setAppDescription failed', error);
     throw new Error('Gagal menyimpan deskripsi aplikasi');
   }
-}
-
-function parseBrandingValue(value: any): { primary: string; secondary: string } {
-  if (value && typeof value === 'object') {
-    const primary = typeof value.primary === 'string' ? value.primary : '#1e40af';
-    const secondary = typeof value.secondary === 'string' ? value.secondary : '#0ea5e9';
-    return { primary, secondary };
-  }
-  return { primary: '#1e40af', secondary: '#0ea5e9' };
 }
 
 export async function getBranding(): Promise<BrandingSetting> {
