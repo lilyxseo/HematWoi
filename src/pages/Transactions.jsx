@@ -98,6 +98,27 @@ function chunk(arr, size) {
   return result;
 }
 
+function sortByKey(rows, sortKey) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return [];
+  }
+
+  const [field = "date", direction = "desc"] = String(sortKey ?? "date-desc").split("-");
+  const asc = direction === "asc";
+
+  return [...rows].sort((a, b) => {
+    if (field === "amount") {
+      const amountA = Number(a?.amount ?? 0);
+      const amountB = Number(b?.amount ?? 0);
+      return asc ? amountA - amountB : amountB - amountA;
+    }
+
+    const dateA = a?.date ? new Date(a.date).getTime() : 0;
+    const dateB = b?.date ? new Date(b.date).getTime() : 0;
+    return asc ? dateA - dateB : dateB - dateA;
+  });
+}
+
 export default function Transactions() {
   const {
     items: queryItems,
@@ -319,15 +340,17 @@ export default function Transactions() {
     return map;
   }, [categories]);
 
+  const sortedItems = useMemo(() => sortByKey(items, filter.sort), [items, filter.sort]);
+
   const visibleItems = useMemo(() => {
-    if (!Array.isArray(items) || items.length === 0) return [];
+    if (!Array.isArray(sortedItems) || sortedItems.length === 0) return [];
     const start = Math.max(0, (page - 1) * pageSize);
-    return items.slice(start, start + pageSize);
-  }, [items, page, pageSize]);
+    return sortedItems.slice(start, start + pageSize);
+  }, [sortedItems, page, pageSize]);
 
   const selectedItems = useMemo(
-    () => items.filter((item) => selectedIds.has(item.id)),
-    [items, selectedIds],
+    () => sortedItems.filter((item) => selectedIds.has(item.id)),
+    [sortedItems, selectedIds],
   );
 
   const allSelected = visibleItems.length > 0 && visibleItems.every((item) => selectedIds.has(item.id));
