@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { NavLink, useLocation, useRoutes } from "react-router-dom";
+import { useLocation, useRoutes } from "react-router-dom";
 import { NAV_ITEMS } from "../router/nav.config";
 import { buildBreadcrumbs } from "../router/breadcrumbs";
 import { ROUTES } from "../router/routes";
 import AppSidebar from "./AppSidebar";
 import { ModeProvider, useMode } from "../hooks/useMode";
+import AppTopBar from "./AppTopBar";
 
 function ShellContent() {
   const element = useRoutes(ROUTES);
@@ -13,6 +14,7 @@ function ShellContent() {
   const { mode } = useMode();
   const [theme, setTheme] = useState("dark");
   const [brand, setBrand] = useState({ h: 211, s: 92, l: 60 });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen w-full min-w-0">
@@ -21,23 +23,14 @@ function ShellContent() {
         setTheme={setTheme}
         brand={brand}
         setBrand={setBrand}
+        mobileOpen={mobileSidebarOpen}
+        onMobileOpenChange={setMobileSidebarOpen}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <nav
-          aria-label="Breadcrumb"
-          className="border-b p-4 text-sm"
-        >
-          {breadcrumbs.map((b, idx) => (
-            <span key={b.path}>
-              {idx > 0 && " / "}
-              {idx < breadcrumbs.length - 1 ? (
-                <NavLink to={b.path}>{b.title}</NavLink>
-              ) : (
-                <span>{b.title}</span>
-              )}
-            </span>
-          ))}
-        </nav>
+        <AppTopBar
+          breadcrumbs={breadcrumbs}
+          onMenuClick={() => setMobileSidebarOpen(true)}
+        />
         <main className="flex-1 min-w-0 p-4">{element}</main>
         <div className="border-t p-2 text-right text-xs">
           {mode === "online" ? "✅ Online Mode aktif" : "📴 Local Mode aktif"}
