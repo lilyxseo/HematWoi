@@ -166,7 +166,7 @@ export default function WishlistFormDialog({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-10 backdrop-blur">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 px-4 py-10 backdrop-blur">
       <div className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-slate-800 bg-slate-950/95 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.8)]">
         <form onSubmit={handleSubmit} className="flex max-h-[85vh] flex-col">
           <header className="flex items-start justify-between gap-3 border-b border-slate-800/70 bg-slate-950/80 px-6 py-4">
