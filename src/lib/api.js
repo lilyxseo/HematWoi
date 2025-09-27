@@ -371,13 +371,31 @@ function filterTransactionsOffline(rows = [], filters = {}, userId) {
 function sortTransactions(rows = [], sort = "date-desc") {
   const [field, direction] = sort.split("-");
   const asc = direction === "asc";
-  const compare = (a, b) => {
-    if (field === "amount") {
-      return asc ? a.amount - b.amount : b.amount - a.amount;
-    }
+  const compareByDate = (a, b) => {
     const dateA = a.date ? new Date(a.date).getTime() : 0;
     const dateB = b.date ? new Date(b.date).getTime() : 0;
+    if (dateA === dateB) {
+      const updatedA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+      const updatedB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+      if (updatedA !== updatedB) {
+        return asc ? updatedA - updatedB : updatedB - updatedA;
+      }
+      const insertedA = a.inserted_at ? new Date(a.inserted_at).getTime() : 0;
+      const insertedB = b.inserted_at ? new Date(b.inserted_at).getTime() : 0;
+      if (insertedA !== insertedB) {
+        return asc ? insertedA - insertedB : insertedB - insertedA;
+      }
+    }
     return asc ? dateA - dateB : dateB - dateA;
+  };
+  const compare = (a, b) => {
+    if (field === "amount") {
+      if (a.amount === b.amount) {
+        return compareByDate(a, b);
+      }
+      return asc ? a.amount - b.amount : b.amount - a.amount;
+    }
+    return compareByDate(a, b);
   };
   return [...rows].sort(compare);
 }
@@ -447,6 +465,9 @@ export async function listTransactions(options = {}) {
   const ascending = sortDir === "asc";
   const orderField = sortField === "amount" ? "amount" : "date";
   query = query.order(orderField, { ascending });
+  if (orderField === "date") {
+    query = query.order("updated_at", { ascending });
+  }
 
   if (normalized.type && normalized.type !== "all") {
     query = query.eq("type", normalized.type);
