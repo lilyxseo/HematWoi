@@ -47,16 +47,25 @@ export type ListUsersParams = {
 
 export type UpdateUserProfileInput = Partial<Pick<UserProfileRecord, 'role' | 'is_active'>>;
 
-export type AppDescriptionSetting = {
-  text: string;
-  updated_at: string | null;
-};
-
 export type BrandingSetting = {
   primary: string;
   secondary: string;
   updated_at: string | null;
 };
+
+export type AppInfoSetting = {
+  title: string;
+  tagline: string;
+  description: string;
+  logo_url: string;
+  favicon_url: string;
+  support_email: string;
+  support_phone: string;
+  support_url: string;
+  updated_at: string | null;
+};
+
+export type UpdateAppInfoInput = Omit<AppInfoSetting, 'updated_at'>;
 
 export type AuditEntry = {
   id: string;
@@ -448,43 +457,83 @@ export async function updateUserProfile(
   }
 }
 
-function parseDescriptionValue(value: any): string {
-  if (value && typeof value === 'object' && 'text' in value) {
-    const text = (value as { text?: unknown }).text;
-    if (typeof text === 'string') return text;
+const DEFAULT_APP_INFO: UpdateAppInfoInput = {
+  title: 'HematWoi',
+  tagline: '',
+  description: '',
+  logo_url: '',
+  favicon_url: '',
+  support_email: '',
+  support_phone: '',
+  support_url: '',
+};
+
+function normalizeString(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.trim();
   }
-  if (typeof value === 'string') return value;
   return '';
 }
 
-export async function getAppDescription(): Promise<AppDescriptionSetting> {
+function parseAppInfoValue(value: any): UpdateAppInfoInput {
+  if (!value || typeof value !== 'object') {
+    return { ...DEFAULT_APP_INFO };
+  }
+
+  const info = value as Record<string, unknown>;
+
+  return {
+    title: normalizeString(info.title) || DEFAULT_APP_INFO.title,
+    tagline: normalizeString(info.tagline),
+    description: normalizeString(info.description),
+    logo_url: normalizeString(info.logo_url),
+    favicon_url: normalizeString(info.favicon_url),
+    support_email: normalizeString(info.support_email),
+    support_phone: normalizeString(info.support_phone),
+    support_url: normalizeString(info.support_url),
+  };
+}
+
+function sanitizeAppInfoPayload(payload: UpdateAppInfoInput): UpdateAppInfoInput {
+  return {
+    title: normalizeString(payload.title) || DEFAULT_APP_INFO.title,
+    tagline: normalizeString(payload.tagline),
+    description: normalizeString(payload.description),
+    logo_url: normalizeString(payload.logo_url),
+    favicon_url: normalizeString(payload.favicon_url),
+    support_email: normalizeString(payload.support_email),
+    support_phone: normalizeString(payload.support_phone),
+    support_url: normalizeString(payload.support_url),
+  };
+}
+
+export async function getAppInfo(): Promise<AppInfoSetting> {
   try {
     const { data, error } = await supabase
       .from('app_settings')
       .select('value, updated_at')
-      .eq('key', 'app_description')
+      .eq('key', 'app_info')
       .maybeSingle();
 
     if (error) throw error;
 
-    return {
-      text: parseDescriptionValue(data?.value),
-      updated_at: data?.updated_at ?? null,
-    };
+    const parsed = parseAppInfoValue(data?.value);
+    return { ...parsed, updated_at: data?.updated_at ?? null };
   } catch (error) {
-    console.error('[adminApi] getAppDescription failed', error);
-    throw new Error('Gagal memuat deskripsi aplikasi');
+    console.error('[adminApi] getAppInfo failed', error);
+    throw new Error('Gagal memuat pengaturan aplikasi');
   }
 }
 
-export async function setAppDescription(text: string): Promise<AppDescriptionSetting> {
+export async function setAppInfo(payload: UpdateAppInfoInput): Promise<AppInfoSetting> {
   try {
+    const sanitized = sanitizeAppInfoPayload(payload);
     const response = await supabase
       .from('app_settings')
       .upsert(
         {
-          key: 'app_description',
-          value: { text },
+          key: 'app_info',
+          value: sanitized,
         },
         { onConflict: 'key' }
       )
@@ -492,13 +541,11 @@ export async function setAppDescription(text: string): Promise<AppDescriptionSet
       .single();
 
     const data = ensureResponse(response);
-    return {
-      text: parseDescriptionValue(data.value),
-      updated_at: data.updated_at ?? null,
-    };
+    const parsed = parseAppInfoValue(data.value);
+    return { ...parsed, updated_at: data.updated_at ?? null };
   } catch (error) {
-    console.error('[adminApi] setAppDescription failed', error);
-    throw new Error('Gagal menyimpan deskripsi aplikasi');
+    console.error('[adminApi] setAppInfo failed', error);
+    throw new Error('Gagal menyimpan pengaturan aplikasi');
   }
 }
 
