@@ -58,6 +58,14 @@ export type BrandingSetting = {
   updated_at: string | null;
 };
 
+export type AppIdentitySetting = {
+  title: string;
+  tagline: string;
+  shortDescription: string;
+  logoUrl: string;
+  updated_at: string | null;
+};
+
 export type AuditEntry = {
   id: string;
   source: 'sidebar' | 'user';
@@ -511,6 +519,26 @@ function parseBrandingValue(value: any): { primary: string; secondary: string } 
   return { primary: '#1e40af', secondary: '#0ea5e9' };
 }
 
+function parseAppIdentityValue(value: any): Omit<AppIdentitySetting, 'updated_at'> {
+  const readString = (input: unknown, fallback = '') => (typeof input === 'string' ? input : fallback);
+
+  if (value && typeof value === 'object') {
+    const title = readString((value as Record<string, unknown>).title, 'HematWoi');
+    const tagline = readString((value as Record<string, unknown>).tagline);
+    const logoUrl = readString(
+      (value as Record<string, unknown>).logo_url ?? (value as Record<string, unknown>).logoUrl
+    );
+    const shortDescription = readString(
+      (value as Record<string, unknown>).short_description ??
+        (value as Record<string, unknown>).shortDescription ??
+        (value as Record<string, unknown>).description
+    );
+    return { title, tagline, logoUrl, shortDescription };
+  }
+
+  return { title: 'HematWoi', tagline: '', logoUrl: '', shortDescription: '' };
+}
+
 export async function getBranding(): Promise<BrandingSetting> {
   try {
     const { data, error } = await supabase
@@ -552,6 +580,64 @@ export async function setBranding(branding: {
   } catch (error) {
     console.error('[adminApi] setBranding failed', error);
     throw new Error('Gagal menyimpan pengaturan branding');
+  }
+}
+
+export async function getAppIdentity(): Promise<AppIdentitySetting> {
+  try {
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('value, updated_at')
+      .eq('key', 'app_identity')
+      .maybeSingle();
+
+    if (error) throw error;
+
+    const identity = parseAppIdentityValue(data?.value);
+    return { ...identity, updated_at: data?.updated_at ?? null };
+  } catch (error) {
+    console.error('[adminApi] getAppIdentity failed', error);
+    throw new Error('Gagal memuat identitas aplikasi');
+  }
+}
+
+export async function setAppIdentity(identity: {
+  title: string;
+  tagline: string;
+  shortDescription: string;
+  logoUrl: string;
+}): Promise<AppIdentitySetting> {
+  try {
+    const normalize = (value: string, fallback = '') => {
+      const trimmed = value.trim();
+      return trimmed || fallback;
+    };
+
+    const payload = {
+      title: normalize(identity.title, 'HematWoi'),
+      tagline: normalize(identity.tagline),
+      short_description: normalize(identity.shortDescription),
+      logo_url: identity.logoUrl.trim(),
+    };
+
+    const response = await supabase
+      .from('app_settings')
+      .upsert(
+        {
+          key: 'app_identity',
+          value: payload,
+        },
+        { onConflict: 'key' }
+      )
+      .select('value, updated_at')
+      .single();
+
+    const data = ensureResponse(response);
+    const parsed = parseAppIdentityValue(data.value);
+    return { ...parsed, updated_at: data.updated_at ?? null };
+  } catch (error) {
+    console.error('[adminApi] setAppIdentity failed', error);
+    throw new Error('Gagal menyimpan identitas aplikasi');
   }
 }
 
