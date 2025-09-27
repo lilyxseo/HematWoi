@@ -9,6 +9,7 @@ import {
 } from "react-router-dom";
 
 import AppSidebar from "./layout/AppSidebar";
+import AppTopbar from "./layout/AppTopbar";
 import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
 import BootGate from "./components/BootGate";
@@ -174,7 +175,16 @@ function loadInitial() {
   }
 }
 
-function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
+function ProtectedAppContainer({
+  theme,
+  setTheme,
+  brand,
+  setBrand,
+  user,
+  onOpenSettings,
+  onLogout,
+  onNavigateProfile,
+}) {
   const location = useLocation();
   const hideNav = location.pathname.startsWith("/add");
 
@@ -190,6 +200,14 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
             setBrand={setBrand}
           />
         ) : null
+      }
+      topbar={
+        <AppTopbar
+          user={user}
+          onOpenSettings={onOpenSettings}
+          onLogout={onLogout}
+          onNavigateProfile={onNavigateProfile}
+        />
       }
     >
       <div className="flex min-h-full flex-col">
@@ -291,6 +309,14 @@ function AppShell({ prefs, setPrefs }) {
   window.__hw_prefs = prefs;
 
   const navigate = useNavigate();
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Gagal keluar", error);
+    }
+  }, []);
 
 
   const handleProfileSyncError = useCallback(
@@ -1010,6 +1036,10 @@ function AppShell({ prefs, setPrefs }) {
                     setTheme={setTheme}
                     brand={brand}
                     setBrand={handleBrandChange}
+                    user={sessionUser}
+                    onOpenSettings={() => setSettingsOpen(true)}
+                    onLogout={handleLogout}
+                    onNavigateProfile={() => navigate("/profile")}
                   />
                 }
               >
