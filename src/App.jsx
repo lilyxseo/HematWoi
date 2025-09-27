@@ -24,6 +24,7 @@ import TransactionAdd from "./pages/TransactionAdd";
 import Subscriptions from "./pages/Subscriptions";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
+import WishlistPage from "./pages/WishlistPage";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
@@ -1052,6 +1053,7 @@ function AppShell({ prefs, setPrefs }) {
                 />
                 <Route path="debts" element={<DebtsPage />} />
                 <Route path="goals" element={<GoalsPage />} />
+                <Route path="wishlist" element={<WishlistPage />} />
                 <Route
                   path="challenges"
                   element={
