@@ -66,7 +66,7 @@ const SEGMENTED_CLASS =
 const SEGMENT_ITEM_CLASS =
   'flex items-center gap-2 rounded-xl px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
-const QUICK_AMOUNT_OPTIONS = [50000, 100000, 200000, 500000];
+const QUICK_AMOUNT_OPTIONS = [5000, 10000, 50000, 100000, 500000];
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
@@ -264,6 +264,10 @@ export default function TransactionAdd({ onAdd }) {
 
   const selectedAccount = accounts.find((item) => item.id === accountId);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
+  const destinationAccounts = useMemo(
+    () => accounts.filter((item) => item.id !== accountId),
+    [accounts, accountId],
+  );
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const typeMeta = useMemo(
     () => TYPE_OPTIONS.find((option) => option.value === type),
@@ -474,6 +478,14 @@ export default function TransactionAdd({ onAdd }) {
     }
     setToAccountId('');
   };
+
+  useEffect(() => {
+    if (!toAccountId) return;
+    const exists = accounts.some((item) => item.id === toAccountId);
+    if (!exists || toAccountId === accountId) {
+      setToAccountId('');
+    }
+  }, [accounts, toAccountId, accountId]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -690,7 +702,11 @@ export default function TransactionAdd({ onAdd }) {
                     id="account"
                     value={accountId}
                     onChange={(event) => {
-                      setAccountId(event.target.value);
+                      const nextAccountId = event.target.value;
+                      setAccountId(nextAccountId);
+                      if (nextAccountId === toAccountId) {
+                        setToAccountId('');
+                      }
                       setErrors((prev) => ({ ...prev, account_id: undefined }));
                     }}
                     className={INPUT_CLASS}
@@ -720,7 +736,7 @@ export default function TransactionAdd({ onAdd }) {
                       className={INPUT_CLASS}
                     >
                       <option value="">Pilih akun tujuan</option>
-                      {accounts.map((account) => (
+                      {destinationAccounts.map((account) => (
                         <option key={account.id} value={account.id}>
                           {account.name || 'Tanpa nama'}
                         </option>
