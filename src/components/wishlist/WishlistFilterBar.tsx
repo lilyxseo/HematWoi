@@ -1,7 +1,11 @@
-import { ChangeEvent, FormEvent } from 'react';
-import { RotateCcw, Search } from 'lucide-react';
+/**
+ * WishlistFilterBar merender kontrol filter dan sortir untuk halaman wishlist.
+ * Komponen ini menerima state filter dari parent dan mengirim perubahan melalui callback.
+ */
+import type { ChangeEvent, FormEvent } from 'react';
 import type { WishlistStatus } from '../../lib/wishlistApi';
 import type { WishlistFilters } from '../../hooks/useWishlist';
+import { IconFunnel, IconSort } from './WishlistIcons';
 
 export interface WishlistFilterState extends WishlistFilters {
   search: string;
@@ -56,13 +60,11 @@ export default function WishlistFilterBar({ filters, categories, onChange, onRes
     event: ChangeEvent<HTMLSelectElement>,
     key: Key
   ) => {
-    const value = event.target.value as WishlistFilterState[Key];
-    onChange({ ...filters, [key]: value });
+    onChange({ ...filters, [key]: event.target.value as WishlistFilterState[Key] });
   };
 
   const handleInput = <Key extends keyof WishlistFilterState>(event: ChangeEvent<HTMLInputElement>, key: Key) => {
-    const value = event.target.value as WishlistFilterState[Key];
-    onChange({ ...filters, [key]: value });
+    onChange({ ...filters, [key]: event.target.value as WishlistFilterState[Key] });
   };
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -76,15 +78,26 @@ export default function WishlistFilterBar({ filters, categories, onChange, onRes
   return (
     <form
       onSubmit={handleSubmit}
-      className="min-w-0 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-sm backdrop-blur"
+      className="rounded-3xl border border-slate-800/80 bg-slate-950/70 p-4 shadow-sm backdrop-blur"
     >
-      <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-8">
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Status</span>
+      <div className="flex flex-wrap gap-3 md:flex-nowrap">
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl bg-slate-900/70 px-3 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
+          <IconFunnel className="h-4 w-4 text-slate-400" aria-hidden="true" />
+          <input
+            type="search"
+            value={filters.search}
+            onChange={(event) => handleInput(event, 'search')}
+            placeholder="Cari judul atau catatan"
+            aria-label="Cari wishlist"
+            className="h-11 w-full bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-1 flex-wrap gap-3 md:flex-nowrap">
           <select
             value={filters.status}
             onChange={(event) => handleSelect(event, 'status')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            aria-label="Filter status wishlist"
+            className="h-11 flex-1 rounded-2xl bg-slate-900/70 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus:outline-none focus:ring-[var(--accent)]"
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -92,14 +105,11 @@ export default function WishlistFilterBar({ filters, categories, onChange, onRes
               </option>
             ))}
           </select>
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Prioritas</span>
           <select
             value={filters.priority}
             onChange={(event) => handleSelect(event, 'priority')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            aria-label="Filter prioritas wishlist"
+            className="h-11 flex-1 rounded-2xl bg-slate-900/70 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus:outline-none focus:ring-[var(--accent)]"
           >
             {PRIORITY_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -107,14 +117,11 @@ export default function WishlistFilterBar({ filters, categories, onChange, onRes
               </option>
             ))}
           </select>
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Kategori</span>
           <select
             value={filters.categoryId}
             onChange={(event) => handleSelect(event, 'categoryId')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            aria-label="Filter kategori wishlist"
+            className="h-11 flex-1 rounded-2xl bg-slate-900/70 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus:outline-none focus:ring-[var(--accent)]"
           >
             <option value="all">Semua kategori</option>
             {categories.map((category) => (
@@ -123,69 +130,54 @@ export default function WishlistFilterBar({ filters, categories, onChange, onRes
               </option>
             ))}
           </select>
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Harga minimum</span>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-3 md:mt-4 md:flex-nowrap">
+        <div className="flex flex-1 gap-3 md:flex-nowrap">
           <input
             type="number"
             inputMode="decimal"
             min="0"
             value={filters.priceMin}
             onChange={(event) => handleInput(event, 'priceMin')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            placeholder="0"
+            placeholder="Harga min"
+            aria-label="Harga minimum"
+            className="h-11 flex-1 rounded-2xl bg-slate-900/70 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition placeholder:text-slate-500 focus:outline-none focus:ring-[var(--accent)]"
           />
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Harga maksimum</span>
           <input
             type="number"
             inputMode="decimal"
             min="0"
             value={filters.priceMax}
             onChange={(event) => handleInput(event, 'priceMax')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            placeholder="0"
+            placeholder="Harga max"
+            aria-label="Harga maksimum"
+            className="h-11 flex-1 rounded-2xl bg-slate-900/70 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition placeholder:text-slate-500 focus:outline-none focus:ring-[var(--accent)]"
           />
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Urutkan</span>
-          <select
-            value={filters.sort}
-            onChange={(event) => handleSelect(event, 'sort')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="col-span-2 flex h-11 min-w-0 items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-within:ring-2 focus-within:ring-[var(--accent)] md:col-span-2 lg:col-span-3">
-          <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
-          <input
-            type="search"
-            value={filters.search}
-            onChange={(event) => handleInput(event, 'search')}
-            placeholder="Cari judul atau catatan"
-            className="h-full w-full min-w-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-none"
-            aria-label="Pencarian wishlist"
-          />
-          {onReset ? (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              aria-label="Reset filter wishlist"
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 rounded-2xl bg-slate-900/70 px-3 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
+            <IconSort className="h-4 w-4 text-slate-400" aria-hidden="true" />
+            <select
+              value={filters.sort}
+              onChange={(event) => handleSelect(event, 'sort')}
+              aria-label="Urutkan wishlist"
+              className="h-11 w-full min-w-[150px] rounded-2xl bg-transparent text-sm text-slate-100 focus:outline-none"
             >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : null}
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900/70 px-4 text-sm font-medium text-slate-100 ring-2 ring-slate-800 transition hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            Reset
+          </button>
         </div>
       </div>
     </form>
