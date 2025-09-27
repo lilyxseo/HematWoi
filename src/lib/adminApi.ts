@@ -47,14 +47,23 @@ export type ListUsersParams = {
 
 export type UpdateUserProfileInput = Partial<Pick<UserProfileRecord, 'role' | 'is_active'>>;
 
-export type AppDescriptionSetting = {
-  text: string;
-  updated_at: string | null;
-};
-
 export type BrandingSetting = {
   primary: string;
   secondary: string;
+  updated_at: string | null;
+};
+
+export type AppInfoSetting = {
+  title: string;
+  tagline: string;
+  description: string;
+  logo_url: string;
+  favicon_url: string;
+  updated_at: string | null;
+};
+
+export type AppDescriptionSetting = {
+  text: string;
   updated_at: string | null;
 };
 
@@ -448,58 +457,133 @@ export async function updateUserProfile(
   }
 }
 
-function parseDescriptionValue(value: any): string {
-  if (value && typeof value === 'object' && 'text' in value) {
-    const text = (value as { text?: unknown }).text;
-    if (typeof text === 'string') return text;
+function parseAppInfoValue(value: any): {
+  title: string;
+  tagline: string;
+  description: string;
+  logo_url: string;
+  favicon_url: string;
+} {
+  const safeString = (input: unknown): string => {
+    if (typeof input === 'string') return input;
+    if (typeof input === 'number' || typeof input === 'boolean') {
+      return String(input);
+    }
+    return '';
+  };
+
+  if (value && typeof value === 'object') {
+    return {
+      title: safeString((value as { title?: unknown }).title ?? ''),
+      tagline: safeString((value as { tagline?: unknown }).tagline ?? ''),
+      description: safeString((value as { description?: unknown }).description ?? ''),
+      logo_url: safeString((value as { logo_url?: unknown }).logo_url ?? ''),
+      favicon_url: safeString((value as { favicon_url?: unknown }).favicon_url ?? ''),
+    };
   }
-  if (typeof value === 'string') return value;
-  return '';
+
+  return {
+    title: '',
+    tagline: '',
+    description: '',
+    logo_url: '',
+    favicon_url: '',
+  };
 }
 
-export async function getAppDescription(): Promise<AppDescriptionSetting> {
+export async function getAppInfo(): Promise<AppInfoSetting> {
   try {
     const { data, error } = await supabase
       .from('app_settings')
       .select('value, updated_at')
-      .eq('key', 'app_description')
+      .eq('key', 'app_info')
       .maybeSingle();
 
     if (error) throw error;
 
     return {
-      text: parseDescriptionValue(data?.value),
+      ...parseAppInfoValue(data?.value),
       updated_at: data?.updated_at ?? null,
     };
   } catch (error) {
-    console.error('[adminApi] getAppDescription failed', error);
-    throw new Error('Gagal memuat deskripsi aplikasi');
+    console.error('[adminApi] getAppInfo failed', error);
+    throw new Error('Gagal memuat informasi aplikasi');
   }
 }
 
-export async function setAppDescription(text: string): Promise<AppDescriptionSetting> {
+export async function setAppInfo(info: {
+  title: string;
+  description: string;
+  tagline?: string;
+  logo_url?: string;
+  favicon_url?: string;
+}): Promise<AppInfoSetting> {
   try {
+    const payload = {
+      title: info.title?.trim?.() ?? '',
+      description: info.description?.trim?.() ?? '',
+      tagline: info.tagline?.trim?.() ?? '',
+      logo_url: info.logo_url?.trim?.() ?? '',
+      favicon_url: info.favicon_url?.trim?.() ?? '',
+    };
+
     const response = await supabase
       .from('app_settings')
       .upsert(
         {
-          key: 'app_description',
-          value: { text },
+          key: 'app_info',
+          value: payload,
         },
         { onConflict: 'key' }
       )
       .select('value, updated_at')
       .single();
 
+    const descResponse = await supabase
+      .from('app_settings')
+      .upsert(
+        {
+          key: 'app_description',
+          value: { text: payload.description },
+        },
+        { onConflict: 'key' }
+      );
+
+    if (descResponse.error) {
+      console.warn('[adminApi] setAppInfo failed to sync app_description', descResponse.error);
+    }
+
     const data = ensureResponse(response);
     return {
-      text: parseDescriptionValue(data.value),
+      ...parseAppInfoValue(data.value),
       updated_at: data.updated_at ?? null,
     };
   } catch (error) {
-    console.error('[adminApi] setAppDescription failed', error);
-    throw new Error('Gagal menyimpan deskripsi aplikasi');
+    console.error('[adminApi] setAppInfo failed', error);
+    throw new Error('Gagal menyimpan informasi aplikasi');
   }
+}
+
+function parseDescriptionValue(value: any): string {
+  return parseAppInfoValue(value).description;
+}
+
+export async function getAppDescription(): Promise<AppDescriptionSetting> {
+  const info = await getAppInfo();
+  return { text: info.description, updated_at: info.updated_at };
+}
+
+export async function setAppDescription(text: string): Promise<AppDescriptionSetting> {
+  const current = await getAppInfo();
+  const updated = await setAppInfo({
+    title: current.title,
+    tagline: current.tagline,
+    logo_url: current.logo_url,
+    favicon_url: current.favicon_url,
+    description: text,
+  });
+
+  return { text: updated.description, updated_at: updated.updated_at };
 }
 
 function parseBrandingValue(value: any): { primary: string; secondary: string } {
