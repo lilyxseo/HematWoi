@@ -9,6 +9,7 @@ import {
 } from "react-router-dom";
 
 import AppSidebar from "./layout/AppSidebar";
+import AppTopbar from "./layout/AppTopbar";
 import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
 import BootGate from "./components/BootGate";
@@ -177,6 +178,13 @@ function loadInitial() {
 function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
   const location = useLocation();
   const hideNav = location.pathname.startsWith("/add");
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (hideNav && mobileSidebarOpen) {
+      setMobileSidebarOpen(false);
+    }
+  }, [hideNav, mobileSidebarOpen]);
 
   return (
     <MainLayout
@@ -188,7 +196,14 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
             setTheme={setTheme}
             brand={brand}
             setBrand={setBrand}
+            mobileOpen={mobileSidebarOpen}
+            onMobileOpenChange={setMobileSidebarOpen}
           />
+        ) : null
+      }
+      topbar={
+        !hideNav ? (
+          <AppTopbar onMenuClick={() => setMobileSidebarOpen(true)} />
         ) : null
       }
     >
