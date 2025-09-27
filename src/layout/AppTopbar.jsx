@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogOut, Menu, Settings, UserRound } from "lucide-react";
+import { Bell, LogIn, LogOut, Menu, Settings, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 function getDisplayName(user) {
-  if (!user) return "Tamu";
+  if (!user) return "Masuk";
   const metadataName = user.user_metadata?.full_name;
   if (metadataName && typeof metadataName === "string" && metadataName.trim()) {
     return metadataName.trim();
@@ -19,6 +19,7 @@ export default function AppTopbar() {
   const dropdownRef = useRef(null);
   const profileButtonRef = useRef(null);
   const navigate = useNavigate();
+  const isAuthenticated = Boolean(user);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -121,7 +122,7 @@ export default function AppTopbar() {
               aria-expanded={profileOpen}
             >
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/15 text-sm font-semibold uppercase text-brand">
-                {initial}
+                {isAuthenticated ? initial : <UserRound className="h-4 w-4" />}
               </span>
               <span className="hidden max-w-[8.5rem] truncate text-left md:block">{displayName}</span>
             </button>
@@ -130,33 +131,55 @@ export default function AppTopbar() {
                 role="menu"
                 className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-border/70 bg-surface-1 text-sm shadow-lg focus:outline-none"
               >
-                <button
-                  type="button"
-                  onClick={() => handleNavigate("/profile")}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
-                  role="menuitem"
-                >
-                  <UserRound className="h-4 w-4" />
-                  Profil Saya
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleNavigate("/settings")}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
-                  role="menuitem"
-                >
-                  <Settings className="h-4 w-4" />
-                  Pengaturan
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-left text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:bg-danger/10"
-                  role="menuitem"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Keluar
-                </button>
+                {isAuthenticated ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate("/profile")}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
+                      role="menuitem"
+                    >
+                      <UserRound className="h-4 w-4" />
+                      Profil Saya
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigate("/settings")}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:bg-surface-2"
+                      role="menuitem"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Pengaturan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:bg-danger/10"
+                      role="menuitem"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Keluar
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex flex-col gap-3 px-4 py-3">
+                    <p className="text-sm text-muted">
+                      Kamu belum login. Masuk untuk mengakses profil dan pengaturan.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileOpen(false);
+                        navigate("/auth");
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand/40 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand transition-colors duration-200 hover:border-brand/60 hover:bg-brand/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      role="menuitem"
+                    >
+                      <LogIn className="h-4 w-4" />
+                      Masuk
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
