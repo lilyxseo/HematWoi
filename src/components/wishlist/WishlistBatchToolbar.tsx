@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useState, type SVGProps } from 'react';
 import type { WishlistStatus } from '../../lib/wishlistApi';
 
 interface WishlistBatchToolbarProps {
@@ -23,11 +22,13 @@ export default function WishlistBatchToolbar({
   const [priorityValue, setPriorityValue] = useState('');
 
   return (
-    <div className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4">
-      <div className="flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-3xl border border-slate-800/80 bg-slate-950/90 px-5 py-3 shadow-2xl backdrop-blur">
+    <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-5 md:top-24 md:bottom-auto">
+      <div className="mx-auto flex w-full max-w-4xl flex-wrap items-center gap-4 rounded-3xl border border-slate-800/80 bg-slate-950/90 px-5 py-4 shadow-2xl backdrop-blur">
         <div className="flex flex-1 flex-wrap items-center gap-3 text-sm text-slate-200">
-          <span className="font-semibold text-slate-100">{selectedCount} dipilih</span>
-          <div className="flex items-center gap-2 text-xs text-slate-400">
+          <span className="rounded-full bg-slate-900/80 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[var(--accent)]">
+            {selectedCount} dipilih
+          </span>
+          <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-wide text-slate-400">
             <label className="flex items-center gap-2">
               <span>Status</span>
               <select
@@ -40,7 +41,7 @@ export default function WishlistBatchToolbar({
                     setTimeout(() => setStatusValue(''), 200);
                   }
                 }}
-                className="h-9 rounded-2xl border-none bg-slate-900/80 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
+                className="h-10 rounded-2xl bg-slate-950 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
                 disabled={disabled}
               >
                 <option value="">Ubah status…</option>
@@ -62,7 +63,7 @@ export default function WishlistBatchToolbar({
                     setTimeout(() => setPriorityValue(''), 200);
                   }
                 }}
-                className="h-9 rounded-2xl border-none bg-slate-900/80 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
+                className="h-10 rounded-2xl bg-slate-950 px-3 text-sm text-slate-100 ring-2 ring-slate-800 transition focus-visible:outline-none focus-visible:ring-[var(--accent)]"
                 disabled={disabled}
               >
                 <option value="">Set prioritas…</option>
@@ -79,7 +80,7 @@ export default function WishlistBatchToolbar({
           <button
             type="button"
             onClick={onClear}
-            className="inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-medium text-slate-300 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            className="inline-flex h-11 items-center justify-center rounded-xl px-4 text-sm font-medium text-slate-300 transition hover:bg-slate-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
             disabled={disabled}
           >
             Batalkan
@@ -87,13 +88,23 @@ export default function WishlistBatchToolbar({
           <button
             type="button"
             onClick={onDelete}
-            className="inline-flex h-10 items-center gap-2 rounded-2xl bg-rose-500/90 px-4 text-sm font-semibold text-white transition hover:bg-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-rose-500/90 px-4 text-sm font-semibold text-white transition hover:bg-rose-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:opacity-70"
             disabled={disabled}
           >
-            <Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus
+            <TrashIcon className="h-4 w-4" /> Hapus
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+function TrashIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} aria-hidden="true" {...props}>
+      <path strokeLinecap="round" d="M4 7h16" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 7V4h6v3" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 7v11a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V7" />
+    </svg>
   );
 }
