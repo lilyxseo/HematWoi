@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import { Menu } from "lucide-react";
 import Sidebar from "../components/sidebar/Sidebar";
 import MobileDrawer from "../components/sidebar/MobileDrawer";
 
@@ -17,6 +16,8 @@ interface AppSidebarProps {
   setTheme: (mode: ThemeMode) => void;
   brand: BrandConfig;
   setBrand: (brand: BrandConfig) => void;
+  mobileOpen: boolean;
+  onMobileOpenChange: (open: boolean) => void;
 }
 
 const STORAGE_KEY = "hw:sidebar-collapsed";
@@ -26,6 +27,8 @@ export default function AppSidebar({
   setTheme,
   brand,
   setBrand,
+  mobileOpen,
+  onMobileOpenChange,
 }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -34,8 +37,6 @@ export default function AppSidebar({
       return false;
     }
   });
-  const [mobileOpen, setMobileOpen] = useState(false);
-
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
@@ -66,25 +67,15 @@ export default function AppSidebar({
           {...sidebarProps}
         />
       </aside>
-      <MobileDrawer open={mobileOpen} onOpenChange={setMobileOpen}>
+      <MobileDrawer open={mobileOpen} onOpenChange={onMobileOpenChange}>
         <Sidebar
           collapsed={false}
           onToggle={setCollapsed}
-          onNavigate={() => setMobileOpen(false)}
-          onClose={() => setMobileOpen(false)}
+          onNavigate={() => onMobileOpenChange(false)}
+          onClose={() => onMobileOpenChange(false)}
           {...sidebarProps}
         />
       </MobileDrawer>
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        aria-label="Buka navigasi"
-        aria-expanded={mobileOpen}
-        className="group fixed right-4 top-[1.125rem] z-[65] inline-flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-surface-1/95 text-text shadow-lg shadow-black/10 backdrop-blur transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95 lg:hidden"
-      >
-        <span className="sr-only">Buka navigasi</span>
-        <Menu className="h-5 w-5 transition-transform duration-200 group-hover:scale-110" />
-      </button>
     </>
   );
 }

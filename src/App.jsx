@@ -9,6 +9,7 @@ import {
 } from "react-router-dom";
 
 import AppSidebar from "./layout/AppSidebar";
+import AppTopbar from "./layout/AppTopbar";
 import MainLayout from "./layout/MainLayout";
 import SettingsPanel from "./components/SettingsPanel";
 import BootGate from "./components/BootGate";
@@ -177,6 +178,29 @@ function loadInitial() {
 function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
   const location = useLocation();
   const hideNav = location.pathname.startsWith("/add");
+  const navigate = useNavigate();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (hideNav) setMobileNavOpen(false);
+  }, [hideNav]);
+
+  const handleProfileClick = useCallback(() => {
+    navigate("/profile");
+  }, [navigate]);
+
+  const handleSettingsClick = useCallback(() => {
+    navigate("/settings");
+  }, [navigate]);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await supabase.auth.signOut();
+      navigate("/auth/login");
+    } catch (error) {
+      console.error("Gagal keluar dari aplikasi", error);
+    }
+  }, [navigate]);
 
   return (
     <MainLayout
@@ -188,6 +212,18 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
             setTheme={setTheme}
             brand={brand}
             setBrand={setBrand}
+            mobileOpen={mobileNavOpen}
+            onMobileOpenChange={setMobileNavOpen}
+          />
+        ) : null
+      }
+      topbar={
+        !hideNav ? (
+          <AppTopbar
+            onMenuClick={() => setMobileNavOpen(true)}
+            onProfileClick={handleProfileClick}
+            onSettingsClick={handleSettingsClick}
+            onLogoutClick={handleLogout}
           />
         ) : null
       }
