@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  CalendarDays,
   CheckCircle2,
+  CircleDollarSign,
   EllipsisVertical,
   ExternalLink,
+  Flame,
   Goal,
   NotebookPen,
   ShoppingBag,
+  StickyNote,
+  Tag,
   Trash2,
 } from 'lucide-react';
 import type { WishlistItem, WishlistStatus } from '../../lib/wishlistApi';
@@ -51,6 +56,14 @@ function formatCurrencyIDR(value: number | null): string {
     currency: 'IDR',
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(value));
 }
 
 export default function WishlistCard({
@@ -101,17 +114,17 @@ export default function WishlistCard({
     if (!value || value < 1 || value > 5) return null;
     return (
       <span
-        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${PRIORITY_STYLE[value]}`}
+        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${PRIORITY_STYLE[value]}`}
       >
-        Prioritas {value}
+        <Flame className="h-3.5 w-3.5" aria-hidden="true" /> Prioritas {value}
       </span>
     );
   }, [item.priority]);
 
   return (
     <article
-      className={`group relative flex h-full flex-col overflow-hidden rounded-2xl bg-slate-950/80 ring-1 ring-slate-800 transition hover:ring-[var(--accent)]/70 ${
-        selected ? 'ring-2 ring-[var(--accent)]/80' : ''
+      className={`group relative flex h-full flex-col overflow-hidden rounded-3xl border border-slate-800/60 bg-slate-950/70 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.9)] transition hover:border-[var(--accent)]/60 hover:shadow-[0_40px_70px_-45px_rgba(14,165,233,0.5)] ${
+        selected ? 'border-[var(--accent)]/70 shadow-[0_30px_60px_-40px_rgba(14,165,233,0.55)]' : ''
       } ${disabled ? 'opacity-60' : ''}`}
     >
       {hasImage ? (
@@ -124,14 +137,14 @@ export default function WishlistCard({
           />
         </div>
       ) : null}
-      <div className="flex flex-1 flex-col gap-4 p-4">
+      <div className="flex flex-1 flex-col gap-4 p-5">
         <div className="flex items-start gap-3">
           <label className="mt-0.5 flex items-center">
             <input
               type="checkbox"
               checked={selected}
               onChange={(event) => onSelectChange(event.target.checked)}
-              className="h-4 w-4 cursor-pointer rounded border-slate-600 bg-slate-900 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="h-5 w-5 cursor-pointer rounded border-slate-600 bg-slate-900 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               aria-label={`Pilih wishlist ${item.title}`}
               disabled={disabled}
             />
@@ -148,17 +161,42 @@ export default function WishlistCard({
                 </span>
               </div>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-              <span className="font-medium text-slate-100">{formatCurrencyIDR(item.estimated_price)}</span>
-              {item.category?.name ? <span className="text-xs uppercase tracking-wide text-slate-500">{item.category.name}</span> : null}
+            <div className="mt-4 space-y-3 text-sm text-slate-300">
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-900/60 px-3 py-2 font-semibold text-slate-100">
+                  <CircleDollarSign className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
+                  {formatCurrencyIDR(item.estimated_price)}
+                </span>
+                {item.category?.name ? (
+                  <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-900/40 px-3 py-2 text-xs font-medium uppercase tracking-wide text-slate-300">
+                    <Tag className="h-4 w-4 text-slate-400" aria-hidden="true" />
+                    {item.category.name}
+                  </span>
+                ) : null}
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-start gap-3 rounded-2xl border border-slate-800/70 bg-slate-950/60 px-3 py-2">
+                  <CalendarDays className="mt-0.5 h-4 w-4 text-slate-500" aria-hidden="true" />
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Ditambahkan</p>
+                    <p className="text-sm text-slate-200">{formatDate(item.created_at)}</p>
+                  </div>
+                </div>
+                {item.note ? (
+                  <div className="flex items-start gap-3 rounded-2xl border border-slate-800/70 bg-slate-950/60 px-3 py-2">
+                    <StickyNote className="mt-0.5 h-4 w-4 text-slate-500" aria-hidden="true" />
+                    <p className="text-sm text-slate-300 line-clamp-2">{item.note}</p>
+                  </div>
+                ) : null}
+              </div>
               {item.store_url ? (
                 <a
                   href={item.store_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-[var(--accent)] transition hover:text-[var(--accent)]/80"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-sm font-medium text-[var(--accent)] transition hover:border-[var(--accent)]/60 hover:bg-[var(--accent)]/15"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Toko
+                  <ExternalLink className="h-4 w-4" aria-hidden="true" /> Lihat Toko
                 </a>
               ) : null}
             </div>
@@ -166,7 +204,7 @@ export default function WishlistCard({
           <div className="relative" ref={menuRef}>
             <button
               type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
               aria-label={`Menu tindakan untuk ${item.title}`}
               onClick={() => setMenuOpen((prev) => !prev)}
               disabled={disabled}

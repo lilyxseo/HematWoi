@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowDownToLine, FileUp, Plus } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  CheckCircle2,
+  FileUp,
+  ListChecks,
+  PiggyBank,
+  Plus,
+  Sparkles,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -108,6 +116,14 @@ function parseCsv(content: string): Record<string, string>[] {
       });
       return record;
     });
+}
+
+function formatCurrencyIDR(value: number): string {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export default function WishlistPage() {
@@ -233,6 +249,65 @@ export default function WishlistPage() {
   };
 
   const selectedCount = selectedIds.size;
+
+  const { activeCount, purchasedCount, totalEstimatedValue } = useMemo(() => {
+    if (!items.length) {
+      return {
+        activeCount: 0,
+        purchasedCount: 0,
+        totalEstimatedValue: 0,
+      };
+    }
+
+    return items.reduce(
+      (acc, item) => {
+        if (item.status === 'planned' || item.status === 'deferred') {
+          acc.activeCount += 1;
+        }
+        if (item.status === 'purchased') {
+          acc.purchasedCount += 1;
+        }
+        if (item.estimated_price != null) {
+          acc.totalEstimatedValue += item.estimated_price;
+        }
+        return acc;
+      },
+      { activeCount: 0, purchasedCount: 0, totalEstimatedValue: 0 }
+    );
+  }, [items]);
+
+  const formattedEstimatedValue = useMemo(() => formatCurrencyIDR(totalEstimatedValue || 0), [totalEstimatedValue]);
+  const totalWishlist = total ?? items.length;
+
+  const summaryCards = useMemo(
+    () => [
+      {
+        label: 'Total Wishlist',
+        value: totalWishlist.toLocaleString('id-ID'),
+        description: 'Semua item tersimpan',
+        icon: Sparkles,
+      },
+      {
+        label: 'Wishlist Aktif',
+        value: activeCount.toLocaleString('id-ID'),
+        description: 'Direncanakan & ditunda',
+        icon: ListChecks,
+      },
+      {
+        label: 'Sudah Dibeli',
+        value: purchasedCount.toLocaleString('id-ID'),
+        description: 'Tuntas jadi kenyataan',
+        icon: CheckCircle2,
+      },
+      {
+        label: 'Nilai Estimasi',
+        value: formattedEstimatedValue,
+        description: 'Perkiraan kebutuhan dana',
+        icon: PiggyBank,
+      },
+    ],
+    [activeCount, formattedEstimatedValue, purchasedCount, totalWishlist]
+  );
 
   const handleDelete = async (item: WishlistItem) => {
     const confirmed = window.confirm(`Hapus "${item.title}" dari wishlist?`);
@@ -524,29 +599,31 @@ export default function WishlistPage() {
   return (
     <Page>
       <PageHeader title="Wishlist" description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun.">
-        <button
-          type="button"
-          onClick={handleImportClick}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={importing || isMutating}
-        >
-          <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={exporting}
-        >
-          <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+          <button
+            type="button"
+            onClick={handleImportClick}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-700/80 bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:w-auto"
+            disabled={importing || isMutating}
+          >
+            <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-700/80 bg-slate-900/70 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:w-auto"
+            disabled={exporting}
+          >
+            <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-[0_12px_35px_-20px_var(--accent)] transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 focus-visible:ring-[var(--accent)] sm:w-auto"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
+          </button>
+        </div>
       </PageHeader>
 
       <input
@@ -558,6 +635,27 @@ export default function WishlistPage() {
       />
 
       <div className="space-y-6">
+        <section className="relative overflow-hidden rounded-3xl border border-slate-800/60 bg-slate-950/60 p-5 shadow-[0_25px_60px_-35px_rgba(14,165,233,0.35)]">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_55%)]" />
+          <div className="relative grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {summaryCards.map(({ label, value, description, icon: Icon }) => (
+              <div
+                key={label}
+                className="group relative flex items-center gap-3 overflow-hidden rounded-2xl border border-slate-800/50 bg-slate-950/80 p-4 transition hover:border-[var(--accent)]/70 hover:shadow-[0_24px_45px_-30px_rgba(14,165,233,0.6)]"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--accent)]/15 text-[var(--accent)] transition group-hover:scale-105">
+                  <Icon className="h-6 w-6" aria-hidden="true" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
+                  <p className="text-lg font-semibold text-slate-100">{value}</p>
+                  <p className="text-xs text-slate-500">{description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />
 
         {hasError ? (
