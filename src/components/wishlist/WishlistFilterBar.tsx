@@ -1,193 +1,156 @@
-import { ChangeEvent, FormEvent } from 'react';
-import { RotateCcw, Search } from 'lucide-react';
-import type { WishlistStatus } from '../../lib/wishlistApi';
-import type { WishlistFilters } from '../../hooks/useWishlist';
+/**
+ * WishlistFilterBar renders the compact responsive filter + sort controls for wishlist listing.
+ * It receives the current filter state and notifies parent components when values change or reset.
+ */
+import type { ChangeEvent } from 'react';
+import clsx from 'clsx';
+import { IconFunnel, IconSort, IconX } from './icons';
 
-export interface WishlistFilterState extends WishlistFilters {
+export type WishlistStatusFilter = 'all' | 'planned' | 'deferred' | 'purchased' | 'archived';
+
+export interface WishlistFilterState {
   search: string;
-  status: WishlistStatus | 'all';
-  priority: number | 'all';
-  categoryId: string | 'all';
+  status: WishlistStatusFilter;
+  priority: 'all' | '1' | '2' | '3' | '4' | '5';
+  categoryId: 'all' | string;
   priceMin: string;
   priceMax: string;
-  sort: NonNullable<WishlistFilters['sort']>;
+  sort: 'newest' | 'oldest' | 'price-asc' | 'price-desc' | 'priority-asc' | 'priority-desc';
 }
 
-interface CategoryOption {
-  id: string;
-  name: string;
-}
-
-interface WishlistFilterBarProps {
+export interface WishlistFilterBarProps {
   filters: WishlistFilterState;
-  categories: CategoryOption[];
+  categories: Array<{ id: string; name: string }>;
   onChange: (next: WishlistFilterState) => void;
-  onReset?: () => void;
+  onReset: () => void;
 }
 
-const STATUS_OPTIONS: { value: WishlistFilterState['status']; label: string }[] = [
-  { value: 'all', label: 'Semua status' },
-  { value: 'planned', label: 'Direncanakan' },
-  { value: 'deferred', label: 'Ditunda' },
-  { value: 'purchased', label: 'Dibeli' },
-  { value: 'archived', label: 'Diarsipkan' },
-];
-
-const PRIORITY_OPTIONS: { value: WishlistFilterState['priority']; label: string }[] = [
-  { value: 'all', label: 'Semua prioritas' },
-  { value: 1, label: 'Prioritas 1' },
-  { value: 2, label: 'Prioritas 2' },
-  { value: 3, label: 'Prioritas 3' },
-  { value: 4, label: 'Prioritas 4' },
-  { value: 5, label: 'Prioritas 5' },
-];
-
-const SORT_OPTIONS: { value: WishlistFilterState['sort']; label: string }[] = [
-  { value: 'newest', label: 'Terbaru' },
-  { value: 'oldest', label: 'Terlama' },
-  { value: 'price-asc', label: 'Harga naik' },
-  { value: 'price-desc', label: 'Harga turun' },
-  { value: 'priority-desc', label: 'Prioritas tinggi' },
-  { value: 'priority-asc', label: 'Prioritas rendah' },
-];
+function buildInputClassName(extra?: string) {
+  return clsx(
+    'h-11 w-full rounded-2xl border-none bg-slate-900/60 px-4 text-sm text-slate-100 shadow-sm',
+    'ring-2 ring-slate-800 transition focus:outline-none focus:ring-[var(--accent)] focus:ring-2',
+    extra
+  );
+}
 
 export default function WishlistFilterBar({ filters, categories, onChange, onReset }: WishlistFilterBarProps) {
-  const handleSelect = <Key extends keyof WishlistFilterState>(
-    event: ChangeEvent<HTMLSelectElement>,
-    key: Key
-  ) => {
-    const value = event.target.value as WishlistFilterState[Key];
-    onChange({ ...filters, [key]: value });
-  };
-
-  const handleInput = <Key extends keyof WishlistFilterState>(event: ChangeEvent<HTMLInputElement>, key: Key) => {
-    const value = event.target.value as WishlistFilterState[Key];
-    onChange({ ...filters, [key]: value });
-  };
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-  };
-
-  const handleReset = () => {
-    onReset?.();
+  const handleInput = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = event.target;
+    onChange({ ...filters, [name]: value } as WishlistFilterState);
   };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="min-w-0 rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4 shadow-sm backdrop-blur"
+    <section
+      aria-label="Filter wishlist"
+      className="rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4 shadow-sm backdrop-blur"
     >
-      <div className="grid grid-cols-2 items-center gap-3 md:grid-cols-8">
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Status</span>
-          <select
-            value={filters.status}
-            onChange={(event) => handleSelect(event, 'status')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            {STATUS_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Prioritas</span>
-          <select
-            value={filters.priority}
-            onChange={(event) => handleSelect(event, 'priority')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            {PRIORITY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Kategori</span>
-          <select
-            value={filters.categoryId}
-            onChange={(event) => handleSelect(event, 'categoryId')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            <option value="all">Semua kategori</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Harga minimum</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            value={filters.priceMin}
-            onChange={(event) => handleInput(event, 'priceMin')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            placeholder="0"
-          />
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Harga maksimum</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min="0"
-            value={filters.priceMax}
-            onChange={(event) => handleInput(event, 'priceMax')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-            placeholder="0"
-          />
-        </label>
-
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-          <span className="truncate">Urutkan</span>
-          <select
-            value={filters.sort}
-            onChange={(event) => handleSelect(event, 'sort')}
-            className="h-11 w-full rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          >
-            {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="col-span-2 flex h-11 min-w-0 items-center gap-2 rounded-2xl border border-slate-800 bg-slate-950/60 px-3 text-sm text-slate-100 shadow-sm transition focus-within:ring-2 focus-within:ring-[var(--accent)] md:col-span-2 lg:col-span-3">
-          <Search className="h-4 w-4 text-slate-400" aria-hidden="true" />
+      <div className="flex flex-wrap gap-3">
+        <div className="flex min-w-[220px] flex-1 items-center gap-2">
+          <IconFunnel className="h-5 w-5 flex-shrink-0 text-slate-400" aria-hidden="true" />
           <input
             type="search"
+            inputMode="search"
+            name="search"
             value={filters.search}
-            onChange={(event) => handleInput(event, 'search')}
+            onChange={handleInput}
             placeholder="Cari judul atau catatan"
-            className="h-full w-full min-w-0 bg-transparent text-sm text-slate-100 placeholder:text-slate-500 focus-visible:outline-none"
-            aria-label="Pencarian wishlist"
+            className={buildInputClassName('pl-2')}
+            aria-label="Cari wishlist"
+            autoComplete="off"
           />
-          {onReset ? (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-              aria-label="Reset filter wishlist"
-            >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            </button>
-          ) : null}
         </div>
+        <select
+          name="status"
+          value={filters.status}
+          onChange={handleInput}
+          className={buildInputClassName('md:max-w-[160px]')}
+          aria-label="Filter status"
+        >
+          <option value="all">Semua status</option>
+          <option value="planned">Direncanakan</option>
+          <option value="deferred">Ditunda</option>
+          <option value="purchased">Dibeli</option>
+          <option value="archived">Diarsipkan</option>
+        </select>
+        <select
+          name="priority"
+          value={filters.priority}
+          onChange={handleInput}
+          className={buildInputClassName('md:max-w-[140px]')}
+          aria-label="Filter prioritas"
+        >
+          <option value="all">Prioritas</option>
+          {[1, 2, 3, 4, 5].map((level) => (
+            <option key={level} value={String(level)}>
+              Prioritas {level}
+            </option>
+          ))}
+        </select>
+        <select
+          name="categoryId"
+          value={filters.categoryId}
+          onChange={handleInput}
+          className={buildInputClassName('md:max-w-[180px]')}
+          aria-label="Filter kategori"
+        >
+          <option value="all">Semua kategori</option>
+          {categories.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+        <div className="flex min-w-[200px] flex-1 items-center gap-2">
+          <input
+            type="number"
+            inputMode="decimal"
+            name="priceMin"
+            value={filters.priceMin}
+            onChange={handleInput}
+            placeholder="Harga min"
+            className={buildInputClassName('font-mono text-xs md:text-sm')}
+            aria-label="Harga minimum"
+            min={0}
+          />
+          <span className="text-sm text-slate-500">–</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            name="priceMax"
+            value={filters.priceMax}
+            onChange={handleInput}
+            placeholder="Harga max"
+            className={buildInputClassName('font-mono text-xs md:text-sm')}
+            aria-label="Harga maksimum"
+            min={0}
+          />
+        </div>
+        <div className="flex min-w-[200px] flex-1 items-center gap-2 md:min-w-[220px]">
+          <IconSort className="h-5 w-5 flex-shrink-0 text-slate-400" aria-hidden="true" />
+          <select
+            name="sort"
+            value={filters.sort}
+            onChange={handleInput}
+            className={buildInputClassName('pl-2')}
+            aria-label="Urutkan wishlist"
+          >
+            <option value="newest">Terbaru</option>
+            <option value="oldest">Tertua</option>
+            <option value="price-asc">Harga naik</option>
+            <option value="price-desc">Harga turun</option>
+            <option value="priority-desc">Prioritas tinggi</option>
+            <option value="priority-asc">Prioritas rendah</option>
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={onReset}
+          className="inline-flex h-11 items-center gap-2 rounded-2xl border border-slate-800/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          aria-label="Reset filter"
+        >
+          <IconX className="h-4 w-4" aria-hidden="true" /> Reset
+        </button>
       </div>
-    </form>
+    </section>
   );
 }

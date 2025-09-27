@@ -1,19 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowDownToLine, FileUp, Plus } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+/**
+ * WishlistPage composes filters, wishlist grid, inline form modal, and batch actions for wishlist management.
+ * It uses react-query backed hooks for optimistic mutations and keeps filter state in the URL for persistence.
+ */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import WishlistFilterBar, {
   type WishlistFilterState,
 } from '../components/wishlist/WishlistFilterBar';
 import WishlistCard from '../components/wishlist/WishlistCard';
-import WishlistFormDialog from '../components/wishlist/WishlistFormDialog';
+import WishlistForm from '../components/wishlist/WishlistForm';
 import WishlistBatchToolbar from '../components/wishlist/WishlistBatchToolbar';
+import { IconPlus } from '../components/wishlist/icons';
 import { useToast } from '../context/ToastContext';
 import { useWishlist } from '../hooks/useWishlist';
 import { listCategories } from '../lib/api-categories';
 import type { WishlistCreatePayload, WishlistItem, WishlistStatus } from '../lib/wishlistApi';
-import { listWishlist } from '../lib/wishlistApi';
 
 interface CategoryOption {
   id: string;
@@ -30,10 +33,59 @@ const INITIAL_FILTERS: WishlistFilterState = {
   sort: 'newest',
 };
 
+function parseFiltersFromSearch(params: URLSearchParams): WishlistFilterState {
+  const statusParam = params.get('status');
+  const status: WishlistFilterState['status'] =
+    statusParam === 'planned' ||
+    statusParam === 'deferred' ||
+    statusParam === 'purchased' ||
+    statusParam === 'archived'
+      ? statusParam
+      : 'all';
+  const priorityParam = params.get('priority');
+  const allowedPriority = ['1', '2', '3', '4', '5'];
+  const priority: WishlistFilterState['priority'] = allowedPriority.includes(priorityParam ?? '')
+    ? (priorityParam as WishlistFilterState['priority'])
+    : 'all';
+  const sortParam = params.get('sort');
+  const allowedSort: WishlistFilterState['sort'][] = [
+    'newest',
+    'oldest',
+    'price-asc',
+    'price-desc',
+    'priority-asc',
+    'priority-desc',
+  ];
+  const sort = allowedSort.includes((sortParam ?? 'newest') as WishlistFilterState['sort'])
+    ? ((sortParam as WishlistFilterState['sort']) ?? 'newest')
+    : 'newest';
+  return {
+    search: params.get('search') ?? '',
+    status,
+    priority,
+    categoryId: (params.get('categoryId') as WishlistFilterState['categoryId']) ?? 'all',
+    priceMin: params.get('priceMin') ?? '',
+    priceMax: params.get('priceMax') ?? '',
+    sort,
+  };
+}
+
+function filtersToSearchParams(filters: WishlistFilterState): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.search) params.set('search', filters.search);
+  if (filters.status !== 'all') params.set('status', filters.status);
+  if (filters.priority !== 'all') params.set('priority', filters.priority);
+  if (filters.categoryId !== 'all') params.set('categoryId', filters.categoryId);
+  if (filters.priceMin) params.set('priceMin', filters.priceMin);
+  if (filters.priceMax) params.set('priceMax', filters.priceMax);
+  if (filters.sort && filters.sort !== 'newest') params.set('sort', filters.sort);
+  return params;
+}
+
 function normalizeFilters(filters: WishlistFilterState) {
   return {
     search: filters.search.trim() || undefined,
-    status: filters.status === 'all' ? undefined : filters.status,
+    status: filters.status === 'all' ? undefined : (filters.status as WishlistStatus),
     priority: filters.priority === 'all' ? undefined : Number(filters.priority),
     categoryId: filters.categoryId === 'all' ? undefined : filters.categoryId,
     priceMin: filters.priceMin ? Number(filters.priceMin) : undefined,
@@ -42,87 +94,92 @@ function normalizeFilters(filters: WishlistFilterState) {
   } as const;
 }
 
-function escapeCsvValue(value: string | number | null | undefined): string {
-  if (value == null) return '';
-  const stringValue = String(value);
-  if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
-    return `"${stringValue.replace(/"/g, '""')}"`;
-  }
-  return stringValue;
+function renderSkeletons() {
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 9 }).map((_, index) => (
+        <div
+          key={`wishlist-skeleton-${index}`}
+          className="flex animate-pulse flex-col overflow-hidden rounded-2xl bg-slate-900/60 ring-1 ring-slate-800"
+        >
+          <div className="aspect-video w-full bg-slate-800/70" />
+          <div className="space-y-3 p-4">
+            <div className="h-4 w-2/3 rounded-full bg-slate-800" />
+            <div className="h-3 w-1/2 rounded-full bg-slate-800/80" />
+            <div className="h-20 rounded-2xl bg-slate-800/60" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-function parseCsv(content: string): Record<string, string>[] {
-  const rows: string[][] = [];
-  let current = '';
-  let row: string[] = [];
-  let insideQuotes = false;
-
-  for (let i = 0; i < content.length; i += 1) {
-    const char = content[i];
-    if (char === '"') {
-      const nextChar = content[i + 1];
-      if (insideQuotes && nextChar === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        insideQuotes = !insideQuotes;
-      }
-      continue;
-    }
-
-    if (char === ',' && !insideQuotes) {
-      row.push(current);
-      current = '';
-      continue;
-    }
-
-    if ((char === '\n' || char === '\r') && !insideQuotes) {
-      if (char === '\r' && content[i + 1] === '\n') {
-        i += 1;
-      }
-      row.push(current);
-      rows.push(row);
-      row = [];
-      current = '';
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0 || row.length) {
-    row.push(current);
-    rows.push(row);
-  }
-
-  if (rows.length === 0) return [];
-  const header = rows.shift() ?? [];
-  const cleanedHeader = header.map((cell) => cell.trim());
-
-  return rows
-    .filter((cells) => cells.some((cell) => cell.trim().length > 0))
-    .map((cells) => {
-      const record: Record<string, string> = {};
-      cleanedHeader.forEach((key, index) => {
-        record[key] = (cells[index] ?? '').trim();
-      });
-      return record;
-    });
+function renderEmptyState(onAdd: () => void) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-800/70 bg-slate-950/60 px-6 py-16 text-center text-slate-300">
+      <p className="text-lg font-semibold text-slate-100">Wishlist kamu masih kosong</p>
+      <p className="mt-2 max-w-md text-sm text-slate-400">
+        Simpan ide belanja, tandai prioritasnya, dan siapkan diri untuk jadikan goal atau transaksi kapan saja.
+      </p>
+      <button
+        type="button"
+        onClick={onAdd}
+        className="mt-6 inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+      >
+        <IconPlus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
+      </button>
+    </div>
+  );
 }
 
 export default function WishlistPage() {
   const { addToast } = useToast();
   const navigate = useNavigate();
-  const [filters, setFilters] = useState<WishlistFilterState>(INITIAL_FILTERS);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const searchParamString = searchParams.toString();
+  const [filters, setFilters] = useState<WishlistFilterState>(() => parseFiltersFromSearch(searchParams));
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editingItem, setEditingItem] = useState<WishlistItem | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    const nextFilters = parseFiltersFromSearch(searchParams);
+    setFilters((prev) => {
+      const prevKey = JSON.stringify(prev);
+      const nextKey = JSON.stringify(nextFilters);
+      return prevKey === nextKey ? prev : nextFilters;
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = filtersToSearchParams(filters);
+    const stringified = params.toString();
+    if (stringified !== searchParamString) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [filters, searchParamString, setSearchParams]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const list = await listCategories();
+        if (!active) return;
+        setCategories(list.map((category) => ({ id: category.id, name: category.name })));
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console
+          console.error('[Wishlist] gagal memuat kategori', error);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const normalizedFilters = useMemo(() => normalizeFilters(filters), [filters]);
 
@@ -150,25 +207,6 @@ export default function WishlistPage() {
   const isMutating = isCreating || isUpdating || isDeleting || isBulkUpdating || isBulkDeleting;
 
   useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const list = await listCategories();
-        if (!active) return;
-        setCategories(list.map((category) => ({ id: category.id, name: category.name })));
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.error('[Wishlist] gagal memuat kategori', err);
-        }
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
     setSelectedIds((prev) => {
       const next = new Set<string>();
       for (const item of items) {
@@ -186,8 +224,8 @@ export default function WishlistPage() {
     if (!node) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        const firstEntry = entries[0];
-        if (firstEntry?.isIntersecting && !isFetchingNextPage) {
+        const first = entries[0];
+        if (first?.isIntersecting && !isFetchingNextPage) {
           fetchNextPage();
         }
       },
@@ -321,7 +359,7 @@ export default function WishlistPage() {
 
   const handleBatchDelete = async () => {
     if (!selectedCount) return;
-    const confirmed = window.confirm(`Hapus ${selectedCount} item wishlist terpilih?`);
+    const confirmed = window.confirm(`Hapus ${selectedCount} wishlist terpilih?`);
     if (!confirmed) return;
     try {
       await bulkDelete({ ids: Array.from(selectedIds) });
@@ -364,198 +402,19 @@ export default function WishlistPage() {
     }
   };
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    try {
-      const text = await file.text();
-      const records = parseCsv(text);
-      if (!records.length) {
-        addToast('CSV kosong atau tidak valid', 'warning');
-        return;
-      }
-      let successCount = 0;
-      const allowedStatus: WishlistStatus[] = ['planned', 'deferred', 'purchased', 'archived'];
-      for (const record of records) {
-        if (!record.title) continue;
-        const estimated = record.estimated_price ? Number(record.estimated_price) : null;
-        const priority = record.priority ? Number(record.priority) : null;
-        const status = allowedStatus.includes(record.status as WishlistStatus)
-          ? (record.status as WishlistStatus)
-          : 'planned';
-        const payload: WishlistCreatePayload = {
-          title: record.title,
-          estimated_price: Number.isFinite(estimated ?? NaN) && (estimated ?? 0) >= 0 ? estimated : null,
-          priority: Number.isInteger(priority ?? NaN) && priority != null && priority >= 1 && priority <= 5 ? priority : null,
-          status,
-          category_id: record.category_id || null,
-          store_url: record.store_url || undefined,
-          note: record.note || undefined,
-          image_url: record.image_url || undefined,
-        };
-        try {
-          await createItem(payload);
-          successCount += 1;
-        } catch (err) {
-          if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
-            console.error('[Wishlist] import item error', err);
-          }
-        }
-      }
-      addToast(`Berhasil mengimpor ${successCount} wishlist`, successCount ? 'success' : 'warning');
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.error('[Wishlist] import error', err);
-      }
-      addToast('Gagal mengimpor CSV', 'error');
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleExport = useCallback(async () => {
-    setExporting(true);
-    try {
-      const rows: WishlistItem[] = [];
-      let page = 1;
-      const filterPayload = normalizeFilters(filters);
-      for (let i = 0; i < 20; i += 1) {
-        const result = await listWishlist({ ...filterPayload, page, pageSize: 200 });
-        rows.push(...result.items);
-        if (!result.hasMore) break;
-        page += 1;
-      }
-      const header = [
-        'title',
-        'estimated_price',
-        'priority',
-        'status',
-        'category_id',
-        'category_name',
-        'store_url',
-        'note',
-        'image_url',
-        'created_at',
-        'updated_at',
-      ];
-      const lines = [header.join(',')];
-      for (const row of rows) {
-        lines.push(
-          [
-            escapeCsvValue(row.title),
-            escapeCsvValue(row.estimated_price ?? ''),
-            escapeCsvValue(row.priority ?? ''),
-            escapeCsvValue(row.status),
-            escapeCsvValue(row.category_id ?? ''),
-            escapeCsvValue(row.category?.name ?? ''),
-            escapeCsvValue(row.store_url ?? ''),
-            escapeCsvValue(row.note ?? ''),
-            escapeCsvValue(row.image_url ?? ''),
-            escapeCsvValue(row.created_at),
-            escapeCsvValue(row.updated_at),
-          ].join(',')
-        );
-      }
-      const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `wishlist-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      addToast('Wishlist diekspor sebagai CSV', 'success');
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console
-        console.error('[Wishlist] export error', err);
-      }
-      addToast('Gagal mengekspor wishlist', 'error');
-    } finally {
-      setExporting(false);
-    }
-  }, [filters, addToast]);
-
-  const renderSkeletons = () => {
-    return (
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div
-            // eslint-disable-next-line react/no-array-index-key
-            key={index}
-            className="h-48 animate-pulse rounded-2xl bg-slate-900/60 ring-1 ring-slate-800"
-          />
-        ))}
-      </div>
-    );
-  };
-
-  const renderEmptyState = () => (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-slate-800 bg-slate-950/60 px-6 py-16 text-center">
-      <div className="rounded-full border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm text-slate-400">
-        Wishlist Anda masih kosong
-      </div>
-      <p className="max-w-sm text-balance text-sm text-slate-400">
-        Simpan ide belanja tanpa komitmen finansial. Tambahkan item wishlist dan ubah menjadi goal atau transaksi kapan saja.
-      </p>
-      <button
-        type="button"
-        onClick={handleAdd}
-        className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-      >
-        <Plus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
-      </button>
-    </div>
-  );
-
   const hasError = isError && !isLoading;
 
   return (
     <Page>
-      <PageHeader title="Wishlist" description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun.">
-        <button
-          type="button"
-          onClick={handleImportClick}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={importing || isMutating}
-        >
-          <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={exporting}
-        >
-          <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
-        </button>
+      <PageHeader title="Wishlist" description="Satu tempat untuk mengingat setiap barang impian dan siap eksekusi kapan saja.">
         <button
           type="button"
           onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
         >
-          <Plus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
+          <IconPlus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
         </button>
       </PageHeader>
-
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".csv,text/csv"
-        className="hidden"
-        onChange={handleImportFile}
-      />
 
       <div className="space-y-6">
         <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />
@@ -576,7 +435,7 @@ export default function WishlistPage() {
         {isLoading ? (
           renderSkeletons()
         ) : items.length === 0 ? (
-          renderEmptyState()
+          renderEmptyState(handleAdd)
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
@@ -603,9 +462,7 @@ export default function WishlistPage() {
               </div>
             ) : null}
             {total ? (
-              <p className="text-center text-xs text-slate-500">
-                Menampilkan {items.length} dari {total} wishlist
-              </p>
+              <p className="text-center text-xs text-slate-500">Menampilkan {items.length} dari {total} wishlist</p>
             ) : null}
           </div>
         )}
@@ -622,7 +479,7 @@ export default function WishlistPage() {
         />
       ) : null}
 
-      <WishlistFormDialog
+      <WishlistForm
         open={formOpen}
         mode={formMode}
         initialData={editingItem}
