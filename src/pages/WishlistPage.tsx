@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowDownToLine, FileUp, Plus } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type MouseEvent,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -7,18 +14,13 @@ import WishlistFilterBar, {
   type WishlistFilterState,
 } from '../components/wishlist/WishlistFilterBar';
 import WishlistCard from '../components/wishlist/WishlistCard';
-import WishlistFormDialog from '../components/wishlist/WishlistFormDialog';
+import WishlistForm, { type CategoryOption } from '../components/wishlist/WishlistForm';
 import WishlistBatchToolbar from '../components/wishlist/WishlistBatchToolbar';
 import { useToast } from '../context/ToastContext';
 import { useWishlist } from '../hooks/useWishlist';
 import { listCategories } from '../lib/api-categories';
 import type { WishlistCreatePayload, WishlistItem, WishlistStatus } from '../lib/wishlistApi';
 import { listWishlist } from '../lib/wishlistApi';
-
-interface CategoryOption {
-  id: string;
-  name: string;
-}
 
 const INITIAL_FILTERS: WishlistFilterState = {
   search: '',
@@ -118,10 +120,16 @@ export default function WishlistPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editingItem, setEditingItem] = useState<WishlistItem | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const desktopAddButtonRef = useRef<HTMLButtonElement | null>(null);
+  const mobileAddButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const lastFocusRef = useRef<HTMLElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const normalizedFilters = useMemo(() => normalizeFilters(filters), [filters]);
@@ -148,6 +156,7 @@ export default function WishlistPage() {
   } = useWishlist(normalizedFilters);
 
   const isMutating = isCreating || isUpdating || isDeleting || isBulkUpdating || isBulkDeleting;
+  const isFormSubmitting = formMode === 'create' ? isCreating : isUpdating;
 
   useEffect(() => {
     let active = true;
@@ -199,6 +208,82 @@ export default function WishlistPage() {
     };
   }, [hasNextPage, fetchNextPage, isFetchingNextPage, items.length]);
 
+  const closeForm = useCallback(() => {
+    setFormOpen(false);
+    setEditingItem(null);
+    setFormError(null);
+  }, []);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    const dialogNode = dialogRef.current;
+    if (!dialogNode) return;
+
+    const focusableSelectors =
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    const focusable = Array.from(
+      dialogNode.querySelectorAll<HTMLElement>(focusableSelectors)
+    ).filter((element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeForm();
+        return;
+      }
+
+      if (event.key === 'Tab' && focusable.length > 0) {
+        if (event.shiftKey) {
+          if (document.activeElement === first || !dialogNode.contains(document.activeElement)) {
+            event.preventDefault();
+            last?.focus();
+          }
+        } else if (document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', handleKeyDown);
+
+    window.setTimeout(() => {
+      const initialFocus = dialogNode.querySelector<HTMLElement>('#wishlist-title');
+      if (initialFocus && !initialFocus.hasAttribute('disabled')) {
+        initialFocus.focus({ preventScroll: true });
+      } else {
+        first?.focus({ preventScroll: true });
+      }
+    }, 0);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [formOpen, closeForm]);
+
+  useEffect(() => {
+    if (formOpen) return;
+    const node = lastFocusRef.current;
+    if (node) {
+      window.setTimeout(() => {
+        node.focus({ preventScroll: true });
+      }, 0);
+      lastFocusRef.current = null;
+    }
+  }, [formOpen]);
+
+  const handleOverlayMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.target === overlayRef.current) {
+      closeForm();
+    }
+  };
+
   const handleFilterChange = (next: WishlistFilterState) => {
     setFilters(next);
   };
@@ -207,15 +292,30 @@ export default function WishlistPage() {
     setFilters(INITIAL_FILTERS);
   };
 
-  const handleAdd = () => {
+  const handleAddDesktop = (event: MouseEvent<HTMLButtonElement>) => {
+    lastFocusRef.current = event.currentTarget;
     setFormMode('create');
     setEditingItem(null);
+    setFormError(null);
+    setFormOpen(true);
+  };
+
+  const handleAddMobile = (event: MouseEvent<HTMLButtonElement>) => {
+    lastFocusRef.current = event.currentTarget;
+    setFormMode('create');
+    setEditingItem(null);
+    setFormError(null);
     setFormOpen(true);
   };
 
   const handleEdit = (item: WishlistItem) => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) {
+      lastFocusRef.current = active;
+    }
     setFormMode('edit');
     setEditingItem(item);
+    setFormError(null);
     setFormOpen(true);
   };
 
@@ -250,33 +350,28 @@ export default function WishlistPage() {
   };
 
   const handleFormSubmit = async (payload: WishlistCreatePayload) => {
-    if (formMode === 'create') {
-      try {
+    try {
+      setFormError(null);
+      if (formMode === 'create') {
         await createItem(payload);
         addToast('Wishlist berhasil ditambahkan', 'success');
-        setFormOpen(false);
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.error('[Wishlist] create error', err);
-        }
-        addToast('Gagal menambahkan wishlist', 'error');
+      } else if (editingItem) {
+        await updateItem({ id: editingItem.id, patch: payload });
+        addToast('Wishlist berhasil diperbarui', 'success');
       }
-      return;
-    }
-
-    if (!editingItem) return;
-
-    try {
-      await updateItem({ id: editingItem.id, patch: payload });
-      addToast('Wishlist berhasil diperbarui', 'success');
-      setFormOpen(false);
+      closeForm();
     } catch (err) {
       if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
-        console.error('[Wishlist] update error', err);
+        console.error('[Wishlist] submit error', err);
       }
-      addToast('Gagal memperbarui wishlist', 'error');
+      const message = err instanceof Error ? err.message : 'Gagal menyimpan wishlist.';
+      setFormError(message);
+      addToast(
+        formMode === 'create' ? 'Gagal menambahkan wishlist' : 'Gagal memperbarui wishlist',
+        'error'
+      );
+      throw err;
     }
   };
 
@@ -391,7 +486,10 @@ export default function WishlistPage() {
         const payload: WishlistCreatePayload = {
           title: record.title,
           estimated_price: Number.isFinite(estimated ?? NaN) && (estimated ?? 0) >= 0 ? estimated : null,
-          priority: Number.isInteger(priority ?? NaN) && priority != null && priority >= 1 && priority <= 5 ? priority : null,
+          priority:
+            Number.isInteger(priority ?? NaN) && priority != null && priority >= 1 && priority <= 5
+              ? priority
+              : null,
           status,
           category_id: record.category_id || null,
           store_url: record.store_url || undefined,
@@ -487,19 +585,16 @@ export default function WishlistPage() {
     }
   }, [filters, addToast]);
 
-  const renderSkeletons = () => {
-    return (
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div
-            // eslint-disable-next-line react/no-array-index-key
-            key={index}
-            className="h-48 animate-pulse rounded-2xl bg-slate-900/60 ring-1 ring-slate-800"
-          />
-        ))}
-      </div>
-    );
-  };
+  const hasError = isError && !isLoading;
+
+  const renderSkeletons = () => (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: 9 }).map((_, index) => (
+        // eslint-disable-next-line react/no-array-index-key
+        <div key={index} className="h-52 animate-pulse rounded-2xl bg-slate-900/60 ring-1 ring-slate-800" />
+      ))}
+    </div>
+  );
 
   const renderEmptyState = () => (
     <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-slate-800 bg-slate-950/60 px-6 py-16 text-center">
@@ -507,46 +602,61 @@ export default function WishlistPage() {
         Wishlist Anda masih kosong
       </div>
       <p className="max-w-sm text-balance text-sm text-slate-400">
-        Simpan ide belanja tanpa komitmen finansial. Tambahkan item wishlist dan ubah menjadi goal atau transaksi kapan saja.
+        Simpan ide belanja, atur prioritasnya, lalu ubah menjadi goal atau transaksi kapan saja.
       </p>
       <button
         type="button"
-        onClick={handleAdd}
-        className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        onClick={() => {
+          const active = document.activeElement;
+          if (active instanceof HTMLElement) {
+            lastFocusRef.current = active;
+          }
+          setFormMode('create');
+          setEditingItem(null);
+          setFormError(null);
+          setFormOpen(true);
+        }}
+        className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
       >
-        <Plus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
+        <PlusIcon /> Tambah Wishlist
       </button>
     </div>
   );
 
-  const hasError = isError && !isLoading;
+  const initialFormData = formMode === 'edit' ? editingItem : null;
 
   return (
     <Page>
-      <PageHeader title="Wishlist" description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun.">
-        <button
-          type="button"
-          onClick={handleImportClick}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={importing || isMutating}
-        >
-          <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={exporting}
-        >
-          <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
-        </button>
+      <PageHeader
+        title="Wishlist"
+        description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun."
+      >
+        <div className="hidden items-center gap-2 md:flex">
+          <button
+            type="button"
+            onClick={handleImportClick}
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            disabled={importing || isMutating}
+          >
+            <UploadIcon /> {importing ? 'Mengimpor…' : 'Impor CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-700/70 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+            disabled={exporting}
+          >
+            <DownloadIcon /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
+          </button>
+          <button
+            ref={desktopAddButtonRef}
+            type="button"
+            onClick={handleAddDesktop}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            <PlusIcon /> Tambah Wishlist
+          </button>
+        </div>
       </PageHeader>
 
       <input
@@ -558,15 +668,22 @@ export default function WishlistPage() {
       />
 
       <div className="space-y-6">
-        <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />
+        <WishlistFilterBar
+          filters={filters}
+          categories={categories}
+          onChange={handleFilterChange}
+          onReset={handleResetFilters}
+        />
 
         {hasError ? (
-          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-            Terjadi kesalahan saat memuat wishlist. {error instanceof Error ? error.message : ''}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            <span>
+              Terjadi kesalahan saat memuat wishlist. {error instanceof Error ? error.message : ''}
+            </span>
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="ml-3 inline-flex items-center text-rose-100 underline-offset-4 hover:underline"
+              className="rounded-xl border border-rose-500/40 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-200 transition hover:bg-rose-500/10"
             >
               Muat ulang
             </button>
@@ -597,7 +714,10 @@ export default function WishlistPage() {
             </div>
             {hasNextPage ? (
               <div className="flex justify-center">
-                <div ref={loadMoreRef} className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-slate-500">
+                <div
+                  ref={loadMoreRef}
+                  className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-slate-500"
+                >
                   {isFetchingNextPage ? 'Memuat…' : 'Memuat lainnya'}
                 </div>
               </div>
@@ -622,15 +742,96 @@ export default function WishlistPage() {
         />
       ) : null}
 
-      <WishlistFormDialog
-        open={formOpen}
-        mode={formMode}
-        initialData={editingItem}
-        categories={categories}
-        submitting={isMutating}
-        onClose={() => setFormOpen(false)}
-        onSubmit={handleFormSubmit}
-      />
+      <button
+        ref={mobileAddButtonRef}
+        type="button"
+        onClick={handleAddMobile}
+        className="fixed bottom-5 right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent)] text-white shadow-lg ring-2 ring-slate-900/40 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--accent)]/60 md:hidden"
+        aria-label="Tambah wishlist"
+      >
+        <PlusIconLarge />
+      </button>
+
+      {formOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            ref={overlayRef}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm"
+            onMouseDown={handleOverlayMouseDown}
+            aria-hidden="true"
+          />
+          <div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wishlist-form-title"
+            className="relative z-10 w-full max-w-lg rounded-2xl bg-slate-900 p-5 shadow-2xl ring-1 ring-slate-800 md:p-6"
+          >
+            <button
+              type="button"
+              onClick={closeForm}
+              className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              aria-label="Tutup form wishlist"
+              disabled={isFormSubmitting}
+            >
+              <CloseIcon />
+            </button>
+            <WishlistForm
+              mode={formMode}
+              initialData={initialFormData}
+              categories={categories}
+              submitting={isFormSubmitting}
+              serverError={formError}
+              onCancel={closeForm}
+              onSubmit={handleFormSubmit}
+            />
+          </div>
+        </div>
+      ) : null}
     </Page>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-5 w-5">
+      <path strokeLinecap="round" d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function PlusIconLarge() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6">
+      <path strokeLinecap="round" d="M12 4v16M4 12h16" />
+    </svg>
+  );
+}
+
+function UploadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m7 9 5-5 5 5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h16" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v12" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="m7 11 5 5 5-5" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 20h16" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className="h-4 w-4">
+      <path strokeLinecap="round" d="m6 6 12 12M6 18 18 6" />
+    </svg>
   );
 }
