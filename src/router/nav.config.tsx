@@ -18,6 +18,7 @@ import {
   Wallet,
   Flag,
   HandCoins,
+  Heart,
   Tags,
   Database,
   Repeat,
@@ -65,10 +66,18 @@ export const NAV_ITEMS: NavItem[] = [
     inSidebar: true,
     protected: true,
   },
-  {
+  {  
     title: 'Goals',
     path: '/goals',
     icon: <Flag className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Wishlist',
+    path: '/wishlist',
+    icon: <Heart className="h-5 w-5" />,
     section: 'primary',
     inSidebar: true,
     protected: true,
