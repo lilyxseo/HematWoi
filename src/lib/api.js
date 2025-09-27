@@ -466,7 +466,9 @@ export async function listTransactions(options = {}) {
   const orderField = sortField === "amount" ? "amount" : "date";
   query = query.order(orderField, { ascending });
   if (orderField === "date") {
-    query = query.order("updated_at", { ascending });
+    query = query
+      .order("updated_at", { ascending, nullsLast: !ascending })
+      .order("inserted_at", { ascending, nullsLast: !ascending });
   }
 
   if (normalized.type && normalized.type !== "all") {
