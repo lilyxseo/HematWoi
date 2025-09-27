@@ -25,6 +25,7 @@ import { listAccounts, listCategories } from '../lib/api';
 import { listCategoriesExpense } from '../lib/budgetApi';
 import { createTransaction } from '../lib/transactionsApi';
 import { supabase } from '../lib/supabase';
+import { TRANSACTION_TEMPLATES } from './transactionTemplates';
 
 const TYPE_OPTIONS = [
   {
@@ -125,6 +126,7 @@ export default function TransactionAdd({ onAdd }) {
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -237,6 +239,10 @@ export default function TransactionAdd({ onAdd }) {
     () => TYPE_OPTIONS.find((option) => option.value === type),
     [type],
   );
+  const visibleTemplates = useMemo(
+    () => TRANSACTION_TEMPLATES.filter((item) => item.mode === type),
+    [type],
+  );
 
   const isTransfer = type === 'transfer';
   const amountValue = parseAmount(amountInput);
@@ -268,11 +274,13 @@ export default function TransactionAdd({ onAdd }) {
     const value = event.target.value;
     setAmountInput(value.replace(/[^0-9.,]/g, ''));
     setErrors((prev) => ({ ...prev, amount: undefined }));
+    setSelectedTemplateId(null);
   };
 
   const handleQuickAmountSelect = (value) => {
     setAmountInput(CURRENCY_FORMATTER.format(value));
     setErrors((prev) => ({ ...prev, amount: undefined }));
+    setSelectedTemplateId(null);
   };
 
   const handleDateSelect = (value) => {
@@ -291,6 +299,65 @@ export default function TransactionAdd({ onAdd }) {
     event.preventDefault();
     setDragOver(false);
     handleReceiptFiles(event.dataTransfer.files);
+  };
+
+  const handleTemplateSelect = (template) => {
+    if (!template) return;
+    const { preset = {} } = template;
+    const targetType = template.mode || 'expense';
+    setSelectedTemplateId(template.id);
+    setType(targetType);
+    setErrors({});
+    if (typeof preset.amount === 'number' && preset.amount > 0) {
+      setAmountInput(CURRENCY_FORMATTER.format(preset.amount));
+    } else {
+      setAmountInput('');
+    }
+    if (preset.title !== undefined) {
+      setTitle(preset.title || '');
+    }
+    if (preset.note !== undefined) {
+      setNotes(preset.note || '');
+    }
+    if (preset.date) {
+      setDate(preset.date);
+    }
+    const accountName = preset.account?.toLowerCase?.();
+    if (accountName) {
+      const accountMatch = accounts.find((account) => (account.name || '').toLowerCase() === accountName);
+      if (accountMatch) {
+        setAccountId(accountMatch.id);
+      }
+    }
+    if (targetType === 'transfer') {
+      const toAccountName = preset.toAccount?.toLowerCase?.();
+      if (toAccountName) {
+        const toAccountMatch = accounts.find((account) => (account.name || '').toLowerCase() === toAccountName);
+        if (toAccountMatch) {
+          setToAccountId(toAccountMatch.id);
+        }
+      }
+    } else {
+      setToAccountId('');
+    }
+    if (targetType !== 'transfer') {
+      const normalizedCategory = preset.category?.toLowerCase?.();
+      if (normalizedCategory) {
+        const pool = categories.filter((item) => (item.type || '').toLowerCase() === targetType);
+        const categoryMatch = pool.find((item) => (item.name || '').toLowerCase() === normalizedCategory);
+        if (categoryMatch) {
+          setCategoryId(categoryMatch.id);
+        } else {
+          setCategoryId('');
+        }
+      } else {
+        setCategoryId('');
+      }
+      setCategoryQuery(preset.category || '');
+    } else {
+      setCategoryId('');
+      setCategoryQuery('');
+    }
   };
 
   const validate = useCallback(() => {
@@ -330,6 +397,7 @@ export default function TransactionAdd({ onAdd }) {
     setReceiptFile(null);
     setReceiptPreview('');
     setErrors({});
+    setSelectedTemplateId(null);
     if (accounts.length) {
       setAccountId(accounts[0].id);
     }
@@ -459,6 +527,7 @@ export default function TransactionAdd({ onAdd }) {
                                 category_id: undefined,
                                 to_account_id: undefined,
                               }));
+                              setSelectedTemplateId(null);
                             }}
                             className={`${SEGMENT_ITEM_CLASS} ${active ? 'bg-primary text-primary-foreground' : 'text-muted'}`}
                           >
@@ -508,6 +577,57 @@ export default function TransactionAdd({ onAdd }) {
                   {errors.date ? <p className="mt-1 text-xs text-destructive">{errors.date}</p> : null}
                 </div>
               </div>
+
+              {visibleTemplates.length ? (
+                <div className="space-y-3">
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted">Template Transaksi</span>
+                    <p className="text-sm text-muted">Gunakan preset berikut untuk mengisi formulir secara instan.</p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {visibleTemplates.map((template) => {
+                      const TemplateIcon = template.icon;
+                      const active = template.id === selectedTemplateId;
+                      const amountLabel =
+                        typeof template.preset?.amount === 'number' && template.preset.amount > 0
+                          ? `Rp ${CURRENCY_FORMATTER.format(template.preset.amount)}`
+                          : null;
+                      return (
+                        <button
+                          key={template.id}
+                          type="button"
+                          onClick={() => handleTemplateSelect(template)}
+                          className={`group flex items-start gap-3 rounded-2xl border px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                            active
+                              ? 'border-primary bg-primary/5 shadow-sm'
+                              : 'border-border-subtle bg-background/80 hover:border-primary/40 hover:bg-primary/5'
+                          }`}
+                          aria-pressed={active}
+                        >
+                          <span
+                            className={`flex h-10 w-10 items-center justify-center rounded-xl text-primary transition group-hover:scale-105 ${
+                              active ? 'bg-primary/10' : 'bg-primary/5'
+                            }`}
+                          >
+                            <TemplateIcon className="h-5 w-5" aria-hidden="true" />
+                          </span>
+                          <span className="space-y-1">
+                            <span className="flex items-center gap-2">
+                              <span className="font-semibold text-text">{template.name}</span>
+                              {amountLabel ? (
+                                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                                  {amountLabel}
+                                </span>
+                              ) : null}
+                            </span>
+                            <p className="text-sm leading-snug text-muted">{template.description}</p>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               <div>
                 <label className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
