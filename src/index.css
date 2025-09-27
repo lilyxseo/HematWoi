@@ -361,3 +361,20 @@
     opacity: 0.2;
   }
 }
+
+@keyframes hw-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@layer utilities {
+  .animate-blink {
+    animation: hw-blink 1.2s ease-in-out infinite;
+  }
+}

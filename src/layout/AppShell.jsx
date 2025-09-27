@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { NavLink, useLocation, useRoutes } from "react-router-dom";
+import { useLocation, useRoutes } from "react-router-dom";
 import { NAV_ITEMS } from "../router/nav.config";
 import { buildBreadcrumbs } from "../router/breadcrumbs";
 import { ROUTES } from "../router/routes";
 import AppSidebar from "./AppSidebar";
 import { ModeProvider, useMode } from "../hooks/useMode";
+import AppTopbar from "./AppTopbar";
 
 function ShellContent() {
   const element = useRoutes(ROUTES);
@@ -23,21 +24,7 @@ function ShellContent() {
         setBrand={setBrand}
       />
       <div className="flex min-w-0 flex-1 flex-col">
-        <nav
-          aria-label="Breadcrumb"
-          className="border-b p-4 text-sm"
-        >
-          {breadcrumbs.map((b, idx) => (
-            <span key={b.path}>
-              {idx > 0 && " / "}
-              {idx < breadcrumbs.length - 1 ? (
-                <NavLink to={b.path}>{b.title}</NavLink>
-              ) : (
-                <span>{b.title}</span>
-              )}
-            </span>
-          ))}
-        </nav>
+        <AppTopbar breadcrumbs={breadcrumbs} />
         <main className="flex-1 min-w-0 p-4">{element}</main>
         <div className="border-t p-2 text-right text-xs">
           {mode === "online" ? "✅ Online Mode aktif" : "📴 Local Mode aktif"}
