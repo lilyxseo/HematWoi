@@ -2,15 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
+  Bell,
   ChevronLeft,
   ChevronRight,
   Cloud,
   CloudOff,
   LogIn,
   LogOut,
+  Mail,
+  Menu,
   Monitor,
   Moon,
+  Search,
   Sun,
+  User,
   X,
 } from "lucide-react";
 import SidebarSection from "./SidebarSection";
@@ -278,28 +283,14 @@ export default function Sidebar({
       >
         <div
           className={clsx(
-            "flex items-center gap-3 pt-6",
-            collapsed ? "justify-center pb-4" : "justify-between pb-6"
+            "relative mt-6 rounded-3xl bg-gradient-to-r from-[#5f6cff] via-[#7c5dff] to-[#9a4dff] text-white shadow-lg shadow-black/20 ring-1 ring-white/10",
+            collapsed ? "px-3 py-5" : "px-5 py-6"
           )}
         >
-          <div className={clsx("flex items-center gap-3", collapsed && "flex-col")}
->
-            <Logo className="h-9 w-9 shrink-0" />
-            {!collapsed && (
-              <div className="flex flex-col">
-                <span className="text-[17px] font-semibold leading-none tracking-tight">
-                  HematWoi
-                </span>
-                <span className="mt-1 text-xs text-muted">
-                  Atur keuangan kamu dengan tenang
-                </span>
-              </div>
-            )}
-          </div>
           {onClose ? (
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-surface-2 text-text shadow-sm"
+              className="absolute right-3 top-3 inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               onClick={onClose}
               data-autofocus="true"
               aria-label="Tutup navigasi"
@@ -307,6 +298,73 @@ export default function Sidebar({
               <X className="h-4 w-4" />
             </button>
           ) : null}
+          <div
+            className={clsx(
+              "flex w-full",
+              collapsed
+                ? "flex-col items-center gap-3"
+                : "items-center justify-between gap-4"
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => onToggle?.(!collapsed)}
+              className={clsx(
+                "inline-flex items-center justify-center rounded-2xl bg-white/10 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                collapsed ? "h-12 w-12 px-0" : "min-w-[3rem]"
+              )}
+              aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
+            >
+              <Menu className="h-5 w-5" />
+              {!collapsed && <span className="ml-2">Menu</span>}
+            </button>
+            <div
+              className={clsx(
+                "flex items-center",
+                collapsed ? "flex-col gap-2" : "gap-2"
+              )}
+            >
+              {[
+                { icon: Search, label: "Cari" },
+                { icon: Mail, label: "Pesan" },
+                { icon: Bell, label: "Notifikasi" },
+              ].map(({ icon: IconCmp, label }) => (
+                <button
+                  key={label}
+                  type="button"
+                  className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  aria-label={label}
+                >
+                  <IconCmp className="h-5 w-5" />
+                </button>
+              ))}
+            </div>
+            <div
+              className={clsx(
+                "flex items-center",
+                collapsed ? "flex-col gap-2" : "gap-3"
+              )}
+            >
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-white/30 bg-white/15 text-base font-semibold uppercase tracking-wide">
+                {sessionUser?.email?.slice(0, 1).toUpperCase() || <User className="h-5 w-5" />}
+              </div>
+            </div>
+          </div>
+          {!collapsed && (
+            <div className="mt-6 flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-sm">
+              <Logo className="h-10 w-10 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-tight">HematWoi</p>
+                <p className="text-[11px] text-white/80">Atur keuangan kamu dengan tenang</p>
+              </div>
+            </div>
+          )}
+          {collapsed && (
+            <div className="mt-4 flex flex-col items-center gap-2 text-[11px] font-medium text-white/80">
+              <Logo className="h-8 w-8" />
+              <span>HematWoi</span>
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain pb-6">
           {menuLoading ? (
