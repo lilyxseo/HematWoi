@@ -6,10 +6,21 @@ import {
   Outlet,
   useNavigate,
   useLocation,
+  NavLink,
 } from "react-router-dom";
-
-import AppSidebar from "./layout/AppSidebar";
-import MainLayout from "./layout/MainLayout";
+import clsx from "clsx";
+import {
+  Home,
+  Wallet,
+  PiggyBank,
+  ListChecks,
+  BarChart3,
+  Settings as SettingsIcon,
+  Menu,
+  Bell,
+  ChevronDown,
+  LogOut,
+} from "lucide-react";
 import SettingsPanel from "./components/SettingsPanel";
 import BootGate from "./components/BootGate";
 
@@ -81,6 +92,15 @@ const BRAND_PRESETS = {
   amber: { h: 38, s: 92, l: 50 },
   rose: { h: 347, s: 77, l: 60 },
 };
+
+const SIDEBAR_ITEMS = [
+  { label: "Dashboard", to: "/", icon: Home },
+  { label: "Transaksi", to: "/transactions", icon: Wallet },
+  { label: "Anggaran", to: "/budgets", icon: PiggyBank },
+  { label: "Kategori", to: "/categories", icon: ListChecks },
+  { label: "Laporan", to: "/data", icon: BarChart3 },
+  { label: "Pengaturan", to: "/settings", icon: SettingsIcon },
+];
 
 function normalizeBudgetRecord(budget, overrides = {}) {
   if (!budget) return null;
@@ -174,34 +194,421 @@ function loadInitial() {
   }
 }
 
-function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
+function ProtectedAppContainer({ layoutState, sessionUser }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const hideNav = location.pathname.startsWith("/add");
+  const {
+    sidebarOpen,
+    setSidebarOpen,
+    sidebarMini,
+    setSidebarMini,
+    profileOpen,
+    setProfileOpen,
+  } = layoutState;
+  const profileButtonRef = useRef(null);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+    setProfileOpen(false);
+  }, [location.pathname, setProfileOpen, setSidebarOpen]);
+
+  const sidebarItems = useMemo(() => SIDEBAR_ITEMS, []);
+
+  const displayName = useMemo(() => {
+    const name = sessionUser?.user_metadata?.full_name?.trim();
+    if (name) return name;
+    if (sessionUser?.email) return sessionUser.email;
+    return "Pengguna";
+  }, [sessionUser]);
+
+  const email = useMemo(() => {
+    if (sessionUser?.email) return sessionUser.email;
+    return sessionUser?.user_metadata?.email ?? "";
+  }, [sessionUser]);
+
+  const initials = useMemo(() => {
+    if (!displayName) return "HW";
+    const tokens = displayName
+      .split(/\s+/)
+      .map((token) => token[0])
+      .filter(Boolean)
+      .join("")
+      .slice(0, 2)
+      .toUpperCase();
+    return tokens || "HW";
+  }, [displayName]);
+
+  const avatarUrl =
+    sessionUser?.user_metadata?.avatar_url ||
+    sessionUser?.user_metadata?.avatar ||
+    null;
+
+  const handleToggleProfile = useCallback(() => {
+    setProfileOpen((prev) => !prev);
+  }, [setProfileOpen]);
+
+  const handleCloseProfile = useCallback(() => {
+    setProfileOpen(false);
+  }, [setProfileOpen]);
+
+  const handleOpenProfile = useCallback(() => {
+    navigate("/profile");
+  }, [navigate]);
+
+  const handleOpenSettingsPanel = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("hw:open-settings"));
+  }, []);
+
+  const handleSignOut = useCallback(async () => {
+    try {
+      await supabase.auth.signOut({ scope: "global" });
+    } catch (error) {
+      console.error("Gagal keluar", error);
+    }
+  }, []);
+
+  const renderSidebarContent = useCallback(
+    (mini, onNavigate) => (
+      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto py-4">
+        <SidebarSection label="Menu Utama" mini={mini}>
+          {sidebarItems.map((item) => (
+            <SidebarItem
+              key={item.to}
+              to={item.to}
+              icon={item.icon}
+              label={item.label}
+              mini={mini}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </SidebarSection>
+      </nav>
+    ),
+    [sidebarItems]
+  );
+
+  const handleSidebarBlur = useCallback(
+    (event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) {
+        setSidebarMini(true);
+      }
+    },
+    [setSidebarMini]
+  );
+
+  if (hideNav) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-50">
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-3 sm:p-6">
+            <div className="mx-auto w-full max-w-[1280px] space-y-6">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <Outlet />
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <MainLayout
-      hideSidebar={hideNav}
-      sidebar={
-        !hideNav ? (
-          <AppSidebar
-            theme={theme}
-            setTheme={setTheme}
-            brand={brand}
-            setBrand={setBrand}
-          />
-        ) : null
-      }
-    >
-      <div className="flex min-h-full flex-col">
-        <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-          <Outlet />
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+      <header className="sticky top-0 z-40 flex h-14 items-center justify-between bg-[#3898f8] px-3 text-white shadow-sm sm:px-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            aria-label="Buka navigasi"
+            onClick={() => setSidebarOpen(true)}
+            className="inline-flex items-center justify-center rounded-lg p-2 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#3898f8] sm:hidden"
+          >
+            <Menu className="size-5" aria-hidden="true" />
+            <span className="sr-only">Buka menu samping</span>
+          </button>
+          <span className="hidden text-sm font-semibold tracking-tight sm:block">
+            HematWoi
+          </span>
         </div>
+        <TopbarRight
+          profileButtonRef={profileButtonRef}
+          profileOpen={profileOpen}
+          onToggleProfile={handleToggleProfile}
+          onCloseProfile={handleCloseProfile}
+          onSelectProfile={handleOpenProfile}
+          onSelectSettings={handleOpenSettingsPanel}
+          onSelectLogout={handleSignOut}
+          initials={initials}
+          avatarUrl={avatarUrl}
+          displayName={displayName}
+          email={email}
+        />
+      </header>
+      <div className="flex flex-1">
+        <aside
+          className={clsx(
+            "sticky top-14 hidden h-[calc(100vh-56px)] flex-col border-r border-slate-200 bg-white shadow-sm transition-[width] duration-200 sm:flex",
+            sidebarMini ? "w-16" : "w-64"
+          )}
+          onMouseEnter={() => setSidebarMini(false)}
+          onMouseLeave={() => setSidebarMini(true)}
+          onFocusCapture={() => setSidebarMini(false)}
+          onBlur={handleSidebarBlur}
+        >
+          {renderSidebarContent(sidebarMini)}
+        </aside>
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-3 sm:p-6">
+            <div className="mx-auto w-full max-w-[1280px] space-y-6">
+              <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                <Outlet />
+              </div>
+            </div>
+          </div>
+        </main>
       </div>
-    </MainLayout>
+
+      {sidebarOpen ? (
+        <div className="sm:hidden">
+          <div className="fixed inset-0 z-50">
+            <button
+              type="button"
+              aria-label="Tutup navigasi"
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setSidebarOpen(false)}
+            />
+            <div className="absolute left-0 top-0 flex h-full w-72 flex-col border-r border-slate-200 bg-white p-2 shadow-xl animate-in slide-in-from-left">
+              <div className="flex h-14 items-center px-2 text-base font-semibold text-slate-900">
+                HematWoi
+              </div>
+              {renderSidebarContent(false, () => setSidebarOpen(false))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-function AppShell({ prefs, setPrefs }) {
+function SidebarSection({ label, mini, children }) {
+  const displayLabel = mini ? label.charAt(0) : label;
+  return (
+    <div className="px-2">
+      <div
+        className={clsx(
+          "px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500 transition-all duration-200",
+          mini ? "text-center" : "text-left"
+        )}
+      >
+        {displayLabel}
+      </div>
+      <div className="mt-1 space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function SidebarItem({ to, icon, label, mini, onNavigate }) {
+  const Icon = icon;
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      aria-label={label}
+      className={({ isActive }) =>
+        clsx(
+          "group flex items-center gap-3 rounded-xl border-l-2 border-transparent px-2 py-2 text-sm font-medium text-slate-600 transition-colors duration-200 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3898f8]",
+          isActive && "border-[#3898f8] bg-[#3898f8]/10 text-[#3898f8]"
+        )
+      }
+      onClick={() => {
+        if (onNavigate) onNavigate();
+      }}
+    >
+      <span className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-600">
+        <Icon className="size-5" aria-hidden="true" />
+      </span>
+      <span
+        className={clsx(
+          "overflow-hidden whitespace-nowrap text-sm font-medium text-slate-700 transition-all duration-200",
+          mini ? "w-0 opacity-0" : "w-auto opacity-100"
+        )}
+      >
+        {label}
+      </span>
+    </NavLink>
+  );
+}
+
+function TopbarRight({
+  profileButtonRef,
+  profileOpen,
+  onToggleProfile,
+  onCloseProfile,
+  onSelectProfile,
+  onSelectSettings,
+  onSelectLogout,
+  initials,
+  avatarUrl,
+  displayName,
+  email,
+}) {
+  return (
+    <div className="flex items-center gap-2 sm:gap-3">
+      <button
+        type="button"
+        aria-label="Lihat notifikasi"
+        className="relative inline-flex items-center justify-center rounded-lg p-2 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#3898f8]"
+      >
+        <Bell className="size-5" aria-hidden="true" />
+        <span className="absolute right-1 top-1 inline-flex h-2 w-2 animate-pulse rounded-full bg-white" />
+      </button>
+      <div className="relative">
+        <button
+          type="button"
+          ref={profileButtonRef}
+          aria-haspopup="menu"
+          aria-expanded={profileOpen}
+          onClick={onToggleProfile}
+          className="flex items-center gap-2 rounded-full pl-2 pr-1 py-1 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#3898f8]"
+        >
+          <div className="relative flex size-9 items-center justify-center overflow-hidden rounded-full bg-white/20 text-sm font-semibold uppercase">
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="Avatar profil"
+                className="size-full object-cover"
+              />
+            ) : (
+              <span>{initials}</span>
+            )}
+          </div>
+          <span className="hidden text-sm font-medium text-white/90 sm:inline-block">
+            {displayName}
+          </span>
+          <ChevronDown className="size-4" aria-hidden="true" />
+        </button>
+        <ProfileDropdown
+          open={profileOpen}
+          anchorRef={profileButtonRef}
+          onClose={onCloseProfile}
+          onSelectProfile={onSelectProfile}
+          onSelectSettings={onSelectSettings}
+          onSelectLogout={onSelectLogout}
+          initials={initials}
+          avatarUrl={avatarUrl}
+          displayName={displayName}
+          email={email}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ProfileDropdown({
+  open,
+  anchorRef,
+  onClose,
+  onSelectProfile,
+  onSelectSettings,
+  onSelectLogout,
+  initials,
+  avatarUrl,
+  displayName,
+  email,
+}) {
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (event) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target) &&
+        !(anchorRef?.current && anchorRef.current.contains(event.target))
+      ) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("touchstart", handleClick);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("touchstart", handleClick);
+    };
+  }, [anchorRef, onClose, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose, open]);
+
+  const handleSelect = (callback) => () => {
+    onClose();
+    if (callback) callback();
+  };
+
+  return (
+    <div
+      ref={dropdownRef}
+      className={clsx(
+        "absolute right-0 mt-2 w-56 origin-top-right rounded-xl border border-slate-200 bg-white p-2 text-slate-700 shadow-lg ring-1 ring-black/5 transition duration-150 ease-out",
+        open ? "pointer-events-auto scale-100 opacity-100" : "pointer-events-none scale-95 opacity-0"
+      )}
+      role="menu"
+      aria-hidden={!open}
+    >
+      <div className="flex items-center gap-3 rounded-lg px-3 py-2">
+        <div className="flex size-10 items-center justify-center overflow-hidden rounded-full bg-[#3898f8]/10 text-sm font-semibold text-[#3898f8]">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="Avatar" className="size-full object-cover" />
+          ) : (
+            <span>{initials}</span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
+          {email ? <p className="truncate text-xs text-slate-500">{email}</p> : null}
+        </div>
+      </div>
+      <div className="mt-1 space-y-1" role="none">
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3898f8]"
+          onClick={handleSelect(onSelectProfile)}
+        >
+          <span className="flex-1 text-left">Profil</span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3898f8]"
+          onClick={handleSelect(onSelectSettings)}
+        >
+          <SettingsIcon className="size-4 text-slate-500" aria-hidden="true" />
+          <span className="flex-1 text-left">Pengaturan</span>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition hover:bg-rose-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3898f8]"
+          onClick={handleSelect(onSelectLogout)}
+        >
+          <LogOut className="size-4" aria-hidden="true" />
+          <span className="flex-1 text-left">Keluar</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AppShell({ prefs, setPrefs, layoutState }) {
   const { mode, setMode } = useMode();
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({
@@ -430,31 +837,6 @@ function AppShell({ prefs, setPrefs }) {
     const preset = BRAND_PRESETS[prefs.accent];
     if (preset) setBrand(preset);
   }, [prefs.accent]);
-
-  const handleBrandChange = useCallback(
-    (nextBrand) => {
-      setBrand(nextBrand);
-      setPrefs((prev) => {
-        const matchedEntry = Object.entries(BRAND_PRESETS).find(
-          ([, preset]) =>
-            preset.h === nextBrand?.h &&
-            preset.s === nextBrand?.s &&
-            preset.l === nextBrand?.l
-        );
-
-        if (!matchedEntry) return prev;
-
-        const [accent] = matchedEntry;
-        if (prev.accent === accent) return prev;
-
-        return {
-          ...prev,
-          accent,
-        };
-      });
-    },
-    [setBrand, setPrefs]
-  );
 
   useEffect(() => {
     localStorage.setItem("hematwoi:v3:prefs", JSON.stringify(prefs));
@@ -1006,10 +1388,8 @@ function AppShell({ prefs, setPrefs }) {
                 path="/"
                 element={
                   <ProtectedAppContainer
-                    theme={theme}
-                    setTheme={setTheme}
-                    brand={brand}
-                    setBrand={handleBrandChange}
+                    layoutState={layoutState}
+                    sessionUser={sessionUser}
                   />
                 }
               >
@@ -1156,7 +1536,7 @@ function AppShell({ prefs, setPrefs }) {
   );
 }
 
-function AppContent() {
+function AppContent({ layoutState }) {
   const [prefs, setPrefs] = useState(() => {
     const raw = localStorage.getItem("hematwoi:v3:prefs");
     const base = {
@@ -1183,18 +1563,51 @@ function AppContent() {
   });
   return (
     <MoneyTalkProvider prefs={prefs}>
-      <AppShell prefs={prefs} setPrefs={setPrefs} />
+      <AppShell prefs={prefs} setPrefs={setPrefs} layoutState={layoutState} />
     </MoneyTalkProvider>
   );
 }
 
 export default function App() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarMini, setSidebarMini] = useState(true);
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const layoutState = useMemo(
+    () => ({
+      sidebarOpen,
+      setSidebarOpen,
+      sidebarMini,
+      setSidebarMini,
+      profileOpen,
+      setProfileOpen,
+    }),
+    [
+      profileOpen,
+      setProfileOpen,
+      sidebarMini,
+      setSidebarMini,
+      sidebarOpen,
+      setSidebarOpen,
+    ]
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setSidebarOpen]);
+
   return (
     <ModeProvider>
       <UserProfileProvider>
         <ToastProvider>
           <DataProvider>
-            <AppContent />
+            <AppContent layoutState={layoutState} />
           </DataProvider>
         </ToastProvider>
       </UserProfileProvider>
