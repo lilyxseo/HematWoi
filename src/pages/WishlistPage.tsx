@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowDownToLine, FileUp, Plus } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  CheckCircle2,
+  CircleDollarSign,
+  FileUp,
+  Layers3,
+  Plus,
+  Sparkles,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -29,6 +37,12 @@ const INITIAL_FILTERS: WishlistFilterState = {
   priceMax: '',
   sort: 'newest',
 };
+
+const currencyFormatter = new Intl.NumberFormat('id-ID', {
+  style: 'currency',
+  currency: 'IDR',
+  maximumFractionDigits: 0,
+});
 
 function normalizeFilters(filters: WishlistFilterState) {
   return {
@@ -148,6 +162,72 @@ export default function WishlistPage() {
   } = useWishlist(normalizedFilters);
 
   const isMutating = isCreating || isUpdating || isDeleting || isBulkUpdating || isBulkDeleting;
+
+  const statusSummary = useMemo(() => {
+    const counts: Record<WishlistStatus, number> = {
+      planned: 0,
+      deferred: 0,
+      purchased: 0,
+      archived: 0,
+    };
+    let estimatedTotal = 0;
+    let pricedCount = 0;
+
+    for (const item of items) {
+      counts[item.status] += 1;
+      if (typeof item.estimated_price === 'number') {
+        estimatedTotal += item.estimated_price;
+        pricedCount += 1;
+      }
+    }
+
+    return {
+      counts,
+      estimatedTotal,
+      pricedCount,
+    };
+  }, [items]);
+
+  const statsCards = useMemo(
+    () => [
+      {
+        id: 'total',
+        label: 'Total Wishlist',
+        value: total.toLocaleString('id-ID'),
+        description: 'Semua item wishlist yang tersimpan.',
+        icon: Layers3,
+        iconClass: 'bg-brand/20 text-brand',
+      },
+      {
+        id: 'planned',
+        label: 'Rencana Aktif',
+        value: statusSummary.counts.planned.toLocaleString('id-ID'),
+        description: 'Wishlist yang siap diwujudkan.',
+        icon: Sparkles,
+        iconClass: 'bg-info/20 text-info',
+      },
+      {
+        id: 'purchased',
+        label: 'Sudah Dibeli',
+        value: statusSummary.counts.purchased.toLocaleString('id-ID'),
+        description: 'Ditandai selesai dan dibeli.',
+        icon: CheckCircle2,
+        iconClass: 'bg-success/20 text-success',
+      },
+      {
+        id: 'estimate',
+        label: 'Nilai Estimasi',
+        value: currencyFormatter.format(statusSummary.estimatedTotal),
+        description:
+          statusSummary.pricedCount > 0
+            ? `Dari ${statusSummary.pricedCount.toLocaleString('id-ID')} item dengan harga.`
+            : 'Belum ada estimasi harga yang diisi.',
+        icon: CircleDollarSign,
+        iconClass: 'bg-warning/20 text-warning',
+      },
+    ],
+    [statusSummary, total]
+  );
 
   useEffect(() => {
     let active = true;
@@ -494,7 +574,7 @@ export default function WishlistPage() {
           <div
             // eslint-disable-next-line react/no-array-index-key
             key={index}
-            className="h-48 animate-pulse rounded-2xl bg-slate-900/60 ring-1 ring-slate-800"
+            className="h-48 animate-pulse rounded-2xl border border-border-subtle/70 bg-surface-alt/60"
           />
         ))}
       </div>
@@ -502,17 +582,17 @@ export default function WishlistPage() {
   };
 
   const renderEmptyState = () => (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-slate-800 bg-slate-950/60 px-6 py-16 text-center">
-      <div className="rounded-full border border-slate-800 bg-slate-900/80 px-4 py-2 text-sm text-slate-400">
+    <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-border-subtle/70 bg-surface-alt/60 px-6 py-16 text-center">
+      <div className="rounded-full border border-border-subtle bg-surface px-4 py-2 text-sm text-muted">
         Wishlist Anda masih kosong
       </div>
-      <p className="max-w-sm text-balance text-sm text-slate-400">
+      <p className="max-w-sm text-balance text-sm text-muted">
         Simpan ide belanja tanpa komitmen finansial. Tambahkan item wishlist dan ubah menjadi goal atau transaksi kapan saja.
       </p>
       <button
         type="button"
         onClick={handleAdd}
-        className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+        className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-brand-foreground shadow-sm transition hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
       >
         <Plus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
       </button>
@@ -524,30 +604,54 @@ export default function WishlistPage() {
   return (
     <Page>
       <PageHeader title="Wishlist" description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun.">
-        <button
-          type="button"
-          onClick={handleImportClick}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={importing || isMutating}
-        >
-          <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900/70 px-4 text-sm font-medium text-slate-100 transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-          disabled={exporting}
-        >
-          <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
-        </button>
-        <button
-          type="button"
-          onClick={handleAdd}
-          className="inline-flex h-10 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-slate-950 transition hover:bg-[var(--accent)]/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" /> Wishlist Baru
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow-sm transition hover:bg-brand/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-70"
+            disabled={isMutating}
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" /> Tambah Wishlist
+          </button>
+          <button
+            type="button"
+            onClick={handleImportClick}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:border-border-strong hover:bg-surface-alt/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={importing || isMutating}
+          >
+            <FileUp className="h-4 w-4" aria-hidden="true" /> {importing ? 'Mengimpor…' : 'Impor CSV'}
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            className="inline-flex h-11 items-center gap-2 rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:border-border-strong hover:bg-surface-alt/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={exporting}
+          >
+            <ArrowDownToLine className="h-4 w-4" aria-hidden="true" /> {exporting ? 'Menyiapkan…' : 'Ekspor CSV'}
+          </button>
+        </div>
       </PageHeader>
+
+      <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {statsCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <article
+              key={card.id}
+              className="flex h-full items-start gap-4 rounded-3xl border border-border-subtle bg-surface p-4 shadow-sm transition-colors duration-200 hover:border-brand/40 hover:shadow-md"
+            >
+              <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${card.iconClass}`}>
+                <Icon className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">{card.label}</p>
+                <p className="mt-1 text-lg font-semibold text-text">{card.value}</p>
+                <p className="mt-1 text-xs text-muted">{card.description}</p>
+              </div>
+            </article>
+          );
+        })}
+      </section>
 
       <input
         ref={fileInputRef}
@@ -561,12 +665,12 @@ export default function WishlistPage() {
         <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />
 
         {hasError ? (
-          <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             Terjadi kesalahan saat memuat wishlist. {error instanceof Error ? error.message : ''}
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="ml-3 inline-flex items-center text-rose-100 underline-offset-4 hover:underline"
+              className="ml-3 inline-flex items-center text-danger underline-offset-4 hover:underline"
             >
               Muat ulang
             </button>
@@ -597,13 +701,13 @@ export default function WishlistPage() {
             </div>
             {hasNextPage ? (
               <div className="flex justify-center">
-                <div ref={loadMoreRef} className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-slate-500">
+                <div ref={loadMoreRef} className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-muted">
                   {isFetchingNextPage ? 'Memuat…' : 'Memuat lainnya'}
                 </div>
               </div>
             ) : null}
             {total ? (
-              <p className="text-center text-xs text-slate-500">
+              <p className="text-center text-xs text-muted">
                 Menampilkan {items.length} dari {total} wishlist
               </p>
             ) : null}

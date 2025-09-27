@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
+  CircleDollarSign,
   EllipsisVertical,
   ExternalLink,
+  Folder,
   Goal,
   NotebookPen,
   ShoppingBag,
@@ -30,18 +32,18 @@ const STATUS_LABEL: Record<WishlistStatus, string> = {
 };
 
 const STATUS_STYLE: Record<WishlistStatus, string> = {
-  planned: 'bg-slate-800/80 text-slate-200 border border-slate-700',
-  deferred: 'bg-amber-500/10 text-amber-300 border border-amber-400/30',
-  purchased: 'bg-emerald-500/10 text-emerald-300 border border-emerald-400/30',
-  archived: 'bg-slate-800/60 text-slate-400 border border-slate-700/70',
+  planned: 'border border-brand/30 bg-brand/10 text-brand',
+  deferred: 'border border-warning/30 bg-warning/20 text-warning',
+  purchased: 'border border-success/30 bg-success/20 text-success',
+  archived: 'border border-border-subtle bg-surface-alt/80 text-muted',
 };
 
 const PRIORITY_STYLE: Record<number, string> = {
-  1: 'bg-emerald-500/15 text-emerald-300 border border-emerald-400/30',
-  2: 'bg-teal-500/15 text-teal-200 border border-teal-400/30',
-  3: 'bg-sky-500/15 text-sky-200 border border-sky-400/30',
-  4: 'bg-violet-500/15 text-violet-200 border border-violet-400/30',
-  5: 'bg-rose-500/15 text-rose-200 border border-rose-400/30',
+  1: 'border border-success/30 bg-success/20 text-success',
+  2: 'border border-info/30 bg-info/20 text-info',
+  3: 'border border-brand/30 bg-brand/10 text-brand',
+  4: 'border border-warning/30 bg-warning/20 text-warning',
+  5: 'border border-danger/30 bg-danger/20 text-danger',
 };
 
 function formatCurrencyIDR(value: number | null): string {
@@ -110,12 +112,12 @@ export default function WishlistCard({
 
   return (
     <article
-      className={`group relative flex h-full flex-col overflow-hidden rounded-2xl bg-slate-950/80 ring-1 ring-slate-800 transition hover:ring-[var(--accent)]/70 ${
-        selected ? 'ring-2 ring-[var(--accent)]/80' : ''
+      className={`group relative flex h-full flex-col overflow-hidden rounded-3xl border border-border-subtle bg-surface shadow-sm transition-all duration-200 hover:border-brand/40 hover:shadow-lg ${
+        selected ? 'border-brand/60 ring-2 ring-brand/40' : 'ring-1 ring-transparent'
       } ${disabled ? 'opacity-60' : ''}`}
     >
       {hasImage ? (
-        <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
+        <div className="relative aspect-video w-full overflow-hidden bg-surface-alt">
           <img
             src={item.image_url ?? ''}
             alt={item.title}
@@ -131,14 +133,14 @@ export default function WishlistCard({
               type="checkbox"
               checked={selected}
               onChange={(event) => onSelectChange(event.target.checked)}
-              className="h-4 w-4 cursor-pointer rounded border-slate-600 bg-slate-900 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="h-4 w-4 cursor-pointer rounded border-border-subtle bg-surface-alt text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
               aria-label={`Pilih wishlist ${item.title}`}
               disabled={disabled}
             />
           </label>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <h3 className="truncate text-base font-semibold text-slate-100">{item.title}</h3>
+              <h3 className="truncate text-base font-semibold text-text">{item.title}</h3>
               <div className="flex items-center gap-2">
                 {priorityBadge}
                 <span
@@ -148,17 +150,26 @@ export default function WishlistCard({
                 </span>
               </div>
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-400">
-              <span className="font-medium text-slate-100">{formatCurrencyIDR(item.estimated_price)}</span>
-              {item.category?.name ? <span className="text-xs uppercase tracking-wide text-slate-500">{item.category.name}</span> : null}
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
+              <span className="inline-flex items-center gap-1 font-semibold text-text">
+                <CircleDollarSign className="h-4 w-4 text-brand" aria-hidden="true" />
+                {formatCurrencyIDR(item.estimated_price)}
+              </span>
+              {item.category?.name ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+                  <Folder className="h-3.5 w-3.5" aria-hidden="true" />
+                  {item.category.name}
+                </span>
+              ) : null}
               {item.store_url ? (
                 <a
                   href={item.store_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-[var(--accent)] transition hover:text-[var(--accent)]/80"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-brand transition hover:text-brand/80"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Toko
+                  <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                  Kunjungi toko
                 </a>
               ) : null}
             </div>
@@ -166,7 +177,7 @@ export default function WishlistCard({
           <div className="relative" ref={menuRef}>
             <button
               type="button"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-muted transition hover:bg-surface-alt/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               aria-label={`Menu tindakan untuk ${item.title}`}
               onClick={() => setMenuOpen((prev) => !prev)}
               disabled={disabled}
@@ -174,14 +185,14 @@ export default function WishlistCard({
               <EllipsisVertical className="h-5 w-5" aria-hidden="true" />
             </button>
             {menuOpen ? (
-              <div className="absolute right-0 top-11 z-20 w-48 overflow-hidden rounded-2xl border border-slate-800/80 bg-slate-950/95 shadow-xl">
+              <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-2xl border border-border-subtle bg-surface-elevated shadow-xl">
                 <button
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
                     onMakeGoal(item);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-900"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text transition hover:bg-surface-alt"
                 >
                   <Goal className="h-4 w-4" aria-hidden="true" /> Jadikan Goal
                 </button>
@@ -191,7 +202,7 @@ export default function WishlistCard({
                     setMenuOpen(false);
                     onMarkPurchased(item);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-900"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text transition hover:bg-surface-alt"
                   disabled={item.status === 'purchased'}
                 >
                   <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Tandai Dibeli
@@ -202,7 +213,7 @@ export default function WishlistCard({
                     setMenuOpen(false);
                     onCopyToTransaction(item);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-900"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text transition hover:bg-surface-alt"
                 >
                   <ShoppingBag className="h-4 w-4" aria-hidden="true" /> Salin ke Transaksi
                 </button>
@@ -212,7 +223,7 @@ export default function WishlistCard({
                     setMenuOpen(false);
                     onEdit(item);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-900"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text transition hover:bg-surface-alt"
                 >
                   <NotebookPen className="h-4 w-4" aria-hidden="true" /> Edit
                 </button>
@@ -222,7 +233,7 @@ export default function WishlistCard({
                     setMenuOpen(false);
                     onDelete(item);
                   }}
-                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-rose-300 transition hover:bg-rose-500/10"
+                  className="flex w-full items-center gap-2 px-4 py-2 text-sm text-danger transition hover:bg-danger/10"
                 >
                   <Trash2 className="h-4 w-4" aria-hidden="true" /> Hapus
                 </button>
@@ -231,7 +242,7 @@ export default function WishlistCard({
           </div>
         </div>
         {item.note ? (
-          <p className="line-clamp-3 text-sm text-slate-400">{item.note}</p>
+          <p className="line-clamp-3 text-sm text-muted">{item.note}</p>
         ) : null}
       </div>
     </article>
