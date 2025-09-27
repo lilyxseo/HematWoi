@@ -112,12 +112,12 @@ export default function WishlistCard({
 
   return (
     <article
-      className={`group relative flex h-full flex-col overflow-hidden rounded-3xl border border-border-subtle bg-surface shadow-sm transition-all duration-200 hover:border-brand/40 hover:shadow-lg ${
+      className={`group relative flex h-full flex-col rounded-3xl border border-border-subtle bg-surface shadow-sm transition-all duration-200 hover:border-brand/40 hover:shadow-lg ${
         selected ? 'border-brand/60 ring-2 ring-brand/40' : 'ring-1 ring-transparent'
       } ${disabled ? 'opacity-60' : ''}`}
     >
       {hasImage ? (
-        <div className="relative aspect-video w-full overflow-hidden bg-surface-alt">
+        <div className="relative aspect-video w-full overflow-hidden rounded-t-3xl bg-surface-alt">
           <img
             src={item.image_url ?? ''}
             alt={item.title}
