@@ -7,63 +7,6 @@ import { getSession, onAuthStateChange } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
 
-type OAuthErrorLike = {
-  code?: string | null;
-  error?: string | null;
-  error_description?: string | null;
-  message?: string | null;
-  status?: number | null;
-};
-
-const GOOGLE_LOGIN_FALLBACK = 'Gagal memulai proses login Google. Silakan coba lagi.';
-
-function formatGoogleOAuthError(error: unknown): string {
-  if (!error) return GOOGLE_LOGIN_FALLBACK;
-
-  if (typeof error === 'string') {
-    return `${GOOGLE_LOGIN_FALLBACK}\nDetail: ${error}`;
-  }
-
-  const detailParts = new Set<string>();
-  const metaParts: string[] = [];
-
-  const pushDetail = (value?: string | null) => {
-    if (!value) return;
-    const trimmed = value.trim();
-    if (trimmed) {
-      detailParts.add(trimmed);
-    }
-  };
-
-  if (error instanceof Error) {
-    pushDetail(error.message);
-  }
-
-  if (error && typeof error === 'object') {
-    const authError = error as OAuthErrorLike;
-    pushDetail(authError.message);
-    pushDetail(authError.error);
-    pushDetail(authError.error_description);
-    if (typeof authError.status === 'number' && Number.isFinite(authError.status)) {
-      metaParts.push(`Status: ${authError.status}`);
-    }
-    if (authError.code) {
-      metaParts.push(`Kode: ${authError.code}`);
-    }
-  }
-
-  const details = [...detailParts];
-  if (metaParts.length > 0) {
-    details.push(metaParts.join(' · '));
-  }
-
-  if (details.length === 0) {
-    return GOOGLE_LOGIN_FALLBACK;
-  }
-
-  return `${GOOGLE_LOGIN_FALLBACK}\nDetail: ${details.join(' · ')}`;
-}
-
 const heroTips = [
   'Pantau cash flow harian tanpa ribet.',
   'Sinkronkan data lintas perangkat secara otomatis.',
@@ -116,7 +59,7 @@ export default function AuthLogin() {
     if (googleLoading) return;
     setGoogleError(null);
     setGoogleLoading(true);
-
+    
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -130,10 +73,11 @@ export default function AuthLogin() {
       });
       if (error) throw error;
     } catch (error) {
-      if (import.meta.env.DEV) {
-        console.error('[AuthLogin] Gagal memulai login Google', error);
-      }
-      setGoogleError(formatGoogleOAuthError(error));
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Gagal memulai proses login Google. Silakan coba lagi.';
+      setGoogleError(message);
       setGoogleLoading(false);
     }
   }, [googleLoading, googleRedirectTo]);
