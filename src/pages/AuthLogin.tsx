@@ -60,6 +60,7 @@ export default function AuthLogin() {
             access_type: 'offline',
             prompt: 'consent',
           },
+          flowType: 'pkce',
         },
       });
       if (error) throw error;
