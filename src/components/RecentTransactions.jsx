@@ -26,28 +26,53 @@ function formatDate(value) {
 export default function RecentTransactions({ txs = [] }) {
   const [period, setPeriod] = useState("week");
 
-  const filtered = useMemo(() => {
+  const { rangeStart, rangeEnd, periodLabel } = useMemo(() => {
     const now = new Date();
+    const rangeEndDate = new Date(now);
+    rangeEndDate.setHours(23, 59, 59, 999);
+
+    const rangeStartDate = new Date(rangeEndDate);
+    if (period === "day") {
+      rangeStartDate.setHours(0, 0, 0, 0);
+    } else if (period === "week") {
+      rangeStartDate.setDate(rangeEndDate.getDate() - 6);
+      rangeStartDate.setHours(0, 0, 0, 0);
+    } else {
+      rangeStartDate.setDate(rangeEndDate.getDate() - 29);
+      rangeStartDate.setHours(0, 0, 0, 0);
+    }
+
+    const label =
+      period === "day"
+        ? "hari ini"
+        : period === "week"
+        ? "7 hari terakhir"
+        : "30 hari terakhir";
+
+    return {
+      rangeStart: rangeStartDate.getTime(),
+      rangeEnd: rangeEndDate.getTime(),
+      periodLabel: label,
+    };
+  }, [period]);
+
+  const filtered = useMemo(() => {
     return txs
       .filter((t) => {
-        const d = new Date(t.date);
-        const diff = (now - d) / (1000 * 60 * 60 * 24);
-        if (period === "day") return diff < 1;
-        if (period === "week") return diff < 7;
-        return diff < 30;
+        const date = new Date(t.date);
+        const timestamp = date.getTime();
+        if (Number.isNaN(timestamp)) return false;
+        return timestamp >= rangeStart && timestamp <= rangeEnd;
       })
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 5);
-  }, [txs, period]);
-
-  const periodLabel =
-    period === "day" ? "24 jam" : period === "week" ? "7 hari" : "30 hari";
+  }, [txs, rangeStart, rangeEnd]);
 
   return (
     <Card className="flex min-h-[360px] flex-col">
       <CardHeader
         title="Transaksi Terbaru"
-        subtext={`Ringkasan transaksi ${periodLabel} terakhir`}
+        subtext={`Ringkasan transaksi ${periodLabel}`}
         actions={
           <Segmented
             value={period}
@@ -64,7 +89,7 @@ export default function RecentTransactions({ txs = [] }) {
         <div className="flex items-center gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3 text-xs text-muted">
           <Clock className="h-4 w-4" aria-hidden="true" />
           <span>
-            Menampilkan {filtered.length} transaksi {periodLabel} terakhir
+            Menampilkan {filtered.length} transaksi {periodLabel}
           </span>
         </div>
         {filtered.length > 0 ? (
