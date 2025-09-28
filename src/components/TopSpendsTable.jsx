@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import clsx from "clsx";
-import DataList from "./dashboard/DataList";
+import { ArrowDownRight } from "lucide-react";
+import Card, { CardBody, CardHeader } from "./Card";
 
 function toRupiah(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -10,80 +10,131 @@ function toRupiah(n = 0) {
   }).format(n);
 }
 
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 export default function TopSpendsTable({ data = [], onSelect }) {
   const [sort, setSort] = useState("desc");
 
+  const expenses = useMemo(
+    () =>
+      data
+        .filter((item) => item && item.type === "expense")
+        .map((item) => ({
+          ...item,
+          amount: Math.abs(Number(item.amount) || 0),
+        })),
+    [data]
+  );
+
   const sorted = useMemo(() => {
-    return [...data].sort((a, b) =>
+    return [...expenses].sort((a, b) =>
       sort === "asc" ? a.amount - b.amount : b.amount - a.amount
     );
-  }, [data, sort]);
+  }, [expenses, sort]);
+
+  const items = sorted.slice(0, 5);
+  const totalTopSpend = useMemo(
+    () => items.reduce((sum, tx) => sum + tx.amount, 0),
+    [items]
+  );
+  const totalExpense = useMemo(
+    () => expenses.reduce((sum, tx) => sum + tx.amount, 0),
+    [expenses]
+  );
 
   const toggleSort = () => setSort((s) => (s === "asc" ? "desc" : "asc"));
 
   return (
-    <DataList
-      title="Top Pengeluaran"
-      subtext="Pengeluaran terbesar dalam periode ini"
-      actions={
-        <button
-          onClick={toggleSort}
-          className="inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs font-medium text-text transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60"
-          aria-label="Urutkan pengeluaran"
-        >
-          Sortir {sort === "asc" ? "↑" : "↓"}
-        </button>
-      }
-      rows={sorted}
-      onRowClick={onSelect}
-      columns={[
-        {
-          key: "note",
-          label: "Catatan",
-          render: (row) => (
-            <div className="flex flex-col gap-1">
-              <span className="truncate font-medium text-text dark:text-slate-100">
-                {row.note || row.category || "-"}
-              </span>
-              <span className="text-xs text-muted/80">{row.category}</span>
-            </div>
-          ),
-        },
-        {
-          key: "date",
-          label: "Tanggal",
-          render: (row) => (
-            <span className="whitespace-nowrap text-sm text-muted/80">
-              {row.date}
-            </span>
-          ),
-        },
-        {
-          key: "amount",
-          label: "Jumlah",
-          align: "right",
-          className: (row) =>
-            clsx(
-              "text-right",
-              row.amount < 0
-                ? "text-danger"
-                : "text-success"
-            ),
-          render: (row) => (
-            <span
-              className={clsx(
-                "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold",
-                row.amount < 0
-                  ? "bg-danger/10 text-danger"
-                  : "bg-success/10 text-success"
-              )}
-            >
-              {toRupiah(row.amount)}
-            </span>
-          ),
-        },
-      ]}
-    />
+    <Card className="flex min-h-[360px] flex-col">
+      <CardHeader
+        title="Top Pengeluaran"
+        subtext="Pengeluaran terbesar dalam periode ini"
+        actions={
+          <button
+            type="button"
+            onClick={toggleSort}
+            className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-3 py-1 text-xs font-medium text-text transition hover:border-border hover:bg-surface-alt/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            aria-label="Urutkan pengeluaran"
+          >
+            Sortir {sort === "asc" ? "↑" : "↓"}
+          </button>
+        }
+      />
+      <CardBody className="flex-1 space-y-6">
+        <div className="flex items-end justify-between gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">Total 5 pengeluaran teratas</p>
+            <p className="text-2xl font-semibold text-text">{toRupiah(totalTopSpend)}</p>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-xl bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
+            <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
+            {sort === "asc" ? "Terkecil" : "Terbesar"}
+          </span>
+        </div>
+        {items.length > 0 ? (
+          <ul className="space-y-4">
+            {items.map((row, index) => {
+              const contribution = totalExpense
+                ? Math.min(100, Math.round((row.amount / totalExpense) * 100))
+                : 0;
+
+              return (
+                <li key={row.id || `${row.note}-${row.date}-${index}`}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect?.(row)}
+                    className="group w-full rounded-2xl border border-transparent bg-surface-alt/40 p-4 text-left transition hover:border-border hover:bg-surface-alt/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:ring-[color:var(--brand-ring)]"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-danger/10 text-sm font-semibold text-danger">
+                          #{index + 1}
+                        </div>
+                        <div className="space-y-1">
+                          <p className="max-w-[16ch] truncate text-sm font-semibold text-text dark:text-slate-100">
+                            {row.note || row.category || "Tanpa catatan"}
+                          </p>
+                          <p className="text-xs text-muted">
+                            {row.category || "Lainnya"} • {formatDate(row.date)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-semibold text-danger">
+                          {toRupiah(row.amount)}
+                        </p>
+                        <p className="text-xs text-muted/80">{contribution}% dari total</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-1.5 rounded-full bg-border-subtle">
+                      <div
+                        className="h-full rounded-full bg-danger transition-all"
+                        style={{ width: `${contribution}%` }}
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-border-subtle/60 p-6 text-center">
+            <p className="text-sm font-medium text-text/80">Belum ada pengeluaran pada periode ini.</p>
+            <p className="text-xs text-muted">Catat transaksi untuk melihat daftar pengeluaran teratas.</p>
+          </div>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 
