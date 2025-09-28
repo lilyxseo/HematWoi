@@ -1,15 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Cloud,
-  CloudOff,
-  Monitor,
-  Moon,
-  Sun,
-  X,
-} from "lucide-react";
+import { Cloud, CloudOff, Monitor, Moon, Sun, X } from "lucide-react";
 import SidebarSection from "./SidebarSection";
 import SidebarItem from "./SidebarItem";
 import Logo from "../Logo";
@@ -471,28 +462,6 @@ export default function Sidebar({
             </div>
           </SidebarSection>
         </div>
-        <footer
-          className={clsx(
-            "border-t border-border/60 py-4",
-            collapsed ? "px-2" : "px-4"
-          )}
-        >
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => onToggle?.(!collapsed)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface-2 text-text transition-colors duration-200 hover:border-brand/40 hover:text-brand"
-              title={collapsed ? "Perluas" : "Ciutkan"}
-              aria-label={collapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
-            >
-              {collapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-        </footer>
       </nav>
     </>
   );
