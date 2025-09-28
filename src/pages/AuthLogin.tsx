@@ -26,7 +26,6 @@ export default function AuthLogin() {
   });
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
-  const [showEmailLogin, setShowEmailLogin] = useState(() => Boolean(prefilledIdentifier));
   const syncGuestData = useCallback(async (userId?: string | null) => {
     if (!userId) return;
     try {
@@ -35,15 +34,6 @@ export default function AuthLogin() {
       console.error('[AuthLogin] Gagal memindahkan data tamu ke cloud', error);
     }
   }, []);
-  const handleContinueAsGuest = useCallback(() => {
-    try {
-      localStorage.setItem('hw:connectionMode', 'local');
-      localStorage.setItem('hw:mode', 'local');
-    } catch {
-      /* ignore */
-    }
-    navigate('/', { replace: true });
-  }, [navigate]);
 
   const handleGoogleSignIn = useCallback(async () => {
     if (googleLoading) return;
@@ -117,14 +107,24 @@ export default function AuthLogin() {
 
   const skeleton = useMemo(
     () => (
-      <div className="w-full max-w-md animate-pulse rounded-3xl border border-border-subtle bg-surface p-8 shadow-sm">
-        <div className="space-y-4">
-          <div className="h-6 w-3/4 rounded-full bg-surface-alt" />
-          <div className="h-4 w-1/2 rounded-full bg-surface-alt" />
-          <div className="space-y-3 pt-2">
-            <div className="h-11 rounded-2xl bg-surface-alt" />
-            <div className="h-11 rounded-2xl bg-surface-alt" />
-            <div className="h-11 rounded-2xl bg-surface-alt" />
+      <div className="grid w-full animate-pulse gap-4 md:grid-cols-5">
+        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm md:col-span-2">
+          <div className="space-y-4 text-center">
+            <div className="mx-auto h-12 w-12 rounded-full bg-surface-alt" />
+            <div className="mx-auto h-4 w-24 rounded-full bg-surface-alt" />
+            <div className="mx-auto h-3 w-3/4 rounded-full bg-surface-alt" />
+            <div className="mx-auto h-10 w-full rounded-2xl bg-surface-alt" />
+          </div>
+        </div>
+        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm md:col-span-3">
+          <div className="space-y-4">
+            <div className="h-6 w-3/4 rounded-full bg-surface-alt" />
+            <div className="h-4 w-1/2 rounded-full bg-surface-alt" />
+            <div className="space-y-3 pt-2">
+              <div className="h-11 rounded-2xl bg-surface-alt" />
+              <div className="h-11 rounded-2xl bg-surface-alt" />
+              <div className="h-11 rounded-2xl bg-surface-alt" />
+            </div>
           </div>
         </div>
       </div>
@@ -153,24 +153,27 @@ export default function AuthLogin() {
 
   return (
     <ErrorBoundary>
-      <main className="min-h-screen bg-surface-alt px-6 py-12 text-text transition-colors sm:py-16">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 lg:flex-row lg:items-center lg:justify-between">
-          <section className="flex flex-1 flex-col items-center gap-6 text-center lg:items-start lg:text-left">
-            <div className="hidden items-center rounded-full border border-border-subtle bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted md:inline-flex">
-              Mode Online
+      <main className="min-h-screen bg-gradient-to-b from-surface-alt via-surface-alt to-surface px-6 py-12 text-text transition-colors sm:py-16">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 lg:flex-row lg:items-start lg:justify-between">
+          <section className="flex flex-1 flex-col gap-6">
+            <div className="rounded-3xl border border-border-subtle/60 bg-gradient-to-br from-primary/10 via-surface to-surface-alt p-6 shadow-sm">
+              <div className="inline-flex items-center rounded-full bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                Mode online yang aman
+              </div>
+              <div className="mt-6 space-y-3 text-center sm:text-left">
+                <h1 className="text-3xl font-semibold sm:text-4xl">Selamat datang kembali di HematWoi</h1>
+                <p className="text-base text-muted">
+                  Sinkronkan transaksi, kelola anggaran, dan capai tujuan finansialmu dengan pengalaman login yang lebih mulus.
+                </p>
+              </div>
             </div>
-            <div className="space-y-4">
-              <h1 className="text-3xl font-semibold text-text sm:text-4xl">
-                Selamat datang kembali di HematWoi
-              </h1>
-              <p className="hidden max-w-lg text-base text-muted md:block">
-                Masuk untuk menyinkronkan transaksi, meninjau anggaran, dan tetap on-track dengan tujuan finansialmu.
-              </p>
-            </div>
-            <ul className="hidden w-full max-w-lg space-y-3 text-left text-sm text-text md:block">
+            <ul className="grid gap-3 sm:grid-cols-2">
               {heroTips.map((tip) => (
-                <li key={tip} className="flex items-start gap-3 rounded-2xl border border-border-subtle/60 bg-surface px-4 py-3 shadow-sm">
-                  <span className="mt-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                <li
+                  key={tip}
+                  className="flex items-start gap-3 rounded-3xl border border-border-subtle/60 bg-surface px-4 py-3 shadow-sm"
+                >
+                  <span className="mt-1 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
                     ✓
                   </span>
                   <span className="text-sm text-text">{tip}</span>
@@ -180,7 +183,7 @@ export default function AuthLogin() {
           </section>
 
           <section className="flex flex-1 items-center justify-center">
-            <div className="w-full max-w-md space-y-4">
+            <div className="w-full max-w-2xl space-y-6">
               {sessionError ? (
                 <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
                   {sessionError}
@@ -194,68 +197,53 @@ export default function AuthLogin() {
               {checking ? (
                 skeleton
               ) : (
-                <div className="space-y-5 rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm">
-                  <div className="space-y-3 text-center">
-                    <button
-                      type="button"
-                      onClick={handleGoogleSignIn}
-                      disabled={googleLoading}
-                      className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {googleLoading ? (
-                        <span
-                          className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent"
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
-                        >
-                          G
-                        </span>
-                      )}
-                      <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
-                    </button>
-                    <p className="text-xs text-muted">
-                      Jika pop-up ditutup atau kamu memilih akun berbeda, kamu bisa mencoba lagi atau gunakan email/password.
-                    </p>
+                <div className="grid gap-4 md:grid-cols-5">
+                  <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm md:col-span-2">
+                    <div className="space-y-4">
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                        <svg className="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            fill="currentColor"
+                            d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 17.93V19h-2v.93A8.012 8.012 0 0 1 4.07 13H5v-2h-.93A8.012 8.012 0 0 1 11 4.07V5h2v-.93A8.012 8.012 0 0 1 19.93 11H19v2h.93A8.012 8.012 0 0 1 13 19.93ZM15 11h-2V7h-2v6h4Z"
+                          />
+                        </svg>
+                      </div>
+                      <div className="space-y-1">
+                        <h2 className="text-lg font-semibold text-text">Masuk instan</h2>
+                        <p className="text-sm text-muted">
+                          Gunakan akun Google kamu untuk terhubung lebih cepat dan aman.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={handleGoogleSignIn}
+                        disabled={googleLoading}
+                        className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {googleLoading ? (
+                          <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent" aria-hidden="true" />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
+                          >
+                            G
+                          </span>
+                        )}
+                        <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
+                      </button>
+                      <p className="text-xs text-muted">
+                        Jika pop-up tertutup, cukup tekan tombol lagi atau pilih metode email di samping.
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-3">
-                    <button
-                      type="button"
-                      onClick={() => setShowEmailLogin((value) => !value)}
-                      className="inline-flex w-full items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 py-2 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                    >
-                      {showEmailLogin ? 'Sembunyikan login email' : 'Masuk dengan email/password'}
-                    </button>
-                    {showEmailLogin ? (
-                      <LoginCard
-                        defaultIdentifier={prefilledIdentifier}
-                        onSuccess={handleSuccess}
-                        hideSocialProviders
-                      />
-                    ) : null}
+                  <div className="md:col-span-3">
+                    <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
                   </div>
                 </div>
               )}
-              <div className="rounded-3xl border border-border-subtle bg-surface px-5 py-4 shadow-sm">
-                <div className="space-y-3 text-center">
-                  <div>
-                    <p className="text-sm font-semibold text-text">Gunakan tanpa akun</p>
-                    <p className="mt-1 text-xs text-muted">
-                      Data kamu akan disimpan di perangkat ini dan otomatis dipindah ke cloud saat kamu masuk nanti.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleContinueAsGuest}
-                    className="btn btn-secondary w-full"
-                  >
-                    Lanjut sebagai tamu
-                  </button>
-                </div>
-              </div>
             </div>
           </section>
         </div>

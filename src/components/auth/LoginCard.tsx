@@ -1,32 +1,25 @@
 import clsx from 'clsx';
 import {
+  ChangeEvent,
   FormEvent,
+  InputHTMLAttributes,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
-  ChangeEvent,
-  useId,
-  InputHTMLAttributes,
 } from 'react';
 import {
-  getAvailableSocialProviders,
   resetPassword,
   resolveEmailByUsername,
-  signInWithMagicLink,
   signInWithPassword,
-  signInWithProvider,
-  verifyOtp,
 } from '../../lib/auth';
-import SocialButtons from './SocialButtons';
 
 type LoginCardProps = {
   defaultIdentifier?: string;
   onSuccess?: (identifier: string) => void;
-  hideSocialProviders?: boolean;
 };
 
-type TabKey = 'password' | 'magic';
 type ModeKey = 'login' | 'reset';
 
 type StatusState = {
@@ -35,7 +28,6 @@ type StatusState = {
 } | null;
 
 const MIN_PASSWORD_LENGTH = 6;
-const MAGIC_LINK_COOLDOWN = 45; // seconds
 const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,30}$/;
 const GENERIC_ERROR = 'Terjadi kesalahan. Silakan coba lagi nanti.';
 
@@ -145,12 +137,7 @@ function PasswordInput({ error, hint, ...props }: Omit<InputProps, 'trailing'>) 
   );
 }
 
-export default function LoginCard({
-  defaultIdentifier = '',
-  onSuccess,
-  hideSocialProviders = false,
-}: LoginCardProps) {
-  const [tab, setTab] = useState<TabKey>('password');
+export default function LoginCard({ defaultIdentifier = '', onSuccess }: LoginCardProps) {
   const [mode, setMode] = useState<ModeKey>('login');
   const [identifier, setIdentifier] = useState(defaultIdentifier);
   const [password, setPassword] = useState('');
@@ -158,21 +145,9 @@ export default function LoginCard({
   const [status, setStatus] = useState<StatusState>(null);
   const [identifierError, setIdentifierError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [otpValue, setOtpValue] = useState('');
-  const [otpError, setOtpError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isOtpSubmitting, setIsOtpSubmitting] = useState(false);
-  const [magicState, setMagicState] = useState<'idle' | 'sent'>('idle');
-  const [otpVisible, setOtpVisible] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
-  const [loadingProvider, setLoadingProvider] = useState<'google' | 'github' | null>(null);
-
-  const availableSocial = useMemo(() => getAvailableSocialProviders(), []);
-  const hasSocialProviders =
-    !hideSocialProviders && (availableSocial.google || availableSocial.github);
 
   const submitGuardRef = useRef(0);
-  const otpGuardRef = useRef(0);
 
   useEffect(() => {
     setIdentifier(defaultIdentifier);
@@ -181,30 +156,9 @@ export default function LoginCard({
     }
   }, [defaultIdentifier]);
 
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = window.setInterval(() => {
-      setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [cooldown]);
-
   const resetFieldErrors = () => {
     setIdentifierError(null);
     setPasswordError(null);
-    setOtpError(null);
-  };
-
-  const handleTabChange = (next: TabKey) => {
-    if (tab === next) return;
-    setTab(next);
-    setMode('login');
-    setStatus(null);
-    resetFieldErrors();
-    if (next === 'password') {
-      setMagicState('idle');
-      setOtpVisible(false);
-    }
   };
 
   const persistIdentifierPreference = (value: string, shouldRemember: boolean) => {
@@ -237,19 +191,13 @@ export default function LoginCard({
 
     const looksLikeEmail = isLikelyEmail(trimmedIdentifier);
     const normalizedEmail = looksLikeEmail ? normalizeEmail(trimmedIdentifier) : '';
-    const requiresEmail = mode === 'reset' || tab === 'magic';
-
-    if ((requiresEmail || looksLikeEmail) && !isEmailValid(normalizedEmail)) {
-      setIdentifierError('Masukkan email yang valid.');
-      return;
-    }
-
-    if (!looksLikeEmail && mode !== 'reset' && tab === 'password' && !isUsernameValid(trimmedIdentifier)) {
-      setIdentifierError('Username hanya boleh huruf, angka, atau underscore (3-30 karakter).');
-      return;
-    }
 
     if (mode === 'reset') {
+      if (!looksLikeEmail || !isEmailValid(normalizedEmail)) {
+        setIdentifierError('Masukkan email yang valid.');
+        return;
+      }
+
       setIsSubmitting(true);
       try {
         await resetPassword(normalizedEmail);
@@ -258,8 +206,6 @@ export default function LoginCard({
           message: `Kami telah mengirim tautan reset ke ${normalizedEmail}.`,
         });
         setMode('login');
-        setMagicState('idle');
-        setOtpVisible(false);
       } catch (error) {
         const message = error instanceof Error ? error.message : GENERIC_ERROR;
         setStatus({ type: 'error', message });
@@ -269,7 +215,17 @@ export default function LoginCard({
       return;
     }
 
-    if (tab === 'password' && password.length < MIN_PASSWORD_LENGTH) {
+    if (looksLikeEmail) {
+      if (!isEmailValid(normalizedEmail)) {
+        setIdentifierError('Masukkan email yang valid.');
+        return;
+      }
+    } else if (!isUsernameValid(trimmedIdentifier)) {
+      setIdentifierError('Username hanya boleh huruf, angka, atau underscore (3-30 karakter).');
+      return;
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
       setPasswordError(`Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter.`);
       return;
     }
@@ -277,41 +233,23 @@ export default function LoginCard({
     setIsSubmitting(true);
 
     try {
-      if (tab === 'password') {
-        let emailForSignIn = normalizedEmail;
-        if (!looksLikeEmail) {
-          const resolvedEmail = await resolveEmailByUsername(trimmedIdentifier);
-          if (!resolvedEmail) {
-            throw new Error('Username atau email tidak ditemukan.');
-          }
-          emailForSignIn = normalizeEmail(resolvedEmail);
+      let emailForSignIn = normalizedEmail;
+      if (!looksLikeEmail) {
+        const resolvedEmail = await resolveEmailByUsername(trimmedIdentifier);
+        if (!resolvedEmail) {
+          throw new Error('Username atau email tidak ditemukan.');
         }
-
-        await signInWithPassword({ email: emailForSignIn, password });
-        const rememberedValue = looksLikeEmail ? emailForSignIn : trimmedIdentifier;
-        persistIdentifierPreference(rememberedValue, rememberIdentifier);
-        setStatus({ type: 'success', message: 'Berhasil masuk. Mengalihkan…' });
-        onSuccess?.(emailForSignIn);
-      } else {
-        if (magicState === 'sent' && cooldown > 0) {
-          setStatus({
-            type: 'info',
-            message: `Tunggu ${cooldown} detik sebelum mengirim ulang magic link.`,
-          });
-          return;
-        }
-        await signInWithMagicLink(normalizedEmail);
-        setMagicState('sent');
-        setOtpVisible(true);
-        setCooldown(MAGIC_LINK_COOLDOWN);
-        setStatus({
-          type: 'success',
-          message: 'Tautan login telah dikirim ke email kamu. Periksa kotak masuk dan folder spam.',
-        });
+        emailForSignIn = normalizeEmail(resolvedEmail);
       }
+
+      await signInWithPassword({ email: emailForSignIn, password });
+      const rememberedValue = looksLikeEmail ? emailForSignIn : trimmedIdentifier;
+      persistIdentifierPreference(rememberedValue, rememberIdentifier);
+      setStatus({ type: 'success', message: 'Berhasil masuk. Mengalihkan…' });
+      onSuccess?.(emailForSignIn);
     } catch (error) {
       const message = error instanceof Error ? error.message : GENERIC_ERROR;
-      if (tab === 'password' && !looksLikeEmail) {
+      if (!looksLikeEmail) {
         if (message === 'Username atau email tidak ditemukan.' || message === 'Username tidak ditemukan.') {
           setIdentifierError(message);
         }
@@ -319,58 +257,6 @@ export default function LoginCard({
       setStatus({ type: 'error', message });
     } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  const handleOtpSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const now = Date.now();
-    if (now - otpGuardRef.current < 300) return;
-    otpGuardRef.current = now;
-    if (isOtpSubmitting) return;
-
-    resetFieldErrors();
-    setStatus(null);
-
-    const trimmedIdentifier = normalizeIdentifier(identifier);
-    const normalizedEmail = normalizeEmail(trimmedIdentifier);
-    if (!isLikelyEmail(trimmedIdentifier) || !isEmailValid(normalizedEmail)) {
-      setIdentifierError('Masukkan email yang valid.');
-      return;
-    }
-
-    const token = otpValue.trim();
-    if (token.length !== 6 || !/^\d{6}$/.test(token)) {
-      setOtpError('Masukkan kode OTP 6 digit.');
-      return;
-    }
-
-    setIsOtpSubmitting(true);
-    try {
-      await verifyOtp({ email: normalizedEmail, token });
-      persistIdentifierPreference(normalizedEmail, rememberIdentifier);
-      setStatus({ type: 'success', message: 'Kode OTP terverifikasi. Mengalihkan…' });
-      onSuccess?.(normalizedEmail);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : GENERIC_ERROR;
-      setOtpError(message);
-      setStatus({ type: 'error', message });
-    } finally {
-      setIsOtpSubmitting(false);
-    }
-  };
-
-  const handleProviderClick = async (provider: 'google' | 'github') => {
-    if (loadingProvider) return;
-    setLoadingProvider(provider);
-    setStatus(null);
-    try {
-      await signInWithProvider(provider);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : GENERIC_ERROR;
-      setStatus({ type: 'error', message });
-    } finally {
-      setLoadingProvider(null);
     }
   };
 
@@ -383,11 +269,7 @@ export default function LoginCard({
           ? 'border-danger/30 bg-danger/10 text-danger'
           : 'border-primary/30 bg-primary/10 text-primary';
     return (
-      <div
-        role="status"
-        aria-live="polite"
-        className={clsx('rounded-2xl border px-4 py-3 text-sm font-medium', colorClass)}
-      >
+      <div role="status" aria-live="polite" className={clsx('rounded-2xl border px-4 py-3 text-sm font-medium', colorClass)}>
         {status.message}
       </div>
     );
@@ -395,60 +277,24 @@ export default function LoginCard({
 
   const actionLabel = useMemo(() => {
     if (mode === 'reset') return 'Kirim tautan reset';
-    if (tab === 'password') return 'Masuk';
-    if (magicState === 'sent' && cooldown > 0) {
-      return `Kirim ulang dalam ${cooldown}s`;
-    }
-    return magicState === 'sent' ? 'Kirim ulang magic link' : 'Kirim Magic Link';
-  }, [cooldown, magicState, mode, tab]);
-
-  const isActionDisabled = useMemo(() => {
-    if (mode === 'reset') return isSubmitting;
-    if (tab === 'password') return isSubmitting;
-    return isSubmitting || (magicState === 'sent' && cooldown > 0);
-  }, [cooldown, isSubmitting, magicState, mode, tab]);
+    return isSubmitting ? 'Menghubungkan…' : 'Masuk';
+  }, [isSubmitting, mode]);
 
   const rememberLabelId = useId();
 
   return (
-    <div className="w-full max-w-md rounded-3xl border border-border-subtle bg-surface p-8 shadow-sm">
+    <div className="flex h-full flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm">
       <div className="space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-xl font-semibold text-text">Masuk ke HematWoi</h1>
+        <div className="space-y-2 text-center md:text-left">
+          <h2 className="text-xl font-semibold text-text">Masuk dengan Email</h2>
           <p className="text-sm text-muted">
-            Kelola keuanganmu dengan lebih cerdas. Gunakan metode masuk yang paling nyaman.
+            Gunakan email dan kata sandi untuk mengakses dashboard keuangan kamu.
           </p>
         </div>
 
-        <div role="tablist" className="flex items-center gap-2">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'password'}
-            onClick={() => handleTabChange('password')}
-            className={clsx(
-              'flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45',
-              tab === 'password'
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border-subtle bg-surface-alt text-muted hover:text-text'
-            )}
-          >
-            Email &amp; Password
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'magic'}
-            onClick={() => handleTabChange('magic')}
-            className={clsx(
-              'flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45',
-              tab === 'magic'
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border-subtle bg-surface-alt text-muted hover:text-text'
-            )}
-          >
-            Magic Link
-          </button>
+        <div className="rounded-2xl bg-primary/5 p-4 text-sm text-primary md:text-left">
+          <p className="font-semibold">Tips keamanan</p>
+          <p className="mt-1 text-primary/80">Jangan bagikan kata sandi kamu dan aktifkan verifikasi ganda segera setelah masuk.</p>
         </div>
 
         {renderStatus()}
@@ -460,7 +306,7 @@ export default function LoginCard({
             name="identifier"
             inputMode="text"
             autoComplete="username"
-            placeholder="Email atau Username"
+            placeholder="nama@hematwoi.app"
             value={identifier}
             onChange={(event: ChangeEvent<HTMLInputElement>) => setIdentifier(event.target.value)}
             onBlur={() => {
@@ -478,11 +324,11 @@ export default function LoginCard({
             required
           />
 
-          {mode === 'login' && tab === 'password' ? (
+          {mode === 'login' ? (
             <PasswordInput
               label="Kata sandi"
               name="password"
-              placeholder="Kata sandi"
+              placeholder="••••••••"
               value={password}
               onChange={(event: ChangeEvent<HTMLInputElement>) => setPassword(event.target.value)}
               minLength={MIN_PASSWORD_LENGTH}
@@ -500,20 +346,17 @@ export default function LoginCard({
           <button
             type="submit"
             className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={isActionDisabled}
+            disabled={isSubmitting}
             aria-busy={isSubmitting}
           >
             {isSubmitting ? (
-              <span
-                className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/60 border-t-transparent"
-                aria-hidden="true"
-              />
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground/60 border-t-transparent" aria-hidden="true" />
             ) : null}
             <span>{actionLabel}</span>
           </button>
         </form>
 
-        {mode === 'login' && tab === 'password' ? (
+        {mode === 'login' ? (
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
             <label htmlFor={rememberLabelId} className="flex items-center gap-2 text-sm text-text">
               <input
@@ -536,9 +379,7 @@ export default function LoginCard({
               Lupa kata sandi?
             </button>
           </div>
-        ) : null}
-
-        {mode === 'reset' ? (
+        ) : (
           <button
             type="button"
             onClick={() => {
@@ -549,69 +390,7 @@ export default function LoginCard({
           >
             &larr; Kembali ke masuk
           </button>
-        ) : null}
-
-        {tab === 'magic' && magicState === 'sent' ? (
-          <div className="space-y-3 rounded-2xl border border-success/40 bg-success/10 p-4 text-sm text-success" aria-live="polite">
-            <p className="font-semibold">Tautan login telah dikirim ke email kamu.</p>
-            <p className="text-success/80">
-              Buka email dan klik tautan untuk melanjutkan. {cooldown > 0 ? `Kamu bisa kirim ulang dalam ${cooldown} detik.` : 'Belum menerima? Kamu bisa kirim ulang sekarang.'}
-            </p>
-          </div>
-        ) : null}
-
-        {tab === 'magic' && otpVisible ? (
-          <div className="space-y-3 rounded-2xl border border-border-subtle bg-surface-alt/60 p-4">
-            <p className="text-sm font-semibold text-text">Masukkan kode OTP 6 digit</p>
-            <form onSubmit={handleOtpSubmit} className="space-y-3" noValidate>
-              <TextInput
-                label="Kode OTP"
-                name="otp"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                placeholder="123456"
-                value={otpValue}
-                onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                  const value = event.target.value.replace(/[^0-9]/g, '').slice(0, 6);
-                  setOtpValue(value);
-                }}
-                error={otpError}
-                required
-              />
-              <button
-                type="submit"
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-primary bg-primary/10 px-4 text-sm font-semibold text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-70"
-                disabled={isOtpSubmitting}
-              >
-                {isOtpSubmitting ? (
-                  <span
-                    className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
-                    aria-hidden="true"
-                  />
-                ) : null}
-                Verifikasi kode
-              </button>
-            </form>
-          </div>
-        ) : null}
-
-        {hasSocialProviders ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <span className="h-px flex-1 bg-border-subtle" aria-hidden="true" />
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted">
-                atau lanjut dengan
-              </span>
-              <span className="h-px flex-1 bg-border-subtle" aria-hidden="true" />
-            </div>
-            <SocialButtons
-              onProviderClick={handleProviderClick}
-              loadingProvider={loadingProvider}
-              disabled={isSubmitting || isOtpSubmitting}
-              availability={availableSocial}
-            />
-          </div>
-        ) : null}
+        )}
       </div>
     </div>
   );
