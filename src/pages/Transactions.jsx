@@ -576,6 +576,10 @@ export default function Transactions() {
       }
       lastSelectedIdRef.current = null;
       refresh({ keepPage: true });
+      addToast(
+        ids.length === 1 ? 'Transaksi dihapus' : `${ids.length} transaksi dihapus`,
+        'success',
+      );
       showUndoSnackbar({
         ids,
         records: removalRecords.map((record) => ({
