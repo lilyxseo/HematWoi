@@ -80,6 +80,7 @@ export interface PaymentInput {
   amount: number;
   date: string;
   notes?: string | null;
+  account_id: string;
 }
 
 const DEBT_SELECT_COLUMNS =
@@ -632,7 +633,12 @@ export async function addPayment(
   try {
     const userId = await getUserId();
     const amount = Math.max(0, payload.amount);
-    const insertPayload = {
+    const accountId = payload.account_id ? String(payload.account_id).trim() : '';
+    if (!accountId) {
+      throw new Error('Akun sumber dana wajib dipilih.');
+    }
+
+    const paymentInsert = {
       debt_id: debtId,
       user_id: userId,
       amount: amount.toFixed(2),
@@ -642,16 +648,67 @@ export async function addPayment(
 
     const { data, error } = await supabase
       .from('debt_payments')
-      .insert([insertPayload])
+      .insert([paymentInsert])
       .select('*')
       .single();
     if (error) throw error;
+
+    const paymentRecord = mapPaymentRow(data);
+
+    const { data: debtRow, error: debtError } = await supabase
+      .from('debts')
+      .select('id,type,title,party_name')
+      .eq('id', debtId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (debtError) {
+      await supabase.from('debt_payments').delete().eq('id', paymentRecord.id).eq('user_id', userId);
+      throw debtError;
+    }
+    if (!debtRow) {
+      await supabase.from('debt_payments').delete().eq('id', paymentRecord.id).eq('user_id', userId);
+      throw new Error('Hutang tidak ditemukan.');
+    }
+
+    const transactionType = debtRow.type === 'receivable' ? 'income' : 'expense';
+    const baseTitle = debtRow.type === 'receivable' ? 'Penerimaan piutang' : 'Pembayaran hutang';
+    const transactionTitle = debtRow.title ? `${baseTitle}: ${debtRow.title}` : baseTitle;
+    const normalizedNotes = payload.notes?.trim() ? payload.notes.trim() : null;
+    const normalizedDate =
+      payload.date && /^\d{4}-\d{2}-\d{2}$/.test(payload.date)
+        ? payload.date
+        : (toISODate(payload.date)?.slice(0, 10) ?? paymentRecord.date.slice(0, 10));
+
+    const { error: transactionError } = await supabase
+      .from('transactions')
+      .insert([
+        {
+          user_id: userId,
+          type: transactionType,
+          amount: amount.toFixed(2),
+          date: normalizedDate,
+          account_id: accountId,
+          to_account_id: null,
+          category_id: null,
+          merchant_id: null,
+          title: transactionTitle,
+          notes: normalizedNotes,
+          tags: null,
+        },
+      ])
+      .select('id')
+      .single();
+
+    if (transactionError) {
+      await supabase.from('debt_payments').delete().eq('id', paymentRecord.id).eq('user_id', userId);
+      throw transactionError;
+    }
 
     const updatedDebt = await recalculateDebtAggregates(debtId, userId);
 
     return {
       debt: updatedDebt,
-      payment: mapPaymentRow(data),
+      payment: paymentRecord,
     };
   } catch (error) {
     return handleError(error, 'Gagal menambahkan pembayaran');

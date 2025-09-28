@@ -23,6 +23,7 @@ import {
   type DebtSummary,
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
+import { listAccounts, type AccountRecord } from '../lib/api';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -80,6 +81,8 @@ export default function Debts() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -121,6 +124,37 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    let active = true;
+    if (!canUseCloud || !user?.id) {
+      setAccounts([]);
+      setAccountsLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setAccountsLoading(true);
+    (async () => {
+      try {
+        const rows = await listAccounts(user.id);
+        if (!active) return;
+        setAccounts(rows);
+      } catch (error) {
+        logError(error, 'load accounts');
+        addToast('Gagal memuat daftar akun.', 'error');
+      } finally {
+        if (active) {
+          setAccountsLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [user?.id, canUseCloud, addToast, logError]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
@@ -349,7 +383,12 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
+  const handlePaymentSubmit = async (input: {
+    amount: number;
+    date: string;
+    notes?: string | null;
+    account_id: string;
+  }) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
@@ -516,6 +555,8 @@ export default function Debts() {
         loading={paymentLoading}
         submitting={paymentSubmitting}
         deletingId={paymentDeletingId}
+        accounts={accounts}
+        accountsLoading={accountsLoading}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}
