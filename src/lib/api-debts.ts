@@ -713,7 +713,7 @@ export async function addPayment(
       user_id: userId,
       amount: amount.toFixed(2),
       date: isoDate,
-      note: trimmedNotes,
+      notes: trimmedNotes,
       account_id: accountId,
       transaction_id: transactionId,
     };
