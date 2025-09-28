@@ -36,6 +36,9 @@ export default function PaymentsList({ payments, onDelete, deletingId }: Payment
             <div className="min-w-0">
               <p className="text-sm font-semibold text-text">{amountLabel}</p>
               <p className="text-xs text-muted">{dateLabel}</p>
+              {payment.account_name ? (
+                <p className="mt-1 text-xs text-muted">Akun: {payment.account_name}</p>
+              ) : null}
               {payment.notes ? (
                 <p className="mt-2 break-words text-sm text-text/80" title={payment.notes}>
                   {payment.notes}
