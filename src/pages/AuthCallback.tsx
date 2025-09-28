@@ -133,29 +133,3 @@ export default function AuthCallback() {
                 </p>
               </div>
             </>
-          ) : null}
-          {status === 'error' ? (
-            <>
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-danger/30 bg-danger/10 text-danger">
-                !
-              </div>
-              <div className="space-y-2">
-                <h1 className="text-lg font-semibold">Gagal menghubungkan</h1>
-                <p className="text-sm text-danger" aria-live="assertive">
-                  {errorMessage}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleRetry}
-                className="inline-flex h-11 w-full items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-              >
-                Kembali ke halaman masuk
-              </button>
-            </>
-          ) : null}
-        </div>
-      </main>
-    </ErrorBoundary>
-  );
-}
