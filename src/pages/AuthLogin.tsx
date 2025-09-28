@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import GoogleLoginButton from '../components/GoogleLoginButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
@@ -35,10 +36,11 @@ export default function AuthLogin() {
     }
   }, []);
 
-  const handleGoogleSignIn = useCallback(async () => {
+  const handleGoogleWebSignIn = useCallback(async () => {
     if (googleLoading) return;
     setGoogleError(null);
     setGoogleLoading(true);
+    
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       const redirectTo = origin ? `${origin.replace(/\/$/, '')}/auth/callback` : undefined;
@@ -216,9 +218,8 @@ export default function AuthLogin() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <button
-                        type="button"
-                        onClick={handleGoogleSignIn}
+                      <GoogleLoginButton
+                        onWebLogin={handleGoogleWebSignIn}
                         disabled={googleLoading}
                         className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
                       >
@@ -233,7 +234,7 @@ export default function AuthLogin() {
                           </span>
                         )}
                         <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
-                      </button>
+                      </GoogleLoginButton>
                       <p className="text-xs text-muted">
                         Jika pop-up tertutup, cukup tekan tombol lagi atau pilih metode email di samping.
                       </p>
