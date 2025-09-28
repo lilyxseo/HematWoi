@@ -24,6 +24,7 @@ import {
   Repeat,
   Settings as SettingsIcon,
   User as UserIcon,
+  UserCog as UserCogIcon,
   CreditCard,
 } from 'lucide-react';
 
@@ -141,6 +142,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: <SettingsIcon className="h-5 w-5" />,
     section: 'secondary',
     inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Admin Users',
+    path: '/admin/users',
+    icon: <UserCogIcon className="h-5 w-5" />,
+    section: 'secondary',
+    inSidebar: false,
     protected: true,
   },
   {

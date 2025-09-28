@@ -36,6 +36,8 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/SettingsPage'));
     case '/profile':
       return lazy(() => import('../pages/Profile'));
+    case '/admin/users':
+      return lazy(() => import('../pages/admin/UsersPage'));
     case '/auth':
       return lazy(() => import('../pages/AuthLogin'));
     default:
