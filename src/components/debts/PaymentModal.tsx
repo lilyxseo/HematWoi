@@ -27,33 +27,45 @@ const todayIso = () => {
   return now.toISOString().slice(0, 10);
 };
 
-interface PaymentDrawerProps {
+type AccountOption = {
+  id: string;
+  name: string;
+};
+
+interface PaymentModalProps {
   open: boolean;
   debt: DebtRecord | null;
   payments: DebtPaymentRecord[];
   loading?: boolean;
   submitting?: boolean;
   deletingId?: string | null;
+  accounts: AccountOption[];
+  accountsLoading?: boolean;
   onClose: () => void;
-  onSubmit: (payload: { amount: number; date: string; notes?: string | null }) => Promise<void> | void;
+  onSubmit: (
+    payload: { amount: number; date: string; accountId: string; notes?: string | null },
+  ) => Promise<void> | void;
   onDeletePayment: (payment: DebtPaymentRecord) => void;
 }
 
-export default function PaymentDrawer({
+export default function PaymentModal({
   open,
   debt,
   payments,
   loading,
   submitting,
   deletingId,
+  accounts,
+  accountsLoading,
   onClose,
   onSubmit,
   onDeletePayment,
-}: PaymentDrawerProps) {
+}: PaymentModalProps) {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayIso());
   const [notes, setNotes] = useState('');
-  const [errors, setErrors] = useState<{ amount?: string; date?: string }>({});
+  const [accountId, setAccountId] = useState('');
+  const [errors, setErrors] = useState<{ amount?: string; date?: string; accountId?: string }>({});
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -106,7 +118,14 @@ export default function PaymentDrawer({
       setNotes('');
       setErrors({});
     }
-  }, [open, debt?.id]);
+    if (open) {
+      if (accounts.length > 0) {
+        setAccountId(accounts[0]?.id ?? '');
+      } else {
+        setAccountId('');
+      }
+    }
+  }, [open, debt?.id, accounts]);
 
   useEffect(() => {
     if (open) {
@@ -135,7 +154,7 @@ export default function PaymentDrawer({
     event.preventDefault();
     const parsedAmount = parseDecimal(amount);
     const trimmedDate = date?.trim() ?? '';
-    const nextErrors: { amount?: string; date?: string } = {};
+    const nextErrors: { amount?: string; date?: string; accountId?: string } = {};
 
     if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       nextErrors.amount = 'Masukkan nominal lebih dari 0.';
@@ -146,7 +165,11 @@ export default function PaymentDrawer({
       nextErrors.date = 'Pilih tanggal pembayaran yang valid.';
     }
 
-    if (nextErrors.amount || nextErrors.date) {
+    if (!accountId) {
+      nextErrors.accountId = 'Pilih akun sumber dana.';
+    }
+
+    if (nextErrors.amount || nextErrors.date || nextErrors.accountId) {
       setErrors(nextErrors);
       return;
     }
@@ -157,6 +180,7 @@ export default function PaymentDrawer({
       await onSubmit({
         amount: parsedAmount,
         date: trimmedDate || todayIso(),
+        accountId,
         notes: notes.trim() ? notes.trim() : null,
       });
       setAmount('');
@@ -164,7 +188,7 @@ export default function PaymentDrawer({
     } catch (submitError) {
       if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
         // eslint-disable-next-line no-console
-        console.error('[HW][PaymentDrawer] submit', submitError);
+        console.error('[HW][PaymentModal] submit', submitError);
       }
     }
   };
@@ -172,37 +196,36 @@ export default function PaymentDrawer({
   if (!open || !debt) return null;
 
   return createPortal(
-    <>
-      <div className="drawer-overlay" onClick={onClose} aria-hidden="true" />
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-3 py-4 sm:px-4 sm:py-6"
+      role="dialog"
+      aria-modal="true"
+    >
       <div
         ref={panelRef}
-        className="drawer-panel w-full max-w-[100%] sm:max-w-[480px] md:max-w-[520px]"
-        role="dialog"
-        aria-modal="true"
+        className="flex max-h-[min(92vh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border/60 bg-surface-1/95 p-4 shadow-2xl backdrop-blur sm:p-6"
       >
-        <header className="drawer-header">
-          <div className="flex items-start justify-between gap-3 sm:gap-4">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Catat Pembayaran</p>
-                <h2 className="mt-1 break-words text-lg font-semibold text-text">{debt.title}</h2>
-                <p className="break-words text-sm text-muted">
-                  {debt.party_name} • {dateFormatter.format(new Date(debt.date))} • Tenor {tenorLabel}
-                </p>
-              </div>
-            <button
-              ref={closeButtonRef}
-              type="button"
-              onClick={onClose}
-              className="btn btn-ghost btn-sm h-10 w-10 flex-shrink-0 rounded-full"
-              aria-label="Tutup panel pembayaran"
-            >
-              <X className="h-5 w-5" aria-hidden="true" />
-            </button>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Catat Pembayaran</p>
+            <h2 className="mt-1 break-words text-lg font-semibold text-text">{debt.title}</h2>
+            <p className="break-words text-sm text-muted">
+              {debt.party_name} • {dateFormatter.format(new Date(debt.date))} • Tenor {tenorLabel}
+            </p>
           </div>
-        </header>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface-1 text-text hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            aria-label="Tutup formulir pembayaran"
+          >
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
 
-        <div className="drawer-body">
-          <div className="min-w-0 space-y-5">
+        <div className="mt-5 flex flex-1 flex-col overflow-hidden sm:mt-6">
+          <div className="flex-1 space-y-5 overflow-y-auto pr-1 sm:pr-2">
             <section className="grid min-w-0 grid-cols-2 gap-3 rounded-3xl border border-border-subtle bg-surface-alt/80 p-4 shadow-sm sm:gap-4">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Tagihan</p>
@@ -228,6 +251,40 @@ export default function PaymentDrawer({
 
             <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                <label htmlFor="payment-account" className="form-label">
+                  Akun sumber dana
+                </label>
+                <select
+                  id="payment-account"
+                  value={accountId}
+                  onChange={(event) => {
+                    setAccountId(event.target.value);
+                    if (errors.accountId) {
+                      setErrors((prev) => ({ ...prev, accountId: undefined }));
+                    }
+                  }}
+                  className="input"
+                  disabled={Boolean(accountsLoading)}
+                >
+                  {accounts.length === 0 ? (
+                    <option value="">Tidak ada akun tersedia</option>
+                  ) : null}
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+                {accountsLoading ? (
+                  <span className="text-xs text-muted">Memuat akun…</span>
+                ) : null}
+                {errors.accountId ? <span className="form-error">{errors.accountId}</span> : null}
+                {accounts.length === 0 && !accountsLoading ? (
+                  <span className="text-xs text-muted">Buat akun terlebih dahulu untuk mencatat sumber dana.</span>
+                ) : null}
+              </div>
+
+              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
                 <label htmlFor="payment-amount" className="form-label">
                   Nominal pembayaran
                 </label>
@@ -236,13 +293,14 @@ export default function PaymentDrawer({
                   type="text"
                   value={amount}
                   onChange={(event) => {
-                    setAmount(event.target.value);
+                    const digits = event.target.value.replace(/[^0-9]/g, '');
+                    const formatted = digits ? Number.parseInt(digits, 10).toLocaleString('id-ID') : '';
+                    setAmount(formatted);
                     if (errors.amount) {
                       setErrors((prev) => ({ ...prev, amount: undefined }));
                     }
                   }}
                   inputMode="numeric"
-                  pattern="[0-9]*"
                   autoComplete="off"
                   placeholder="Masukkan nominal"
                   className="input text-right tabular-nums"
@@ -294,30 +352,24 @@ export default function PaymentDrawer({
               )}
             </section>
           </div>
-        </div>
 
-        <footer className="drawer-footer">
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="btn btn-secondary w-full sm:w-auto"
-            >
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end sm:gap-4">
+            <button type="button" onClick={onClose} className="btn btn-secondary w-full sm:w-auto">
               Tutup
             </button>
             <button
               type="submit"
               form="payment-form"
-              disabled={Boolean(submitting)}
+              disabled={Boolean(submitting) || accounts.length === 0}
               aria-busy={Boolean(submitting)}
               className="btn btn-primary w-full sm:w-auto"
             >
               {submitting ? 'Menyimpan…' : 'Catat Pembayaran'}
             </button>
           </div>
-        </footer>
+        </div>
       </div>
-    </>,
+    </div>,
     document.body,
   );
 }

@@ -6,7 +6,7 @@ import SummaryCards from '../components/debts/SummaryCards';
 import FilterBar, { DebtsFilterState } from '../components/debts/FilterBar';
 import DebtsTableResponsive from '../components/debts/DebtsTableResponsive';
 import DebtForm from '../components/debts/DebtForm';
-import PaymentDrawer from '../components/debts/PaymentDrawer';
+import PaymentModal from '../components/debts/PaymentModal';
 import ConfirmDialog from '../components/debts/ConfirmDialog';
 import { useToast } from '../context/ToastContext';
 import {
@@ -22,6 +22,7 @@ import {
   type DebtRecord,
   type DebtSummary,
 } from '../lib/api-debts';
+import { listAccounts, type AccountRecord } from '../lib/api';
 import useSupabaseUser from '../hooks/useSupabaseUser';
 
 const INITIAL_FILTERS: DebtsFilterState = {
@@ -80,6 +81,8 @@ export default function Debts() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -121,6 +124,36 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    let active = true;
+    if (!user?.id) {
+      setAccounts([]);
+      setAccountsLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    setAccountsLoading(true);
+    const userId = user.id;
+    (async () => {
+      try {
+        const rows = await listAccounts(userId);
+        if (!active) return;
+        setAccounts(rows);
+      } catch (error) {
+        if (!active) return;
+        logError(error, 'load accounts');
+        addToast('Gagal memuat daftar akun.', 'error');
+        setAccounts([]);
+      } finally {
+        if (active) setAccountsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [user?.id, addToast, logError]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
@@ -349,7 +382,7 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
+  const handlePaymentSubmit = async (input: { amount: number; date: string; accountId: string; notes?: string | null }) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
@@ -377,7 +410,12 @@ export default function Debts() {
     setPaymentDebt(updatedDebt);
     setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
     try {
-      const result = await addPayment(paymentDebt.id, input);
+      const result = await addPayment(paymentDebt.id, {
+        amount: input.amount,
+        date: input.date,
+        notes: input.notes ?? null,
+        account_id: input.accountId,
+      });
       if (result.debt) {
         setPaymentDebt(result.debt);
         setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
@@ -509,13 +547,15 @@ export default function Debts() {
         }}
       />
 
-      <PaymentDrawer
+      <PaymentModal
         open={paymentOpen}
         debt={paymentDebt}
         payments={paymentList}
         loading={paymentLoading}
         submitting={paymentSubmitting}
         deletingId={paymentDeletingId}
+        accounts={accounts.map((account) => ({ id: account.id, name: account.name }))}
+        accountsLoading={accountsLoading}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}

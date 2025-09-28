@@ -80,6 +80,7 @@ export interface PaymentInput {
   amount: number;
   date: string;
   notes?: string | null;
+  account_id: string;
 }
 
 const DEBT_SELECT_COLUMNS =
@@ -626,17 +627,35 @@ export async function deleteDebt(id: string): Promise<void> {
 
 export async function addPayment(
   debtId: string,
-  payload: PaymentInput
+  payload: PaymentInput,
 ): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
 {
   try {
     const userId = await getUserId();
+
+    if (!payload.account_id) {
+      throw new Error('Akun sumber dana wajib dipilih.');
+    }
+
+    const { data: debtRow, error: debtError } = await supabase
+      .from('debts')
+      .select('id,type,title,party_name')
+      .eq('id', debtId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (debtError) throw debtError;
+    if (!debtRow) {
+      throw new Error('Hutang tidak ditemukan setelah dibuat.');
+    }
+
     const amount = Math.max(0, payload.amount);
+    const paymentDateIso = toISODate(payload.date) ?? new Date().toISOString();
     const insertPayload = {
       debt_id: debtId,
       user_id: userId,
       amount: amount.toFixed(2),
-      date: toISODate(payload.date) ?? new Date().toISOString(),
+      date: paymentDateIso,
       notes: payload.notes ?? null,
     };
 
@@ -646,6 +665,42 @@ export async function addPayment(
       .select('*')
       .single();
     if (error) throw error;
+
+    const transactionType = debtRow.type === 'receivable' ? 'income' : 'expense';
+    const baseTitle = typeof debtRow.title === 'string' && debtRow.title.trim() ? debtRow.title.trim() : '';
+    const partyName = typeof debtRow.party_name === 'string' && debtRow.party_name.trim() ? debtRow.party_name.trim() : '';
+    const descriptor = debtRow.type === 'receivable' ? 'Penerimaan Piutang' : 'Pembayaran Hutang';
+    const transactionSubject = baseTitle || partyName;
+    const transactionTitle = transactionSubject ? `${descriptor} - ${transactionSubject}` : descriptor;
+    const normalizedDateInput = typeof payload.date === 'string' ? payload.date.trim() : '';
+    const transactionDate = normalizedDateInput ? normalizedDateInput.slice(0, 10) : paymentDateIso.slice(0, 10);
+    const transactionNotes = payload.notes ?? null;
+
+    try {
+      await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          type: transactionType,
+          amount: amount,
+          date: transactionDate,
+          title: transactionTitle,
+          notes: transactionNotes,
+          account_id: payload.account_id,
+        })
+        .select('id')
+        .single();
+    } catch (transactionError) {
+      await supabase
+        .from('debt_payments')
+        .delete()
+        .eq('id', data.id)
+        .eq('user_id', userId);
+      if (transactionError instanceof Error) {
+        throw transactionError;
+      }
+      throw new Error('Gagal membuat transaksi pembayaran.');
+    }
 
     const updatedDebt = await recalculateDebtAggregates(debtId, userId);
 
