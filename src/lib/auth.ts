@@ -229,7 +229,7 @@ export async function signInWithProvider(provider: Provider): Promise<OAuthRespo
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: resolveRedirect('/') },
+      options: { redirectTo: resolveRedirect('/'), flowType: 'pkce' },
     });
     if (error) throw error;
     return data;

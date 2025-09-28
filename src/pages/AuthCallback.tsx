@@ -15,9 +15,25 @@ export default function AuthCallback() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const hashParams = useMemo(
+    () => new URLSearchParams(location.hash ? location.hash.replace(/^#/, '') : ''),
+    [location.hash]
+  );
   const code = searchParams.get('code');
   const authError = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
+  const hasOAuthParams = useMemo(() => {
+    if (code) return true;
+    const knownParams = [
+      'access_token',
+      'refresh_token',
+      'expires_in',
+      'provider_token',
+      'provider_refresh_token',
+      'token_type',
+    ];
+    return knownParams.some((param) => hashParams.has(param) || searchParams.has(param));
+  }, [code, hashParams, searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +57,7 @@ export default function AuthCallback() {
       };
     }
 
-    if (!code) {
+    if (!hasOAuthParams) {
       setErrorMessage('Kode otorisasi tidak ditemukan. Silakan coba login ulang.');
       setStatus('error');
       return () => {
@@ -49,39 +65,50 @@ export default function AuthCallback() {
       };
     }
 
-    const exchange = async () => {
+    const syncSession = async (userId: string | null) => {
+      if (!userId) return;
       try {
-        const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
+        await syncGuestToCloud(supabase, userId);
+      } catch (error) {
+        console.error('[AuthCallback] Failed to sync guest data', error);
+      }
+    };
+
+    const handleSuccess = (userId: string | null) => {
+      markOnlineMode();
+      void syncSession(userId);
+      if (!cancelled) {
+        navigate('/', { replace: true });
+      }
+    };
+
+    const finalize = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
         if (error) throw error;
-        markOnlineMode();
-        const userId = data.session?.user?.id ?? null;
-        if (userId) {
-          try {
-            await syncGuestToCloud(supabase, userId);
-          } catch (error) {
-            console.error('[AuthCallback] Failed to sync guest data', error);
-          }
-        }
-        if (!cancelled) {
-          navigate('/', { replace: true });
-        }
+        handleSuccess(data.session?.user?.id ?? null);
       } catch (error) {
         if (cancelled) return;
         const message =
           error instanceof Error
             ? error.message
-            : 'Gagal menukarkan kode sesi. Silakan coba lagi.';
+            : 'Gagal memproses sesi login. Silakan coba lagi.';
         setErrorMessage(message);
         setStatus('error');
       }
     };
 
-    void exchange();
+    void finalize();
 
     return () => {
       cancelled = true;
     };
-  }, [authError, code, errorDescription, navigate]);
+  }, [
+    authError,
+    errorDescription,
+    hasOAuthParams,
+    navigate,
+  ]);
 
   const handleRetry = () => {
     navigate('/auth', { replace: true });
