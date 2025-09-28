@@ -22,7 +22,7 @@ import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
 import PageHeader from "../layout/PageHeader";
-import { addTransaction, listAccounts, listMerchants, updateTransaction } from "../lib/api";
+import { addTransaction, listAccounts, updateTransaction } from "../lib/api";
 import {
   listTransactions,
   removeTransaction,
@@ -518,12 +518,13 @@ export default function Transactions() {
   }, [addToast, refresh, undoLoading]);
 
   const handleRequestDelete = useCallback(
-    (id) => {
+    (itemOrId) => {
       if (deleteInProgress) return;
-      const target = items.find((item) => item.id === id);
-      if (!target) return;
+      const id = typeof itemOrId === "string" ? itemOrId : itemOrId?.id;
+      if (!id) return;
+      if (!items.some((item) => item.id === id)) return;
       setConfirmState({
-        type: 'single',
+        type: "single",
         ids: [id],
       });
     },
@@ -1243,7 +1244,6 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
-  const [merchants, setMerchants] = useState([]);
   const [type, setType] = useState(initialData?.type || "expense");
   const [amount, setAmount] = useState(() => String(initialData?.amount ?? 0));
   const [date, setDate] = useState(() => toDateInput(initialData?.date) || new Date().toISOString().slice(0, 10));
@@ -1251,16 +1251,14 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
   const [title, setTitle] = useState(initialData?.title || "");
   const [notes, setNotes] = useState(initialData?.notes ?? initialData?.note ?? "");
   const [accountId, setAccountId] = useState(initialData?.account_id || "");
-  const [merchantId, setMerchantId] = useState(initialData?.merchant_id || "");
   const [receiptUrl, setReceiptUrl] = useState(initialData?.receipt_url || "");
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    Promise.all([listAccounts(), listMerchants()])
-      .then(([accountRows, merchantRows]) => {
+    listAccounts()
+      .then((accountRows) => {
         setAccounts(accountRows || []);
-        setMerchants(merchantRows || []);
         setLoading(false);
       })
       .catch((err) => {
@@ -1279,7 +1277,6 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
     setTitle(initialData.title || "");
     setNotes(initialData.notes ?? initialData.note ?? "");
     setAccountId(initialData.account_id || "");
-    setMerchantId(initialData.merchant_id || "");
     setReceiptUrl(initialData.receipt_url || "");
   }, [open, initialData]);
 
@@ -1312,7 +1309,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
         title,
         notes,
         account_id: accountId || null,
-        merchant_id: merchantId || null,
+        merchant_id: initialData?.merchant_id ?? null,
         receipt_url: receiptUrl || null,
       };
       await updateTransaction(initialData.id, payload);
@@ -1400,21 +1397,6 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
                 {accounts.map((acc) => (
                   <option key={acc.id} value={acc.id}>
                     {acc.name || "(Tanpa nama)"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Merchant</span>
-              <select
-                value={merchantId}
-                onChange={(event) => setMerchantId(event.target.value)}
-                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              >
-                <option value="">Pilih merchant</option>
-                {merchants.map((merchant) => (
-                  <option key={merchant.id} value={merchant.id}>
-                    {merchant.name || "(Tanpa nama)"}
                   </option>
                 ))}
               </select>

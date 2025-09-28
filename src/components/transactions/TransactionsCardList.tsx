@@ -169,11 +169,14 @@ export default function TransactionsCardList({
                       <div className="space-y-1">
                         <span
                           className={clsx(
-                            "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ring-1",
+                            "inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ring-1",
                             meta.badgeClass,
                           )}
+                          aria-label={typeLabels[item.type] || item.type}
+                          title={typeLabels[item.type] || item.type}
                         >
-                          {typeLabels[item.type] || item.type}
+                          <TypeIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span className="sr-only">{typeLabels[item.type] || item.type}</span>
                         </span>
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
                           <CategoryDot color={item.category_color} />
