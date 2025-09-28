@@ -161,13 +161,14 @@ export default function GoalEntriesDrawer({
         onClick={onClose}
         aria-hidden="true"
       />
-      <div
-        ref={panelRef}
-        className="fixed inset-y-0 right-0 z-[70] flex h-[100dvh] w-full flex-col bg-card shadow-2xl sm:w-[480px] md:w-[520px]"
-        role="dialog"
-        aria-modal="true"
-      >
-        <header className="sticky top-0 border-b border-border bg-card/95 px-4 py-3 backdrop-blur">
+      <div className="fixed inset-0 z-[70] flex min-h-full items-center justify-center px-4 py-8">
+        <div
+          ref={panelRef}
+          className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border/60 bg-card/95 shadow-xl backdrop-blur"
+          role="dialog"
+          aria-modal="true"
+        >
+          <header className="border-b border-border bg-card/95 px-6 py-4 backdrop-blur">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Setoran Goal</p>
@@ -188,7 +189,8 @@ export default function GoalEntriesDrawer({
           </div>
         </header>
 
-        <form onSubmit={handleSubmit} className="border-b border-border/60 p-4 space-y-3">
+        <div className="flex-1 overflow-hidden">
+          <form onSubmit={handleSubmit} className="border-b border-border/60 px-6 py-4 space-y-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium text-text">
               Nominal setoran
@@ -241,50 +243,52 @@ export default function GoalEntriesDrawer({
               {submitting ? 'Menambahkan…' : 'Tambah setoran'}
             </button>
           </div>
-        </form>
+          </form>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Riwayat setoran</h3>
-          {loading ? (
-            <p className="text-sm text-muted">Memuat riwayat…</p>
-          ) : entries.length === 0 ? (
-            <p className="text-sm text-muted">Belum ada setoran tercatat untuk goal ini.</p>
-          ) : (
-            <div className="space-y-3">
-              {entries.map((entry) => (
-                <article
-                  key={entry.id}
-                  className="flex items-start justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/80 p-3 shadow-sm"
-                >
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-sm font-semibold text-text">
-                      {currencyFormatter.format(Number(entry.amount ?? 0))}
-                    </p>
-                    <p className="text-xs text-muted">{dateFormatter.format(new Date(entry.date ?? entry.created_at))}</p>
-                    {entry.note ? <p className="text-sm text-text/80">{entry.note}</p> : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onDeleteEntry(entry)}
-                    disabled={deletingId === entry.id}
-                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border bg-surface-1 text-muted transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
-                    aria-label="Hapus setoran"
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">Riwayat setoran</h3>
+            {loading ? (
+              <p className="text-sm text-muted">Memuat riwayat…</p>
+            ) : entries.length === 0 ? (
+              <p className="text-sm text-muted">Belum ada setoran tercatat untuk goal ini.</p>
+            ) : (
+              <div className="space-y-3">
+                {entries.map((entry) => (
+                  <article
+                    key={entry.id}
+                    className="flex items-start justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/80 p-3 shadow-sm"
                   >
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </article>
-              ))}
-            </div>
-          )}
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm font-semibold text-text">
+                        {currencyFormatter.format(Number(entry.amount ?? 0))}
+                      </p>
+                      <p className="text-xs text-muted">{dateFormatter.format(new Date(entry.date ?? entry.created_at))}</p>
+                      {entry.note ? <p className="text-sm text-text/80">{entry.note}</p> : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onDeleteEntry(entry)}
+                      disabled={deletingId === entry.id}
+                      className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border bg-surface-1 text-muted transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                      aria-label="Hapus setoran"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <footer className="sticky bottom-0 border-t border-border/60 bg-card/95 px-4 py-3">
+        <footer className="border-t border-border/60 bg-card/95 px-6 py-4">
           <div className="flex items-center justify-between text-sm text-muted">
             <span>Total setoran</span>
             <span className="font-semibold text-text">{currencyFormatter.format(totalEntries)}</span>
           </div>
         </footer>
       </div>
+    </div>
     </>,
     document.body,
   );
