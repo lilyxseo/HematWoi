@@ -58,7 +58,7 @@ export default function AuthCallback() {
 
     const exchange = async (authCode: string) => {
       try {
-        const { data, error } = await supabase.auth.exchangeCodeForSession({ code: authCode });
+        const { data, error } = await supabase.auth.exchangeCodeForSession(authCode);
         if (error) throw error;
         handleSuccess(data.session?.user?.id ?? null);
       } catch (error) {
