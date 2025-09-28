@@ -66,7 +66,7 @@ const SEGMENTED_CLASS =
 const SEGMENT_ITEM_CLASS =
   'flex items-center gap-2 rounded-xl px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
-const QUICK_AMOUNT_OPTIONS = [50000, 100000, 200000, 500000];
+const QUICK_AMOUNT_OPTIONS = [5000, 10000, 50000, 100000, 500000];
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
@@ -209,6 +209,13 @@ export default function TransactionAdd({ onAdd }) {
   }, [type]);
 
   useEffect(() => {
+    if (type !== 'transfer') return;
+    if (toAccountId && toAccountId === accountId) {
+      setToAccountId('');
+    }
+  }, [accountId, toAccountId, type]);
+
+  useEffect(() => {
     if (!receiptFile) return undefined;
     const url = URL.createObjectURL(receiptFile);
     setReceiptPreview(url);
@@ -303,7 +310,9 @@ export default function TransactionAdd({ onAdd }) {
   };
 
   const handleQuickAmountSelect = (value) => {
-    setAmountInput(formatAmountInputValue(value));
+    const currentAmount = Number.isFinite(amountValue) ? amountValue : 0;
+    const nextAmount = currentAmount + value;
+    setAmountInput(formatAmountInputValue(nextAmount));
     setErrors((prev) => ({ ...prev, amount: undefined }));
   };
 
@@ -674,7 +683,7 @@ export default function TransactionAdd({ onAdd }) {
                       onClick={() => handleQuickAmountSelect(value)}
                       className="rounded-xl border border-border-subtle px-3 py-1.5 text-xs font-medium text-muted transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                     >
-                      {`Rp ${CURRENCY_FORMATTER.format(value)}`}
+                      {`+${CURRENCY_FORMATTER.format(value)}`}
                     </button>
                   ))}
                 </div>
@@ -720,11 +729,13 @@ export default function TransactionAdd({ onAdd }) {
                       className={INPUT_CLASS}
                     >
                       <option value="">Pilih akun tujuan</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name || 'Tanpa nama'}
-                        </option>
-                      ))}
+                      {accounts
+                        .filter((account) => account.id !== accountId)
+                        .map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.name || 'Tanpa nama'}
+                          </option>
+                        ))}
                     </select>
                     {errors.to_account_id ? <p className="mt-1 text-xs text-destructive">{errors.to_account_id}</p> : null}
                   </div>
