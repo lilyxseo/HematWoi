@@ -96,7 +96,7 @@ export default function BudgetHighlights({ period }: BudgetHighlightsProps) {
           </p>
         </div>
         <Link
-          to="/budget"
+          to="/budgets"
           className="inline-flex items-center gap-2 rounded-full border border-transparent bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           Info Lengkap
