@@ -28,26 +28,51 @@ export default function RecentTransactions({ txs = [] }) {
 
   const filtered = useMemo(() => {
     const now = new Date();
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+
+    let threshold = startOfDay;
+
+    if (period === "week") {
+      const startOfWeek = new Date(startOfDay);
+      const day = startOfWeek.getDay();
+      const diffToMonday = (day + 6) % 7;
+      startOfWeek.setDate(startOfWeek.getDate() - diffToMonday);
+      threshold = startOfWeek;
+    } else if (period === "month") {
+      threshold = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
     return txs
       .filter((t) => {
         const d = new Date(t.date);
-        const diff = (now - d) / (1000 * 60 * 60 * 24);
-        if (period === "day") return diff < 1;
-        if (period === "week") return diff < 7;
-        return diff < 30;
+        if (Number.isNaN(d.getTime())) return false;
+
+        if (period === "day") {
+          return d >= startOfDay && d <= now;
+        }
+
+        return d >= threshold && d <= now;
       })
       .sort((a, b) => new Date(b.date) - new Date(a.date))
       .slice(0, 5);
   }, [txs, period]);
 
   const periodLabel =
-    period === "day" ? "24 jam" : period === "week" ? "7 hari" : "30 hari";
+    period === "day"
+      ? "hari ini"
+      : period === "week"
+        ? "minggu ini"
+        : "bulan ini";
 
   return (
     <Card className="flex min-h-[360px] flex-col">
       <CardHeader
         title="Transaksi Terbaru"
-        subtext={`Ringkasan transaksi ${periodLabel} terakhir`}
+        subtext={`Ringkasan transaksi ${periodLabel}`}
         actions={
           <Segmented
             value={period}
@@ -64,7 +89,7 @@ export default function RecentTransactions({ txs = [] }) {
         <div className="flex items-center gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3 text-xs text-muted">
           <Clock className="h-4 w-4" aria-hidden="true" />
           <span>
-            Menampilkan {filtered.length} transaksi {periodLabel} terakhir
+            Menampilkan {filtered.length} transaksi pada {periodLabel}
           </span>
         </div>
         {filtered.length > 0 ? (

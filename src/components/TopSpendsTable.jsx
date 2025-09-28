@@ -42,10 +42,6 @@ export default function TopSpendsTable({ data = [], onSelect }) {
   }, [expenses, sort]);
 
   const items = sorted.slice(0, 5);
-  const totalTopSpend = useMemo(
-    () => items.reduce((sum, tx) => sum + tx.amount, 0),
-    [items]
-  );
   const totalExpense = useMemo(
     () => expenses.reduce((sum, tx) => sum + tx.amount, 0),
     [expenses]
@@ -70,15 +66,9 @@ export default function TopSpendsTable({ data = [], onSelect }) {
         }
       />
       <CardBody className="flex-1 space-y-6">
-        <div className="flex items-end justify-between gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">Total 5 pengeluaran teratas</p>
-            <p className="text-2xl font-semibold text-text">{toRupiah(totalTopSpend)}</p>
-          </div>
-          <span className="inline-flex items-center gap-1 rounded-xl bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
-            <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
-            {sort === "asc" ? "Terkecil" : "Terbesar"}
-          </span>
+        <div className="inline-flex items-center gap-2 self-start rounded-xl bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
+          <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
+          {sort === "asc" ? "Terkecil" : "Terbesar"}
         </div>
         {items.length > 0 ? (
           <ul className="space-y-4">
