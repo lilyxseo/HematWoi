@@ -29,6 +29,7 @@ import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
 import AuthLogin from "./pages/AuthLogin";
 import AdminPage from "./pages/AdminPage";
+import UsersPage from "./pages/admin/UsersPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
 import useChallenges from "./hooks/useChallenges.js";
@@ -1103,6 +1104,14 @@ function AppShell({ prefs, setPrefs }) {
                   element={
                     <AdminGuard>
                       <AdminPage />
+                    </AdminGuard>
+                  }
+                />
+                <Route
+                  path="admin/users"
+                  element={
+                    <AdminGuard>
+                      <UsersPage />
                     </AdminGuard>
                   }
                 />
