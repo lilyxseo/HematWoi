@@ -49,8 +49,28 @@ export default function AuthCallback() {
     }
 
     if (!code && !hasImplicitSession) {
-      setErrorMessage('Kode otorisasi tidak ditemukan. Silakan coba login ulang.');
-      setStatus('error');
+      const verifyExistingSession = async () => {
+        try {
+          const { data, error } = await supabase.auth.getSession();
+          if (cancelled) return;
+          if (error) {
+            throw error;
+          }
+          if (data.session) {
+            handleSuccess(data.session.user?.id ?? null);
+            return;
+          }
+        } catch (error) {
+          console.error('[AuthCallback] Failed to verify existing session', error);
+        }
+
+        if (cancelled) return;
+        setErrorMessage('Kode otorisasi tidak ditemukan. Silakan coba login ulang.');
+        setStatus('error');
+      };
+
+      void verifyExistingSession();
+
       return () => {
         cancelled = true;
       };
