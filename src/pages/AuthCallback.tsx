@@ -15,9 +15,16 @@ export default function AuthCallback() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const hashParams = useMemo(
+    () => new URLSearchParams(location.hash ? location.hash.replace(/^#/, '') : ''),
+    [location.hash]
+  );
   const code = searchParams.get('code');
   const authError = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
+  const accessToken = hashParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token');
+  const hasImplicitSession = Boolean(accessToken && refreshToken);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +48,7 @@ export default function AuthCallback() {
       };
     }
 
-    if (!code) {
+    if (!code && !hasImplicitSession) {
       setErrorMessage('Kode otorisasi tidak ditemukan. Silakan coba login ulang.');
       setStatus('error');
       return () => {
@@ -49,22 +56,28 @@ export default function AuthCallback() {
       };
     }
 
-    const exchange = async () => {
+    const syncSession = async (userId: string | null) => {
+      if (!userId) return;
       try {
-        const { data, error } = await supabase.auth.exchangeCodeForSession({ code });
+        await syncGuestToCloud(supabase, userId);
+      } catch (error) {
+        console.error('[AuthCallback] Failed to sync guest data', error);
+      }
+    };
+
+    const handleSuccess = (userId: string | null) => {
+      markOnlineMode();
+      void syncSession(userId);
+      if (!cancelled) {
+        navigate('/', { replace: true });
+      }
+    };
+
+    const exchange = async (authCode: string) => {
+      try {
+        const { data, error } = await supabase.auth.exchangeCodeForSession({ code: authCode });
         if (error) throw error;
-        markOnlineMode();
-        const userId = data.session?.user?.id ?? null;
-        if (userId) {
-          try {
-            await syncGuestToCloud(supabase, userId);
-          } catch (error) {
-            console.error('[AuthCallback] Failed to sync guest data', error);
-          }
-        }
-        if (!cancelled) {
-          navigate('/', { replace: true });
-        }
+        handleSuccess(data.session?.user?.id ?? null);
       } catch (error) {
         if (cancelled) return;
         const message =
@@ -76,12 +89,43 @@ export default function AuthCallback() {
       }
     };
 
-    void exchange();
+    const restore = async (access: string, refresh: string) => {
+      try {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: access,
+          refresh_token: refresh,
+        });
+        if (error) throw error;
+        handleSuccess(data.session?.user?.id ?? null);
+      } catch (error) {
+        if (cancelled) return;
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Gagal memulihkan sesi. Silakan coba lagi.';
+        setErrorMessage(message);
+        setStatus('error');
+      }
+    };
+
+    if (code) {
+      void exchange(code);
+    } else if (hasImplicitSession && accessToken && refreshToken) {
+      void restore(accessToken, refreshToken);
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [authError, code, errorDescription, navigate]);
+  }, [
+    accessToken,
+    authError,
+    code,
+    errorDescription,
+    hasImplicitSession,
+    navigate,
+    refreshToken,
+  ]);
 
   const handleRetry = () => {
     navigate('/auth', { replace: true });
