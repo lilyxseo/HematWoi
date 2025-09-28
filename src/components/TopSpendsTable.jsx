@@ -70,11 +70,8 @@ export default function TopSpendsTable({ data = [], onSelect }) {
         }
       />
       <CardBody className="flex-1 space-y-6">
-        <div className="flex items-end justify-between gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">Total 5 pengeluaran teratas</p>
-            <p className="text-2xl font-semibold text-text">{toRupiah(totalTopSpend)}</p>
-          </div>
+        <div className="flex items-center justify-between gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3">
+          <p className="text-2xl font-semibold text-text">{toRupiah(totalTopSpend)}</p>
           <span className="inline-flex items-center gap-1 rounded-xl bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
             <ArrowDownRight className="h-4 w-4" aria-hidden="true" />
             {sort === "asc" ? "Terkecil" : "Terbesar"}
@@ -114,13 +111,6 @@ export default function TopSpendsTable({ data = [], onSelect }) {
                         </p>
                         <p className="text-xs text-muted/80">{contribution}% dari total</p>
                       </div>
-                    </div>
-                    <div className="mt-3 h-1.5 rounded-full bg-border-subtle">
-                      <div
-                        className="h-full rounded-full bg-danger transition-all"
-                        style={{ width: `${contribution}%` }}
-                        aria-hidden="true"
-                      />
                     </div>
                   </button>
                 </li>
