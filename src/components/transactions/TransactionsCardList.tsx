@@ -36,7 +36,7 @@ interface TransactionsCardListProps {
   selectedIds: Set<string>;
   onToggleSelect: (id: string, event?: ChangeEvent<HTMLInputElement>) => void;
   onEdit: (item: TransactionRowData) => void;
-  onDelete: (item: TransactionRowData) => void;
+  onDelete: (id: string) => void;
   formatAmount: (value: number) => string;
   formatDate: (value?: string | null) => string;
   toDateValue: (value?: string | null) => string;
@@ -55,26 +55,22 @@ const TYPE_META: Record<
   {
     icon: typeof ArrowUpCircle;
     amountClass: string;
-    badgeClass: string;
     iconWrapper: string;
   }
 > = {
   income: {
     icon: ArrowUpCircle,
     amountClass: "text-emerald-400",
-    badgeClass: "bg-emerald-500/10 text-emerald-200 ring-emerald-500/30",
     iconWrapper: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/40",
   },
   expense: {
     icon: ArrowDownCircle,
     amountClass: "text-rose-400",
-    badgeClass: "bg-rose-500/10 text-rose-200 ring-rose-500/30",
     iconWrapper: "bg-rose-500/10 text-rose-300 ring-rose-500/40",
   },
   transfer: {
     icon: ArrowRightLeft,
     amountClass: "text-slate-200",
-    badgeClass: "bg-slate-500/10 text-slate-200 ring-slate-500/30",
     iconWrapper: "bg-slate-500/10 text-slate-200 ring-slate-500/30",
   },
 };
@@ -162,19 +158,11 @@ export default function TransactionsCardList({
                           "flex h-10 w-10 items-center justify-center rounded-2xl ring-1 backdrop-blur",
                           meta.iconWrapper,
                         )}
-                        aria-hidden="true"
                       >
-                        <TypeIcon className="h-5 w-5" />
+                        <TypeIcon className="h-5 w-5" aria-hidden="true" />
+                        <span className="sr-only">{typeLabels[item.type] || item.type}</span>
                       </span>
                       <div className="space-y-1">
-                        <span
-                          className={clsx(
-                            "inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ring-1",
-                            meta.badgeClass,
-                          )}
-                        >
-                          {typeLabels[item.type] || item.type}
-                        </span>
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
                           <CategoryDot color={item.category_color} />
                           <span>{item.category || "(Tanpa kategori)"}</span>
@@ -248,7 +236,7 @@ export default function TransactionsCardList({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete(item)}
+                        onClick={() => onDelete(item.id)}
                         disabled={deleteDisabled}
                         className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/10 text-rose-300 ring-1 ring-rose-400/40 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
                         aria-label="Hapus transaksi"

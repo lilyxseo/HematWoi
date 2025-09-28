@@ -29,7 +29,7 @@ interface TransactionsTableProps {
   onToggleSelectAll: () => void;
   allSelected: boolean;
   onEdit: (item: TransactionRowData) => void;
-  onDelete: (item: TransactionRowData) => void;
+  onDelete: (id: string) => void;
   formatAmount: (value: number) => string;
   formatDate: (value?: string | null) => string;
   toDateValue: (value?: string | null) => string;
@@ -266,7 +266,7 @@ export default function TransactionsTable({
                             </button>
                             <button
                               type="button"
-                              onClick={() => onDelete(item)}
+                              onClick={() => onDelete(item.id)}
                               disabled={deleteDisabled}
                               className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-500/10 text-rose-300 ring-1 ring-rose-400/40 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
                               aria-label="Hapus transaksi"
