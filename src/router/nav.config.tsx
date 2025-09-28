@@ -25,6 +25,7 @@ import {
   Settings as SettingsIcon,
   User as UserIcon,
   CreditCard,
+  Users as UsersIcon,
 } from 'lucide-react';
 
 export const NAV_ITEMS: NavItem[] = [
@@ -142,6 +143,15 @@ export const NAV_ITEMS: NavItem[] = [
     section: 'secondary',
     inSidebar: true,
     protected: true,
+  },
+  {
+    title: 'Users',
+    path: '/admin/users',
+    icon: <UsersIcon className="h-5 w-5" />,
+    section: 'secondary',
+    inSidebar: true,
+    protected: true,
+    roles: ['admin'],
   },
   {
     title: 'Auth',

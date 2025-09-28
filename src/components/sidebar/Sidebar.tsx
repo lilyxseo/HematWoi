@@ -196,7 +196,27 @@ export default function Sidebar({
                 : String(row.category),
         }));
 
-        setMenuItems(normalized);
+        let finalItems = normalized;
+        if (role === 'admin' && !normalized.some((item) => item.route === '/admin/users')) {
+          const nextPosition =
+            normalized.length > 0
+              ? Math.max(...normalized.map((item) => item.position ?? 0)) + 1
+              : 900;
+          finalItems = [
+            ...normalized,
+            {
+              id: 'admin-users-fallback',
+              title: 'Users',
+              route: '/admin/users',
+              access_level: 'admin',
+              icon_name: 'users',
+              position: nextPosition,
+              category: 'Admin',
+            },
+          ];
+        }
+
+        setMenuItems(finalItems);
       } catch (error) {
         if (!cancelled) {
           setMenuItems([]);

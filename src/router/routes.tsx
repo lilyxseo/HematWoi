@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import type { RouteObject } from 'react-router-dom';
 import { NAV_ITEMS, NavItem } from './nav.config';
 import AuthGuard from '../guards/AuthGuard';
+import AdminGuard from '../components/AdminGuard';
 import { isFeatureEnabled } from '../featureFlags';
 
 function loadComponent(path: string) {
@@ -36,6 +37,8 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/SettingsPage'));
     case '/profile':
       return lazy(() => import('../pages/Profile'));
+    case '/admin/users':
+      return lazy(() => import('../pages/admin/UsersPage'));
     case '/auth':
       return lazy(() => import('../pages/AuthLogin'));
     default:
@@ -51,10 +54,13 @@ function buildRoutes(items: NavItem[]): RouteObject[] {
       const element = (
         <Suspense fallback={<div />}> <Component /> </Suspense>
       );
-      const wrapped = item.protected ? <AuthGuard>{element}</AuthGuard> : element;
+      const protectedElement = item.protected ? <AuthGuard>{element}</AuthGuard> : element;
+      const roleWrapped = item.roles?.includes('admin')
+        ? <AdminGuard>{protectedElement}</AdminGuard>
+        : protectedElement;
       return {
         path: item.path,
-        element: wrapped,
+        element: roleWrapped,
         children: item.children ? buildRoutes(item.children) : undefined,
       };
     });
