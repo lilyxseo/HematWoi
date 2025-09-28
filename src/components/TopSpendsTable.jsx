@@ -14,10 +14,25 @@ export default function TopSpendsTable({ data = [], onSelect }) {
   const [sort, setSort] = useState("desc");
 
   const sorted = useMemo(() => {
-    return [...data].sort((a, b) =>
-      sort === "asc" ? a.amount - b.amount : b.amount - a.amount
-    );
+    return [...data]
+      .map((item) => ({
+        ...item,
+        amount: Number(item.amount) || 0,
+      }))
+      .sort((a, b) =>
+        sort === "asc" ? a.amount - b.amount : b.amount - a.amount
+      );
   }, [data, sort]);
+
+  const totalExpense = useMemo(
+    () => sorted.reduce((sum, item) => sum + item.amount, 0),
+    [sorted]
+  );
+
+  const topSpend = sorted[0];
+  const categoryCount = new Set(
+    sorted.map((item) => item.category || "Lainnya")
+  ).size;
 
   const toggleSort = () => setSort((s) => (s === "asc" ? "desc" : "asc"));
 
@@ -25,6 +40,32 @@ export default function TopSpendsTable({ data = [], onSelect }) {
     <DataList
       title="Top Pengeluaran"
       subtext="Pengeluaran terbesar dalam periode ini"
+      summary={[
+        {
+          label: "Total Top 10",
+          value: toRupiah(totalExpense),
+          hint:
+            categoryCount > 0
+              ? `${categoryCount} kategori tercatat`
+              : "Belum ada kategori aktif",
+        },
+        topSpend
+          ? {
+              label: "Terbesar",
+              value: toRupiah(topSpend.amount),
+              hint: topSpend.note || topSpend.category || "Tanpa catatan",
+            }
+          : {
+              label: "Terbesar",
+              value: "-",
+              hint: "Belum ada transaksi yang tercatat",
+            },
+        {
+          label: "Urutan",
+          value: sort === "asc" ? "Terkecil → Terbesar" : "Terbesar → Terkecil",
+          hint: "Ubah urutan untuk analisis berbeda",
+        },
+      ]}
       actions={
         <button
           onClick={toggleSort}
@@ -63,19 +104,14 @@ export default function TopSpendsTable({ data = [], onSelect }) {
           label: "Jumlah",
           align: "right",
           className: (row) =>
-            clsx(
-              "text-right",
-              row.amount < 0
-                ? "text-danger"
-                : "text-success"
-            ),
+            clsx("text-right text-danger", row.type === "income" && "text-success"),
           render: (row) => (
             <span
               className={clsx(
                 "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold",
-                row.amount < 0
-                  ? "bg-danger/10 text-danger"
-                  : "bg-success/10 text-success"
+                row.type === "income"
+                  ? "bg-success/10 text-success"
+                  : "bg-danger/10 text-danger"
               )}
             >
               {toRupiah(row.amount)}

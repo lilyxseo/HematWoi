@@ -24,13 +24,35 @@ export default function DataList({
   emptyMessage = "Belum ada data bulan ini.",
   className = "",
   maxHeight = 320,
+  summary = [],
 }) {
   const hasData = rows?.length > 0;
+  const hasSummary = summary?.length > 0;
 
   return (
     <Card className={clsx("flex min-h-[360px] flex-col", className)}>
       <CardHeader title={title} subtext={subtext} actions={actions} />
-      <div className="mt-4 flex-1">
+      {hasSummary ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {summary.map((item, idx) => (
+            <div
+              key={idx}
+              className="rounded-2xl border border-border/40 bg-surface-alt/40 p-4 shadow-inner backdrop-blur-sm"
+            >
+              <p className="text-xs font-medium uppercase tracking-wide text-muted/70">
+                {item.label}
+              </p>
+              <p className="mt-1 text-lg font-semibold text-text dark:text-slate-100">
+                {item.value}
+              </p>
+              {item.hint ? (
+                <p className="mt-2 text-xs text-muted/70">{item.hint}</p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className={clsx("flex-1", hasSummary ? "mt-5" : "mt-4")}> 
         {hasData ? (
           <div
             className="max-h-[320px] overflow-y-auto pr-1"

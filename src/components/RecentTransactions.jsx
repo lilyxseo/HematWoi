@@ -31,10 +31,43 @@ export default function RecentTransactions({ txs = [] }) {
   const periodLabel =
     period === "day" ? "24 jam" : period === "week" ? "7 hari" : "30 hari";
 
+  const { totalIncome, totalExpense, netFlow } = useMemo(() => {
+    return filtered.reduce(
+      (acc, tx) => {
+        const amount = Number(tx.amount) || 0;
+        if (tx.type === "income") {
+          acc.totalIncome += amount;
+        } else {
+          acc.totalExpense += amount;
+        }
+        acc.netFlow = acc.totalIncome - acc.totalExpense;
+        return acc;
+      },
+      { totalIncome: 0, totalExpense: 0, netFlow: 0 }
+    );
+  }, [filtered]);
+
   return (
     <DataList
       title="Transaksi Terbaru"
       subtext={`Ringkasan transaksi ${periodLabel} terakhir`}
+      summary={[
+        {
+          label: "Pemasukan",
+          value: formatCurrency(totalIncome),
+          hint: `${filtered.filter((tx) => tx.type === "income").length} transaksi`,
+        },
+        {
+          label: "Pengeluaran",
+          value: formatCurrency(totalExpense),
+          hint: `${filtered.filter((tx) => tx.type === "expense").length} transaksi`,
+        },
+        {
+          label: "Arus Bersih",
+          value: formatCurrency(netFlow),
+          hint: netFlow >= 0 ? "Surplus periode ini" : "Defisit periode ini",
+        },
+      ]}
       actions={
         <Segmented
           value={period}
