@@ -33,7 +33,14 @@ describe('supabase client env handling', () => {
 
     await import('./supabase.js')
 
-    expect(createClient).toHaveBeenCalledWith('http://localhost', 'anon-key')
+    expect(createClient).toHaveBeenCalledWith('http://localhost', 'anon-key', {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+        flowType: 'pkce',
+      },
+    })
     expect(console.warn).not.toHaveBeenCalled()
   })
 })
