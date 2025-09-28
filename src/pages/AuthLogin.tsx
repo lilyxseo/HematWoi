@@ -27,6 +27,25 @@ export default function AuthLogin() {
   });
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const googleRedirectTo = useMemo(() => {
+    const env = typeof import.meta !== 'undefined' ? import.meta.env ?? {} : {};
+    const configuredBase =
+      (typeof env.VITE_SUPABASE_REDIRECT_URL === 'string' && env.VITE_SUPABASE_REDIRECT_URL) ||
+      (typeof env.VITE_APP_URL === 'string' && env.VITE_APP_URL) ||
+      (typeof env.VITE_PUBLIC_SITE_URL === 'string' && env.VITE_PUBLIC_SITE_URL) ||
+      undefined;
+    const fallbackOrigin =
+      typeof window !== 'undefined' && /^https?:\/\//.test(window.location.origin)
+        ? window.location.origin
+        : undefined;
+    const base = configuredBase ?? fallbackOrigin;
+    if (!base) return undefined;
+    try {
+      return new URL('/auth/callback', base).toString();
+    } catch {
+      return base;
+    }
+  }, []);
   const syncGuestData = useCallback(async (userId?: string | null) => {
     if (!userId) return;
     try {
@@ -42,12 +61,10 @@ export default function AuthLogin() {
     setGoogleLoading(true);
     
     try {
-      const origin = typeof window !== 'undefined' ? window.location.origin : '';
-      const redirectTo = origin ? `${origin.replace(/\/$/, '')}/auth/callback` : undefined;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo,
+          redirectTo: googleRedirectTo,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -64,7 +81,7 @@ export default function AuthLogin() {
       setGoogleError(message);
       setGoogleLoading(false);
     }
-  }, [googleLoading]);
+  }, [googleLoading, googleRedirectTo]);
 
   useEffect(() => {
     let isMounted = true;
