@@ -77,6 +77,12 @@ function isOverdue(debt: DebtRecord) {
   return due.getTime() < today.getTime();
 }
 
+function formatTenor(debt: DebtRecord) {
+  const total = Math.max(1, Math.floor(debt.tenor_months || 1));
+  const current = Math.max(1, Math.min(Math.floor(debt.tenor_sequence || 1), total));
+  return `${current}/${total}`;
+}
+
 export default function DebtsTableResponsive({
   debts,
   loading,
@@ -130,6 +136,9 @@ export default function DebtsTableResponsive({
                   <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[150px]">
                     Jatuh Tempo
                   </th>
+                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center min-w-[110px]">
+                    Tenor
+                  </th>
                   <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right min-w-[120px]">
                     Bunga %
                   </th>
@@ -173,6 +182,9 @@ export default function DebtsTableResponsive({
                         <td className="px-4 py-3 align-middle">
                           <div className="h-3.5 w-36 animate-pulse rounded bg-border/40" />
                         </td>
+                        <td className="px-4 py-3 align-middle text-center">
+                          <div className="mx-auto h-3.5 w-12 animate-pulse rounded bg-border/40" />
+                        </td>
                         <td className="px-4 py-3 align-middle">
                           <div className="ml-auto h-3.5 w-16 animate-pulse rounded bg-border/40" />
                         </td>
@@ -201,7 +213,7 @@ export default function DebtsTableResponsive({
 
                 {showEmpty ? (
                   <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={12} className="px-6 py-12 text-center text-sm text-muted-foreground">
                       Tidak ada data hutang sesuai filter.
                     </td>
                   </tr>
@@ -249,6 +261,9 @@ export default function DebtsTableResponsive({
                               </span>
                             ) : null}
                           </div>
+                        </td>
+                        <td className="px-4 py-3 align-middle text-center text-sm tabular-nums text-muted-foreground">
+                          <span className={debt.tenor_months > 1 ? 'font-semibold text-foreground' : ''}>{formatTenor(debt)}</span>
                         </td>
                         <td className="px-4 py-3 align-middle text-right text-sm tabular-nums text-muted-foreground">
                           {formatPercent(debt.rate_percent)}
@@ -299,7 +314,7 @@ export default function DebtsTableResponsive({
 
                 {debts.length > 0 && loading ? (
                   <tr>
-                    <td colSpan={11} className="px-4 py-4">
+                    <td colSpan={12} className="px-4 py-4">
                       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                         Memuat data hutang…
@@ -330,6 +345,7 @@ export default function DebtsTableResponsive({
                     <div className="h-3 w-20 animate-pulse rounded bg-border/30" />
                     <div className="h-3 w-24 animate-pulse rounded bg-border/30" />
                     <div className="h-3 w-16 animate-pulse rounded bg-border/30" />
+                    <div className="h-3 w-20 animate-pulse rounded bg-border/30" />
                   </div>
                   <div className="space-y-2 text-right">
                     <div className="ml-auto h-3 w-24 animate-pulse rounded bg-border/30" />
@@ -401,6 +417,12 @@ export default function DebtsTableResponsive({
                           </span>
                         ) : null}
                       </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Tenor</p>
+                      <p className={`text-sm font-semibold ${debt.tenor_months > 1 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {formatTenor(debt)}
+                      </p>
                     </div>
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Bunga</p>
