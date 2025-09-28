@@ -39,23 +39,6 @@ export default function AuthCallback() {
       }
     };
 
-    if (authError) {
-      const message = errorDescription || 'Login dengan Google dibatalkan. Silakan coba lagi.';
-      setErrorMessage(message);
-      setStatus('error');
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    if (!code && !hasImplicitSession) {
-      setErrorMessage('Kode otorisasi tidak ditemukan. Silakan coba login ulang.');
-      setStatus('error');
-      return () => {
-        cancelled = true;
-      };
-    }
-
     const syncSession = async (userId: string | null) => {
       if (!userId) return;
       try {
@@ -108,11 +91,48 @@ export default function AuthCallback() {
       }
     };
 
-    if (code) {
-      void exchange(code);
-    } else if (hasImplicitSession && accessToken && refreshToken) {
-      void restore(accessToken, refreshToken);
-    }
+    const ensureExistingSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        return data.session?.user?.id ?? null;
+      } catch (error) {
+        console.error('[AuthCallback] Failed to read existing session', error);
+        return null;
+      }
+    };
+
+    const run = async () => {
+      if (authError) {
+        const message = errorDescription || 'Login dengan Google dibatalkan. Silakan coba lagi.';
+        setErrorMessage(message);
+        setStatus('error');
+        return;
+      }
+
+      if (code) {
+        await exchange(code);
+        return;
+      }
+
+      if (hasImplicitSession && accessToken && refreshToken) {
+        await restore(accessToken, refreshToken);
+        return;
+      }
+
+      const existingUserId = await ensureExistingSession();
+      if (cancelled) return;
+
+      if (existingUserId) {
+        handleSuccess(existingUserId);
+        return;
+      }
+
+      setErrorMessage('Kode otorisasi tidak ditemukan. Silakan coba login ulang.');
+      setStatus('error');
+    };
+
+    void run();
 
     return () => {
       cancelled = true;
