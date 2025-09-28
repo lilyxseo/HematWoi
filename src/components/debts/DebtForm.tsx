@@ -35,6 +35,7 @@ interface DebtFormValues {
   due_date: string;
   amount: string;
   rate_percent: string;
+  tenor: string;
   notes: string;
 }
 
@@ -61,6 +62,7 @@ function buildDefaultValues(initial?: DebtRecord | null): DebtFormValues {
       due_date: '',
       amount: '',
       rate_percent: '',
+      tenor: '1',
       notes: '',
     };
   }
@@ -75,6 +77,7 @@ function buildDefaultValues(initial?: DebtRecord | null): DebtFormValues {
       typeof initial.rate_percent === 'number' && Number.isFinite(initial.rate_percent)
         ? initial.rate_percent.toString()
         : '',
+    tenor: initial.tenor_months ? String(initial.tenor_months) : '1',
     notes: initial.notes ?? '',
   };
 }
@@ -107,7 +110,14 @@ function validate(values: DebtFormValues) {
     }
   }
 
-  return { errors, amountValue };
+  const tenorValue = Number.parseInt(values.tenor, 10);
+  if (!Number.isFinite(tenorValue)) {
+    errors.tenor = 'Tenor wajib diisi.';
+  } else if (tenorValue < 1 || tenorValue > 36) {
+    errors.tenor = 'Tenor harus 1-36 bulan.';
+  }
+
+  return { errors, amountValue, tenorValue };
 }
 
 export default function DebtForm({ open, mode, initialData, submitting, onSubmit, onClose }: DebtFormProps) {
@@ -168,7 +178,7 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const { errors: validationErrors, amountValue } = validate(values);
+    const { errors: validationErrors, amountValue, tenorValue } = validate(values);
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) {
       const firstError = Object.keys(validationErrors)[0];
@@ -183,6 +193,7 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
     }
 
     const normalizedAmount = Number(amountValue.toFixed(2));
+    const normalizedTenor = Number.isFinite(tenorValue) ? Math.max(1, Math.min(36, tenorValue)) : 1;
     const rateValue = values.rate_percent ? parseDecimal(values.rate_percent) : Number.NaN;
     const hasRateInput = values.rate_percent.trim().length > 0;
     const normalizedRate = hasRateInput && !Number.isNaN(rateValue) ? clampRate(rateValue) : undefined;
@@ -193,6 +204,7 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
       date: values.date || todayIso(),
       due_date: values.due_date || null,
       amount: normalizedAmount,
+      tenor_months: normalizedTenor,
       notes: values.notes.trim() ? values.notes.trim() : null,
     };
 
@@ -329,6 +341,24 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
                 required
               />
               {errors.amount ? <span className="text-xs text-danger">{errors.amount}</span> : null}
+            </label>
+
+            <label className="flex min-w-0 flex-col gap-1 text-sm font-medium text-text" htmlFor="tenor">
+              Tenor (bulan)
+              <input
+                id="tenor"
+                name="tenor"
+                type="number"
+                min={1}
+                max={36}
+                value={values.tenor}
+                onChange={handleChange('tenor')}
+                className="h-[40px] rounded-xl border border-border bg-surface-1 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-70"
+                placeholder="Contoh: 12"
+                disabled={mode === 'edit'}
+              />
+              <span className="text-xs text-muted-foreground">Isi jumlah bulan cicilan. Minimal 1, maksimal 36.</span>
+              {errors.tenor ? <span className="text-xs text-danger">{errors.tenor}</span> : null}
             </label>
 
             <label className="flex min-w-0 flex-col gap-1 text-sm font-medium text-text" htmlFor="rate">

@@ -22,6 +22,8 @@ export interface DebtRecord {
   remaining: number;
   status: DebtStatus;
   notes: string | null;
+  tenor_months: number;
+  tenor_sequence: number;
   created_at: string;
   updated_at: string;
 }
@@ -67,6 +69,7 @@ export interface DebtInput {
   amount: number;
   rate_percent?: number | null;
   notes?: string | null;
+  tenor_months: number;
 }
 
 export interface DebtUpdateInput extends Partial<DebtInput> {
@@ -80,7 +83,7 @@ export interface PaymentInput {
 }
 
 const DEBT_SELECT_COLUMNS =
-  'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,created_at,updated_at';
+  'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,tenor_months,tenor_sequence,created_at,updated_at';
 
 function logDevError(error: unknown) {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -151,11 +154,23 @@ function evaluateStatus(amount: number, paid: number, dueDate: string | null): D
   return 'ongoing';
 }
 
+function addMonthsToIso(iso: string, monthsToAdd: number): string {
+  const base = new Date(iso);
+  if (Number.isNaN(base.getTime()) || !Number.isFinite(monthsToAdd)) {
+    return iso;
+  }
+  const result = new Date(base.getTime());
+  result.setUTCMonth(result.getUTCMonth() + monthsToAdd);
+  return result.toISOString();
+}
+
 function mapDebtRow(row: Record<string, any>): DebtRecord {
   const amount = safeNumber(row.amount);
   const paidTotal = safeNumber(row.paid_total);
   const rate = row.rate_percent != null ? safeNumber(row.rate_percent) : null;
   const remaining = Math.max(amount - paidTotal, 0);
+  const tenorMonths = Math.max(1, Math.floor(safeNumber(row.tenor_months) || 1));
+  const tenorSequence = Math.max(1, Math.floor(safeNumber(row.tenor_sequence) || 1));
   return {
     id: String(row.id),
     user_id: String(row.user_id),
@@ -170,6 +185,8 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
     remaining,
     status: row.status as DebtStatus,
     notes: row.notes ?? null,
+    tenor_months: tenorMonths,
+    tenor_sequence: Math.min(tenorSequence, tenorMonths),
     created_at: row.created_at ?? row.date ?? new Date().toISOString(),
     updated_at: row.updated_at ?? row.created_at ?? new Date().toISOString(),
   };
@@ -441,45 +458,58 @@ export async function createDebt(payload: DebtInput): Promise<DebtRecord> {
       throw new Error('Nominal hutang tidak valid.');
     }
 
+    const tenorRaw = toNum(payload.tenor_months);
+    const tenorMonths = tenorRaw === undefined ? 1 : Math.max(1, Math.min(36, Math.floor(tenorRaw)));
+
     const dateIso = toISODate(payload.date) ?? new Date().toISOString();
     const dueDateIso = payload.due_date == null ? null : toISODate(payload.due_date);
     const rateValue = toNum(payload.rate_percent);
 
-    const insertPayload: Record<string, unknown> = {
+    const basePayload: Record<string, unknown> = {
       user_id: userId,
       type: payload.type,
       party_name: payload.party_name,
       title: payload.title,
-      date: dateIso,
       amount: Number(amountValue.toFixed(2)),
     };
 
-    if (payload.due_date !== undefined) {
-      insertPayload.due_date = dueDateIso;
+    if (payload.notes !== undefined) {
+      basePayload.notes = payload.notes?.trim() ? payload.notes.trim() : null;
     }
 
     if (rateValue !== undefined) {
       const clamped = Math.max(0, Math.min(100, rateValue));
-      insertPayload.rate_percent = Number(clamped.toFixed(2));
+      basePayload.rate_percent = Number(clamped.toFixed(2));
     }
 
-    if (payload.notes !== undefined) {
-      insertPayload.notes = payload.notes?.trim() ? payload.notes.trim() : null;
+    const rowsToInsert: Record<string, unknown>[] = [];
+    for (let index = 0; index < tenorMonths; index += 1) {
+      const entry: Record<string, unknown> = {
+        ...basePayload,
+        date: addMonthsToIso(dateIso, index),
+        tenor_months: tenorMonths,
+        tenor_sequence: index + 1,
+      };
+      if (payload.due_date !== undefined) {
+        entry.due_date = dueDateIso ? addMonthsToIso(dueDateIso, index) : null;
+      }
+      rowsToInsert.push(entry);
     }
 
-    const { data: inserted, error: insertError } = await supabase
+    const { data: insertedRows, error: insertError } = await supabase
       .from('debts')
-      .insert([insertPayload])
-      .select('id')
-      .single();
+      .insert(rowsToInsert)
+      .select('id, tenor_sequence');
 
     if (insertError) throw insertError;
-    const insertedId = inserted?.id;
-    if (!insertedId) {
+
+    const insertedList = Array.isArray(insertedRows) ? insertedRows : insertedRows ? [insertedRows] : [];
+    const firstInserted = insertedList.find((row) => (row?.tenor_sequence ?? 0) === 1) ?? insertedList[0];
+    if (!firstInserted?.id) {
       throw new Error('Gagal menambahkan hutang');
     }
 
-    const row = await fetchDebtById(String(insertedId), userId);
+    const row = await fetchDebtById(String(firstInserted.id), userId);
     if (!row) {
       throw new Error('Hutang tidak ditemukan setelah dibuat.');
     }
@@ -519,6 +549,11 @@ export async function updateDebt(id: string, patch: DebtUpdateInput): Promise<De
     if (rateValue !== undefined) {
       const clamped = Math.max(0, Math.min(100, rateValue));
       updates.rate_percent = Number(clamped.toFixed(2));
+    }
+
+    const tenorValue = toNum(patch.tenor_months);
+    if (tenorValue !== undefined) {
+      updates.tenor_months = Math.max(1, Math.min(36, Math.floor(tenorValue)));
     }
 
     if (patch.notes !== undefined) {

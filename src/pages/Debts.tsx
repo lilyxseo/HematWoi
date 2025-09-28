@@ -179,6 +179,8 @@ export default function Debts() {
         remaining: payload.amount,
         status: computeStatus(payload.amount, 0, toISO(payload.due_date ?? null)),
         notes: payload.notes ?? null,
+        tenor_months: payload.tenor_months,
+        tenor_sequence: 1,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -213,6 +215,7 @@ export default function Debts() {
             amount: payload.amount,
             rate_percent: payload.rate_percent ?? item.rate_percent ?? 0,
             notes: payload.notes ?? null,
+            tenor_months: payload.tenor_months,
             remaining: Math.max(payload.amount - item.paid_total, 0),
             status: computeStatus(payload.amount, item.paid_total, toISO(payload.due_date ?? null)),
           }
@@ -280,6 +283,7 @@ export default function Debts() {
         'Judul',
         'Tanggal',
         'Jatuh Tempo',
+        'Tenor',
         'Jumlah',
         'Terbayar',
         'Sisa',
@@ -292,6 +296,7 @@ export default function Debts() {
         item.title,
         item.date ? new Date(item.date).toLocaleDateString('id-ID') : '',
         item.due_date ? new Date(item.due_date).toLocaleDateString('id-ID') : '',
+        `${item.tenor_sequence}/${item.tenor_months}`,
         formatCurrency(item.amount),
         formatCurrency(item.paid_total),
         formatCurrency(item.remaining),
