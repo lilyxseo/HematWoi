@@ -65,7 +65,7 @@ export default function TopSpendsTable({ data = [], onSelect }) {
         }
       />
       <CardBody className="flex-1 space-y-6">
-        <div className="flex justify-end">
+        <div className="flex justify-start">
           <span className="inline-flex items-center rounded-xl bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
             {sort === "asc" ? "Terkecil" : "Terbesar"}
           </span>
