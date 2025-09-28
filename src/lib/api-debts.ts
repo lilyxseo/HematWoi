@@ -205,13 +205,24 @@ function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
     typeof row.account_name === 'string' && row.account_name.trim()
       ? row.account_name
       : accountRelation?.name ?? null;
+  const rawNotes =
+    typeof row.notes === 'string'
+      ? row.notes
+      : typeof row.note === 'string'
+      ? row.note
+      : null;
+  let normalizedNotes: string | null = null;
+  if (typeof rawNotes === 'string') {
+    const trimmed = rawNotes.trim();
+    normalizedNotes = trimmed ? trimmed : null;
+  }
   return {
     id: String(row.id),
     debt_id: String(row.debt_id),
     user_id: String(row.user_id),
     amount: safeNumber(row.amount),
     date: row.date ?? row.created_at ?? new Date().toISOString(),
-    notes: row.notes ?? null,
+    notes: normalizedNotes,
     account_id: accountId,
     account_name: accountName ?? null,
     transaction_id: row.transaction_id ? String(row.transaction_id) : null,
@@ -702,7 +713,7 @@ export async function addPayment(
       user_id: userId,
       amount: amount.toFixed(2),
       date: isoDate,
-      notes: trimmedNotes,
+      note: trimmedNotes,
       account_id: accountId,
       transaction_id: transactionId,
     };
