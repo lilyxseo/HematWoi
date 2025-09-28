@@ -6,6 +6,7 @@ import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
+import { formatOAuthErrorMessage } from '../lib/oauth-error';
 
 const heroTips = [
   'Pantau cash flow harian tanpa ribet.',
@@ -73,10 +74,10 @@ export default function AuthLogin() {
       });
       if (error) throw error;
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Gagal memulai proses login Google. Silakan coba lagi.';
+      const message = formatOAuthErrorMessage(
+        error,
+        'Gagal memulai proses login Google. Silakan coba lagi.'
+      );
       setGoogleError(message);
       setGoogleLoading(false);
     }

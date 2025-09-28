@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
+import { formatOAuthErrorMessage, formatOAuthQueryError } from '../lib/oauth-error';
 
 const DIGEST_TRIGGER_KEY = 'hw:digest:trigger';
 
@@ -22,6 +23,9 @@ export default function AuthCallback() {
   const code = searchParams.get('code');
   const authError = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
+  const errorCode = searchParams.get('error_code');
+  const errorHint = searchParams.get('error_hint');
+  const errorStatus = searchParams.get('status') ?? searchParams.get('error_status');
   const accessToken = hashParams.get('access_token');
   const refreshToken = hashParams.get('refresh_token');
   const hasImplicitSession = Boolean(accessToken && refreshToken);
@@ -63,10 +67,10 @@ export default function AuthCallback() {
         handleSuccess(data.session?.user?.id ?? null);
       } catch (error) {
         if (cancelled) return;
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Gagal menukarkan kode sesi. Silakan coba lagi.';
+        const message = formatOAuthErrorMessage(
+          error,
+          'Gagal menukarkan kode sesi. Silakan coba lagi.'
+        );
         setErrorMessage(message);
         setStatus('error');
       }
@@ -82,10 +86,10 @@ export default function AuthCallback() {
         handleSuccess(data.session?.user?.id ?? null);
       } catch (error) {
         if (cancelled) return;
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'Gagal memulihkan sesi. Silakan coba lagi.';
+        const message = formatOAuthErrorMessage(
+          error,
+          'Gagal memulihkan sesi. Silakan coba lagi.'
+        );
         setErrorMessage(message);
         setStatus('error');
       }
@@ -104,7 +108,14 @@ export default function AuthCallback() {
 
     const run = async () => {
       if (authError) {
-        const message = errorDescription || 'Login dengan Google dibatalkan. Silakan coba lagi.';
+        const message = formatOAuthQueryError({
+          fallback: 'Login dengan Google dibatalkan. Silakan coba lagi.',
+          error: authError,
+          errorCode,
+          errorDescription,
+          hint: errorHint,
+          status: errorStatus,
+        });
         setErrorMessage(message);
         setStatus('error');
         return;
@@ -141,7 +152,10 @@ export default function AuthCallback() {
     accessToken,
     authError,
     code,
+    errorCode,
     errorDescription,
+    errorHint,
+    errorStatus,
     hasImplicitSession,
     navigate,
     refreshToken,
