@@ -23,6 +23,7 @@ import {
   type DebtSummary,
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
+import { listAccounts, type AccountRecord } from '../lib/api';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -80,6 +81,8 @@ export default function Debts() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -334,6 +337,21 @@ export default function Debts() {
     setPaymentDebt(debt);
     setPaymentOpen(true);
     setPaymentLoading(true);
+    setAccountsLoading(true);
+    if (user?.id) {
+      listAccounts(user.id)
+        .then((rows) => setAccounts(rows))
+        .catch((error) => {
+          logError(error, 'load accounts');
+          addToast('Gagal memuat akun sumber pembayaran.', 'error');
+        })
+        .finally(() => {
+          setAccountsLoading(false);
+        });
+    } else {
+      setAccounts([]);
+      setAccountsLoading(false);
+    }
     try {
       const detail = await getDebt(debt.id);
       if (detail.debt) {
@@ -349,7 +367,12 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: { amount: number; date: string; notes?: string | null }) => {
+  const handlePaymentSubmit = async (input: {
+    amount: number;
+    date: string;
+    account_id: string;
+    notes?: string | null;
+  }) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
@@ -357,6 +380,7 @@ export default function Debts() {
     }
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
+    const selectedAccount = accounts.find((item) => item.id === input.account_id);
     const optimisticPayment: DebtPaymentRecord = {
       id: tempId,
       debt_id: paymentDebt.id,
@@ -364,6 +388,9 @@ export default function Debts() {
       amount: input.amount,
       date: toISO(input.date) ?? new Date().toISOString(),
       notes: input.notes ?? null,
+      account_id: input.account_id,
+      account_name: selectedAccount?.name ?? null,
+      transaction_id: null,
       created_at: new Date().toISOString(),
     };
     setPaymentList((prev) => [optimisticPayment, ...prev]);
@@ -516,6 +543,8 @@ export default function Debts() {
         loading={paymentLoading}
         submitting={paymentSubmitting}
         deletingId={paymentDeletingId}
+        accounts={accounts}
+        accountsLoading={accountsLoading}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}

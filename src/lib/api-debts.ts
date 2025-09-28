@@ -35,6 +35,9 @@ export interface DebtPaymentRecord {
   amount: number;
   date: string;
   notes: string | null;
+  account_id: string | null;
+  account_name: string | null;
+  transaction_id: string | null;
   created_at: string;
 }
 
@@ -79,6 +82,7 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
 export interface PaymentInput {
   amount: number;
   date: string;
+  account_id: string;
   notes?: string | null;
 }
 
@@ -193,6 +197,14 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
 }
 
 function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
+  const accountRelation = row.account ?? row.accounts ?? null;
+  const rawAccountId =
+    row.account_id ?? accountRelation?.id ?? accountRelation?.account_id ?? null;
+  const accountId = rawAccountId ? String(rawAccountId) : null;
+  const accountName =
+    typeof row.account_name === 'string' && row.account_name.trim()
+      ? row.account_name
+      : accountRelation?.name ?? null;
   return {
     id: String(row.id),
     debt_id: String(row.debt_id),
@@ -200,6 +212,9 @@ function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
     amount: safeNumber(row.amount),
     date: row.date ?? row.created_at ?? new Date().toISOString(),
     notes: row.notes ?? null,
+    account_id: accountId,
+    account_name: accountName ?? null,
+    transaction_id: row.transaction_id ? String(row.transaction_id) : null,
     created_at: row.created_at ?? new Date().toISOString(),
   };
 }
@@ -403,7 +418,7 @@ export async function getDebt(id: string): Promise<{ debt: DebtRecord | null; pa
 
     const { data: paymentRows, error: paymentsError } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select('*, account:account_id (id, name)')
       .eq('debt_id', id)
       .eq('user_id', userId)
       .order('date', { ascending: false })
@@ -424,7 +439,7 @@ export async function listPayments(debtId: string): Promise<DebtPaymentRecord[]>
     const userId = await getUserId();
     const { data, error } = await supabase
       .from('debt_payments')
-      .select('*')
+      .select('*, account:account_id (id, name)')
       .eq('debt_id', debtId)
       .eq('user_id', userId)
       .order('date', { ascending: false })
@@ -631,21 +646,82 @@ export async function addPayment(
 {
   try {
     const userId = await getUserId();
+    const debtRow = await fetchDebtById(debtId, userId);
+    if (!debtRow) {
+      throw new Error('Hutang tidak ditemukan.');
+    }
+
+    const accountId = typeof payload.account_id === 'string' ? payload.account_id.trim() : '';
+    if (!accountId) {
+      throw new Error('Pilih akun sumber pembayaran.');
+    }
+
     const amount = Math.max(0, payload.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Nominal pembayaran tidak valid.');
+    }
+
+    const isoDate = toISODate(payload.date) ?? new Date().toISOString();
+    const transactionDate = isoDate.slice(0, 10);
+    const isReceivable = debtRow.type === 'receivable';
+    const transactionType = isReceivable ? 'income' : 'expense';
+    const trimmedNotes = payload.notes?.trim() ? payload.notes.trim() : null;
+    const partyName = typeof debtRow.party_name === 'string' ? debtRow.party_name.trim() : '';
+    const debtTitle = typeof debtRow.title === 'string' ? debtRow.title.trim() : '';
+    const transactionTitle = debtTitle
+      ? debtTitle
+      : isReceivable
+      ? `Pelunasan piutang${partyName ? ` - ${partyName}` : ''}`
+      : `Pembayaran hutang${partyName ? ` - ${partyName}` : ''}`;
+
+    let transactionId: string | null = null;
+    try {
+      const { data: transactionData, error: transactionError } = await supabase
+        .from('transactions')
+        .insert({
+          user_id: userId,
+          type: transactionType,
+          amount: amount.toFixed(2),
+          date: transactionDate,
+          account_id: accountId,
+          title: transactionTitle,
+          notes: trimmedNotes,
+        })
+        .select('id')
+        .single();
+      if (transactionError) throw transactionError;
+      transactionId = transactionData?.id ?? null;
+    } catch (transactionError) {
+      throw transactionError instanceof Error
+        ? transactionError
+        : new Error('Gagal membuat transaksi untuk pembayaran hutang.');
+    }
+
     const insertPayload = {
       debt_id: debtId,
       user_id: userId,
       amount: amount.toFixed(2),
-      date: toISODate(payload.date) ?? new Date().toISOString(),
-      notes: payload.notes ?? null,
+      date: isoDate,
+      notes: trimmedNotes,
+      account_id: accountId,
+      transaction_id: transactionId,
     };
 
     const { data, error } = await supabase
       .from('debt_payments')
       .insert([insertPayload])
-      .select('*')
+      .select('*, account:account_id (id, name)')
       .single();
-    if (error) throw error;
+    if (error) {
+      if (transactionId) {
+        await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', transactionId)
+          .eq('user_id', userId);
+      }
+      throw error;
+    }
 
     const updatedDebt = await recalculateDebtAggregates(debtId, userId);
 
@@ -663,7 +739,7 @@ export async function deletePayment(paymentId: string): Promise<DebtRecord | nul
     const userId = await getUserId();
     const { data: paymentRow, error: fetchError } = await supabase
       .from('debt_payments')
-      .select('debt_id')
+      .select('debt_id, transaction_id')
       .eq('id', paymentId)
       .eq('user_id', userId)
       .maybeSingle();
@@ -678,6 +754,18 @@ export async function deletePayment(paymentId: string): Promise<DebtRecord | nul
       .eq('id', paymentId)
       .eq('user_id', userId);
     if (error) throw error;
+
+    if (paymentRow.transaction_id) {
+      try {
+        await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', paymentRow.transaction_id)
+          .eq('user_id', userId);
+      } catch (cleanupError) {
+        logDevError(cleanupError, 'deletePayment:cleanupTransaction');
+      }
+    }
 
     const updatedDebt = await recalculateDebtAggregates(paymentRow.debt_id, userId);
     return updatedDebt;
