@@ -397,22 +397,6 @@ export async function changePassword(payload: PasswordChangePayload): Promise<Pa
   }
 }
 
-export async function createPassword(newPassword: string): Promise<void> {
-  try {
-    if (!newPassword) {
-      throw new Error('Password baru wajib diisi.');
-    }
-    if (newPassword.length < 6) {
-      throw new Error('Password baru minimal 6 karakter.');
-    }
-    await requireUser();
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw error;
-  } catch (error) {
-    wrapError('createPassword', error, 'Tidak bisa membuat password.');
-  }
-}
-
 function detectDeviceLabel(agent: string | null | undefined) {
   if (!agent) return 'Perangkat tidak dikenal';
   const normalized = agent.toLowerCase();
