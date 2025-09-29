@@ -33,10 +33,23 @@ function calculateDailySuggestion(goal: GoalRecord) {
   if (!goal.due_date) return null;
   const remaining = Math.max(goal.target_amount - goal.saved_amount, 0);
   if (remaining <= 0) return null;
-  const daysLeft = calculateDaysLeft(goal.due_date);
-  if (daysLeft == null) return null;
-  const divisor = Math.max(daysLeft, 1);
-  return Math.ceil(remaining / divisor);
+
+  const due = new Date(goal.due_date);
+  if (Number.isNaN(due.getTime())) return null;
+
+  const start = goal.start_date ? new Date(goal.start_date) : null;
+  if (!start || Number.isNaN(start.getTime())) {
+    const daysLeft = calculateDaysLeft(goal.due_date);
+    if (daysLeft == null) return null;
+    return Math.ceil(remaining / Math.max(daysLeft, 1));
+  }
+
+  const totalDays = Math.floor((due.getTime() - start.getTime()) / 86400000) + 1;
+  if (totalDays <= 0) {
+    return Math.ceil(remaining);
+  }
+
+  return Math.ceil(remaining / Math.max(totalDays, 1));
 }
 
 function calculateAveragePerDay(goal: GoalRecord) {
