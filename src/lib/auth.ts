@@ -229,17 +229,7 @@ export async function signInWithProvider(provider: Provider): Promise<OAuthRespo
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: {
-        redirectTo: resolveRedirect('/'),
-        flowType: 'pkce',
-        queryParams:
-          provider === 'google'
-            ? {
-                access_type: 'offline',
-                prompt: 'consent select_account',
-              }
-            : undefined,
-      },
+      options: { redirectTo: resolveRedirect('/'), flowType: 'pkce' },
     });
     if (error) throw error;
     return data;
