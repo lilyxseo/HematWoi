@@ -11,11 +11,10 @@ interface BudgetTableProps {
   onToggleCarryover: (row: BudgetWithSpent, carryover: boolean) => void;
 }
 
-const CARD_WRAPPER_CLASS =
-  'grid gap-4 md:grid-cols-2 xl:grid-cols-3';
+const CARD_WRAPPER_CLASS = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3';
 
 const CARD_CLASS =
-  'flex flex-col gap-4 rounded-2xl border border-white/20 bg-gradient-to-b from-white/80 to-white/40 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-white/5 dark:from-zinc-900/60 dark:to-zinc-900/30';
+  'flex flex-col gap-5 rounded-3xl border border-white/30 bg-gradient-to-br from-white/95 via-white/75 to-white/50 p-6 shadow-xl ring-1 ring-black/5 transition hover:-translate-y-1 hover:shadow-2xl dark:border-white/5 dark:from-zinc-900/70 dark:via-zinc-900/40 dark:to-zinc-900/20 dark:ring-white/5';
 
 function LoadingCards() {
   return (
@@ -69,97 +68,126 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
         const displayPercentage = Math.min(100, percentage);
         const overBudget = remaining < 0;
         const progressColor = overBudget ? 'bg-rose-500 dark:bg-rose-400' : 'bg-brand dark:bg-brand';
+        const categoryName = row.category?.name ?? 'Tanpa kategori';
+        const categoryInitial = categoryName.trim().charAt(0).toUpperCase() || 'B';
+        const statusLabel = overBudget ? 'Melebihi batas' : percentage >= 90 ? 'Hampir habis' : 'Sehat';
+        const statusClass = clsx(
+          'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium shadow-sm ring-1 ring-inset',
+          overBudget
+            ? 'bg-rose-50 text-rose-600 ring-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+            : percentage >= 90
+              ? 'bg-amber-50 text-amber-600 ring-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200'
+              : 'bg-emerald-50 text-emerald-600 ring-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200',
+        );
 
         return (
           <article key={row.id} className={CARD_CLASS}>
-            <header className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Kategori</p>
-                <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-                  {row.category?.name ?? 'Tanpa kategori'}
-                </h3>
+            <header className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand/10 text-base font-semibold uppercase text-brand shadow-sm dark:bg-brand/20 dark:text-brand">
+                  {categoryInitial}
+                </div>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{categoryName}</h3>
+                    <span className={statusClass}>
+                      <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" />
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                    Anggaran periode {row.period_month?.slice(0, 7) ?? '-'}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-3 py-1.5 text-xs font-medium text-zinc-600 shadow-sm dark:border-white/10 dark:bg-zinc-900/50 dark:text-zinc-200">
+                  <span className="hidden text-xs sm:inline">Carryover</span>
+                  <span className="sm:hidden">CO</span>
+                  <span className="text-[0.7rem] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                    {row.carryover_enabled ? 'Aktif' : 'Nonaktif'}
+                  </span>
+                  <label className="relative inline-flex h-6 w-12 cursor-pointer items-center">
+                    <input
+                      type="checkbox"
+                      checked={row.carryover_enabled}
+                      onChange={(event) => onToggleCarryover(row, event.target.checked)}
+                      className="peer sr-only"
+                      aria-label={`Atur carryover untuk ${categoryName}`}
+                    />
+                    <span className="absolute inset-0 rounded-full bg-zinc-200/80 transition peer-checked:bg-emerald-500/80 dark:bg-zinc-700/70 dark:peer-checked:bg-emerald-500/70" />
+                    <span className="relative ml-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-6" />
+                  </label>
+                </div>
                 <button
                   type="button"
                   onClick={() => onEdit(row)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-white/30 bg-white/60 text-zinc-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200"
-                  aria-label={`Edit ${row.category?.name ?? 'budget'}`}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/40 bg-white/70 text-zinc-600 shadow-sm transition hover:-translate-y-0.5 hover:bg-white dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200"
+                  aria-label={`Edit ${categoryName}`}
                 >
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => onDelete(row)}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-rose-200/50 bg-rose-50/60 text-rose-500 shadow-sm transition hover:-translate-y-0.5 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
-                  aria-label={`Hapus ${row.category?.name ?? 'budget'}`}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-rose-200/60 bg-rose-50/80 text-rose-500 shadow-sm transition hover:-translate-y-0.5 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+                  aria-label={`Hapus ${categoryName}`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </header>
 
-            <div className="space-y-1 text-sm text-zinc-600 dark:text-zinc-300">
-              <div className="flex items-center justify-between">
-                <span>Anggaran</span>
-                <span className="font-semibold text-zinc-900 dark:text-zinc-100">
-                  {formatCurrency(planned, 'IDR')}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Terpakai</span>
-                <span>{formatCurrency(spent, 'IDR')}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span>Sisa</span>
-                <span className={clsx('font-semibold', overBudget ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400')}>
-                  {formatCurrency(remaining, 'IDR')}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                <span>Progres penggunaan</span>
-                <span>{displayPercentage}%</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200/70 dark:bg-zinc-800/70">
-                <div
-                  className={clsx('h-full rounded-full transition-all', progressColor)}
-                  style={{ width: `${displayPercentage}%` }}
-                />
-              </div>
-              {percentage > 100 ? (
-                <p className="text-xs font-medium text-rose-500 dark:text-rose-400">
-                  Pengeluaran sudah melebihi anggaran sebesar {formatCurrency(Math.abs(remaining), 'IDR')}.
-                </p>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-3 rounded-xl bg-white/50 p-4 text-sm shadow-sm dark:bg-zinc-900/40">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Carryover</p>
-                  <p className="font-medium text-zinc-800 dark:text-zinc-100">
-                    {row.carryover_enabled ? 'Aktif' : 'Nonaktif'}
+            <div className="rounded-2xl border border-white/40 bg-white/70 p-4 text-sm text-zinc-600 shadow-sm dark:border-white/5 dark:bg-zinc-900/40 dark:text-zinc-300">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <span className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Anggaran</span>
+                  <p className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                    {formatCurrency(planned, 'IDR')}
                   </p>
                 </div>
-                <label className="relative inline-flex h-6 w-12 cursor-pointer items-center">
-                  <input
-                    type="checkbox"
-                    checked={row.carryover_enabled}
-                    onChange={(event) => onToggleCarryover(row, event.target.checked)}
-                    className="peer sr-only"
-                  />
-                  <span className="absolute inset-0 rounded-full bg-zinc-200/70 transition peer-checked:bg-emerald-500/80 dark:bg-zinc-800/70 dark:peer-checked:bg-emerald-500/70" />
-                  <span className="relative ml-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-6" />
-                </label>
+                <div className="space-y-1">
+                  <span className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Terpakai</span>
+                  <p className="text-base font-semibold text-zinc-800 dark:text-zinc-200">{formatCurrency(spent, 'IDR')}</p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-xs uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Sisa</span>
+                  <p
+                    className={clsx(
+                      'text-base font-semibold',
+                      overBudget ? 'text-rose-500 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400',
+                    )}
+                  >
+                    {formatCurrency(remaining, 'IDR')}
+                  </p>
+                </div>
               </div>
 
-              <div className="space-y-1 text-sm text-zinc-500 dark:text-zinc-300">
-                <p className="text-xs uppercase tracking-wide">Catatan</p>
-                <p>{row.notes?.trim() ? row.notes : 'Tidak ada catatan.'}</p>
+              <div className="mt-4 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  <span>Progres penggunaan</span>
+                  <span>{displayPercentage}%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200/80 dark:bg-zinc-800/70">
+                  <div
+                    className={clsx('h-full rounded-full transition-all', progressColor)}
+                    style={{ width: `${displayPercentage}%` }}
+                  />
+                </div>
+                {percentage > 100 ? (
+                  <p className="text-xs font-medium text-rose-500 dark:text-rose-400">
+                    Pengeluaran sudah melebihi anggaran sebesar {formatCurrency(Math.abs(remaining), 'IDR')}.
+                  </p>
+                ) : null}
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-dashed border-zinc-200/70 bg-white/50 p-4 text-sm text-zinc-500 shadow-sm dark:border-zinc-700/70 dark:bg-zinc-900/30 dark:text-zinc-300">
+              <p className="text-xs uppercase tracking-wide text-zinc-400 dark:text-zinc-500">Catatan</p>
+              <p className="mt-1 leading-relaxed">
+                {row.notes?.trim() ? row.notes : 'Tidak ada catatan.'}
+              </p>
             </div>
           </article>
         );
