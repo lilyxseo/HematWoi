@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Clock } from "lucide-react";
 import clsx from "clsx";
 import Segmented from "./ui/Segmented";
@@ -25,6 +25,8 @@ function formatDate(value) {
 
 export default function RecentTransactions({ txs = [] }) {
   const [period, setPeriod] = useState("week");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
 
   const filtered = useMemo(() => {
     const now = new Date();
@@ -36,9 +38,23 @@ export default function RecentTransactions({ txs = [] }) {
         if (period === "week") return diff < 7;
         return diff < 30;
       })
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 5);
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [txs, period]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [period, pageSize]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(filtered.length / pageSize));
+    if (page > maxPage) {
+      setPage(maxPage);
+    }
+  }, [filtered.length, page, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const startIndex = (page - 1) * pageSize;
+  const visible = filtered.slice(startIndex, startIndex + pageSize);
 
   const periodLabel =
     period === "day" ? "24 jam" : period === "week" ? "7 hari" : "30 hari";
@@ -61,15 +77,39 @@ export default function RecentTransactions({ txs = [] }) {
         }
       />
       <CardBody className="flex-1 space-y-6">
-        <div className="flex items-center gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3 text-xs text-muted">
-          <Clock className="h-4 w-4" aria-hidden="true" />
-          <span>
-            Menampilkan {filtered.length} transaksi {periodLabel} terakhir
-          </span>
+        <div className="flex flex-col gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Clock className="h-4 w-4" aria-hidden="true" />
+            <span>
+              Menampilkan {filtered.length === 0 ? 0 : `${startIndex + 1}-${Math.min(startIndex + visible.length, filtered.length)}`} dari {filtered.length} transaksi {periodLabel} terakhir
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs">
+            <label htmlFor="recent-tx-page-size" className="text-muted">
+              Tampilkan
+            </label>
+            <select
+              id="recent-tx-page-size"
+              value={pageSize}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setPageSize(value);
+                setPage(1);
+              }}
+              className="rounded-lg border border-border-subtle bg-transparent px-2 py-1 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            >
+              {[5, 10, 20].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+            <span>per halaman</span>
+          </div>
         </div>
-        {filtered.length > 0 ? (
+        {visible.length > 0 ? (
           <ul className="space-y-3">
-            {filtered.map((row) => {
+            {visible.map((row) => {
               const isIncome = row.type === "income";
               const amount = Math.abs(Number(row.amount) || 0);
 
@@ -119,6 +159,29 @@ export default function RecentTransactions({ txs = [] }) {
             <p className="text-xs text-muted">Coba pilih rentang waktu yang berbeda untuk melihat transaksi lainnya.</p>
           </div>
         )}
+        {filtered.length > 0 ? (
+          <div className="flex items-center justify-between gap-4 pt-2 text-xs text-muted">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-3 py-1 font-medium text-text transition disabled:cursor-not-allowed disabled:opacity-40 hover:border-border hover:bg-surface-alt/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            >
+              Sebelumnya
+            </button>
+            <span>
+              Halaman {page} dari {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="inline-flex items-center gap-1 rounded-full border border-border-subtle px-3 py-1 font-medium text-text transition disabled:cursor-not-allowed disabled:opacity-40 hover:border-border hover:bg-surface-alt/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        ) : null}
       </CardBody>
     </Card>
   );
