@@ -148,5 +148,13 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/auth',
     inSidebar: false,
     protected: false,
+    children: [
+      {
+        title: 'Mobile Google Callback',
+        path: '/auth/mobile/google',
+        inSidebar: false,
+        protected: false,
+      },
+    ],
   },
 ];

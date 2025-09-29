@@ -38,6 +38,8 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/Profile'));
     case '/auth':
       return lazy(() => import('../pages/AuthLogin'));
+    case '/auth/mobile/google':
+      return lazy(() => import('../pages/mobile/google'));
     default:
       return lazy(() => import('../pages/Dashboard'));
   }
