@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Calendar, Plus, RefreshCw } from 'lucide-react';
+import { Calendar, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
 import PageHeader from '../../layout/PageHeader';
@@ -201,12 +201,12 @@ export default function BudgetsPage() {
     <Page>
       <PageHeader
         title="Anggaran"
-        description="Atur dan pantau alokasi pengeluaranmu tiap bulan."
+        description="Atur strategi pengeluaranmu dengan tampilan yang lebih intuitif dan inspiratif."
       >
         <button
           type="button"
           onClick={refresh}
-          className="hidden h-11 items-center gap-2 rounded-2xl border border-border bg-surface px-4 text-sm font-semibold text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:inline-flex"
+          className="hidden h-11 items-center gap-2 rounded-2xl border border-border/70 bg-background/80 px-4 text-sm font-semibold text-muted shadow-sm transition hover:-translate-y-0.5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:inline-flex"
         >
           <RefreshCw className="h-4 w-4" />
           Segarkan
@@ -215,7 +215,7 @@ export default function BudgetsPage() {
           type="button"
           disabled={categoriesLoading}
           onClick={handleOpenCreate}
-          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-brand-foreground shadow transition hover:-translate-y-0.5 hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Plus className="h-4 w-4" />
           Tambah anggaran
@@ -223,42 +223,59 @@ export default function BudgetsPage() {
       </PageHeader>
 
       <Section first>
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {SEGMENTS.map(({ value, label }) => {
-              const active = value === segment;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleSegmentChange(value)}
-                  className={clsx(
-                    'h-11 rounded-2xl px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
-                    active
-                      ? 'bg-brand text-brand-foreground shadow'
-                      : 'border border-border bg-surface px-5 text-muted hover:border-brand/40 hover:bg-brand/5 hover:text-text'
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          {segment === 'custom' ? (
-            <input
-              type="month"
-              value={customPeriod}
-              onChange={(event) => handleCustomPeriodChange(event.target.value)}
-              className="h-11 rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              aria-label="Pilih periode custom"
-            />
-          ) : (
-            <div className="flex items-center gap-2 rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-medium text-muted">
-              <Calendar className="h-4 w-4" />
-              <span>{toHumanReadable(period)}</span>
+        <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-gradient-to-br from-brand/10 via-background to-background/40 p-6 shadow-lg">
+          <div className="absolute right-0 top-0 h-32 w-32 translate-x-8 -translate-y-8 rounded-full bg-brand/20 blur-3xl" aria-hidden />
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-xl space-y-3">
+              <span className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted">
+                <Sparkles className="h-3.5 w-3.5" />
+                Snapshot periode
+              </span>
+              <h2 className="text-2xl font-semibold text-text">{toHumanReadable(period)}</h2>
+              <p className="text-sm leading-relaxed text-muted">
+                Pilih periode yang ingin kamu evaluasi dan kami akan menampilkan ringkasan anggaran lengkap beserta status setiap kategori.
+              </p>
             </div>
-          )}
+
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-end">
+              <div className="inline-flex items-center gap-2 rounded-2xl border border-border/70 bg-background/80 p-1 shadow-inner shadow-black/5">
+                {SEGMENTS.map(({ value, label }) => {
+                  const active = value === segment;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => handleSegmentChange(value)}
+                      className={clsx(
+                        'relative inline-flex h-10 items-center justify-center rounded-2xl px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                        active
+                          ? 'bg-brand text-brand-foreground shadow'
+                          : 'text-muted hover:text-text',
+                      )}
+                      aria-pressed={active}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {segment === 'custom' ? (
+                <input
+                  type="month"
+                  value={customPeriod}
+                  onChange={(event) => handleCustomPeriodChange(event.target.value)}
+                  className="h-11 rounded-2xl border border-border/70 bg-background/80 px-4 text-sm font-semibold text-text shadow-inner shadow-black/5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  aria-label="Pilih periode custom"
+                />
+              ) : (
+                <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-background/80 px-4 py-2 text-sm font-semibold text-text shadow-inner shadow-black/5">
+                  <Calendar className="h-4 w-4" />
+                  <span>{toHumanReadable(period)}</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Section>
 
