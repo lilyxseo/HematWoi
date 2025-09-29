@@ -86,13 +86,20 @@ export default function GoogleLoginButton({
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
 
-    if (isHematWoiApp()) {
+    const insideApp = isHematWoiApp();
+    const normalizedNativeTrigger =
+      typeof nativeTriggerUrl === 'string' ? nativeTriggerUrl.trim() : undefined;
+    const canUseNativeTrigger =
+      insideApp && typeof normalizedNativeTrigger === 'string' && normalizedNativeTrigger.length > 0 &&
+      !httpPattern.test(normalizedNativeTrigger);
+
+    if (canUseNativeTrigger) {
       // Di dalam app (WebView) → arahkan ke /native-google-login (atau custom scheme jika diset di ENV)
-      if (typeof window !== 'undefined') window.location.href = nativeTriggerUrl;
+      if (typeof window !== 'undefined') window.location.href = normalizedNativeTrigger;
       return;
     }
 
-    // Di browser biasa → pakai web OAuth (Supabase) atau handler custom
+    // Di browser biasa (atau fallback ketika native trigger belum tersedia)
     if (onWebLogin) {
       void onWebLogin(event);
       return;
