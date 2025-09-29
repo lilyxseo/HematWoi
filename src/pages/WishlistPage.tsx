@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import clsx from 'clsx';
 import {
   ArrowDownToLine,
   CheckCircle2,
   CircleDollarSign,
+  ChevronDown,
   Layers3,
   Plus,
   Sparkles,
@@ -75,6 +77,14 @@ export default function WishlistPage() {
   const [exporting, setExporting] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [isDesktopFilterView, setIsDesktopFilterView] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return window.matchMedia('(min-width: 768px)').matches;
+  });
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const filterPanelId = useId();
 
   const normalizedFilters = useMemo(() => normalizeFilters(filters), [filters]);
 
@@ -251,6 +261,46 @@ export default function WishlistPage() {
   };
 
   const selectedCount = selectedIds.size;
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsDesktopFilterView(event.matches);
+    };
+
+    setIsDesktopFilterView(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.search.trim()) count += 1;
+    if (filters.status !== 'all') count += 1;
+    if (filters.priority !== 'all') count += 1;
+    if (filters.categoryId !== 'all') count += 1;
+    if (filters.priceMin) count += 1;
+    if (filters.priceMax) count += 1;
+    if (filters.sort !== 'newest') count += 1;
+    return count;
+  }, [filters]);
+
+  const toggleFilterPanel = () => {
+    if (isDesktopFilterView) return;
+    setFilterPanelOpen((prev) => !prev);
+  };
 
   const handleDelete = async (item: WishlistItem) => {
     const confirmed = window.confirm(`Hapus "${item.title}" dari wishlist?`);
@@ -503,31 +553,79 @@ export default function WishlistPage() {
         </div>
       </PageHeader>
 
-      <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statsCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <article
-              key={card.id}
-              className="flex h-full items-start gap-4 rounded-3xl border border-border-subtle bg-surface p-4 shadow-sm transition-colors duration-200 hover:border-brand/40 hover:shadow-md"
-            >
-              <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${card.iconClass}`}>
-                <Icon className="h-6 w-6" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">{card.label}</p>
-                <p className="mt-1 text-lg font-semibold text-text">{card.value}</p>
-                <p className="mt-1 text-xs text-muted">{card.description}</p>
-              </div>
-            </article>
-          );
-        })}
-      </section>
+      <div className="space-y-8">
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={toggleFilterPanel}
+            className={clsx(
+              'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border-subtle/80 bg-surface-alt px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+            )}
+            aria-controls={filterPanelId}
+            aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
+          >
+            <span className="flex items-center gap-2">
+              Filter
+              {activeFilterCount > 0 ? (
+                <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-brand-foreground">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+            </span>
+            <ChevronDown
+              className={clsx(
+                'h-4 w-4 text-muted transition-transform duration-200',
+                isFilterPanelVisible ? 'rotate-180' : 'rotate-0',
+              )}
+              aria-hidden="true"
+            />
+          </button>
 
-      <div className="space-y-6">
-        <WishlistFilterBar filters={filters} categories={categories} onChange={handleFilterChange} onReset={handleResetFilters} />
+          <div
+            id={filterPanelId}
+            aria-hidden={!isDesktopFilterView && !isFilterPanelVisible}
+            className={clsx(
+              'transition-[max-height,opacity] duration-200 ease-in-out',
+              'md:max-h-none md:opacity-100 md:transition-none md:overflow-visible md:pointer-events-auto',
+              !isDesktopFilterView && 'overflow-hidden',
+              !isDesktopFilterView && isFilterPanelVisible && 'mt-3',
+              !isDesktopFilterView && !isFilterPanelVisible && 'pointer-events-none',
+              isFilterPanelVisible ? 'max-h-[1200px] opacity-100' : 'max-h-0 opacity-0',
+            )}
+          >
+            <WishlistFilterBar
+              filters={filters}
+              categories={categories}
+              onChange={handleFilterChange}
+              onReset={handleResetFilters}
+            />
+          </div>
+        </div>
 
-        {hasError ? (
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {statsCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <article
+                key={card.id}
+                className="flex h-full items-start gap-4 rounded-3xl border border-border-subtle bg-surface p-4 shadow-sm transition-colors duration-200 hover:border-brand/40 hover:shadow-md"
+              >
+                <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${card.iconClass}`}>
+                  <Icon className="h-6 w-6" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">{card.label}</p>
+                  <p className="mt-1 text-lg font-semibold text-text">{card.value}</p>
+                  <p className="mt-1 text-xs text-muted">{card.description}</p>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+
+        <div className="space-y-6">
+          {hasError ? (
           <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
             Terjadi kesalahan saat memuat wishlist. {error instanceof Error ? error.message : ''}
             <button
@@ -540,42 +638,43 @@ export default function WishlistPage() {
           </div>
         ) : null}
 
-        {isLoading ? (
-          renderSkeletons()
-        ) : items.length === 0 ? (
-          renderEmptyState()
-        ) : (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {items.map((item) => (
-                <WishlistCard
-                  key={item.id}
-                  item={item}
-                  selected={selectedIds.has(item.id)}
-                  onSelectChange={(selected) => handleSelectChange(item.id, selected)}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onMarkPurchased={handleMarkPurchased}
-                  onMakeGoal={handleMakeGoal}
-                  onCopyToTransaction={handleCopyToTransaction}
-                  disabled={isMutating}
-                />
-              ))}
-            </div>
-            {hasNextPage ? (
-              <div className="flex justify-center">
-                <div ref={loadMoreRef} className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-muted">
-                  {isFetchingNextPage ? 'Memuat…' : 'Memuat lainnya'}
-                </div>
+          {isLoading ? (
+            renderSkeletons()
+          ) : items.length === 0 ? (
+            renderEmptyState()
+          ) : (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {items.map((item) => (
+                  <WishlistCard
+                    key={item.id}
+                    item={item}
+                    selected={selectedIds.has(item.id)}
+                    onSelectChange={(selected) => handleSelectChange(item.id, selected)}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onMarkPurchased={handleMarkPurchased}
+                    onMakeGoal={handleMakeGoal}
+                    onCopyToTransaction={handleCopyToTransaction}
+                    disabled={isMutating}
+                  />
+                ))}
               </div>
-            ) : null}
-            {total ? (
-              <p className="text-center text-xs text-muted">
-                Menampilkan {items.length} dari {total} wishlist
-              </p>
-            ) : null}
-          </div>
-        )}
+              {hasNextPage ? (
+                <div className="flex justify-center">
+                  <div ref={loadMoreRef} className="h-10 w-full max-w-[200px] rounded-full bg-transparent text-center text-sm text-muted">
+                    {isFetchingNextPage ? 'Memuat…' : 'Memuat lainnya'}
+                  </div>
+                </div>
+              ) : null}
+              {total ? (
+                <p className="text-center text-xs text-muted">
+                  Menampilkan {items.length} dari {total} wishlist
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
       </div>
 
       {selectedCount > 0 ? (
