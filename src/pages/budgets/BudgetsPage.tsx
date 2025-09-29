@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Calendar, Plus, RefreshCw } from 'lucide-react';
+import { CalendarRange, CalendarDays, History, Plus, RefreshCw } from 'lucide-react';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
 import PageHeader from '../../layout/PageHeader';
@@ -18,9 +18,9 @@ import {
 } from '../../lib/budgetApi';
 
 const SEGMENTS = [
-  { value: 'current', label: 'Bulan ini' },
-  { value: 'previous', label: 'Bulan lalu' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'current', label: 'Bulan ini', icon: CalendarDays },
+  { value: 'previous', label: 'Bulan lalu', icon: History },
+  { value: 'custom', label: 'Custom', icon: CalendarRange },
 ] as const;
 
 type SegmentValue = (typeof SEGMENTS)[number]['value'];
@@ -225,7 +225,7 @@ export default function BudgetsPage() {
       <Section first>
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap gap-2">
-            {SEGMENTS.map(({ value, label }) => {
+            {SEGMENTS.map(({ value, label, icon: Icon }) => {
               const active = value === segment;
               return (
                 <button
@@ -233,12 +233,20 @@ export default function BudgetsPage() {
                   type="button"
                   onClick={() => handleSegmentChange(value)}
                   className={clsx(
-                    'h-11 rounded-2xl px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                    'group inline-flex h-11 items-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
                     active
-                      ? 'bg-brand text-brand-foreground shadow'
-                      : 'border border-border bg-surface px-5 text-muted hover:border-brand/40 hover:bg-brand/5 hover:text-text'
+                      ? 'border-transparent bg-brand text-brand-foreground shadow-lg shadow-brand/30'
+                      : 'border-border bg-surface/80 text-muted hover:border-brand/40 hover:bg-brand/5 hover:text-text'
                   )}
                 >
+                  <span
+                    className={clsx(
+                      'flex h-8 w-8 items-center justify-center rounded-xl bg-white/60 text-brand shadow-inner transition group-hover:scale-105 dark:bg-white/10',
+                      active ? 'bg-white/90 text-brand' : 'text-brand',
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </span>
                   {label}
                 </button>
               );
@@ -250,12 +258,12 @@ export default function BudgetsPage() {
               type="month"
               value={customPeriod}
               onChange={(event) => handleCustomPeriodChange(event.target.value)}
-              className="h-11 rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              className="h-11 rounded-2xl border border-border/60 bg-surface/80 px-4 text-sm font-medium text-text shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               aria-label="Pilih periode custom"
             />
           ) : (
-            <div className="flex items-center gap-2 rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-medium text-muted">
-              <Calendar className="h-4 w-4" />
+            <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-surface/80 px-4 py-2 text-sm font-medium text-muted shadow-inner">
+              <CalendarRange className="h-4 w-4" />
               <span>{toHumanReadable(period)}</span>
             </div>
           )}
