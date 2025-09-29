@@ -22,6 +22,8 @@ const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat('id-ID', {
 });
 
 const DIGEST_TRIGGER_KEY = 'hw:digest:trigger';
+const UPCOMING_LOOKAHEAD_DAYS = 7;
+const UPCOMING_LIMIT = 4;
 
 export interface DigestTransactionLike {
   amount?: number | string | null;
@@ -89,13 +91,13 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function loadUpcoming(): DigestUpcomingItem[] {
+function loadUpcomingSubscriptions(): DigestUpcomingItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const subscriptions = loadSubscriptions();
-    return findUpcoming(subscriptions, 7)
+    return findUpcoming(subscriptions, UPCOMING_LOOKAHEAD_DAYS)
       .sort((a, b) => a.days - b.days)
-      .slice(0, 4)
+      .slice(0, UPCOMING_LIMIT)
       .map(({ sub, days }) => ({
         name: typeof sub?.name === 'string' && sub.name.trim() ? sub.name.trim() : 'Langganan',
         amount: toNumber(sub?.amount),
@@ -109,6 +111,7 @@ function loadUpcoming(): DigestUpcomingItem[] {
 function buildDigestData(
   transactions: DigestTransactionLike[] | null | undefined,
   balanceHint: number | null | undefined,
+  upcoming: DigestUpcomingItem[],
 ): DailyDigestModalData {
   const todayKey = getTodayKey();
   const monthKey = todayKey.slice(0, 7);
@@ -169,8 +172,79 @@ function buildDigestData(
     todayNet,
     todayCount,
     topTodayExpenses,
-    upcoming: loadUpcoming(),
+    upcoming,
   };
+}
+
+function mergeUpcoming(
+  subscriptions: DigestUpcomingItem[],
+  debts: DigestUpcomingItem[],
+): DigestUpcomingItem[] {
+  return [...subscriptions, ...debts]
+    .sort((a, b) => a.days - b.days)
+    .slice(0, UPCOMING_LIMIT);
+}
+
+function computeDaysUntil(date: Date): number {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diff = target.getTime() - start.getTime();
+  return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
+async function fetchUpcomingDebts(userId: string | null): Promise<DigestUpcomingItem[]> {
+  if (!userId) return [];
+
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start.getTime() + UPCOMING_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000);
+
+  try {
+    const { data, error } = await supabase
+      .from('debts')
+      .select('title, party_name, amount, paid_total, due_date, status, type')
+      .eq('user_id', userId)
+      .neq('status', 'paid')
+      .not('due_date', 'is', null)
+      .gte('due_date', start.toISOString())
+      .lte('due_date', end.toISOString())
+      .order('due_date', { ascending: true })
+      .limit(UPCOMING_LIMIT * 2);
+
+    if (error) throw error;
+
+    return (data ?? [])
+      .map((row) => {
+        const dueRaw = typeof row?.due_date === 'string' ? row.due_date : null;
+        if (!dueRaw) return null;
+        const dueDate = new Date(dueRaw);
+        if (Number.isNaN(dueDate.getTime())) return null;
+        const days = computeDaysUntil(dueDate);
+        if (days < 0 || days > UPCOMING_LOOKAHEAD_DAYS) return null;
+
+        const total = toNumber(row?.amount);
+        const paid = toNumber(row?.paid_total);
+        const remaining = Math.max(total - paid, 0);
+        if (remaining <= 0) return null;
+
+        const rawTitle = typeof row?.title === 'string' ? row.title.trim() : '';
+        const rawParty = typeof row?.party_name === 'string' ? row.party_name.trim() : '';
+        const label = rawTitle || rawParty;
+        const typeLabel = row?.type === 'receivable' ? 'Piutang' : 'Hutang';
+        const name = label ? `${typeLabel}: ${label}` : typeLabel;
+
+        return {
+          name,
+          amount: remaining,
+          days,
+        } satisfies DigestUpcomingItem;
+      })
+      .filter((item): item is DigestUpcomingItem => Boolean(item))
+      .slice(0, UPCOMING_LIMIT);
+  } catch {
+    return [];
+  }
 }
 
 function buildSeenKey(date: string, userId: string): string {
@@ -211,11 +285,35 @@ export default function useShowDigestOnLogin({
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const autoOpenRef = useRef(false);
+  const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
 
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, balanceHint ?? null),
-    [transactions, balanceHint],
+    () => buildDigestData(transactions ?? null, balanceHint ?? null, upcoming),
+    [transactions, balanceHint, upcoming],
   );
+
+  useEffect(() => {
+    const subscriptionsUpcoming = loadUpcomingSubscriptions();
+    setUpcoming(subscriptionsUpcoming);
+    if (!userId) {
+      return;
+    }
+
+    let active = true;
+    fetchUpcomingDebts(userId)
+      .then((debts) => {
+        if (!active) return;
+        setUpcoming(mergeUpcoming(subscriptionsUpcoming, debts));
+      })
+      .catch(() => {
+        if (!active) return;
+        setUpcoming(subscriptionsUpcoming);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [userId]);
 
   const markSeen = useCallback(
     (uid: string | null, dateKey?: string) => {
