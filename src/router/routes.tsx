@@ -5,6 +5,7 @@ import AuthGuard from '../guards/AuthGuard';
 import { isFeatureEnabled } from '../featureFlags';
 
 const MobileGoogleCallback = lazy(() => import('../routes/MobileGoogleCallback'));
+const NativeGoogleLogin = lazy(() => import('../pages/NativeGoogleLogin'));
 
 function loadComponent(path: string) {
   switch (path) {
@@ -40,6 +41,8 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/Profile'));
     case '/auth':
       return lazy(() => import('../pages/AuthLogin'));
+    case '/native-google-login':
+      return lazy(() => import('../pages/NativeGoogleLogin'));
     default:
       return lazy(() => import('../pages/Dashboard'));
   }
@@ -69,6 +72,14 @@ export const ROUTES: RouteObject[] = [
     element: (
       <Suspense fallback={<div />}>
         <MobileGoogleCallback />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/native-google-login',
+    element: (
+      <Suspense fallback={<div />}>
+        <NativeGoogleLogin />
       </Suspense>
     ),
   },

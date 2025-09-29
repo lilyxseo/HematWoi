@@ -7,6 +7,7 @@ import { getSession, onAuthStateChange } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
 import { formatOAuthErrorMessage } from '../lib/oauth-error';
+import { isHematWoiApp } from '../lib/ua';
 
 const heroTips = [
   'Pantau cash flow harian tanpa ribet.',
@@ -28,6 +29,7 @@ export default function AuthLogin() {
   });
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const postLoginPath = useMemo(() => (isHematWoiApp() ? '/native-google-login' : '/'), []);
   const googleRedirectTo = useMemo(() => {
     const env = typeof import.meta !== 'undefined' ? import.meta.env ?? {} : {};
     const configuredBase =
@@ -90,7 +92,7 @@ export default function AuthLogin() {
         const session = await getSession();
         if (!isMounted) return;
         if (session) {
-          navigate('/', { replace: true });
+          navigate(postLoginPath, { replace: true });
           return;
         }
         setChecking(false);
@@ -113,7 +115,7 @@ export default function AuthLogin() {
         }
         void syncGuestData(session.user?.id ?? null);
         if (location.pathname === '/auth') {
-          navigate('/', { replace: true });
+          navigate(postLoginPath, { replace: true });
         }
       }
     });
@@ -122,7 +124,7 @@ export default function AuthLogin() {
       isMounted = false;
       listener?.subscription?.unsubscribe();
     };
-  }, [location.pathname, navigate, syncGuestData]);
+  }, [location.pathname, navigate, postLoginPath, syncGuestData]);
 
   const skeleton = useMemo(
     () => (
@@ -167,8 +169,8 @@ export default function AuthLogin() {
     } catch (error) {
       console.error('[AuthLogin] Gagal membaca sesi setelah login', error);
     }
-    navigate('/', { replace: true });
-  }, [navigate, syncGuestData]);
+    navigate(postLoginPath, { replace: true });
+  }, [navigate, postLoginPath, syncGuestData]);
 
   return (
     <ErrorBoundary>

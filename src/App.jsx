@@ -28,6 +28,7 @@ import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
 import AuthLogin from "./pages/AuthLogin";
+import NativeGoogleLogin from "./pages/NativeGoogleLogin";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
@@ -1070,6 +1071,7 @@ function AppShell({ prefs, setPrefs }) {
             <Route path="/auth" element={<AuthLogin />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/auth/mobile/google" element={<MobileGoogleCallback />} />
+            <Route path="/native-google-login" element={<NativeGoogleLogin />} />
             <Route element={<AuthGuard />}>
               <Route
                 path="/"

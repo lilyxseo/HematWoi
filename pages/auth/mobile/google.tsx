@@ -29,7 +29,7 @@ export default function MobileGoogleCallback() {
       }
 
       setMsg('Berhasil login. Mengalihkan…');
-      window.location.replace('/');
+      window.location.replace('/native-google-login');
     })();
   }, []);
 
