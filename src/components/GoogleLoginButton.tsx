@@ -70,10 +70,11 @@ const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
   'https://www.hemat-woi.me/auth/google'
 );
 // Trigger for Android WebView → native GSI chooser
-export DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
+export const DEFAULT_NATIVE_SCHEME = 'hematwoi://native-google-login';
+export const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
   envNativeTrigger,
-  '/native-google-login',
-  'https://www.hemat-woi.me/native-google-login',
+  DEFAULT_NATIVE_SCHEME,
+  DEFAULT_NATIVE_SCHEME,
   { allowCustomScheme: true }
 );
 
@@ -96,8 +97,10 @@ export default function GoogleLoginButton({
     event.preventDefault();
 
     if (isHematWoiApp()) {
-      // Di dalam app (WebView) → arahkan ke /native-google-login agar Android memunculkan chooser
-      if (typeof window !== 'undefined') window.location.href = nativeTriggerUrl;
+      // Di dalam app (WebView) → coba picu skema native agar Android memunculkan Google chooser
+      const candidate = nativeTriggerUrl ?? DEFAULT_NATIVE_TRIGGER_URL;
+      const target = httpPattern.test(candidate) ? DEFAULT_NATIVE_SCHEME : candidate;
+      if (typeof window !== 'undefined') window.location.href = target;
       return;
     }
 
