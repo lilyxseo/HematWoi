@@ -2,6 +2,7 @@ import type { ButtonHTMLAttributes, MouseEvent } from 'react';
 import { isHematWoiApp } from '../lib/ua';
 
 const httpPattern = /^https?:\/\//i;
+const schemePattern = /^[a-z][a-z0-9+.-]*:/i;
 const env = typeof import.meta !== 'undefined' ? import.meta.env ?? {} : {};
 
 // kandidat base URL dari ENV
@@ -86,9 +87,17 @@ export default function GoogleLoginButton({
   const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
 
-    if (isHematWoiApp()) {
-      // Di dalam app (WebView) → arahkan ke /native-google-login (atau custom scheme jika diset di ENV)
-      if (typeof window !== 'undefined') window.location.href = nativeTriggerUrl;
+    const trimmedNativeTrigger = typeof nativeTriggerUrl === 'string' ? nativeTriggerUrl.trim() : '';
+    const isNativeApp = isHematWoiApp();
+    const canUseNativeTrigger =
+      isNativeApp &&
+      Boolean(trimmedNativeTrigger) &&
+      schemePattern.test(trimmedNativeTrigger) &&
+      !httpPattern.test(trimmedNativeTrigger);
+
+    if (canUseNativeTrigger) {
+      // Di dalam app (WebView) → arahkan ke skema khusus untuk memicu native Google Sign-In
+      if (typeof window !== 'undefined') window.location.href = trimmedNativeTrigger;
       return;
     }
 
