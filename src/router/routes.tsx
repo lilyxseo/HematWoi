@@ -4,6 +4,8 @@ import { NAV_ITEMS, NavItem } from './nav.config';
 import AuthGuard from '../guards/AuthGuard';
 import { isFeatureEnabled } from '../featureFlags';
 
+const MobileGoogleCallback = lazy(() => import('../routes/MobileGoogleCallback'));
+
 function loadComponent(path: string) {
   switch (path) {
     case '/':
@@ -60,4 +62,14 @@ function buildRoutes(items: NavItem[]): RouteObject[] {
     });
 }
 
-export const ROUTES: RouteObject[] = buildRoutes(NAV_ITEMS);
+export const ROUTES: RouteObject[] = [
+  ...buildRoutes(NAV_ITEMS),
+  {
+    path: '/auth/mobile/google',
+    element: (
+      <Suspense fallback={<div />}>
+        <MobileGoogleCallback />
+      </Suspense>
+    ),
+  },
+];
