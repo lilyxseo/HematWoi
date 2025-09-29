@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Plus } from 'lucide-react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import clsx from 'clsx';
+import { ChevronDown, Download, Plus } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';
@@ -69,6 +70,14 @@ export default function Debts() {
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [summary, setSummary] = useState<DebtSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isDesktopFilterView, setIsDesktopFilterView] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return window.matchMedia('(min-width: 768px)').matches;
+  });
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const filterPanelId = useId();
   const [formOpen, setFormOpen] = useState(false);
   const [formMode, setFormMode] = useState<'create' | 'edit'>('create');
   const [editingDebt, setEditingDebt] = useState<DebtRecord | null>(null);
@@ -473,6 +482,46 @@ export default function Debts() {
 
   const disableActions = !canUseCloud;
 
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia('(min-width: 768px)');
+    const handleChange = (event: MediaQueryListEvent) => {
+      setIsDesktopFilterView(event.matches);
+    };
+
+    setIsDesktopFilterView(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => mediaQuery.removeListener(handleChange);
+  }, []);
+
+  const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
+
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.q.trim()) count += 1;
+    if (filters.type !== 'all') count += 1;
+    if (filters.status !== 'all') count += 1;
+    if (filters.dateField !== 'created_at') count += 1;
+    if (filters.dateFrom) count += 1;
+    if (filters.dateTo) count += 1;
+    if (filters.sort !== 'newest') count += 1;
+    return count;
+  }, [filters]);
+
+  const toggleFilterPanel = () => {
+    if (isDesktopFilterView) return;
+    setFilterPanelOpen((prev) => !prev);
+  };
+
   return (
     <Page>
       <div className="space-y-6 min-w-0">
@@ -497,29 +546,73 @@ export default function Debts() {
           </button>
         </PageHeader>
 
-        {!userLoading && !canUseCloud ? (
-          <div className="rounded-3xl border border-dashed border-border bg-surface-2/70 px-4 py-3 text-sm text-muted">
-            Mode offline aktif. Masuk untuk melihat dan mengelola data hutang yang tersimpan di cloud.
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={toggleFilterPanel}
+              className={clsx(
+                'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]',
+              )}
+              aria-controls={filterPanelId}
+              aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
+            >
+              <span className="flex items-center gap-2">
+                Filter
+                {activeFilterCount > 0 ? (
+                  <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-brand-foreground">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </span>
+              <ChevronDown
+                className={clsx(
+                  'h-4 w-4 text-muted transition-transform duration-200',
+                  isFilterPanelVisible ? 'rotate-180' : 'rotate-0',
+                )}
+                aria-hidden="true"
+              />
+            </button>
+
+            <div
+              id={filterPanelId}
+              aria-hidden={!isDesktopFilterView && !isFilterPanelVisible}
+              className={clsx(
+                'transition-[max-height,opacity] duration-200 ease-in-out',
+                'md:max-h-none md:opacity-100 md:transition-none md:overflow-visible md:pointer-events-auto',
+                !isDesktopFilterView && 'overflow-hidden',
+                !isDesktopFilterView && isFilterPanelVisible && 'mt-3',
+                !isDesktopFilterView && !isFilterPanelVisible && 'pointer-events-none',
+                isFilterPanelVisible ? 'max-h-[1200px] opacity-100' : 'max-h-0 opacity-0',
+              )}
+            >
+              <FilterBar
+                filters={filters}
+                onChange={setFilters}
+                onReset={() => setFilters(INITIAL_FILTERS)}
+              />
+            </div>
           </div>
-        ) : null}
 
-        <SummaryCards summary={summary} />
+          {!userLoading && !canUseCloud ? (
+            <div className="rounded-3xl border border-dashed border-border bg-surface-2/70 px-4 py-3 text-sm text-muted">
+              Mode offline aktif. Masuk untuk melihat dan mengelola data hutang yang tersimpan di cloud.
+            </div>
+          ) : null}
 
-        <FilterBar
-          filters={filters}
-          onChange={setFilters}
-          onReset={() => setFilters(INITIAL_FILTERS)}
-        />
+          <SummaryCards summary={summary} />
 
-        <section className="min-w-0">
-          <DebtsTableResponsive
-            debts={debts}
-            loading={loading}
-            onEdit={handleEditClick}
-            onDelete={handleDeleteRequest}
-            onAddPayment={handleOpenPayment}
-          />
-        </section>
+          <section className="min-w-0">
+            <DebtsTableResponsive
+              debts={debts}
+              loading={loading}
+              onEdit={handleEditClick}
+              onDelete={handleDeleteRequest}
+              onAddPayment={handleOpenPayment}
+            />
+          </section>
+        </div>
       </div>
 
       <DebtForm
