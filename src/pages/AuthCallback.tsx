@@ -4,6 +4,7 @@ import ErrorBoundary from '../components/system/ErrorBoundary';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
 import { formatOAuthErrorMessage, formatOAuthQueryError } from '../lib/oauth-error';
+import { isHematWoiApp } from '../lib/ua';
 
 const DIGEST_TRIGGER_KEY = 'hw:digest:trigger';
 
@@ -14,6 +15,7 @@ export default function AuthCallback() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<StatusState>('processing');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const postLoginPath = useMemo(() => (isHematWoiApp() ? '/native-google-login' : '/'), []);
 
   const searchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const hashParams = useMemo(
@@ -56,7 +58,7 @@ export default function AuthCallback() {
       markOnlineMode();
       void syncSession(userId);
       if (!cancelled) {
-        navigate('/', { replace: true });
+        navigate(postLoginPath, { replace: true });
       }
     };
 
@@ -158,6 +160,7 @@ export default function AuthCallback() {
     errorStatus,
     hasImplicitSession,
     navigate,
+    postLoginPath,
     refreshToken,
   ]);
 
