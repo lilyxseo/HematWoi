@@ -133,16 +133,42 @@ function toNum(value: unknown): number | undefined {
 
 function toISODate(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = value.includes('T') ? value : `${value}T00:00:00`;
-  const date = new Date(isoSource);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(trimmed);
+  if (dateOnlyMatch) {
+    const [year, month, day] = trimmed.split('-').map((part) => Number.parseInt(part, 10));
+    const utcDate = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(utcDate.getTime())) return null;
+    return utcDate.toISOString();
+  }
+
+  const source = trimmed.includes('T') && /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)
+    ? trimmed
+    : `${trimmed}Z`;
+  const date = new Date(source);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
 
 function toISODateEnd(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = value.includes('T') ? value : `${value}T23:59:59`;
-  const date = new Date(isoSource);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const dateOnlyMatch = /^\d{4}-\d{2}-\d{2}$/.exec(trimmed);
+  if (dateOnlyMatch) {
+    const [year, month, day] = trimmed.split('-').map((part) => Number.parseInt(part, 10));
+    const utcDate = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+    if (Number.isNaN(utcDate.getTime())) return null;
+    return utcDate.toISOString();
+  }
+
+  const source = trimmed.includes('T') && /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)
+    ? trimmed
+    : `${trimmed}Z`;
+  const date = new Date(source);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
