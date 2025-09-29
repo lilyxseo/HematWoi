@@ -131,20 +131,34 @@ function toNum(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function parseUtcDate(value: string, hour = 0, minute = 0, second = 0): Date | null {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  const utcDate = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  if (Number.isNaN(utcDate.getTime())) return null;
+  return utcDate;
+}
+
 function toISODate(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = value.includes('T') ? value : `${value}T00:00:00`;
-  const date = new Date(isoSource);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
+  if (value.includes('T')) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString();
+  }
+  const parsed = parseUtcDate(value);
+  return parsed ? parsed.toISOString() : null;
 }
 
 function toISODateEnd(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = value.includes('T') ? value : `${value}T23:59:59`;
-  const date = new Date(isoSource);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString();
+  if (value.includes('T')) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString();
+  }
+  const parsed = parseUtcDate(value, 23, 59, 59);
+  return parsed ? parsed.toISOString() : null;
 }
 
 function normalizeColor(value: unknown): string {
