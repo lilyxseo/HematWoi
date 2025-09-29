@@ -13,7 +13,7 @@ export default function MobileGoogleCallback() {
         const idToken = p.get('id_token');
 
         if (!idToken) {
-          setMsg('Tidak ada id_token.');
+          setMsg('Token tidak valid.');
           return;
         }
 
