@@ -10,12 +10,12 @@ interface SummaryCardsProps {
 
 function SummarySkeleton() {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-surface/70 p-6 shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface/60 p-5 shadow-sm">
       <div className="absolute inset-0 bg-gradient-to-br from-white/70 via-white/40 to-white/10 opacity-80 dark:from-zinc-900/80 dark:via-zinc-900/50 dark:to-zinc-900/20" />
-      <div className="relative flex h-full flex-col gap-4">
-        <div className="h-3 w-24 animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-700/60" />
-        <div className="h-8 w-28 animate-pulse rounded-full bg-zinc-200/80 dark:bg-zinc-700/70" />
-        <div className="mt-auto h-2 w-full animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-800/60" />
+      <div className="relative flex h-full flex-col gap-3">
+        <div className="h-2.5 w-20 animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-700/60" />
+        <div className="h-6 w-24 animate-pulse rounded-full bg-zinc-200/80 dark:bg-zinc-700/70" />
+        <div className="mt-auto h-1.5 w-full animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-800/60" />
       </div>
     </div>
   );
@@ -24,12 +24,12 @@ function SummarySkeleton() {
 export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
   if (loading) {
     return (
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <SummarySkeleton key={index} />
-        ))}
-      </div>
-    );
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <SummarySkeleton key={index} />
+      ))}
+    </div>
+  );
   }
 
   const progress = Math.min(Math.max(summary.percentage, 0), 1);
@@ -76,7 +76,7 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
   ] as const;
 
   return (
-    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {cards.map(({
         label,
         description,
@@ -91,41 +91,41 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
         <div
           key={label}
           className={clsx(
-            'relative overflow-hidden rounded-3xl border border-border/60 bg-surface/80 p-6 shadow-[0_25px_45px_-25px_rgba(15,23,42,0.45)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_32px_65px_-30px_rgba(15,23,42,0.55)]',
+            'relative overflow-hidden rounded-2xl border border-border/60 bg-surface/70 p-5 shadow-[0_18px_35px_-22px_rgba(15,23,42,0.4)] transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-28px_rgba(15,23,42,0.5)]',
             'backdrop-blur supports-[backdrop-filter]:bg-surface/60',
           )}
         >
           <div
             aria-hidden
-            className="pointer-events-none absolute -right-16 -top-12 h-48 w-48 rounded-full blur-3xl"
+            className="pointer-events-none absolute -right-14 -top-12 h-40 w-40 rounded-full blur-3xl"
             style={{ background: `radial-gradient(circle at center, ${glow} 0%, rgba(255,255,255,0) 70%)` }}
           />
 
-          <div className="relative flex h-full flex-col gap-5">
+          <div className="relative flex h-full flex-col gap-4">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
-                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-muted">{label}</p>
-                <p className="text-xs text-muted/80 dark:text-muted/60">{description}</p>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted">{label}</p>
+                <p className="text-[0.7rem] text-muted/80 dark:text-muted/60">{description}</p>
               </div>
               <span
                 className={clsx(
-                  'flex h-11 w-11 items-center justify-center rounded-2xl shadow-inner ring-1 ring-inset ring-border/40 dark:ring-white/10',
+                  'flex h-10 w-10 items-center justify-center rounded-xl shadow-inner ring-1 ring-inset ring-border/40 dark:ring-white/10',
                   iconBg,
                 )}
               >
-                <Icon className={clsx('h-5 w-5', accent)} />
+                <Icon className={clsx('h-4 w-4', accent)} />
               </span>
             </div>
 
-            <span className="text-3xl font-semibold text-text dark:text-white">{value}</span>
+            <span className="text-2xl font-semibold text-text dark:text-white">{value}</span>
 
             {typeof cardProgress === 'number' ? (
               <div className="mt-auto flex items-end justify-between gap-4">
-                <div className="flex flex-col gap-1 text-xs text-muted">
+                <div className="flex flex-col gap-1 text-[0.7rem] text-muted">
                   <span className="font-semibold text-text">Tingkat penggunaan</span>
                   <span>{(cardProgress * 100).toFixed(0)}% dari total anggaran</span>
                 </div>
-                <div className="relative flex h-16 w-16 items-center justify-center">
+                <div className="relative flex h-14 w-14 items-center justify-center">
                   <div
                     className="absolute inset-0 rounded-full opacity-80"
                     style={{ background: `radial-gradient(circle at center, ${glow} 0%, rgba(255,255,255,0) 72%)` }}
@@ -136,8 +136,8 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
                       background: `conic-gradient(${accentColor ?? glow} ${cardProgress * 360}deg, rgba(148,163,184,0.25) 0deg)`,
                     }}
                   />
-                  <div className="absolute inset-[6px] rounded-full border border-white/50 bg-gradient-to-br from-white/90 to-white/70 shadow-inner dark:border-white/10 dark:from-zinc-900/90 dark:to-zinc-900/60" />
-                  <span className="relative text-sm font-semibold text-text dark:text-white">{(cardProgress * 100).toFixed(0)}%</span>
+                  <div className="absolute inset-[5px] rounded-full border border-white/40 bg-gradient-to-br from-white/90 to-white/70 shadow-inner dark:border-white/10 dark:from-zinc-900/90 dark:to-zinc-900/60" />
+                  <span className="relative text-xs font-semibold text-text dark:text-white">{(cardProgress * 100).toFixed(0)}%</span>
                 </div>
               </div>
             ) : null}
