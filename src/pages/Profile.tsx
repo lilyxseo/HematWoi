@@ -14,6 +14,7 @@ import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import {
   changePassword,
+  createPassword,
   checkUsernameAvailability,
   exportUserData,
   getProfile,
@@ -27,6 +28,7 @@ import {
   updatePreferences,
   uploadAvatar,
   type PasswordChangePayload,
+  type PasswordCreatePayload,
   type ProfileNotifications,
   type SessionInfo,
   type ThemeMode,
@@ -107,6 +109,11 @@ function applyThemeInstant(mode: ThemeMode) {
   }
 }
 
+function userHasPassword(user: User | null): boolean {
+  if (!user) return false;
+  return Boolean(user.identities?.some((identity) => identity.provider === 'email'));
+}
+
 type TabKey =
   | 'account'
   | 'security'
@@ -145,6 +152,7 @@ export default function ProfilePage() {
   const [exporting, setExporting] = useState(false);
   const [preferencesSaving, setPreferencesSaving] = useState(false);
   const [notificationSaving, setNotificationSaving] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
 
   const loadSessions = useCallback(async () => {
     setLoadingSessions(true);
@@ -166,9 +174,11 @@ export default function ProfilePage() {
         if (!mounted) return;
         const user = (session.user as User | null) ?? null;
         setSessionUser(user);
+        setHasPassword(userHasPassword(user));
         if (!user) {
           setProfile(null);
           setSessions([]);
+          setHasPassword(false);
           return;
         }
         const profileData = await getProfile();
@@ -195,6 +205,10 @@ export default function ProfilePage() {
       mounted = false;
     };
   }, [loadSessions]);
+
+  useEffect(() => {
+    setHasPassword(userHasPassword(sessionUser));
+  }, [sessionUser]);
 
   useEffect(() => {
     if (!profile) return;
@@ -314,6 +328,24 @@ export default function ProfilePage() {
       addToast('Password berhasil diperbarui.', 'success');
       if (payload.sign_out_other && result.signed_out_other) {
         addToast('Sesi lain telah keluar.', 'info');
+      }
+    },
+    [addToast],
+  );
+
+  const handleCreatePassword = useCallback(
+    async (payload: PasswordCreatePayload) => {
+      const result = await createPassword(payload);
+      addToast('Password berhasil dibuat.', 'success');
+      setHasPassword(true);
+      if (payload.sign_out_other && result.signed_out_other) {
+        addToast('Sesi lain telah keluar.', 'info');
+      }
+      try {
+        const session = await getSession();
+        setSessionUser((session.user as User | null) ?? null);
+      } catch {
+        // ignore refresh error
       }
     },
     [addToast],
@@ -478,9 +510,11 @@ export default function ProfilePage() {
               offline={offline}
               sessions={sessions}
               loadingSessions={loadingSessions}
+              hasPassword={hasPassword}
               onRefreshSessions={loadSessions}
               onSignOutSession={handleSignOutTarget}
               onChangePassword={handleChangePassword}
+              onCreatePassword={handleCreatePassword}
             />
           </div>
           <div

@@ -68,6 +68,11 @@ export interface PasswordChangeResult {
   signed_out_other: boolean;
 }
 
+export interface PasswordCreatePayload {
+  new_password: string;
+  sign_out_other?: boolean;
+}
+
 function normalizeUsername(value?: string | null) {
   if (!value) return null;
   const trimmed = value.trim().toLowerCase();
@@ -394,6 +399,33 @@ export async function changePassword(payload: PasswordChangePayload): Promise<Pa
     return { signed_out_other: false };
   } catch (error) {
     wrapError('changePassword', error, 'Tidak bisa mengganti password.');
+  }
+}
+
+export async function createPassword(payload: PasswordCreatePayload): Promise<PasswordChangeResult> {
+  try {
+    if (!payload.new_password) {
+      throw new Error('Password baru wajib diisi.');
+    }
+    if (payload.new_password.length < 6) {
+      throw new Error('Password baru minimal 6 karakter.');
+    }
+    const user = await requireUser();
+    const hasPassword = Boolean(
+      user.identities?.some((identity: { provider?: string | null }) => identity.provider === 'email'),
+    );
+    if (hasPassword) {
+      throw new Error('Password sudah tersedia untuk akun ini.');
+    }
+    const { error } = await supabase.auth.updateUser({ password: payload.new_password });
+    if (error) throw error;
+    if (payload.sign_out_other) {
+      await supabase.auth.signOut({ scope: 'global' });
+      return { signed_out_other: true };
+    }
+    return { signed_out_other: false };
+  } catch (error) {
+    wrapError('createPassword', error, 'Tidak bisa membuat password.');
   }
 }
 
