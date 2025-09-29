@@ -1,9 +1,9 @@
-import { useMemo } from "react"
 import { AlertTriangle, ArrowRight, Sparkles } from "lucide-react"
+import { useMemo } from "react"
 import { Link } from "react-router-dom"
 import { useBudgets } from "../../hooks/useBudgets"
 import { formatCurrency } from "../../lib/format.js"
-import type { BudgetWithSpent } from "../../lib/budgetApi"
+import type { BudgetWithActual } from "../../lib/budgetsApi"
 import type { PeriodRange } from "./PeriodPicker"
 
 interface BudgetHighlightsProps {
@@ -33,12 +33,12 @@ function formatPercent(progress: number) {
   return `${Math.round(progress * 100)}%`
 }
 
-function createHighlights(rows: BudgetWithSpent[]): HighlightBudget[] {
+function createHighlights(rows: BudgetWithActual[]): HighlightBudget[] {
   return rows
     .map((row) => {
-      const planned = Number(row.amount_planned ?? 0)
+      const planned = Number(row.planned ?? 0)
       if (planned <= 0) return null
-      const spent = Number(row.spent ?? 0)
+      const spent = Number(row.actual ?? 0)
       const progress = planned > 0 ? spent / planned : 0
       const distance = Math.abs(1 - progress)
       return {
@@ -78,9 +78,9 @@ function BudgetSkeleton() {
 
 export default function BudgetHighlights({ period }: BudgetHighlightsProps) {
   const budgetPeriod = useMemo(() => getBudgetPeriod(period), [period])
-  const { rows, loading, error } = useBudgets(budgetPeriod)
+  const { budgets, isLoading, error } = useBudgets({ period: budgetPeriod })
 
-  const highlights = useMemo(() => createHighlights(rows), [rows])
+  const highlights = useMemo(() => createHighlights(budgets), [budgets])
 
   return (
     <section className="rounded-3xl border border-border/60 bg-gradient-to-br from-white via-white to-primary/5 p-6 shadow-sm transition dark:border-border/40 dark:from-zinc-900/60 dark:via-zinc-900/40 dark:to-primary/10">
@@ -105,7 +105,7 @@ export default function BudgetHighlights({ period }: BudgetHighlightsProps) {
       </header>
 
       <div className="mt-6 space-y-4">
-        {loading ? (
+        {isLoading ? (
           <>
             <BudgetSkeleton />
             <BudgetSkeleton />
