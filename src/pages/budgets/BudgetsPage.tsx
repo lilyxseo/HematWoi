@@ -224,7 +224,7 @@ export default function BudgetsPage() {
 
       <Section first>
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap gap-2">
+          <div className="grid w-full grid-cols-3 gap-2">
             {SEGMENTS.map(({ value, label, icon: Icon }) => {
               const active = value === segment;
               return (
@@ -233,7 +233,7 @@ export default function BudgetsPage() {
                   type="button"
                   onClick={() => handleSegmentChange(value)}
                   className={clsx(
-                    'group inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                    'group inline-flex h-10 w-full items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
                     active
                       ? 'border-transparent bg-brand text-brand-foreground shadow-lg shadow-brand/30'
                       : 'border-border bg-surface/80 text-muted hover:border-brand/40 hover:bg-brand/5 hover:text-text'
@@ -241,11 +241,11 @@ export default function BudgetsPage() {
                 >
                   <span
                     className={clsx(
-                      'flex h-8 w-8 items-center justify-center rounded-lg bg-white/60 text-brand shadow-inner transition group-hover:scale-105 dark:bg-white/10',
-                      active ? 'bg-white/90 text-brand' : 'text-brand',
+                      'flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white shadow-inner transition group-hover:scale-105',
+                      active ? 'brightness-110' : 'opacity-80 group-hover:opacity-100',
                     )}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-4 w-4 text-white" />
                   </span>
                   {label}
                 </button>
