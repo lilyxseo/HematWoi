@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import ErrorBoundary from '../components/system/ErrorBoundary';
+import { redirectToNativeGoogleLogin } from '../lib/native-google-login';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
 import { formatOAuthErrorMessage, formatOAuthQueryError } from '../lib/oauth-error';
@@ -56,7 +57,7 @@ export default function AuthCallback() {
       markOnlineMode();
       void syncSession(userId);
       if (!cancelled) {
-        navigate('/native-google-login', { replace: true });
+        redirectToNativeGoogleLogin();
       }
     };
 
@@ -157,7 +158,7 @@ export default function AuthCallback() {
     errorHint,
     errorStatus,
     hasImplicitSession,
-    navigate,
+    redirectToNativeGoogleLogin,
     refreshToken,
   ]);
 

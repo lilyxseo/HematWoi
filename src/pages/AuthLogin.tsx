@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
+import { redirectToNativeGoogleLogin } from '../lib/native-google-login';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
 import { formatOAuthErrorMessage } from '../lib/oauth-error';
@@ -15,7 +16,6 @@ const heroTips = [
 ];
 
 export default function AuthLogin() {
-  const navigate = useNavigate();
   const location = useLocation();
   const [checking, setChecking] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
@@ -90,7 +90,7 @@ export default function AuthLogin() {
         const session = await getSession();
         if (!isMounted) return;
         if (session) {
-          navigate('/native-google-login', { replace: true });
+          redirectToNativeGoogleLogin();
           return;
         }
         setChecking(false);
@@ -113,7 +113,7 @@ export default function AuthLogin() {
         }
         void syncGuestData(session.user?.id ?? null);
         if (location.pathname === '/auth') {
-          navigate('/native-google-login', { replace: true });
+          redirectToNativeGoogleLogin();
         }
       }
     });
@@ -122,7 +122,7 @@ export default function AuthLogin() {
       isMounted = false;
       listener?.subscription?.unsubscribe();
     };
-  }, [location.pathname, navigate, syncGuestData]);
+  }, [location.pathname, redirectToNativeGoogleLogin, syncGuestData]);
 
   const skeleton = useMemo(
     () => (
@@ -167,8 +167,8 @@ export default function AuthLogin() {
     } catch (error) {
       console.error('[AuthLogin] Gagal membaca sesi setelah login', error);
     }
-    navigate('/native-google-login', { replace: true });
-  }, [navigate, syncGuestData]);
+    redirectToNativeGoogleLogin();
+  }, [redirectToNativeGoogleLogin, syncGuestData]);
 
   return (
     <ErrorBoundary>
