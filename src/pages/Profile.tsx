@@ -14,6 +14,7 @@ import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import {
   changePassword,
+  createPassword,
   checkUsernameAvailability,
   exportUserData,
   getProfile,
@@ -237,6 +238,15 @@ export default function ProfilePage() {
     });
   }, [sessionUser]);
 
+  const hasPassword = useMemo(() => {
+    if (!sessionUser) return false;
+    const metaProviders = sessionUser.app_metadata?.providers;
+    if (Array.isArray(metaProviders) && metaProviders.includes('email')) {
+      return true;
+    }
+    return sessionUser.identities?.some((identity) => identity.provider === 'email') ?? false;
+  }, [sessionUser]);
+
   const handleAccountSave = useCallback(
     async (payload: { full_name?: string; username?: string | null }) => {
       const next = await updateAccount(payload);
@@ -315,6 +325,27 @@ export default function ProfilePage() {
       if (payload.sign_out_other && result.signed_out_other) {
         addToast('Sesi lain telah keluar.', 'info');
       }
+    },
+    [addToast],
+  );
+
+  const handleCreatePassword = useCallback(
+    async (newPassword: string) => {
+      await createPassword(newPassword);
+      addToast('Password berhasil dibuat.', 'success');
+      setSessionUser((prev) => {
+        if (!prev) return prev;
+        const providers = Array.isArray(prev.app_metadata?.providers)
+          ? Array.from(new Set([...(prev.app_metadata?.providers ?? []), 'email']))
+          : ['email'];
+        return {
+          ...prev,
+          app_metadata: {
+            ...prev.app_metadata,
+            providers,
+          },
+        };
+      });
     },
     [addToast],
   );
@@ -478,9 +509,11 @@ export default function ProfilePage() {
               offline={offline}
               sessions={sessions}
               loadingSessions={loadingSessions}
+              hasPassword={hasPassword}
               onRefreshSessions={loadSessions}
               onSignOutSession={handleSignOutTarget}
               onChangePassword={handleChangePassword}
+              onCreatePassword={handleCreatePassword}
             />
           </div>
           <div

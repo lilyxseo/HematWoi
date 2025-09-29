@@ -6,9 +6,11 @@ interface SecurityCardProps {
   offline: boolean;
   sessions: SessionInfo[];
   loadingSessions: boolean;
+  hasPassword: boolean;
   onRefreshSessions: () => Promise<void>;
   onSignOutSession: (sessionId?: string) => Promise<void>;
   onChangePassword: (payload: PasswordChangePayload) => Promise<void>;
+  onCreatePassword: (newPassword: string) => Promise<void>;
 }
 
 type StrengthLevel = 'weak' | 'medium' | 'strong';
@@ -46,9 +48,11 @@ export default function SecurityCard({
   offline,
   sessions,
   loadingSessions,
+  hasPassword,
   onRefreshSessions,
   onSignOutSession,
   onChangePassword,
+  onCreatePassword,
 }: SecurityCardProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -63,10 +67,11 @@ export default function SecurityCard({
   const strength = useMemo(() => detectStrength(newPassword), [newPassword]);
 
   const disabledChange = useMemo(() => {
-    if (!currentPassword || !newPassword || !confirmPassword) return true;
+    if (!newPassword || !confirmPassword) return true;
     if (newPassword !== confirmPassword) return true;
+    if (hasPassword && !currentPassword) return true;
     return offline;
-  }, [currentPassword, newPassword, confirmPassword, offline]);
+  }, [currentPassword, newPassword, confirmPassword, offline, hasPassword]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -75,23 +80,39 @@ export default function SecurityCard({
       setChanging(true);
       setFormError('');
       try {
-        await onChangePassword({
-          current_password: currentPassword,
-          new_password: newPassword,
-          sign_out_other: signOutOther,
-        });
-        setCurrentPassword('');
+        if (hasPassword) {
+          await onChangePassword({
+            current_password: currentPassword,
+            new_password: newPassword,
+            sign_out_other: signOutOther,
+          });
+          setCurrentPassword('');
+        } else {
+          await onCreatePassword(newPassword);
+        }
         setNewPassword('');
         setConfirmPassword('');
       } catch (error) {
         setFormError(
-          error instanceof Error ? error.message : 'Tidak bisa mengganti password saat ini.',
+          error instanceof Error
+            ? error.message
+            : hasPassword
+              ? 'Tidak bisa mengganti password saat ini.'
+              : 'Tidak bisa membuat password saat ini.',
         );
       } finally {
         setChanging(false);
       }
     },
-    [disabledChange, onChangePassword, currentPassword, newPassword, signOutOther],
+    [
+      disabledChange,
+      hasPassword,
+      onChangePassword,
+      currentPassword,
+      newPassword,
+      signOutOther,
+      onCreatePassword,
+    ],
   );
 
   const handleRefreshSessions = useCallback(async () => {
@@ -144,20 +165,27 @@ export default function SecurityCard({
       </div>
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="space-y-1">
-            <label htmlFor="profile-current-password" className="text-sm font-medium text-foreground">
-              Password saat ini
-            </label>
-            <input
-              id="profile-current-password"
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-              disabled={changing || offline}
-              className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </div>
+          {hasPassword ? (
+            <div className="space-y-1">
+              <label htmlFor="profile-current-password" className="text-sm font-medium text-foreground">
+                Password saat ini
+              </label>
+              <input
+                id="profile-current-password"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                disabled={changing || offline}
+                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+          ) : (
+            <p className="rounded-2xl bg-surface-alt/60 p-3 text-xs text-muted">
+              Kamu belum memiliki password. Buat password untuk bisa masuk tanpa akun Google atau
+              GitHub.
+            </p>
+          )}
           <div className="space-y-1">
             <label htmlFor="profile-new-password" className="text-sm font-medium text-foreground">
               Password baru
@@ -211,16 +239,18 @@ export default function SecurityCard({
               </p>
             ) : null}
           </div>
-          <label className="inline-flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={signOutOther}
-              onChange={(event) => setSignOutOther(event.target.checked)}
-              disabled={changing || offline}
-              className="h-4 w-4 rounded border-border-subtle text-primary focus:outline-none focus:ring-2 focus:ring-ring-primary"
-            />
-            Keluar dari sesi lain setelah ganti password
-          </label>
+          {hasPassword ? (
+            <label className="inline-flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={signOutOther}
+                onChange={(event) => setSignOutOther(event.target.checked)}
+                disabled={changing || offline}
+                className="h-4 w-4 rounded border-border-subtle text-primary focus:outline-none focus:ring-2 focus:ring-ring-primary"
+              />
+              Keluar dari sesi lain setelah ganti password
+            </label>
+          ) : null}
           {formError ? (
             <p className="flex items-center gap-2 text-sm text-danger" aria-live="assertive">
               <AlertCircle className="h-4 w-4" aria-hidden="true" />
@@ -234,7 +264,7 @@ export default function SecurityCard({
               className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {changing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-              Ubah password
+              {hasPassword ? 'Ubah password' : 'Buat password'}
             </button>
           </div>
         </form>
