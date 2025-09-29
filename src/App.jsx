@@ -238,6 +238,8 @@ function AppShell({ prefs, setPrefs }) {
   const [sessionChecked, setSessionChecked] = useState(false);
   const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
   const syncedUsersRef = useRef(new Set());
+  const budgetRetryTimeoutRef = useRef(null);
+  const budgetRetryVisibilityHandlerRef = useRef(null);
   const syncGuestData = useCallback(async (userId) => {
     if (!userId) return;
     if (syncedUsersRef.current.has(userId)) return;
@@ -653,10 +655,72 @@ function AppShell({ prefs, setPrefs }) {
       setData((d) => ({ ...d, budgets: mapped }));
     } catch (e) {
       console.error("fetch budgets failed", e);
-      const detail = e?.message ? `: ${e.message}` : "";
+      const isAbortError = e?.name === "AbortError";
+      const message = typeof e?.message === "string" ? e.message : "";
+      const isFailedToFetch =
+        e instanceof TypeError && message.toLowerCase().includes("failed to fetch");
+      if (isFailedToFetch && typeof document !== "undefined") {
+        if (budgetRetryTimeoutRef.current) {
+          clearTimeout(budgetRetryTimeoutRef.current);
+          budgetRetryTimeoutRef.current = null;
+        }
+        if (budgetRetryVisibilityHandlerRef.current) {
+          document.removeEventListener(
+            "visibilitychange",
+            budgetRetryVisibilityHandlerRef.current
+          );
+          budgetRetryVisibilityHandlerRef.current = null;
+        }
+        const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+        addToast(
+          offline
+            ? "Gagal memuat data anggaran: Tidak ada koneksi internet. Kami akan mencoba lagi setelah tersambung."
+            : "Gagal memuat data anggaran karena jaringan tidak stabil. Mencoba lagi...",
+          "error"
+        );
+        const retryFetch = () => {
+          budgetRetryTimeoutRef.current = null;
+          void fetchBudgetsCloud();
+        };
+        if (document.visibilityState === "visible") {
+          budgetRetryTimeoutRef.current = setTimeout(retryFetch, 2000);
+        } else {
+          const handler = () => {
+            if (document.visibilityState === "visible") {
+              document.removeEventListener("visibilitychange", handler);
+              budgetRetryVisibilityHandlerRef.current = null;
+              retryFetch();
+            }
+          };
+          budgetRetryVisibilityHandlerRef.current = handler;
+          document.addEventListener("visibilitychange", handler);
+        }
+        return;
+      }
+      if (isAbortError) return;
+      const detail = message ? `: ${message}` : "";
       addToast(`Gagal memuat data anggaran${detail}`, "error");
     }
   }, [sessionUser, categoryNameById, addToast]);
+
+  useEffect(() => {
+    return () => {
+      if (budgetRetryTimeoutRef.current) {
+        clearTimeout(budgetRetryTimeoutRef.current);
+        budgetRetryTimeoutRef.current = null;
+      }
+      if (
+        typeof document !== "undefined" &&
+        budgetRetryVisibilityHandlerRef.current
+      ) {
+        document.removeEventListener(
+          "visibilitychange",
+          budgetRetryVisibilityHandlerRef.current
+        );
+        budgetRetryVisibilityHandlerRef.current = null;
+      }
+    };
+  }, []);
 
   const fetchBudgetStatusCloud = useCallback(async () => {
     if (!sessionUser) return;
