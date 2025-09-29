@@ -150,7 +150,7 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
 
         <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
-            <span>Pengingat 7 hari (tagihan &amp; hutang)</span>
+            <span>Pengingat 7 hari</span>
             <span>{data!.upcoming.length} agenda</span>
           </div>
           {data!.upcoming.length ? (
@@ -167,7 +167,7 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
             </ul>
           ) : (
             <p className="mt-3 text-sm text-muted">
-              Tidak ada tagihan, langganan, atau hutang yang jatuh tempo dalam 7 hari.
+              Tidak ada tagihan yang jatuh tempo dalam 7 hari.
             </p>
           )}
         </div>
