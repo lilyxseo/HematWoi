@@ -58,6 +58,7 @@ import MoneyTalkProvider, {
 } from "./context/MoneyTalkContext.jsx";
 import { ModeProvider, useMode } from "./hooks/useMode";
 import AuthCallback from "./pages/AuthCallback";
+import MobileGoogleCallback from "./pages/mobile/google";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -1068,6 +1069,10 @@ function AppShell({ prefs, setPrefs }) {
           <Routes>
             <Route path="/auth" element={<AuthLogin />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route
+              path="/auth/mobile/google"
+              element={<MobileGoogleCallback />}
+            />
             <Route element={<AuthGuard />}>
               <Route
                 path="/"
