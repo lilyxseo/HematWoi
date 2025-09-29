@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import GoogleLoginButton, {
-  DEFAULT_GOOGLE_WEB_LOGIN_URL,
-  DEFAULT_NATIVE_TRIGGER_URL,
-} from '../components/GoogleLoginButton';
+import GoogleLoginButton, { DEFAULT_NATIVE_TRIGGER_URL } from '../components/GoogleLoginButton';
 import { isHematWoiApp } from '../lib/ua';
 
 const httpPattern = /^https?:\/\//i;
@@ -15,10 +12,7 @@ export default function NativeGoogleLogin() {
   const [showManualTrigger, setShowManualTrigger] = useState(false);
 
   const targetUrl = useMemo(() => DEFAULT_NATIVE_TRIGGER_URL, []);
-  const fallbackWebLoginUrl = useMemo(() => DEFAULT_GOOGLE_WEB_LOGIN_URL, []);
-  const canTriggerNative =
-    isNativeApp && Boolean(targetUrl) && !httpPattern.test(targetUrl) && /^[a-z][a-z0-9+.-]*:/i.test(targetUrl);
-  const manualTriggerHref = canTriggerNative ? targetUrl : fallbackWebLoginUrl;
+  const canTriggerNative = isNativeApp && Boolean(targetUrl) && !httpPattern.test(targetUrl);
 
   useEffect(() => {
     if (!isNativeApp) {
@@ -27,11 +21,9 @@ export default function NativeGoogleLogin() {
     }
 
     if (!canTriggerNative) {
-      setShowManualTrigger(true);
+      navigate('/', { replace: true });
       return;
     }
-
-    setShowManualTrigger(false);
 
     const triggerTimeout = window.setTimeout(() => {
       window.location.href = targetUrl;
@@ -63,7 +55,7 @@ export default function NativeGoogleLogin() {
           <button
             type="button"
             onClick={() => {
-              window.location.href = manualTriggerHref;
+              window.location.href = targetUrl;
             }}
             className="inline-flex w-full items-center justify-center rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow"
           >
@@ -85,11 +77,7 @@ export default function NativeGoogleLogin() {
             Kamu bisa mencoba login ulang melalui tombol Google berikut. Jika proses login berhasil, aplikasi akan
             terbuka secara otomatis.
           </p>
-          <GoogleLoginButton
-            className="mt-3 w-full rounded-2xl bg-surface px-4 py-2 text-sm font-semibold text-text"
-            nativeTriggerUrl={targetUrl}
-            webLoginUrl={fallbackWebLoginUrl}
-          />
+          <GoogleLoginButton className="mt-3 w-full rounded-2xl bg-surface px-4 py-2 text-sm font-semibold text-text" />
         </div>
       </div>
     </main>
