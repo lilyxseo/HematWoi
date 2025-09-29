@@ -41,6 +41,8 @@ export default function TopSpendsTable({ data = [], onSelect }) {
   }, [expenses, sort]);
 
   const items = sorted.slice(0, 5);
+  const highlighted = sorted[0];
+  const totalCount = sorted.length;
   const totalExpense = useMemo(
     () => expenses.reduce((sum, tx) => sum + tx.amount, 0),
     [expenses]
@@ -65,10 +67,20 @@ export default function TopSpendsTable({ data = [], onSelect }) {
         }
       />
       <CardBody className="flex-1 space-y-6">
-        <div className="flex justify-start">
-          <span className="inline-flex items-center rounded-xl bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <span className="inline-flex w-fit items-center rounded-xl bg-danger/10 px-3 py-1 text-xs font-semibold text-danger">
             {sort === "asc" ? "Terkecil" : "Terbesar"}
           </span>
+          {highlighted ? (
+            <div className="rounded-xl bg-surface-alt/70 px-3 py-2 text-xs text-muted">
+              <span className="font-semibold text-text">
+                {sort === "asc" ? "Nominal terkecil" : "Nominal terbesar"}
+              </span>{" "}
+              <span className="text-muted/90">
+                {toRupiah(highlighted.amount)} • {highlighted.note || highlighted.category || "Tanpa catatan"}
+              </span>
+            </div>
+          ) : null}
         </div>
         {items.length > 0 ? (
           <ul className="space-y-4">
@@ -116,6 +128,11 @@ export default function TopSpendsTable({ data = [], onSelect }) {
             <p className="text-xs text-muted">Catat transaksi untuk melihat daftar pengeluaran teratas.</p>
           </div>
         )}
+        {totalCount > items.length ? (
+          <p className="text-xs text-muted">
+            Menampilkan {items.length} dari {totalCount} pengeluaran. Ubah urutan untuk melihat nominal lainnya.
+          </p>
+        ) : null}
       </CardBody>
     </Card>
   );
