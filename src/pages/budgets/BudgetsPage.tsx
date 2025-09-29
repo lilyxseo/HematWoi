@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Calendar, Plus, RefreshCw } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { Calendar, CalendarClock, History, Plus, RefreshCw, Wand2 } from 'lucide-react';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
 import PageHeader from '../../layout/PageHeader';
@@ -24,6 +25,12 @@ const SEGMENTS = [
 ] as const;
 
 type SegmentValue = (typeof SEGMENTS)[number]['value'];
+
+const SEGMENT_ICONS: Record<SegmentValue, LucideIcon> = {
+  current: CalendarClock,
+  previous: History,
+  custom: Wand2,
+};
 
 function formatPeriod(date: Date): string {
   const year = date.getFullYear();
@@ -223,42 +230,78 @@ export default function BudgetsPage() {
       </PageHeader>
 
       <Section first>
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {SEGMENTS.map(({ value, label }) => {
-              const active = value === segment;
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleSegmentChange(value)}
-                  className={clsx(
-                    'h-11 rounded-2xl px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
-                    active
-                      ? 'bg-brand text-brand-foreground shadow'
-                      : 'border border-border bg-surface px-5 text-muted hover:border-brand/40 hover:bg-brand/5 hover:text-text'
-                  )}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+        <div className="relative overflow-hidden rounded-3xl border border-zinc-200/60 bg-gradient-to-br from-brand/5 via-white to-white p-6 shadow-lg ring-1 ring-black/5 dark:border-zinc-800/60 dark:from-brand/10 dark:via-zinc-950 dark:to-zinc-900/60 dark:ring-white/5">
+          <div className="absolute -right-12 top-0 h-36 w-36 rounded-full bg-brand/20 opacity-60 blur-3xl dark:bg-brand/30" />
+          <div className="absolute -bottom-14 left-6 h-32 w-32 rounded-full bg-sky-200/40 blur-3xl dark:bg-sky-500/20" />
+          <div className="relative grid gap-6 lg:grid-cols-[1.25fr,0.75fr] lg:items-center">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-900/60 dark:text-brand-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                  Kontrol anggaran bulanan
+                </p>
+                <h2 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+                  Kelola alokasi dan pantau progres keuanganmu dengan mudah.
+                </h2>
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Pilih periode yang ingin kamu evaluasi, lalu cek insight detail di bawah untuk mengambil keputusan lebih cepat.
+                </p>
+              </div>
 
-          {segment === 'custom' ? (
-            <input
-              type="month"
-              value={customPeriod}
-              onChange={(event) => handleCustomPeriodChange(event.target.value)}
-              className="h-11 rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              aria-label="Pilih periode custom"
-            />
-          ) : (
-            <div className="flex items-center gap-2 rounded-2xl border border-border bg-surface px-4 py-2 text-sm font-medium text-muted">
-              <Calendar className="h-4 w-4" />
-              <span>{toHumanReadable(period)}</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {SEGMENTS.map(({ value, label }) => {
+                  const active = value === segment;
+                  const Icon = SEGMENT_ICONS[value];
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => handleSegmentChange(value)}
+                      className={clsx(
+                        'inline-flex h-12 items-center gap-2 rounded-full border px-5 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                        active
+                          ? 'border-transparent bg-brand text-brand-foreground shadow-md'
+                          : 'border-white/70 bg-white/80 text-zinc-500 hover:border-brand/40 hover:bg-brand/10 hover:text-brand dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-300',
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          )}
+
+            <div className="flex flex-col gap-4 rounded-3xl border border-white/70 bg-white/80 p-5 text-sm text-zinc-600 shadow-sm backdrop-blur dark:border-white/10 dark:bg-zinc-900/60 dark:text-zinc-200">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                Periode aktif
+              </span>
+              {segment === 'custom' ? (
+                <label className="flex flex-col gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                  <span>Pilih bulan yang ingin dianalisis</span>
+                  <input
+                    type="month"
+                    value={customPeriod}
+                    onChange={(event) => handleCustomPeriodChange(event.target.value)}
+                    className="h-12 rounded-2xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    aria-label="Pilih periode custom"
+                  />
+                </label>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand/10 text-brand dark:bg-brand/20">
+                    <Calendar className="h-5 w-5" />
+                  </span>
+                  <div className="space-y-1">
+                    <p className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{toHumanReadable(period)}</p>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                      Data ditampilkan berdasarkan transaksi pada periode tersebut.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </Section>
 
