@@ -149,10 +149,4 @@ export const NAV_ITEMS: NavItem[] = [
     inSidebar: false,
     protected: false,
   },
-  {
-    title: 'Auth Mobile Google',
-    path: '/auth/mobile/google',
-    inSidebar: false,
-    protected: false,
-  },
 ];
