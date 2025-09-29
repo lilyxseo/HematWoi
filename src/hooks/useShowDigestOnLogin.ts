@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabase';
 import { findUpcoming, loadSubscriptions } from '../lib/subscriptions';
 
 const TIMEZONE = 'Asia/Jakarta';
+const TIMEZONE_OFFSET = '+07:00';
+const UPCOMING_WINDOW_DAYS = 7;
+const UPCOMING_LIMIT = 4;
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: TIMEZONE,
   year: 'numeric',
@@ -89,13 +92,13 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function loadUpcoming(): DigestUpcomingItem[] {
+function loadSubscriptionUpcoming(): DigestUpcomingItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const subscriptions = loadSubscriptions();
-    return findUpcoming(subscriptions, 7)
+    return findUpcoming(subscriptions, UPCOMING_WINDOW_DAYS)
       .sort((a, b) => a.days - b.days)
-      .slice(0, 4)
+      .slice(0, UPCOMING_LIMIT)
       .map(({ sub, days }) => ({
         name: typeof sub?.name === 'string' && sub.name.trim() ? sub.name.trim() : 'Langganan',
         amount: toNumber(sub?.amount),
@@ -106,14 +109,87 @@ function loadUpcoming(): DigestUpcomingItem[] {
   }
 }
 
+function calculateDaysUntil(value: string | null | undefined): number | null {
+  const dateKey = getDateKey(value);
+  if (!dateKey) return null;
+  const todayKey = getTodayKey();
+  const today = new Date(`${todayKey}T00:00:00${TIMEZONE_OFFSET}`);
+  const due = new Date(`${dateKey}T00:00:00${TIMEZONE_OFFSET}`);
+  const diff = due.getTime() - today.getTime();
+  return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
+function buildDebtName(row: { title?: string | null; party_name?: string | null }): string {
+  const title = typeof row?.title === 'string' ? row.title.trim() : '';
+  if (title) return title;
+  const party = typeof row?.party_name === 'string' ? row.party_name.trim() : '';
+  if (party) return party;
+  return 'Hutang';
+}
+
+async function fetchUpcomingDebts(userId: string): Promise<DigestUpcomingItem[]> {
+  try {
+    const todayKey = getTodayKey();
+    const endKey = DATE_FORMATTER.format(
+      new Date(new Date(`${todayKey}T00:00:00${TIMEZONE_OFFSET}`).getTime() + UPCOMING_WINDOW_DAYS * 24 * 60 * 60 * 1000),
+    );
+    const fromIso = `${todayKey}T00:00:00${TIMEZONE_OFFSET}`;
+    const toIso = `${endKey}T23:59:59${TIMEZONE_OFFSET}`;
+
+    const { data, error } = await supabase
+      .from('debts')
+      .select('title, party_name, amount, paid_total, due_date, status, type')
+      .eq('user_id', userId)
+      .eq('type', 'debt')
+      .not('due_date', 'is', null)
+      .in('status', ['ongoing', 'overdue'])
+      .gte('due_date', fromIso)
+      .lte('due_date', toIso);
+
+    if (error) {
+      throw error;
+    }
+
+    return (data ?? [])
+      .map((row) => {
+        const remaining = Math.max(0, toNumber(row?.amount) - toNumber(row?.paid_total));
+        const days = calculateDaysUntil(row?.due_date ?? null);
+        if (remaining <= 0 || days == null) {
+          return null;
+        }
+        return {
+          name: buildDebtName(row ?? {}),
+          amount: remaining,
+          days,
+        } satisfies DigestUpcomingItem;
+      })
+      .filter((item): item is DigestUpcomingItem => Boolean(item && item.days >= 0 && item.days <= UPCOMING_WINDOW_DAYS));
+  } catch (error) {
+    if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('[HW][Digest] Failed to load upcoming debts', error);
+    }
+    return [];
+  }
+}
+
+function mergeUpcomingLists(...lists: DigestUpcomingItem[][]): DigestUpcomingItem[] {
+  const merged = lists
+    .flat()
+    .filter((item): item is DigestUpcomingItem => Boolean(item));
+  merged.sort((a, b) => a.days - b.days);
+  return merged.slice(0, UPCOMING_LIMIT);
+}
+
 function buildDigestData(
   transactions: DigestTransactionLike[] | null | undefined,
   balanceHint: number | null | undefined,
+  upcomingItems: DigestUpcomingItem[],
 ): DailyDigestModalData {
   const todayKey = getTodayKey();
   const monthKey = todayKey.slice(0, 7);
-  const todayLabel = HUMAN_FORMATTER.format(new Date(`${todayKey}T00:00:00+07:00`));
-  const monthLabel = MONTH_LABEL_FORMATTER.format(new Date(`${todayKey}T00:00:00+07:00`));
+  const todayLabel = HUMAN_FORMATTER.format(new Date(`${todayKey}T00:00:00${TIMEZONE_OFFSET}`));
+  const monthLabel = MONTH_LABEL_FORMATTER.format(new Date(`${todayKey}T00:00:00${TIMEZONE_OFFSET}`));
 
   let computedBalance = 0;
   let todayIncome = 0;
@@ -169,7 +245,7 @@ function buildDigestData(
     todayNet,
     todayCount,
     topTodayExpenses,
-    upcoming: loadUpcoming(),
+    upcoming: [...upcomingItems],
   };
 }
 
@@ -210,11 +286,18 @@ export default function useShowDigestOnLogin({
 }: UseShowDigestOnLoginOptions): UseShowDigestOnLoginResult {
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [debtUpcoming, setDebtUpcoming] = useState<DigestUpcomingItem[]>([]);
   const autoOpenRef = useRef(false);
 
+  const subscriptionUpcoming = useMemo(() => loadSubscriptionUpcoming(), []);
+  const combinedUpcoming = useMemo(
+    () => mergeUpcomingLists(subscriptionUpcoming, debtUpcoming),
+    [subscriptionUpcoming, debtUpcoming],
+  );
+
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, balanceHint ?? null),
-    [transactions, balanceHint],
+    () => buildDigestData(transactions ?? null, balanceHint ?? null, combinedUpcoming),
+    [transactions, balanceHint, combinedUpcoming],
   );
 
   const markSeen = useCallback(
@@ -299,6 +382,30 @@ export default function useShowDigestOnLogin({
     if (!userId) return;
     tryOpenForUser(userId, false);
   }, [userId, tryOpenForUser]);
+
+  useEffect(() => {
+    let active = true;
+    if (!userId) {
+      setDebtUpcoming([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    fetchUpcomingDebts(userId)
+      .then((items) => {
+        if (!active) return;
+        setDebtUpcoming(items);
+      })
+      .catch(() => {
+        if (!active) return;
+        setDebtUpcoming([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [userId]);
 
   return {
     open,
