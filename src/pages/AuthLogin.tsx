@@ -90,7 +90,7 @@ export default function AuthLogin() {
         const session = await getSession();
         if (!isMounted) return;
         if (session) {
-          navigate('/', { replace: true });
+          navigate('/native-google-login', { replace: true });
           return;
         }
         setChecking(false);
@@ -113,7 +113,7 @@ export default function AuthLogin() {
         }
         void syncGuestData(session.user?.id ?? null);
         if (location.pathname === '/auth') {
-          navigate('/', { replace: true });
+          navigate('/native-google-login', { replace: true });
         }
       }
     });
@@ -167,7 +167,7 @@ export default function AuthLogin() {
     } catch (error) {
       console.error('[AuthLogin] Gagal membaca sesi setelah login', error);
     }
-    navigate('/', { replace: true });
+    navigate('/native-google-login', { replace: true });
   }, [navigate, syncGuestData]);
 
   return (

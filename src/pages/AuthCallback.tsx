@@ -56,7 +56,7 @@ export default function AuthCallback() {
       markOnlineMode();
       void syncSession(userId);
       if (!cancelled) {
-        navigate('/', { replace: true });
+        navigate('/native-google-login', { replace: true });
       }
     };
 
