@@ -57,14 +57,14 @@ const envNativeTrigger =
 export const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
   envWebLogin,
   '/auth/google',
-  'https://hemat-woi.me/auth/google'
+  'https://www.hemat-woi.me/auth/google'
 );
 
 // Trigger untuk WebView Android → native Google Sign-In (chooser)
 export const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
   envNativeTrigger,
   '/native-google-login',
-  'https://hemat-woi.me/native-google-login',
+  'https://www.hemat-woi.me/native-google-login',
   { allowCustomScheme: true }
 );
 
