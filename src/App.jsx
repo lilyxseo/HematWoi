@@ -35,6 +35,7 @@ import useChallenges from "./hooks/useChallenges.js";
 import AuthGuard from "./components/AuthGuard";
 import AdminGuard from "./components/AdminGuard";
 import { DataProvider } from "./context/DataContext";
+import FamilyPage from "./pages/FamilyPage";
 
 import { supabase } from "./lib/supabase";
 import { syncGuestToCloud } from "./lib/sync";
@@ -51,6 +52,7 @@ import { removeTransaction as apiDelete } from "./lib/api-transactions";
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
 import UserProfileProvider from "./context/UserProfileContext.jsx";
+import { HouseholdProvider } from "./context/HouseholdContext";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
 import MoneyTalkProvider, {
@@ -1063,8 +1065,9 @@ function AppShell({ prefs, setPrefs }) {
 
   return (
     <CategoryProvider catMeta={catMeta}>
-      <BootGate>
-        <>
+      <HouseholdProvider>
+        <BootGate>
+          <>
           <Routes>
             <Route path="/auth" element={<AuthLogin />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
@@ -1140,6 +1143,7 @@ function AppShell({ prefs, setPrefs }) {
                   element={<Subscriptions categories={data.cat} />}
                 />
                 <Route path="data" element={<DataPage />} />
+                <Route path="family" element={<FamilyPage />} />
                 <Route
                   path="import"
                   element={
@@ -1218,8 +1222,9 @@ function AppShell({ prefs, setPrefs }) {
               });
             }}
           />
-        </>
-      </BootGate>
+          </>
+        </BootGate>
+      </HouseholdProvider>
     </CategoryProvider>
   );
 }
