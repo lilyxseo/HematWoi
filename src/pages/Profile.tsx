@@ -14,6 +14,7 @@ import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import {
   changePassword,
+  createPassword,
   checkUsernameAvailability,
   exportUserData,
   getProfile,
@@ -237,6 +238,11 @@ export default function ProfilePage() {
     });
   }, [sessionUser]);
 
+  const canChangePassword = useMemo(() => {
+    if (!sessionUser) return false;
+    return sessionUser.identities?.some((identity) => identity.provider === 'email') ?? false;
+  }, [sessionUser]);
+
   const handleAccountSave = useCallback(
     async (payload: { full_name?: string; username?: string | null }) => {
       const next = await updateAccount(payload);
@@ -314,6 +320,23 @@ export default function ProfilePage() {
       addToast('Password berhasil diperbarui.', 'success');
       if (payload.sign_out_other && result.signed_out_other) {
         addToast('Sesi lain telah keluar.', 'info');
+      }
+    },
+    [addToast],
+  );
+
+  const handleCreatePassword = useCallback(
+    async (newPassword: string) => {
+      await createPassword(newPassword);
+      addToast('Password berhasil dibuat.', 'success');
+      try {
+        const nextSession = await getSession();
+        if (nextSession && 'user' in nextSession) {
+          const nextUser = (nextSession.user as User | null) ?? null;
+          setSessionUser(nextUser);
+        }
+      } catch {
+        // abaikan kegagalan pembaruan sesi
       }
     },
     [addToast],
@@ -481,6 +504,8 @@ export default function ProfilePage() {
               onRefreshSessions={loadSessions}
               onSignOutSession={handleSignOutTarget}
               onChangePassword={handleChangePassword}
+              canChangePassword={canChangePassword}
+              onCreatePassword={handleCreatePassword}
             />
           </div>
           <div

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Laptop, Loader2, LogOut, RefreshCcw, ShieldCheck } from 'lucide-react';
 import type { PasswordChangePayload, SessionInfo } from '../../lib/api-profile';
 
@@ -9,6 +9,8 @@ interface SecurityCardProps {
   onRefreshSessions: () => Promise<void>;
   onSignOutSession: (sessionId?: string) => Promise<void>;
   onChangePassword: (payload: PasswordChangePayload) => Promise<void>;
+  canChangePassword: boolean;
+  onCreatePassword: (newPassword: string) => Promise<void>;
 }
 
 type StrengthLevel = 'weak' | 'medium' | 'strong';
@@ -49,12 +51,15 @@ export default function SecurityCard({
   onRefreshSessions,
   onSignOutSession,
   onChangePassword,
+  canChangePassword,
+  onCreatePassword,
 }: SecurityCardProps) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [signOutOther, setSignOutOther] = useState(true);
   const [changing, setChanging] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState('');
   const [sessionMessage, setSessionMessage] = useState('');
   const [sessionError, setSessionError] = useState('');
@@ -68,7 +73,23 @@ export default function SecurityCard({
     return offline;
   }, [currentPassword, newPassword, confirmPassword, offline]);
 
-  const handleSubmit = useCallback(
+  const disabledCreate = useMemo(() => {
+    if (!newPassword || !confirmPassword) return true;
+    if (newPassword !== confirmPassword) return true;
+    return offline;
+  }, [newPassword, confirmPassword, offline]);
+
+  useEffect(() => {
+    setFormError('');
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setSignOutOther(true);
+    setChanging(false);
+    setCreating(false);
+  }, [canChangePassword]);
+
+  const handleChangeSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (disabledChange) return;
@@ -92,6 +113,27 @@ export default function SecurityCard({
       }
     },
     [disabledChange, onChangePassword, currentPassword, newPassword, signOutOther],
+  );
+
+  const handleCreateSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (disabledCreate) return;
+      setCreating(true);
+      setFormError('');
+      try {
+        await onCreatePassword(newPassword);
+        setNewPassword('');
+        setConfirmPassword('');
+      } catch (error) {
+        setFormError(
+          error instanceof Error ? error.message : 'Tidak bisa membuat password saat ini.',
+        );
+      } finally {
+        setCreating(false);
+      }
+    },
+    [disabledCreate, onCreatePassword, newPassword],
   );
 
   const handleRefreshSessions = useCallback(async () => {
@@ -143,101 +185,178 @@ export default function SecurityCard({
         </p>
       </div>
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="space-y-1">
-            <label htmlFor="profile-current-password" className="text-sm font-medium text-foreground">
-              Password saat ini
-            </label>
-            <input
-              id="profile-current-password"
-              type="password"
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(event) => setCurrentPassword(event.target.value)}
-              disabled={changing || offline}
-              className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
-            />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="profile-new-password" className="text-sm font-medium text-foreground">
-              Password baru
-            </label>
-            <input
-              id="profile-new-password"
-              type="password"
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(event) => setNewPassword(event.target.value)}
-              disabled={changing || offline}
-              aria-describedby="password-strength"
-              className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            <div className="mt-2 space-y-2" id="password-strength" aria-live="polite">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-surface-alt">
-                <div
-                  className={
-                    strength.label === 'strong'
-                      ? 'h-full bg-success'
-                      : strength.label === 'medium'
-                        ? 'h-full bg-warning'
-                        : 'h-full bg-danger'
-                  }
-                  style={{ width: `${Math.min(strength.score * 33.33, 100)}%` }}
-                />
-              </div>
-              <p className="flex items-center gap-2 text-xs text-muted">
-                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                Kekuatan: <span className="font-semibold text-foreground">{labelForStrength(strength.label)}</span>
-              </p>
+        {canChangePassword ? (
+          <form onSubmit={handleChangeSubmit} className="flex flex-col gap-4">
+            <div className="space-y-1">
+              <label htmlFor="profile-current-password" className="text-sm font-medium text-foreground">
+                Password saat ini
+              </label>
+              <input
+                id="profile-current-password"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                disabled={changing || offline}
+                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              />
             </div>
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="profile-confirm-password" className="text-sm font-medium text-foreground">
-              Konfirmasi password baru
+            <div className="space-y-1">
+              <label htmlFor="profile-new-password" className="text-sm font-medium text-foreground">
+                Password baru
+              </label>
+              <input
+                id="profile-new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                disabled={changing || offline}
+                aria-describedby="password-strength"
+                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <div className="mt-2 space-y-2" id="password-strength" aria-live="polite">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface-alt">
+                  <div
+                    className={
+                      strength.label === 'strong'
+                        ? 'h-full bg-success'
+                        : strength.label === 'medium'
+                          ? 'h-full bg-warning'
+                          : 'h-full bg-danger'
+                    }
+                    style={{ width: `${Math.min(strength.score * 33.33, 100)}%` }}
+                  />
+                </div>
+                <p className="flex items-center gap-2 text-xs text-muted">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  Kekuatan: <span className="font-semibold text-foreground">{labelForStrength(strength.label)}</span>
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="profile-confirm-password" className="text-sm font-medium text-foreground">
+                Konfirmasi password baru
+              </label>
+              <input
+                id="profile-confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                disabled={changing || offline}
+                aria-invalid={Boolean(confirmPassword) && confirmPassword !== newPassword}
+                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {confirmPassword && confirmPassword !== newPassword ? (
+                <p className="text-xs text-danger" aria-live="assertive">
+                  Konfirmasi password belum cocok.
+                </p>
+              ) : null}
+            </div>
+            <label className="inline-flex items-center gap-2 text-sm text-foreground">
+              <input
+                type="checkbox"
+                checked={signOutOther}
+                onChange={(event) => setSignOutOther(event.target.checked)}
+                disabled={changing || offline}
+                className="h-4 w-4 rounded border-border-subtle text-primary focus:outline-none focus:ring-2 focus:ring-ring-primary"
+              />
+              Keluar dari sesi lain setelah ganti password
             </label>
-            <input
-              id="profile-confirm-password"
-              type="password"
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              disabled={changing || offline}
-              aria-invalid={Boolean(confirmPassword) && confirmPassword !== newPassword}
-              className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
-            />
-            {confirmPassword && confirmPassword !== newPassword ? (
-              <p className="text-xs text-danger" aria-live="assertive">
-                Konfirmasi password belum cocok.
+            {formError ? (
+              <p className="flex items-center gap-2 text-sm text-danger" aria-live="assertive">
+                <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                {formError}
               </p>
             ) : null}
-          </div>
-          <label className="inline-flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              checked={signOutOther}
-              onChange={(event) => setSignOutOther(event.target.checked)}
-              disabled={changing || offline}
-              className="h-4 w-4 rounded border-border-subtle text-primary focus:outline-none focus:ring-2 focus:ring-ring-primary"
-            />
-            Keluar dari sesi lain setelah ganti password
-          </label>
-          {formError ? (
-            <p className="flex items-center gap-2 text-sm text-danger" aria-live="assertive">
-              <AlertCircle className="h-4 w-4" aria-hidden="true" />
-              {formError}
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={disabledChange || changing}
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {changing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Ubah password
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleCreateSubmit} className="flex flex-col gap-4">
+            <p className="text-sm text-muted">
+              Akunmu belum memiliki password. Buat password untuk masuk tanpa Google atau GitHub.
             </p>
-          ) : null}
-          <div className="flex justify-end">
-            <button
-              type="submit"
-              disabled={disabledChange || changing}
-              className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {changing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-              Ubah password
-            </button>
-          </div>
-        </form>
+            <div className="space-y-1">
+              <label htmlFor="profile-new-password" className="text-sm font-medium text-foreground">
+                Password baru
+              </label>
+              <input
+                id="profile-new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                disabled={creating || offline}
+                aria-describedby="password-strength"
+                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <div className="mt-2 space-y-2" id="password-strength" aria-live="polite">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface-alt">
+                  <div
+                    className={
+                      strength.label === 'strong'
+                        ? 'h-full bg-success'
+                        : strength.label === 'medium'
+                          ? 'h-full bg-warning'
+                          : 'h-full bg-danger'
+                    }
+                    style={{ width: `${Math.min(strength.score * 33.33, 100)}%` }}
+                  />
+                </div>
+                <p className="flex items-center gap-2 text-xs text-muted">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  Kekuatan: <span className="font-semibold text-foreground">{labelForStrength(strength.label)}</span>
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="profile-confirm-password" className="text-sm font-medium text-foreground">
+                Konfirmasi password baru
+              </label>
+              <input
+                id="profile-confirm-password"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                disabled={creating || offline}
+                aria-invalid={Boolean(confirmPassword) && confirmPassword !== newPassword}
+                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt/70 px-3 text-sm shadow-sm transition focus:outline-none focus:ring-2 focus:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {confirmPassword && confirmPassword !== newPassword ? (
+                <p className="text-xs text-danger" aria-live="assertive">
+                  Konfirmasi password belum cocok.
+                </p>
+              ) : null}
+            </div>
+            {formError ? (
+              <p className="flex items-center gap-2 text-sm text-danger" aria-live="assertive">
+                <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                {formError}
+              </p>
+            ) : null}
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={disabledCreate || creating}
+                className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                Buat password
+              </button>
+            </div>
+          </form>
+        )}
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
