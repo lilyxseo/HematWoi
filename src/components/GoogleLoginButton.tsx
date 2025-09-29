@@ -54,14 +54,14 @@ const envNativeTrigger =
   typeof env.VITE_NATIVE_GOOGLE_LOGIN_URL === 'string' ? env.VITE_NATIVE_GOOGLE_LOGIN_URL : undefined;
 
 // Web OAuth (flow browser biasa)
-const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
+export const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
   envWebLogin,
   '/auth/google',
   'https://hemat-woi.me/auth/google'
 );
 
 // Trigger untuk WebView Android → native Google Sign-In (chooser)
-const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
+export const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
   envNativeTrigger,
   '/native-google-login',
   'https://hemat-woi.me/native-google-login',
