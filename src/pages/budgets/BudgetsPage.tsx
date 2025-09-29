@@ -206,7 +206,7 @@ export default function BudgetsPage() {
         <button
           type="button"
           onClick={refresh}
-          className="hidden h-11 items-center gap-2 rounded-2xl border border-border bg-surface px-4 text-sm font-semibold text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:inline-flex"
+          className="hidden h-10 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:inline-flex"
         >
           <RefreshCw className="h-4 w-4" />
           Segarkan
@@ -215,7 +215,7 @@ export default function BudgetsPage() {
           type="button"
           disabled={categoriesLoading}
           onClick={handleOpenCreate}
-          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-brand px-5 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Plus className="h-4 w-4" />
           Tambah anggaran
@@ -233,7 +233,7 @@ export default function BudgetsPage() {
                   type="button"
                   onClick={() => handleSegmentChange(value)}
                   className={clsx(
-                    'group inline-flex h-11 items-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                    'group inline-flex h-10 items-center gap-2 rounded-xl border px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
                     active
                       ? 'border-transparent bg-brand text-brand-foreground shadow-lg shadow-brand/30'
                       : 'border-border bg-surface/80 text-muted hover:border-brand/40 hover:bg-brand/5 hover:text-text'
@@ -241,7 +241,7 @@ export default function BudgetsPage() {
                 >
                   <span
                     className={clsx(
-                      'flex h-8 w-8 items-center justify-center rounded-xl bg-white/60 text-brand shadow-inner transition group-hover:scale-105 dark:bg-white/10',
+                      'flex h-7 w-7 items-center justify-center rounded-lg bg-white/60 text-brand shadow-inner transition group-hover:scale-105 dark:bg-white/10',
                       active ? 'bg-white/90 text-brand' : 'text-brand',
                     )}
                   >
@@ -258,11 +258,11 @@ export default function BudgetsPage() {
               type="month"
               value={customPeriod}
               onChange={(event) => handleCustomPeriodChange(event.target.value)}
-              className="h-11 rounded-2xl border border-border/60 bg-surface/80 px-4 text-sm font-medium text-text shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              className="h-10 rounded-xl border border-border/60 bg-surface/80 px-3 text-sm font-medium text-text shadow-inner transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               aria-label="Pilih periode custom"
             />
           ) : (
-            <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-surface/80 px-4 py-2 text-sm font-medium text-muted shadow-inner">
+            <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-surface/80 px-3 py-1.5 text-sm font-medium text-muted shadow-inner">
               <CalendarRange className="h-4 w-4" />
               <span>{toHumanReadable(period)}</span>
             </div>
