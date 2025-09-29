@@ -1,67 +1,74 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  buildSummary,
-  computeSpent,
-  listBudgets,
-  mergeBudgetsWithSpent,
+  buildBudgetSummary,
+  listBudgetsWithActual,
   type BudgetSummary,
-  type BudgetWithSpent,
-} from '../lib/budgetApi';
+  type BudgetWithActual,
+} from '../lib/budgetsApi';
 
 const EMPTY_SUMMARY: BudgetSummary = {
   planned: 0,
-  spent: 0,
+  actual: 0,
   remaining: 0,
-  percentage: 0,
+  progress: 0,
 };
 
 export interface UseBudgetsResult {
-  rows: BudgetWithSpent[];
+  rows: BudgetWithActual[];
   summary: BudgetSummary;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
+
 export function useBudgets(period: string): UseBudgetsResult {
-  const [rows, setRows] = useState<BudgetWithSpent[]>([]);
+  const [rows, setRows] = useState<BudgetWithActual[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCombined = useCallback(async () => {
-    const [budgetRows, spentMap] = await Promise.all([listBudgets(period), computeSpent(period)]);
-    return mergeBudgetsWithSpent(budgetRows, spentMap);
-  }, [period]);
+  const fetchBudgets = useCallback(
+    async (options?: { signal?: AbortSignal; force?: boolean }) =>
+      listBudgetsWithActual({ period, signal: options?.signal, force: options?.force }),
+    [period]
+  );
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
-    fetchCombined()
-      .then((merged) => {
-        if (!active) return;
-        setRows(merged);
+
+    fetchBudgets({ signal: controller.signal })
+      .then((data) => {
+        setRows(data);
       })
       .catch((err: unknown) => {
-        if (!active) return;
+        if (controller.signal.aborted || isAbortError(err)) {
+          return;
+        }
         setRows([]);
         setError(err instanceof Error ? err.message : 'Gagal memuat anggaran');
       })
       .finally(() => {
-        if (!active) return;
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       });
+
     return () => {
-      active = false;
+      controller.abort();
     };
-  }, [fetchCombined]);
+  }, [fetchBudgets]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const merged = await fetchCombined();
-      setRows(merged);
+      const data = await fetchBudgets({ force: true });
+      setRows(data);
     } catch (err) {
       setRows([]);
       setError(err instanceof Error ? err.message : 'Gagal memuat anggaran');
@@ -69,13 +76,13 @@ export function useBudgets(period: string): UseBudgetsResult {
     } finally {
       setLoading(false);
     }
-  }, [fetchCombined]);
+  }, [fetchBudgets]);
 
-  const summary = useMemo(() => buildSummary(rows), [rows]);
+  const computedSummary = useMemo(() => buildBudgetSummary(rows), [rows]);
 
   return {
     rows,
-    summary: loading && rows.length === 0 ? EMPTY_SUMMARY : summary,
+    summary: loading ? EMPTY_SUMMARY : computedSummary,
     loading,
     error,
     refresh,

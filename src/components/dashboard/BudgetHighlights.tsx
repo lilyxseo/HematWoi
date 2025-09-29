@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, Sparkles } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useBudgets } from "../../hooks/useBudgets"
 import { formatCurrency } from "../../lib/format.js"
-import type { BudgetWithSpent } from "../../lib/budgetApi"
+import type { BudgetWithActual } from "../../lib/budgetsApi"
 import type { PeriodRange } from "./PeriodPicker"
 
 interface BudgetHighlightsProps {
@@ -33,12 +33,12 @@ function formatPercent(progress: number) {
   return `${Math.round(progress * 100)}%`
 }
 
-function createHighlights(rows: BudgetWithSpent[]): HighlightBudget[] {
+function createHighlights(rows: BudgetWithActual[]): HighlightBudget[] {
   return rows
     .map((row) => {
-      const planned = Number(row.amount_planned ?? 0)
+      const planned = Number(row.planned ?? row.amount_planned ?? 0)
       if (planned <= 0) return null
-      const spent = Number(row.spent ?? 0)
+      const spent = Number(row.actual ?? 0)
       const progress = planned > 0 ? spent / planned : 0
       const distance = Math.abs(1 - progress)
       return {
