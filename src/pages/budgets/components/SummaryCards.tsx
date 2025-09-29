@@ -10,11 +10,11 @@ interface SummaryCardsProps {
 
 function SummarySkeleton() {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-border/60 bg-surface/70 p-6 shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface/70 p-5 shadow-sm">
       <div className="absolute inset-0 bg-gradient-to-br from-white/70 via-white/40 to-white/10 opacity-80 dark:from-zinc-900/80 dark:via-zinc-900/50 dark:to-zinc-900/20" />
       <div className="relative flex h-full flex-col gap-4">
         <div className="h-3 w-24 animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-700/60" />
-        <div className="h-8 w-28 animate-pulse rounded-full bg-zinc-200/80 dark:bg-zinc-700/70" />
+        <div className="h-7 w-24 animate-pulse rounded-full bg-zinc-200/80 dark:bg-zinc-700/70" />
         <div className="mt-auto h-2 w-full animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-800/60" />
       </div>
     </div>
@@ -24,7 +24,7 @@ function SummarySkeleton() {
 export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
   if (loading) {
     return (
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <SummarySkeleton key={index} />
         ))}
@@ -76,7 +76,7 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
   ] as const;
 
   return (
-    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
       {cards.map(({
         label,
         description,
@@ -91,7 +91,7 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
         <div
           key={label}
           className={clsx(
-            'relative overflow-hidden rounded-3xl border border-border/60 bg-surface/80 p-6 shadow-[0_25px_45px_-25px_rgba(15,23,42,0.45)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_32px_65px_-30px_rgba(15,23,42,0.55)]',
+            'relative overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_20px_35px_-20px_rgba(15,23,42,0.45)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_28px_55px_-28px_rgba(15,23,42,0.55)]',
             'backdrop-blur supports-[backdrop-filter]:bg-surface/60',
           )}
         >
@@ -104,12 +104,12 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
           <div className="relative flex h-full flex-col gap-5">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
-                <p className="text-[0.7rem] font-semibold uppercase tracking-[0.2em] text-muted">{label}</p>
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted">{label}</p>
                 <p className="text-xs text-muted/80 dark:text-muted/60">{description}</p>
               </div>
               <span
                 className={clsx(
-                  'flex h-11 w-11 items-center justify-center rounded-2xl shadow-inner ring-1 ring-inset ring-border/40 dark:ring-white/10',
+                  'flex h-10 w-10 items-center justify-center rounded-xl shadow-inner ring-1 ring-inset ring-border/40 dark:ring-white/10',
                   iconBg,
                 )}
               >
@@ -117,7 +117,7 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
               </span>
             </div>
 
-            <span className="text-3xl font-semibold text-text dark:text-white">{value}</span>
+            <span className="text-2xl font-semibold text-text dark:text-white">{value}</span>
 
             {typeof cardProgress === 'number' ? (
               <div className="mt-auto flex items-end justify-between gap-4">
