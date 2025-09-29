@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 
+import { DEFAULT_NATIVE_TRIGGER_URL } from '../components/GoogleLoginButton';
 import { supabase } from '../lib/supabase';
+
+const httpPattern = /^https?:\/\//i;
 
 const MobileGoogleCallback = () => {
   const [status, setStatus] = useState('Memproses login...');
@@ -27,7 +30,19 @@ const MobileGoogleCallback = () => {
       }
 
       setStatus('Berhasil login. Mengalihkan...');
-      window.location.replace('/native-google-login');
+
+      const target = DEFAULT_NATIVE_TRIGGER_URL;
+      try {
+        window.location.replace(target);
+      } catch {
+        window.location.href = target;
+      }
+
+      if (!httpPattern.test(target)) {
+        window.setTimeout(() => {
+          window.location.replace('/native-google-login');
+        }, 1200);
+      }
     };
 
     void signIn();

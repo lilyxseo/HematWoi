@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 
+import { DEFAULT_NATIVE_TRIGGER_URL } from '../../../src/components/GoogleLoginButton';
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   { auth: { persistSession: true } }
 );
+
+const httpPattern = /^https?:\/\//i;
 
 export default function MobileGoogleCallback() {
   const [msg, setMsg] = useState('Memproses login…');
@@ -29,7 +33,19 @@ export default function MobileGoogleCallback() {
       }
 
       setMsg('Berhasil login. Mengalihkan…');
-      window.location.replace('/');
+
+      const target = DEFAULT_NATIVE_TRIGGER_URL;
+      try {
+        window.location.replace(target);
+      } catch {
+        window.location.href = target;
+      }
+
+      if (!httpPattern.test(target)) {
+        window.setTimeout(() => {
+          window.location.replace('/native-google-login');
+        }, 1200);
+      }
     })();
   }, []);
 
