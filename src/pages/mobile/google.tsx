@@ -12,24 +12,32 @@ export default function MobileGoogleCallback() {
 
   useEffect(() => {
     (async () => {
-      const p = new URLSearchParams(window.location.search);
-      const idToken = p.get('id_token');
-      if (!idToken) {
-        setMsg('Tidak ada id_token.');
-        return;
-      }
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const idToken = p.get('id_token');
 
-      const { error } = await supabase.auth.signInWithIdToken({
-        provider: 'google',
-        token: idToken,
-      });
-      if (error) {
-        setMsg('Gagal login: ' + error.message);
-        return;
-      }
+        if (!idToken) {
+          setMsg('Tidak ada id_token.');
+          return;
+        }
 
-      setMsg('Berhasil login. Mengalihkan…');
-      window.location.replace('/');
+        const { data, error } = await supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token: idToken,
+        });
+
+        if (error) {
+          console.error('[MOBILE GOOGLE] signInWithIdToken error', error);
+          setMsg('Gagal login: ' + error.message);
+          return;
+        }
+
+        setMsg('Berhasil login. Mengalihkan…');
+        window.location.replace('/');
+      } catch (e: any) {
+        console.error('[MOBILE GOOGLE] unexpected error', e);
+        setMsg('Terjadi error tak terduga.');
+      }
     })();
   }, []);
 
