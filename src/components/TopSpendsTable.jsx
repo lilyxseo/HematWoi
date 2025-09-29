@@ -40,7 +40,7 @@ export default function TopSpendsTable({ data = [], onSelect }) {
     );
   }, [expenses, sort]);
 
-  const items = sorted.slice(0, 5);
+  const items = sorted;
   const totalExpense = useMemo(
     () => expenses.reduce((sum, tx) => sum + tx.amount, 0),
     [expenses]

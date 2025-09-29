@@ -77,6 +77,15 @@ describe("aggregateInsights", () => {
 
   it("lists top spends", () => {
     const res = aggregateInsights(txs);
-    expect(res.topSpends.map((t) => t.amount)).toEqual([400, 300, 200]);
+    expect(res.topSpends.map((t) => Math.abs(t.amount))).toEqual([
+      1200,
+      900,
+      700,
+      500,
+      400,
+      300,
+      300,
+      200,
+    ]);
   });
 });

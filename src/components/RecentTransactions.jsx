@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Clock } from "lucide-react";
 import clsx from "clsx";
 import Segmented from "./ui/Segmented";
@@ -25,6 +25,8 @@ function formatDate(value) {
 
 export default function RecentTransactions({ txs = [] }) {
   const [period, setPeriod] = useState("week");
+  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     const now = new Date();
@@ -36,9 +38,27 @@ export default function RecentTransactions({ txs = [] }) {
         if (period === "week") return diff < 7;
         return diff < 30;
       })
-      .sort((a, b) => new Date(b.date) - new Date(a.date))
-      .slice(0, 5);
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [txs, period]);
+
+  const totalItems = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [period]);
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * itemsPerPage;
+    return filtered.slice(start, start + itemsPerPage);
+  }, [filtered, page, itemsPerPage]);
+
+  const startIndex = totalItems === 0 ? 0 : (page - 1) * itemsPerPage + 1;
+  const endIndex = totalItems === 0 ? 0 : Math.min(page * itemsPerPage, totalItems);
 
   const periodLabel =
     period === "day" ? "24 jam" : period === "week" ? "7 hari" : "30 hari";
@@ -64,12 +84,52 @@ export default function RecentTransactions({ txs = [] }) {
         <div className="flex items-center gap-3 rounded-2xl bg-surface-alt/60 px-4 py-3 text-xs text-muted">
           <Clock className="h-4 w-4" aria-hidden="true" />
           <span>
-            Menampilkan {filtered.length} transaksi {periodLabel} terakhir
+            Menampilkan {startIndex}-{endIndex} dari {totalItems} transaksi {periodLabel} terakhir
           </span>
         </div>
-        {filtered.length > 0 ? (
+        <div className="flex flex-col gap-2 rounded-2xl bg-surface-alt/40 px-4 py-3 text-xs text-muted sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <span>Per halaman:</span>
+            <select
+              value={itemsPerPage}
+              onChange={(event) => {
+                setItemsPerPage(Number(event.target.value));
+                setPage(1);
+              }}
+              className="rounded-lg border border-border-subtle bg-background px-2 py-1 text-xs font-medium text-text focus:outline-none focus:ring-2 focus:ring-[color:var(--brand-ring)]"
+            >
+              {[5, 10, 20].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || totalItems === 0}
+              className="inline-flex items-center rounded-lg border border-border-subtle px-3 py-1 font-medium text-text transition disabled:cursor-not-allowed disabled:opacity-40 hover:border-border hover:bg-surface-alt/70"
+            >
+              Sebelumnya
+            </button>
+            <span className="font-semibold text-text">
+              {totalItems === 0 ? 0 : page} / {totalItems === 0 ? 0 : totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || totalItems === 0}
+              className="inline-flex items-center rounded-lg border border-border-subtle px-3 py-1 font-medium text-text transition disabled:cursor-not-allowed disabled:opacity-40 hover:border-border hover:bg-surface-alt/70"
+            >
+              Berikutnya
+            </button>
+          </div>
+        </div>
+        {paginated.length > 0 ? (
           <ul className="space-y-3">
-            {filtered.map((row) => {
+            {paginated.map((row) => {
               const isIncome = row.type === "income";
               const amount = Math.abs(Number(row.amount) || 0);
 
