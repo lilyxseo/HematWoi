@@ -70,7 +70,7 @@ const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
   'https://www.hemat-woi.me/auth/google'
 );
 // Trigger for Android WebView → native GSI chooser
-export DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
+export const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
   envNativeTrigger,
   '/native-google-login',
   'https://www.hemat-woi.me/native-google-login',
