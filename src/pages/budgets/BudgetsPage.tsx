@@ -236,10 +236,15 @@ export default function BudgetsPage() {
                     'group inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
                     active
                       ? 'border-transparent bg-brand text-brand-foreground shadow-lg shadow-brand/30'
-                      : 'border-transparent bg-brand/60 text-white/80 hover:bg-brand hover:text-white'
+                      : 'border-border/60 bg-surface/80 text-muted hover:bg-surface hover:text-text'
                   )}
                 >
-                  <Icon className="h-4 w-4 text-white" />
+                  <Icon
+                    className={clsx(
+                      'h-4 w-4 transition-colors',
+                      active ? 'text-brand-foreground' : 'text-muted group-hover:text-text'
+                    )}
+                  />
                   {label}
                 </button>
               );
