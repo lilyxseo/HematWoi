@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Calendar, PiggyBank, Search } from 'lucide-react';
+import { Calendar, PiggyBank } from 'lucide-react';
 import type { ExpenseCategory } from '../../../lib/budgetApi';
 
 export interface BudgetFormValues {
@@ -22,6 +22,25 @@ interface BudgetFormModalProps {
 
 const MODAL_CLASS =
   'fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-10 backdrop-blur-sm';
+
+const ID_NUMBER_FORMATTER = new Intl.NumberFormat('id-ID');
+
+function formatAmountDisplay(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return ID_NUMBER_FORMATTER.format(value);
+}
+
+function parseAmountInput(input: string): { display: string; value: number } {
+  const digits = input.replace(/\D/g, '');
+  if (!digits) {
+    return { display: '', value: 0 };
+  }
+  const numeric = Number.parseInt(digits, 10);
+  return {
+    display: ID_NUMBER_FORMATTER.format(numeric),
+    value: numeric,
+  };
+}
 
 function validate(values: BudgetFormValues) {
   const errors: Partial<Record<keyof BudgetFormValues, string>> = {};
@@ -48,13 +67,13 @@ export default function BudgetFormModal({
 }: BudgetFormModalProps) {
   const [values, setValues] = useState<BudgetFormValues>(initialValues);
   const [errors, setErrors] = useState<Partial<Record<keyof BudgetFormValues, string>>>({});
-  const [categoryQuery, setCategoryQuery] = useState('');
+  const [amountInput, setAmountInput] = useState('');
 
   useEffect(() => {
     if (open) {
       setValues(initialValues);
       setErrors({});
-      setCategoryQuery('');
+      setAmountInput(formatAmountDisplay(initialValues.amount_planned));
     }
   }, [open, initialValues]);
 
@@ -69,38 +88,32 @@ export default function BudgetFormModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
-  const filteredCategories = useMemo(() => {
-    const keyword = categoryQuery.trim().toLowerCase();
-    if (!keyword) return categories;
-    return categories.filter((category) => category.name.toLowerCase().includes(keyword));
-  }, [categories, categoryQuery]);
-
   const groupedCategories = useMemo(() => {
     const groups = new Map<string, ExpenseCategory[]>();
-    for (const category of filteredCategories) {
+    for (const category of categories) {
       const key = category.group_name ?? 'Ungrouped';
       const list = groups.get(key) ?? [];
       list.push(category);
       groups.set(key, list);
     }
     return Array.from(groups.entries());
-  }, [filteredCategories]);
+  }, [categories]);
 
   const emptyMessage = useMemo(() => {
     if (categories.length === 0) {
       return 'Belum ada kategori pengeluaran';
     }
-    if (filteredCategories.length === 0 && categoryQuery.trim()) {
-      return 'Tidak ada kategori yang cocok dengan pencarian';
-    }
-    if (filteredCategories.length === 0) {
-      return 'Belum ada kategori pengeluaran';
-    }
     return null;
-  }, [categories.length, filteredCategories.length, categoryQuery]);
+  }, [categories.length]);
 
   const handleChange = (field: keyof BudgetFormValues, value: string | number | boolean) => {
     setValues((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleAmountChange = (value: string) => {
+    const parsed = parseAmountInput(value);
+    setAmountInput(parsed.display);
+    setValues((prev) => ({ ...prev, amount_planned: parsed.value }));
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -163,48 +176,30 @@ export default function BudgetFormModal({
 
             <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
               Kategori
-              <div className="flex flex-col gap-2">
-                <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
-                    <Search className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <label htmlFor="budget-category-search" className="sr-only">
-                    Cari kategori pengeluaran
-                  </label>
-                  <input
-                    id="budget-category-search"
-                    type="search"
-                    value={categoryQuery}
-                    onChange={(event) => setCategoryQuery(event.target.value)}
-                    placeholder="Cari kategori…"
-                    className="h-10 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                  />
-                </div>
-                <div className="relative">
-                  <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
-                    <PiggyBank className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <select
-                    value={values.category_id}
-                    onChange={(event) => handleChange('category_id', event.target.value)}
-                    className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                    required
-                    disabled={filteredCategories.length === 0}
-                  >
-                    <option value="" disabled>
-                      Pilih kategori
-                    </option>
-                    {groupedCategories.map(([groupName, groupCategories]) => (
-                      <optgroup key={groupName} label={groupName}>
-                        {groupCategories.map((category) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
+              <div className="relative">
+                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
+                  <PiggyBank className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <select
+                  value={values.category_id}
+                  onChange={(event) => handleChange('category_id', event.target.value)}
+                  className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  required
+                  disabled={categories.length === 0}
+                >
+                  <option value="" disabled>
+                    Pilih kategori
+                  </option>
+                  {groupedCategories.map(([groupName, groupCategories]) => (
+                    <optgroup key={groupName} label={groupName}>
+                      {groupCategories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
               {errors.category_id ? (
                 <span className="text-xs font-medium text-rose-500">{errors.category_id}</span>
@@ -217,11 +212,11 @@ export default function BudgetFormModal({
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
             Nominal Anggaran (IDR)
             <input
-              type="number"
-              min="0"
-              step="1000"
-              value={values.amount_planned}
-              onChange={(event) => handleChange('amount_planned', Number(event.target.value))}
+              type="text"
+              inputMode="numeric"
+              value={amountInput}
+              onChange={(event) => handleAmountChange(event.target.value)}
+              placeholder="Masukkan nominal"
               className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               required
             />
