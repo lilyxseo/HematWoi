@@ -186,7 +186,7 @@ export default function AuthLogin() {
                 </p>
               </div>
             </div>
-            <ul className="grid gap-3 sm:grid-cols-2">
+            <ul className="hidden gap-3 sm:grid sm:grid-cols-2">
               {heroTips.map((tip) => (
                 <li
                   key={tip}
@@ -217,6 +217,9 @@ export default function AuthLogin() {
                 skeleton
               ) : (
                 <div className="grid gap-4 md:grid-cols-5">
+                  <div className="md:col-span-3">
+                    <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
+                  </div>
                   <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm md:col-span-2">
                     <div className="space-y-4">
                       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -256,9 +259,6 @@ export default function AuthLogin() {
                         Jika pop-up tertutup, cukup tekan tombol lagi atau pilih metode email di samping.
                       </p>
                     </div>
-                  </div>
-                  <div className="md:col-span-3">
-                    <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
                   </div>
                 </div>
               )}
