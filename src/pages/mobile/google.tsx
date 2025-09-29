@@ -33,7 +33,7 @@ export default function MobileGoogleCallback() {
         }
 
         setMsg('Berhasil login. Mengalihkan…');
-        window.location.replace('/native-google-login');
+        window.location.replace('/');
       } catch (e: any) {
         console.error('[MOBILE GOOGLE] unexpected error', e);
         setMsg('Terjadi error tak terduga.');
