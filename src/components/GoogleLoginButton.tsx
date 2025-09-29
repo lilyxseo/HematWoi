@@ -64,7 +64,7 @@ const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
   '/auth/google',
   'https://www.hemat-woi.me/auth/google'
 );
-const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
+export const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
   envNativeTrigger,
   '/auth/mobile/google',
   'https://www.hemat-woi.me/auth/mobile/google',
