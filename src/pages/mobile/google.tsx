@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../../lib/supabase';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  { auth: { persistSession: true } }
-);
+const REDIRECT_SUCCESS = '/';
 
 export default function MobileGoogleCallback() {
   const [msg, setMsg] = useState('Memproses login…');
@@ -21,25 +17,39 @@ export default function MobileGoogleCallback() {
           return;
         }
 
-        const { data, error } = await supabase.auth.signInWithIdToken({
+        const { error } = await supabase.auth.signInWithIdToken({
           provider: 'google',
           token: idToken,
         });
 
         if (error) {
-          console.error('[MOBILE GOOGLE] signInWithIdToken error', error);
+          console.error('[MOBILE GOOGLE] error:', error);
           setMsg('Gagal login: ' + error.message);
           return;
         }
 
         setMsg('Berhasil login. Mengalihkan…');
-        window.location.replace('/');
+        window.location.replace(REDIRECT_SUCCESS);
       } catch (e: any) {
-        console.error('[MOBILE GOOGLE] unexpected error', e);
+        console.error('[MOBILE GOOGLE] unexpected:', e);
         setMsg('Terjadi error tak terduga.');
       }
     })();
   }, []);
 
-  return <p style={{ textAlign: 'center', marginTop: 64 }}>{msg}</p>;
+  return (
+    <main
+      style={{
+        display: 'grid',
+        placeItems: 'center',
+        minHeight: '60vh',
+        fontFamily: 'system-ui',
+      }}
+    >
+      <div>
+        <h1>HematWoi</h1>
+        <p>{msg}</p>
+      </div>
+    </main>
+  );
 }
