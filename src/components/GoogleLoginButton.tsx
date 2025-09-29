@@ -66,8 +66,8 @@ const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
 );
 const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
   envNativeTrigger,
-  '/native-google-login',
-  'https://hw.bydev.me/native-google-login',
+  '/auth/mobile/google',
+  'https://hw.bydev.me/auth/mobile/google',
   { allowCustomScheme: true }
 );
 
