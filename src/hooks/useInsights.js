@@ -59,8 +59,7 @@ export function aggregateInsights(txs = []) {
   // top spends for current month
   const topSpends = monthTx
     .filter((t) => t.type === "expense")
-    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
-    .slice(0, 10);
+    .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
 
   return {
     kpis: { income, expense, net, avgDaily },
