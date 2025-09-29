@@ -89,7 +89,7 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function loadUpcoming(): DigestUpcomingItem[] {
+function loadUpcomingSubscriptions(): DigestUpcomingItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const subscriptions = loadSubscriptions();
@@ -106,9 +106,71 @@ function loadUpcoming(): DigestUpcomingItem[] {
   }
 }
 
+function combineUpcoming(...groups: Array<DigestUpcomingItem[] | null | undefined>): DigestUpcomingItem[] {
+  return groups
+    .flatMap((group) => (Array.isArray(group) ? group : []))
+    .filter((item): item is DigestUpcomingItem =>
+      Boolean(item) && Number.isFinite(item.days) && item.days >= 0,
+    )
+    .sort((a, b) => a.days - b.days)
+    .slice(0, 4);
+}
+
+async function fetchUpcomingDebts(windowDays = 7): Promise<DigestUpcomingItem[]> {
+  try {
+    const todayKey = getTodayKey();
+    const start = new Date(`${todayKey}T00:00:00+07:00`);
+    const end = new Date(start.getTime());
+    end.setDate(end.getDate() + windowDays);
+    const endKey = DATE_FORMATTER.format(end);
+
+    const { data, error } = await supabase
+      .from('debts')
+      .select('title, party_name, due_date, amount, paid_total, status, type')
+      .neq('status', 'paid')
+      .eq('type', 'debt')
+      .not('due_date', 'is', null)
+      .gte('due_date', todayKey)
+      .lte('due_date', endKey)
+      .order('due_date', { ascending: true })
+      .limit(20);
+
+    if (error) throw error;
+
+    return (data ?? [])
+      .map((raw) => {
+        const row = raw as Record<string, unknown>;
+        const dueKey = getDateKey((row?.due_date as string | null | undefined) ?? null);
+        if (!dueKey) return null;
+        const due = new Date(`${dueKey}T00:00:00+07:00`);
+        if (Number.isNaN(due.getTime())) return null;
+        const days = Math.round((due.getTime() - start.getTime()) / (24 * 60 * 60 * 1000));
+        if (!Number.isFinite(days) || days < 0 || days > windowDays) return null;
+        const amountValue = row?.amount as number | string | null | undefined;
+        const paidValue = row?.paid_total as number | string | null | undefined;
+        const amount = Math.max(toNumber(amountValue) - toNumber(paidValue), 0);
+        if (!Number.isFinite(amount) || amount <= 0) return null;
+        const title = typeof row?.title === 'string' ? row.title.trim() : '';
+        const party = typeof row?.party_name === 'string' ? row.party_name.trim() : '';
+        const name = title || (party ? `Hutang ${party}` : 'Hutang');
+        return { name, amount, days } satisfies DigestUpcomingItem;
+      })
+      .filter((item): item is DigestUpcomingItem => Boolean(item))
+      .sort((a, b) => a.days - b.days)
+      .slice(0, 4);
+  } catch (error) {
+    if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+      // eslint-disable-next-line no-console
+      console.error('[HW] digest upcoming debts', error);
+    }
+    return [];
+  }
+}
+
 function buildDigestData(
   transactions: DigestTransactionLike[] | null | undefined,
   balanceHint: number | null | undefined,
+  upcoming: DigestUpcomingItem[] | null | undefined,
 ): DailyDigestModalData {
   const todayKey = getTodayKey();
   const monthKey = todayKey.slice(0, 7);
@@ -158,6 +220,8 @@ function buildDigestData(
 
   const todayNet = todayIncome - todayExpense;
 
+  const resolvedUpcoming = Array.isArray(upcoming) && upcoming.length > 0 ? upcoming : null;
+
   return {
     todayKey,
     todayLabel,
@@ -169,7 +233,7 @@ function buildDigestData(
     todayNet,
     todayCount,
     topTodayExpenses,
-    upcoming: loadUpcoming(),
+    upcoming: combineUpcoming(resolvedUpcoming ?? loadUpcomingSubscriptions()),
   };
 }
 
@@ -211,10 +275,13 @@ export default function useShowDigestOnLogin({
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const autoOpenRef = useRef(false);
+  const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() =>
+    combineUpcoming(loadUpcomingSubscriptions()),
+  );
 
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, balanceHint ?? null),
-    [transactions, balanceHint],
+    () => buildDigestData(transactions ?? null, balanceHint ?? null, upcoming),
+    [transactions, balanceHint, upcoming],
   );
 
   const markSeen = useCallback(
@@ -299,6 +366,27 @@ export default function useShowDigestOnLogin({
     if (!userId) return;
     tryOpenForUser(userId, false);
   }, [userId, tryOpenForUser]);
+
+  useEffect(() => {
+    let canceled = false;
+    async function refreshUpcoming(uid: string | null) {
+      const base = loadUpcomingSubscriptions();
+      if (!uid) {
+        if (!canceled) {
+          setUpcoming(combineUpcoming(base));
+        }
+        return;
+      }
+      const debts = await fetchUpcomingDebts(7);
+      if (!canceled) {
+        setUpcoming(combineUpcoming(base, debts));
+      }
+    }
+    refreshUpcoming(userId);
+    return () => {
+      canceled = true;
+    };
+  }, [userId]);
 
   return {
     open,

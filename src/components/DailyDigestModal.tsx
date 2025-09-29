@@ -166,7 +166,7 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
               ))}
             </ul>
           ) : (
-            <p className="mt-3 text-sm text-muted">Tidak ada tagihan atau langganan yang jatuh tempo dalam 7 hari.</p>
+            <p className="mt-3 text-sm text-muted">Tidak ada hutang, tagihan, atau langganan yang jatuh tempo dalam 7 hari.</p>
           )}
         </div>
       </div>
