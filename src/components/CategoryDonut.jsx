@@ -9,7 +9,21 @@ function toRupiah(n = 0) {
   }).format(n);
 }
 
-const COLORS = ["#dc2626", "#f97316", "#eab308", "#16a34a", "#0ea5e9", "#6366f1", "#d946ef", "#475569"];
+const FALLBACK_COLORS = [
+  "#dc2626",
+  "#f97316",
+  "#eab308",
+  "#16a34a",
+  "#0ea5e9",
+  "#6366f1",
+  "#d946ef",
+  "#475569",
+];
+
+function resolveColor(item, index) {
+  if (typeof item?.color === "string" && item.color) return item.color;
+  return FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+}
 
 export default function CategoryDonut({ data = [] }) {
   const renderTooltip = ({ payload }) => {
@@ -35,7 +49,7 @@ export default function CategoryDonut({ data = [] }) {
               <li key={item.name} className="flex min-w-0 items-center gap-2">
                 <span
                   className="h-3 w-3 flex-shrink-0 rounded-full"
-                  style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                  style={{ backgroundColor: resolveColor(item, index) }}
                 />
                 <span className="truncate">
                   {item.name} · {toRupiah(item.value)}
@@ -58,7 +72,7 @@ export default function CategoryDonut({ data = [] }) {
               paddingAngle={4}
             >
               {data.map((entry, i) => (
-                <Cell key={entry.name || i} fill={COLORS[i % COLORS.length]} />
+                <Cell key={entry.name || i} fill={resolveColor(entry, i)} />
               ))}
             </Pie>
             <Tooltip content={renderTooltip} />

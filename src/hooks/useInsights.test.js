@@ -12,9 +12,33 @@ describe("aggregateInsights", () => {
 
   const txs = [
     { id: 1, date: "2024-06-01", type: "income", amount: 1000 },
-    { id: 2, date: "2024-06-02", type: "expense", amount: 200, category: "Food", note: "A" },
-    { id: 3, date: "2024-06-03", type: "expense", amount: 300, category: "Transport", note: "B" },
-    { id: 4, date: "2024-06-04", type: "expense", amount: 400, category: "Food", note: "C" },
+    {
+      id: 2,
+      date: "2024-06-02",
+      type: "expense",
+      amount: 200,
+      category: "Food",
+      category_color: "#ff0000",
+      note: "A",
+    },
+    {
+      id: 3,
+      date: "2024-06-03",
+      type: "expense",
+      amount: 300,
+      category: "Transport",
+      category_color: "#00ff00",
+      note: "B",
+    },
+    {
+      id: 4,
+      date: "2024-06-04",
+      type: "expense",
+      amount: 400,
+      category: "Food",
+      category_color: "#ff0000",
+      note: "C",
+    },
     { id: 5, date: "2024-05-10", type: "income", amount: 1000 },
     { id: 6, date: "2024-05-11", type: "expense", amount: 500 },
     { id: 7, date: "2024-04-10", type: "income", amount: 1000 },
@@ -46,7 +70,9 @@ describe("aggregateInsights", () => {
     const food = res.categories.find((c) => c.name === "Food");
     const transport = res.categories.find((c) => c.name === "Transport");
     expect(food.value).toBe(600);
+    expect(food.color).toBe("#ff0000");
     expect(transport.value).toBe(300);
+    expect(transport.color).toBe("#00ff00");
   });
 
   it("lists top spends", () => {

@@ -33,14 +33,28 @@ export function aggregateInsights(txs = []) {
   });
 
   // category breakdown for current month
-  const catMap = monthTx
+  const categories = monthTx
     .filter((t) => t.type === "expense")
     .reduce((acc, t) => {
       const key = t.category || "Lainnya";
-      acc[key] = (acc[key] || 0) + Number(t.amount || 0);
+      const amount = Number(t.amount || 0);
+      if (!amount) return acc;
+
+      const entry = acc.get(key) ?? { name: key, value: 0, color: undefined };
+      entry.value += amount;
+      if (!entry.color && typeof t.category_color === "string" && t.category_color) {
+        entry.color = t.category_color;
+      }
+      acc.set(key, entry);
       return acc;
-    }, {});
-  const categories = Object.entries(catMap).map(([name, value]) => ({ name, value }));
+    }, new Map())
+    .values();
+
+  const categoriesArray = Array.from(categories, (item) => ({
+    name: item.name,
+    value: item.value,
+    color: item.color,
+  }));
 
   // top spends for current month
   const topSpends = monthTx
@@ -51,7 +65,7 @@ export function aggregateInsights(txs = []) {
   return {
     kpis: { income, expense, net, avgDaily },
     trend,
-    categories,
+    categories: categoriesArray,
     topSpends,
   };
 }
