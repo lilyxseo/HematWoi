@@ -24,6 +24,7 @@ import {
   Repeat,
   Settings as SettingsIcon,
   User as UserIcon,
+  Users as UsersIcon,
   CreditCard,
 } from 'lucide-react';
 
@@ -124,6 +125,14 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/subscriptions',
     icon: <Repeat className="h-5 w-5" />,
     section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Keluarga',
+    path: '/family',
+    icon: <UsersIcon className="h-5 w-5" />,
+    section: 'secondary',
     inSidebar: true,
     protected: true,
   },

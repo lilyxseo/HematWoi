@@ -1,5 +1,6 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { applyHouseholdScope } from './householdApi';
 
 export type AccountType = 'cash' | 'bank' | 'ewallet' | 'other';
 
@@ -79,11 +80,13 @@ function toUserMessage(error: unknown, fallback: string): string {
 }
 
 export async function listAccounts(userId: string): Promise<AccountRecord[]> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('accounts')
     .select('id,name,type,currency,created_at,user_id')
-    .eq('user_id', userId)
     .order('created_at', { ascending: false });
+  query = applyHouseholdScope(query, userId);
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(toUserMessage(error, 'Gagal memuat akun.'));

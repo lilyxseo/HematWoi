@@ -31,10 +31,12 @@ import AuthLogin from "./pages/AuthLogin";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
+import FamilyPage from "./pages/FamilyPage";
 import useChallenges from "./hooks/useChallenges.js";
 import AuthGuard from "./components/AuthGuard";
 import AdminGuard from "./components/AdminGuard";
 import { DataProvider } from "./context/DataContext";
+import { HouseholdProvider } from "./context/HouseholdContext";
 
 import { supabase } from "./lib/supabase";
 import { syncGuestToCloud } from "./lib/sync";
@@ -1162,6 +1164,7 @@ function AppShell({ prefs, setPrefs }) {
                   element={<Navigate to="/transaction/add" replace />}
                 />
                 <Route path="settings" element={<SettingsPage />} />
+                <Route path="family" element={<FamilyPage />} />
                 <Route
                   path="admin"
                   element={
@@ -1261,9 +1264,11 @@ export default function App() {
     <ModeProvider>
       <UserProfileProvider>
         <ToastProvider>
-          <DataProvider>
-            <AppContent />
-          </DataProvider>
+          <HouseholdProvider>
+            <DataProvider>
+              <AppContent />
+            </DataProvider>
+          </HouseholdProvider>
         </ToastProvider>
       </UserProfileProvider>
     </ModeProvider>

@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
 import { formatCurrency } from './format';
+import { applyHouseholdScope } from './householdApi';
 
 export type CarryRule = 'none' | 'carry-positive' | 'carry-all' | 'reset-zero';
 export type BudgetSortKey = 'name' | 'planned' | 'actual' | 'remaining';
@@ -237,8 +238,8 @@ export async function listBudgets(options: ListBudgetsOptions): Promise<BudgetRe
     let query = supabase
       .from('budgets')
       .select('*, category:categories(id, name)')
-      .eq('user_id', userId)
       .eq('period_month', periodIso);
+    query = applyHouseholdScope(query, userId);
 
     if (categoryId) {
       query = query.eq('category_id', categoryId);
@@ -372,11 +373,12 @@ export async function deleteBudget(id: UUID): Promise<void> {
   try {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
-    const { error } = await supabase
+    let query = supabase
       .from('budgets')
       .delete()
-      .eq('user_id', userId)
       .eq('id', id);
+    query = applyHouseholdScope(query, userId);
+    const { error } = await query;
     if (error) throw error;
   } catch (error) {
     logDev(error, 'deleteBudget');
@@ -394,11 +396,12 @@ export async function copyBudgets(payload: CopyBudgetsPayload): Promise<BudgetRe
     const fromIso = toISODate(payload.fromPeriod);
     const toIso = toISODate(payload.toPeriod);
 
-    const { data: rows, error } = await supabase
+    let copySource = supabase
       .from('budgets')
       .select('*, category:categories(id, name)')
-      .eq('user_id', userId)
       .eq('period_month', fromIso);
+    copySource = applyHouseholdScope(copySource, userId);
+    const { data: rows, error } = await copySource;
     if (error) throw error;
 
     if (!rows?.length) return [];
@@ -441,11 +444,12 @@ export async function listRules(): Promise<BudgetRuleRecord[]> {
   try {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
-    const { data, error } = await supabase
+    let query = supabase
       .from('budget_rules')
       .select('*')
-      .eq('user_id', userId)
       .order('created_at', { ascending: false });
+    query = applyHouseholdScope(query, userId);
+    const { data, error } = await query;
     if (error) {
       if (isRelationMissing(error, 'budget_rules')) return [];
       throw error;
@@ -499,11 +503,12 @@ export async function deleteRule(id: UUID): Promise<void> {
   try {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
-    const { error } = await supabase
+    let query = supabase
       .from('budget_rules')
       .delete()
-      .eq('user_id', userId)
       .eq('id', id);
+    query = applyHouseholdScope(query, userId);
+    const { error } = await query;
     if (error) {
       if (isRelationMissing(error, 'budget_rules')) {
         throw new Error('Fitur aturan anggaran belum tersedia pada skema ini.');
@@ -524,11 +529,12 @@ export async function getSummary(options: { period: string }): Promise<BudgetSum
     const userId = await getCurrentUserId();
     ensureAuth(userId);
     const periodIso = toISODate(options.period);
-    const { data: budgetsData, error } = await supabase
+    let summaryQuery = supabase
       .from('budgets')
       .select('amount_planned, current_spent')
-      .eq('user_id', userId)
       .eq('period_month', periodIso);
+    summaryQuery = applyHouseholdScope(summaryQuery, userId);
+    const { data: budgetsData, error } = await summaryQuery;
     if (error) throw error;
 
     const totalPlanned = (budgetsData ?? []).reduce(

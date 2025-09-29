@@ -3,6 +3,7 @@ import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabase";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
+import { applyHouseholdScope } from "./householdApi";
 
 function ensureRestEnv() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -458,8 +459,8 @@ export async function listTransactions(options = {}) {
   let query = supabase
     .from("transactions")
     .select(columns, { count: "exact" })
-    .eq("user_id", userId)
     .is("deleted_at", null);
+  query = applyHouseholdScope(query, userId);
 
   const [sortField, sortDir] = sort.split("-");
   const ascending = sortDir === "asc";
@@ -548,8 +549,8 @@ export async function getTransactionsSummary(options = {}) {
     let query = supabase
       .from("transactions")
       .select("type, amount")
-      .eq("user_id", userId)
       .is("deleted_at", null);
+    query = applyHouseholdScope(query, userId);
 
     if (normalized.type && normalized.type !== "all") {
       query = query.eq("type", normalized.type);
@@ -887,11 +888,12 @@ export async function listAccounts() {
   }
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("accounts")
       .select("*")
-      .eq("user_id", userId)
       .order("name", { ascending: true });
+    query = applyHouseholdScope(query, userId);
+    const { data, error } = await query;
     if (error) throw error;
     const rows = (data || []).map((row) => mapAccountRow(row, userId));
     await dbCache.bulkSet("accounts", rows);
@@ -927,11 +929,12 @@ export async function listMerchants() {
   }
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("merchants")
       .select("*")
-      .eq("user_id", userId)
       .order("name", { ascending: true });
+    query = applyHouseholdScope(query, userId);
+    const { data, error } = await query;
     if (error) throw error;
     const rows = (data || []).map((row) => mapMerchantRow(row, userId));
     await dbCache.bulkSet("merchants", rows);

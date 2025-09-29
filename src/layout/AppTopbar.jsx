@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, LogIn, LogOut, Menu, Settings, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { useHousehold } from "../context/HouseholdContext";
 
 function getDisplayName(user) {
   if (!user) return "Masuk";
@@ -20,6 +21,13 @@ export default function AppTopbar() {
   const profileButtonRef = useRef(null);
   const navigate = useNavigate();
   const isAuthenticated = Boolean(user);
+  const {
+    householdViewEnabled,
+    toggleHouseholdView,
+    householdId,
+    householdName,
+  } = useHousehold();
+  const householdToggleAvailable = Boolean(householdId);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -104,6 +112,38 @@ export default function AppTopbar() {
           <span className="text-base font-semibold text-text">HematWoi</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          {householdToggleAvailable && (
+            <button
+              type="button"
+              onClick={() => toggleHouseholdView(!householdViewEnabled)}
+              role="switch"
+              aria-checked={householdViewEnabled}
+              aria-label={
+                householdViewEnabled
+                  ? "Matikan tampilan data keluarga"
+                  : "Tampilkan data keluarga"
+              }
+              className="group inline-flex h-11 items-center gap-2 rounded-2xl border border-border/70 bg-surface-1 px-3 text-sm font-medium text-text shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95"
+            >
+              <span className="hidden text-xs font-semibold uppercase tracking-wide text-muted sm:inline">
+                {householdName ? `Keluarga • ${householdName}` : "Data Keluarga"}
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted sm:hidden">
+                Keluarga
+              </span>
+              <span
+                className={`relative inline-flex h-6 w-11 items-center rounded-full border border-border/70 transition-colors duration-200 ${
+                  householdViewEnabled ? 'bg-brand/80' : 'bg-surface-2'
+                }`}
+              >
+                <span
+                  className={`ml-1 inline-flex h-4 w-4 transform rounded-full bg-background transition-transform duration-200 ${
+                    householdViewEnabled ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </span>
+            </button>
+          )}
           <button
             type="button"
             className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-surface-1 text-text transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95"
