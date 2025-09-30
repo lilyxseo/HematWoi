@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
@@ -17,6 +17,7 @@ const heroTips = [
 
 export default function AuthLogin() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
   const [prefilledIdentifier] = useState(() => {
@@ -83,6 +84,18 @@ export default function AuthLogin() {
     }
   }, [googleLoading, googleRedirectTo]);
 
+  const handlePostLoginNavigation = useCallback(
+    (provider?: string | null) => {
+      if (provider === 'google') {
+        redirectToNativeGoogleLogin();
+        return;
+      }
+
+      navigate('/', { replace: true });
+    },
+    [navigate]
+  );
+
   useEffect(() => {
     let isMounted = true;
     const checkSession = async () => {
@@ -90,7 +103,7 @@ export default function AuthLogin() {
         const session = await getSession();
         if (!isMounted) return;
         if (session) {
-          redirectToNativeGoogleLogin();
+          handlePostLoginNavigation(session.user?.app_metadata?.provider ?? null);
           return;
         }
         setChecking(false);
@@ -113,7 +126,7 @@ export default function AuthLogin() {
         }
         void syncGuestData(session.user?.id ?? null);
         if (location.pathname === '/auth') {
-          redirectToNativeGoogleLogin();
+          handlePostLoginNavigation(session.user?.app_metadata?.provider ?? null);
         }
       }
     });
@@ -122,7 +135,7 @@ export default function AuthLogin() {
       isMounted = false;
       listener?.subscription?.unsubscribe();
     };
-  }, [location.pathname, redirectToNativeGoogleLogin, syncGuestData]);
+  }, [handlePostLoginNavigation, location.pathname, syncGuestData]);
 
   const skeleton = useMemo(
     () => (
@@ -164,11 +177,13 @@ export default function AuthLogin() {
       if (uid) {
         void syncGuestData(uid);
       }
+      handlePostLoginNavigation(data.session?.user?.app_metadata?.provider ?? null);
+      return;
     } catch (error) {
       console.error('[AuthLogin] Gagal membaca sesi setelah login', error);
     }
-    redirectToNativeGoogleLogin();
-  }, [redirectToNativeGoogleLogin, syncGuestData]);
+    handlePostLoginNavigation(null);
+  }, [handlePostLoginNavigation, syncGuestData]);
 
   return (
     <ErrorBoundary>
