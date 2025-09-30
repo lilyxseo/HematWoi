@@ -1,10 +1,32 @@
 import { useMemo } from "react";
 
+const JAKARTA_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+function toJakartaDate(date = new Date()) {
+  const time = date.getTime();
+  if (!Number.isFinite(time)) return null;
+  const utc = time + date.getTimezoneOffset() * 60 * 1000;
+  return new Date(utc + JAKARTA_OFFSET_MS);
+}
+
+function getMonthKey(date) {
+  const jakarta = toJakartaDate(date);
+  if (!jakarta) return null;
+  const year = jakarta.getUTCFullYear();
+  const month = String(jakarta.getUTCMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
 export function aggregateInsights(txs = []) {
   const today = new Date();
-  const monthStr = today.toISOString().slice(0, 7);
+  const currentMonthKey = getMonthKey(today);
 
-  const monthTx = txs.filter((t) => String(t.date).slice(0, 7) === monthStr);
+  const monthTx = txs.filter((t) => {
+    if (!t?.date || !currentMonthKey) return false;
+    const txDate = new Date(t.date);
+    if (Number.isNaN(txDate.getTime())) return false;
+    return getMonthKey(txDate) === currentMonthKey;
+  });
   const income = monthTx
     .filter((t) => t.type === "income")
     .reduce((s, t) => s + Number(t.amount || 0), 0);

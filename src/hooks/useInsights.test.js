@@ -79,4 +79,19 @@ describe("aggregateInsights", () => {
     const res = aggregateInsights(txs);
     expect(res.topSpends.map((t) => t.amount)).toEqual([400, 300, 200]);
   });
+
+  it("uses calendar month starting from the 1st in Asia/Jakarta", () => {
+    const baseTime = new Date("2024-06-15T00:00:00.000Z");
+    vi.setSystemTime(new Date("2024-07-15T12:00:00+07:00"));
+
+    const julyTxs = [
+      { id: 100, date: "2024-07-01T00:00:00+07:00", type: "expense", amount: 500 },
+      { id: 101, date: "2024-06-30T23:00:00+07:00", type: "expense", amount: 250 },
+    ];
+
+    const res = aggregateInsights(julyTxs);
+    expect(res.kpis.expense).toBe(500);
+
+    vi.setSystemTime(baseTime);
+  });
 });
