@@ -1,10 +1,32 @@
 import { useMemo } from "react";
 
-export function aggregateInsights(txs = []) {
-  const today = new Date();
-  const monthStr = today.toISOString().slice(0, 7);
+const MONTH_PATTERN = /^(\d{4})-(\d{2})$/;
 
-  const monthTx = txs.filter((t) => String(t.date).slice(0, 7) === monthStr);
+function normalizeMonth(value) {
+  if (typeof value !== "string") return null;
+  const match = value.match(MONTH_PATTERN);
+  if (!match) return null;
+  const monthIndex = Number(match[2]);
+  if (Number.isNaN(monthIndex) || monthIndex < 1 || monthIndex > 12) return null;
+  return `${match[1]}-${match[2]}`;
+}
+
+export function aggregateInsights(txs = [], month) {
+  const normalizedMonth = normalizeMonth(month);
+  const today = new Date();
+  const referenceMonth = normalizedMonth ?? today.toISOString().slice(0, 7);
+
+  const [yearStr, monthStr] = referenceMonth.split("-");
+  const year = Number(yearStr);
+  const monthZeroBased = Number(monthStr) - 1;
+  const monthStart = new Date(year, monthZeroBased, 1);
+  const nextMonthStart = new Date(year, monthZeroBased + 1, 1);
+
+  const monthTx = txs.filter((t) => {
+    const date = new Date(t.date);
+    if (Number.isNaN(date.getTime())) return false;
+    return date >= monthStart && date < nextMonthStart;
+  });
   const income = monthTx
     .filter((t) => t.type === "income")
     .reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -12,8 +34,12 @@ export function aggregateInsights(txs = []) {
     .filter((t) => t.type === "expense")
     .reduce((s, t) => s + Number(t.amount || 0), 0);
   const net = income - expense;
-  const day = today.getDate();
-  const avgDaily = day ? expense / day : 0;
+  const isCurrentMonth = today >= monthStart && today < nextMonthStart;
+  const totalDaysInMonth = Math.round(
+    (nextMonthStart.getTime() - monthStart.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  const elapsedDays = isCurrentMonth ? today.getDate() : totalDaysInMonth;
+  const avgDaily = elapsedDays ? expense / elapsedDays : 0;
 
   // trend last 6 months (including current)
   const trendMap = {};
@@ -71,13 +97,18 @@ export function aggregateInsights(txs = []) {
 
 const cache = new Map();
 
-export default function useInsights(txs = []) {
-  const key = txs.map((t) => `${t.id || t.date}-${t.amount}-${t.type}`).join("|");
+export default function useInsights(txs = [], month) {
+  const normalizedMonth = normalizeMonth(month) ?? null;
+  const key = [
+    normalizedMonth ?? "current",
+    ...txs.map((t) => `${t.id || t.date}-${t.amount}-${t.type}`),
+  ].join("|");
+
   return useMemo(() => {
     if (cache.has(key)) return cache.get(key);
-    const data = aggregateInsights(txs);
+    const data = aggregateInsights(txs, normalizedMonth ?? undefined);
     cache.set(key, data);
     return data;
-  }, [key, txs]);
+  }, [key, txs, normalizedMonth]);
 }
 

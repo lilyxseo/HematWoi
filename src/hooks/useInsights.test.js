@@ -79,4 +79,15 @@ describe("aggregateInsights", () => {
     const res = aggregateInsights(txs);
     expect(res.topSpends.map((t) => t.amount)).toEqual([400, 300, 200]);
   });
+
+  it("supports selecting a specific month starting from day one", () => {
+    const res = aggregateInsights(txs, "2024-05");
+    expect(res.kpis.income).toBe(1000);
+    expect(res.kpis.expense).toBe(500);
+    expect(res.kpis.avgDaily).toBeCloseTo(16.13, 2);
+    expect(res.topSpends.map((t) => t.amount)).toEqual([500]);
+    expect(res.categories).toEqual([
+      { name: "Lainnya", value: 500, color: undefined },
+    ]);
+  });
 });

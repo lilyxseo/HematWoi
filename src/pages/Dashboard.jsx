@@ -19,7 +19,7 @@ import BudgetHighlights from "../components/dashboard/BudgetHighlights";
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs }) {
+export default function Dashboard({ stats, txs, monthForReport }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const balances = useDashboardBalances(periodRange);
@@ -67,7 +67,7 @@ export default function Dashboard({ stats, txs }) {
     return count;
   }, [txs]);
 
-  const insights = useInsights(txs);
+  const insights = useInsights(txs, monthForReport);
   const savingsTarget = stats?.savingsTarget || 1_000_000;
 
   return (
