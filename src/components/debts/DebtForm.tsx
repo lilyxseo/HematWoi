@@ -23,6 +23,56 @@ function parseDecimal(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function sanitizeAmountInput(value: string) {
+  return value.replace(/[^0-9,]/g, '');
+}
+
+function formatAmountInput(value: string) {
+  const cleaned = sanitizeAmountInput(value);
+  if (!cleaned) return '';
+
+  const hasComma = cleaned.includes(',');
+  const [integerPartRaw, ...decimalParts] = cleaned.split(',');
+  const decimalPartRaw = decimalParts.join('');
+
+  const digits = integerPartRaw.replace(/\D/g, '');
+  const normalizedDigits = digits.replace(/^0+(?=\d)/, '');
+  const integerDigits = normalizedDigits || (digits ? '0' : '');
+  const formattedInteger = integerDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  if (!hasComma) {
+    return formattedInteger;
+  }
+
+  const decimals = decimalPartRaw.replace(/\D/g, '');
+  const base = formattedInteger || '0';
+  return `${base},${decimals}`;
+}
+
+function computeAmountCaretPosition(formatted: string, sanitizedBeforeCursor: string) {
+  if (!sanitizedBeforeCursor) return 0;
+  let remaining = sanitizedBeforeCursor.length;
+  let index = 0;
+  while (index < formatted.length && remaining > 0) {
+    const char = formatted.charAt(index);
+    if (/\d|,/.test(char)) {
+      remaining -= 1;
+    }
+    index += 1;
+  }
+  return index;
+}
+
+const amountFormatter = new Intl.NumberFormat('id-ID', {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 0,
+});
+
+function formatAmountFromNumber(value?: number | null) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '';
+  return amountFormatter.format(value);
+}
+
 function clampRate(value: number) {
   return Math.min(100, Math.max(0, value));
 }
@@ -72,7 +122,7 @@ function buildDefaultValues(initial?: DebtRecord | null): DebtFormValues {
     title: initial.title ?? '',
     date: normalizeDateInput(initial.date) || todayIso(),
     due_date: normalizeDateInput(initial.due_date) || '',
-    amount: initial.amount ? String(initial.amount) : '',
+    amount: formatAmountFromNumber(initial.amount),
     rate_percent:
       typeof initial.rate_percent === 'number' && Number.isFinite(initial.rate_percent)
         ? initial.rate_percent.toString()
@@ -172,6 +222,21 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
 
   const handleChange = (field: keyof DebtFormValues) =>
     (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+      if (field === 'amount' && event.target instanceof HTMLInputElement) {
+        const { value } = event.target;
+        const selection = event.target.selectionStart ?? value.length;
+        const sanitizedBeforeCursor = sanitizeAmountInput(value.slice(0, selection));
+        const formattedValue = formatAmountInput(value);
+        setValues((prev) => ({ ...prev, amount: formattedValue }));
+        window.requestAnimationFrame(() => {
+          const amountInput = dialogRef.current?.querySelector<HTMLInputElement>('#amount');
+          if (!amountInput) return;
+          const nextPosition = computeAmountCaretPosition(formattedValue, sanitizedBeforeCursor);
+          amountInput.setSelectionRange(nextPosition, nextPosition);
+        });
+        return;
+      }
+
       const { value } = event.target;
       setValues((prev) => ({ ...prev, [field]: value }));
     };
