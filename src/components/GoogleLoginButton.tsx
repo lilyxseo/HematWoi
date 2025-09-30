@@ -1,15 +1,13 @@
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode } from 'react'
 
+import { getNativeGoogleLoginUrl } from '../lib/native-google-login'
 import { isHematWoiApp } from '../lib/ua'
 
 const DEFAULT_DOMAIN = 'https://www.hemat-woi.me'
 const DEFAULT_WEB_LOGIN_PATH = '/auth/google'
 const DEFAULT_WEB_LOGIN_ABSOLUTE = `${DEFAULT_DOMAIN}${DEFAULT_WEB_LOGIN_PATH}`
-const DEFAULT_NATIVE_LOGIN_PATH = '/native-google-login'
-const DEFAULT_NATIVE_LOGIN_ABSOLUTE = `${DEFAULT_DOMAIN}${DEFAULT_NATIVE_LOGIN_PATH}`
-
 export const DEFAULT_GOOGLE_WEB_LOGIN_URL = DEFAULT_WEB_LOGIN_ABSOLUTE
-export const DEFAULT_NATIVE_TRIGGER_URL = DEFAULT_NATIVE_LOGIN_ABSOLUTE
+export const DEFAULT_NATIVE_TRIGGER_URL = getNativeGoogleLoginUrl()
 
 type Environment = Record<string, string | undefined>
 
@@ -80,12 +78,7 @@ export default function GoogleLoginButton({
   children,
   ...rest
 }: GoogleLoginButtonProps) {
-  const computedNativeUrl = resolveUrl(
-    nativeTriggerUrl,
-    'VITE_NATIVE_GOOGLE_LOGIN_URL',
-    DEFAULT_NATIVE_LOGIN_PATH,
-    DEFAULT_NATIVE_LOGIN_ABSOLUTE
-  )
+  const computedNativeUrl = getNativeGoogleLoginUrl(nativeTriggerUrl)
 
   const computedWebLoginUrl = resolveUrl(
     webLoginUrl,

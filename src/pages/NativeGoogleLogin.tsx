@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import GoogleLoginButton, {
-  DEFAULT_GOOGLE_WEB_LOGIN_URL,
-  DEFAULT_NATIVE_TRIGGER_URL,
-} from '../components/GoogleLoginButton';
+import GoogleLoginButton, { DEFAULT_GOOGLE_WEB_LOGIN_URL } from '../components/GoogleLoginButton';
+import { getNativeGoogleLoginUrl } from '../lib/native-google-login';
 import { isHematWoiApp } from '../lib/ua';
 
 const httpPattern = /^https?:\/\//i;
@@ -14,7 +12,7 @@ export default function NativeGoogleLogin() {
   const [isNativeApp] = useState(() => isHematWoiApp());
   const [showManualTrigger, setShowManualTrigger] = useState(false);
 
-  const targetUrl = useMemo(() => DEFAULT_NATIVE_TRIGGER_URL, []);
+  const targetUrl = useMemo(() => getNativeGoogleLoginUrl(), []);
   const fallbackWebLoginUrl = useMemo(() => DEFAULT_GOOGLE_WEB_LOGIN_URL, []);
   const canTriggerNative =
     isNativeApp && Boolean(targetUrl) && !httpPattern.test(targetUrl) && /^[a-z][a-z0-9+.-]*:/i.test(targetUrl);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { DEFAULT_NATIVE_TRIGGER_URL } from '../components/GoogleLoginButton';
+import { getNativeGoogleLoginUrl } from '../lib/native-google-login';
 import { supabase } from '../lib/supabase';
 
 const httpPattern = /^https?:\/\//i;
@@ -31,7 +31,7 @@ const MobileGoogleCallback = () => {
 
       setStatus('Berhasil login. Mengalihkan...');
 
-      const target = DEFAULT_NATIVE_TRIGGER_URL;
+      const target = getNativeGoogleLoginUrl();
       try {
         window.location.replace(target);
       } catch {
