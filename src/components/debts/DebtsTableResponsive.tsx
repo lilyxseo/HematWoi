@@ -1,4 +1,4 @@
-import { Loader2, Pencil, Trash2, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, Pencil, Trash2, Wallet } from 'lucide-react';
 import type { DebtRecord } from '../../lib/api-debts';
 
 const currencyFormatter = new Intl.NumberFormat('id-ID', {
@@ -49,6 +49,11 @@ interface DebtsTableResponsiveProps {
   onEdit: (debt: DebtRecord) => void;
   onDelete: (debt: DebtRecord) => void;
   onAddPayment: (debt: DebtRecord) => void;
+  tenorNavigation?: Record<
+    string,
+    { key: string; hasPrev: boolean; hasNext: boolean; currentIndex: number; total: number }
+  >;
+  onNavigateTenor?: (seriesKey: string, direction: 1 | -1) => void;
 }
 
 function formatCurrency(value: number) {
@@ -89,6 +94,8 @@ export default function DebtsTableResponsive({
   onEdit,
   onDelete,
   onAddPayment,
+  tenorNavigation,
+  onNavigateTenor,
 }: DebtsTableResponsiveProps) {
   const showSkeleton = Boolean(loading && debts.length === 0);
   const showEmpty = Boolean(!loading && debts.length === 0);
@@ -129,9 +136,6 @@ export default function DebtsTableResponsive({
                   </th>
                   <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[200px]">
                     Judul
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[140px]">
-                    Tanggal
                   </th>
                   <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[150px]">
                     Jatuh Tempo
@@ -177,9 +181,6 @@ export default function DebtsTableResponsive({
                           <div className="h-3.5 w-48 animate-pulse rounded bg-border/40" />
                         </td>
                         <td className="px-4 py-3 align-middle">
-                          <div className="h-3.5 w-28 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle">
                           <div className="h-3.5 w-36 animate-pulse rounded bg-border/40" />
                         </td>
                         <td className="px-4 py-3 align-middle text-center">
@@ -213,7 +214,7 @@ export default function DebtsTableResponsive({
 
                 {showEmpty ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={11} className="px-6 py-12 text-center text-sm text-muted-foreground">
                       Tidak ada data hutang sesuai filter.
                     </td>
                   </tr>
@@ -222,6 +223,7 @@ export default function DebtsTableResponsive({
                 {!showEmpty &&
                   debts.map((debt) => {
                     const overdue = isOverdue(debt);
+                    const navigation = tenorNavigation?.[debt.id];
                     return (
                       <tr
                         key={debt.id}
@@ -248,9 +250,6 @@ export default function DebtsTableResponsive({
                           </span>
                         </td>
                         <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
-                          {formatDate(debt.date)}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
                           <div className="flex min-w-0 items-center gap-2">
                             <span className={`truncate ${overdue ? 'font-semibold text-rose-300' : ''}`}>
                               {formatDate(debt.due_date)}
@@ -263,7 +262,33 @@ export default function DebtsTableResponsive({
                           </div>
                         </td>
                         <td className="px-4 py-3 align-middle text-center text-sm tabular-nums text-muted-foreground">
-                          <span className={debt.tenor_months > 1 ? 'font-semibold text-foreground' : ''}>{formatTenor(debt)}</span>
+                          <div className="flex items-center justify-center gap-1">
+                            {debt.tenor_months > 1 && navigation ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                                  aria-label="Lihat tenor sebelumnya"
+                                  onClick={() => navigation.hasPrev && onNavigateTenor?.(navigation.key, -1)}
+                                  disabled={!navigation.hasPrev}
+                                >
+                                  <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                                <span className="font-semibold text-foreground">{formatTenor(debt)}</span>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                                  aria-label="Lihat tenor selanjutnya"
+                                  onClick={() => navigation.hasNext && onNavigateTenor?.(navigation.key, 1)}
+                                  disabled={!navigation.hasNext}
+                                >
+                                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className={debt.tenor_months > 1 ? 'font-semibold text-foreground' : ''}>{formatTenor(debt)}</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 align-middle text-right text-sm tabular-nums text-muted-foreground">
                           {formatPercent(debt.rate_percent)}
@@ -314,7 +339,7 @@ export default function DebtsTableResponsive({
 
                 {debts.length > 0 && loading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-4">
+                    <td colSpan={11} className="px-4 py-4">
                       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                         Memuat data hutang…
@@ -371,6 +396,7 @@ export default function DebtsTableResponsive({
         {!showEmpty &&
           debts.map((debt) => {
             const overdue = isOverdue(debt);
+            const navigation = tenorNavigation?.[debt.id];
             const statusStyle = STATUS_STYLE[debt.status] ?? '';
             return (
               <article
@@ -402,10 +428,6 @@ export default function DebtsTableResponsive({
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Tanggal</p>
-                      <p className="text-sm font-medium text-foreground">{formatDate(debt.date)}</p>
-                    </div>
-                    <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Jatuh tempo</p>
                       <div className="flex items-center gap-2">
                         <p className={`text-sm font-medium ${overdue ? 'text-rose-300' : 'text-foreground'}`}>
@@ -420,9 +442,33 @@ export default function DebtsTableResponsive({
                     </div>
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Tenor</p>
-                      <p className={`text-sm font-semibold ${debt.tenor_months > 1 ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {formatTenor(debt)}
-                      </p>
+                      {debt.tenor_months > 1 && navigation ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label="Lihat tenor sebelumnya"
+                            onClick={() => navigation.hasPrev && onNavigateTenor?.(navigation.key, -1)}
+                            disabled={!navigation.hasPrev}
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                          <p className="text-sm font-semibold text-foreground">{formatTenor(debt)}</p>
+                          <button
+                            type="button"
+                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label="Lihat tenor selanjutnya"
+                            onClick={() => navigation.hasNext && onNavigateTenor?.(navigation.key, 1)}
+                            disabled={!navigation.hasNext}
+                          >
+                            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className={`text-sm font-semibold ${debt.tenor_months > 1 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                          {formatTenor(debt)}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Bunga</p>
