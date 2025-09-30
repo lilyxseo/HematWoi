@@ -18,6 +18,8 @@ import {
 type LoginCardProps = {
   defaultIdentifier?: string;
   onSuccess?: (identifier: string) => void;
+  onPasswordSignInStart?: () => void;
+  onPasswordSignInError?: () => void;
 };
 
 type ModeKey = 'login' | 'reset';
@@ -137,7 +139,12 @@ function PasswordInput({ error, hint, ...props }: Omit<InputProps, 'trailing'>) 
   );
 }
 
-export default function LoginCard({ defaultIdentifier = '', onSuccess }: LoginCardProps) {
+export default function LoginCard({
+  defaultIdentifier = '',
+  onSuccess,
+  onPasswordSignInStart,
+  onPasswordSignInError,
+}: LoginCardProps) {
   const [mode, setMode] = useState<ModeKey>('login');
   const [identifier, setIdentifier] = useState(defaultIdentifier);
   const [password, setPassword] = useState('');
@@ -234,6 +241,7 @@ export default function LoginCard({ defaultIdentifier = '', onSuccess }: LoginCa
 
     try {
       let emailForSignIn = normalizedEmail;
+      onPasswordSignInStart?.();
       if (!looksLikeEmail) {
         const resolvedEmail = await resolveEmailByUsername(trimmedIdentifier);
         if (!resolvedEmail) {
@@ -248,6 +256,7 @@ export default function LoginCard({ defaultIdentifier = '', onSuccess }: LoginCa
       setStatus({ type: 'success', message: 'Berhasil masuk. Mengalihkan…' });
       onSuccess?.(emailForSignIn);
     } catch (error) {
+      onPasswordSignInError?.();
       const message = error instanceof Error ? error.message : GENERIC_ERROR;
       if (!looksLikeEmail) {
         if (message === 'Username atau email tidak ditemukan.' || message === 'Username tidak ditemukan.') {
