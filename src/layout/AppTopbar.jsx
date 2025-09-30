@@ -88,7 +88,7 @@ export default function AppTopbar() {
   };
 
   return (
-    <header className="sticky top-0 z-[65] border-b border-border/70 bg-surface-1/80 backdrop-blur">
+    <header className="sticky inset-x-0 top-0 z-[65] border-b border-border/70 bg-surface-1/80 backdrop-blur supports-[backdrop-filter]:bg-surface-1/60">
       <div className="mx-auto flex h-16 w-full max-w-[1280px] items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3">
           <button

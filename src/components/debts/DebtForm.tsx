@@ -23,6 +23,20 @@ function parseDecimal(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function formatAmountInput(value: string): string {
+  if (!value) return '';
+  const sanitized = value.replace(/[^0-9,]/g, '');
+  if (!sanitized) return '';
+  const [integerPartRaw, decimalPartRaw] = sanitized.split(',', 2);
+  const integerPart = integerPartRaw.replace(/^0+(?=\d)/g, '') || '0';
+  const withSeparators = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  if (decimalPartRaw === undefined) {
+    return withSeparators;
+  }
+  const decimalPart = decimalPartRaw.replace(/[^0-9]/g, '');
+  return decimalPart ? `${withSeparators},${decimalPart}` : `${withSeparators},`;
+}
+
 function clampRate(value: number) {
   return Math.min(100, Math.max(0, value));
 }
@@ -72,7 +86,10 @@ function buildDefaultValues(initial?: DebtRecord | null): DebtFormValues {
     title: initial.title ?? '',
     date: normalizeDateInput(initial.date) || todayIso(),
     due_date: normalizeDateInput(initial.due_date) || '',
-    amount: initial.amount ? String(initial.amount) : '',
+    amount:
+      typeof initial.amount === 'number' && Number.isFinite(initial.amount)
+        ? formatAmountInput(initial.amount.toString())
+        : formatAmountInput(initial.amount ? String(initial.amount) : ''),
     rate_percent:
       typeof initial.rate_percent === 'number' && Number.isFinite(initial.rate_percent)
         ? initial.rate_percent.toString()
@@ -175,6 +192,11 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
       const { value } = event.target;
       setValues((prev) => ({ ...prev, [field]: value }));
     };
+
+  const handleAmountChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { value } = event.target;
+    setValues((prev) => ({ ...prev, amount: formatAmountInput(value) }));
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -334,7 +356,7 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
                 id="amount"
                 name="amount"
                 value={values.amount}
-                onChange={handleChange('amount')}
+                onChange={handleAmountChange}
                 inputMode="decimal"
                 placeholder="Masukkan nominal"
                 className="h-[40px] rounded-xl border border-border bg-surface-1 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
