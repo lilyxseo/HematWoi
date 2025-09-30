@@ -43,6 +43,7 @@ export interface DebtPaymentRecord {
 
 export interface DebtSummary {
   totalDebt: number;
+  debtDueThisMonth: number;
   totalReceivable: number;
   totalPaidThisMonth: number;
   dueSoon: number;
@@ -295,6 +296,7 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
 
   const summary: DebtSummary = {
     totalDebt: 0,
+    debtDueThisMonth: 0,
     totalReceivable: 0,
     totalPaidThisMonth: 0,
     dueSoon: 0,
@@ -305,7 +307,21 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
   for (const row of debtsRows ?? []) {
     const amount = safeNumber(row.amount);
     const paidTotal = safeNumber(row.paid_total);
-    if (row.type === 'debt') summary.totalDebt += Math.max(amount - paidTotal, 0);
+    if (row.type === 'debt') {
+      const remaining = Math.max(amount - paidTotal, 0);
+      summary.totalDebt += remaining;
+
+      if (row.status !== 'paid' && row.due_date) {
+        const due = new Date(row.due_date);
+        if (
+          !Number.isNaN(due.getTime()) &&
+          due.getTime() >= startOfMonth.getTime() &&
+          due.getTime() < nextMonth.getTime()
+        ) {
+          summary.debtDueThisMonth += remaining;
+        }
+      }
+    }
     if (row.type === 'receivable') summary.totalReceivable += Math.max(amount - paidTotal, 0);
 
     if (row.status !== 'paid' && row.due_date) {
