@@ -62,6 +62,45 @@ function formatCurrency(value: number) {
   }).format(Math.max(0, value));
 }
 
+function getSeriesStartDate(debt: DebtRecord): string {
+  if (!debt.date) return 'unknown';
+  const parsed = new Date(debt.date);
+  if (Number.isNaN(parsed.getTime())) return 'unknown';
+  const offset = Math.max(0, Math.floor(debt.tenor_sequence) - 1);
+  if (offset <= 0) {
+    return parsed.toISOString();
+  }
+  const result = new Date(parsed.getTime());
+  result.setUTCMonth(result.getUTCMonth() - offset);
+  return result.toISOString();
+}
+
+function getTenorSeriesKey(debt: DebtRecord): string {
+  if (debt.tenor_months <= 1) {
+    return debt.id;
+  }
+  const normalizedParty = debt.party_name.trim().toLowerCase();
+  const normalizedTitle = debt.title.trim().toLowerCase();
+  const normalizedNotes = (debt.notes ?? '').trim().toLowerCase();
+  const normalizedAmount = Number.isFinite(debt.amount) ? debt.amount.toFixed(2) : '0.00';
+  const normalizedRate =
+    debt.rate_percent != null && Number.isFinite(debt.rate_percent)
+      ? debt.rate_percent.toFixed(4)
+      : 'null';
+  const seriesStart = getSeriesStartDate(debt);
+  return [
+    debt.user_id,
+    debt.type,
+    normalizedParty,
+    normalizedTitle,
+    normalizedNotes,
+    normalizedAmount,
+    normalizedRate,
+    debt.tenor_months,
+    seriesStart,
+  ].join('|');
+}
+
 export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
@@ -278,6 +317,60 @@ export default function Debts() {
     }
   };
 
+  const visibleDebts = useMemo(() => {
+    if (!debts.length) return [] as DebtRecord[];
+
+    const multiTenorGroups = new Map<string, DebtRecord[]>();
+    debts.forEach((item) => {
+      if (item.tenor_months <= 1) return;
+      const key = getTenorSeriesKey(item);
+      const list = multiTenorGroups.get(key);
+      if (list) {
+        list.push(item);
+      } else {
+        multiTenorGroups.set(key, [item]);
+      }
+    });
+
+    const processed = new Set<string>();
+    const result: DebtRecord[] = [];
+
+    debts.forEach((item) => {
+      if (item.tenor_months <= 1) {
+        result.push(item);
+        return;
+      }
+      const key = getTenorSeriesKey(item);
+      if (processed.has(key)) {
+        return;
+      }
+      processed.add(key);
+      const group = multiTenorGroups.get(key);
+      if (!group || group.length === 0) {
+        result.push(item);
+        return;
+      }
+      const sorted = group.slice().sort((a, b) => {
+        if (a.tenor_sequence !== b.tenor_sequence) {
+          return a.tenor_sequence - b.tenor_sequence;
+        }
+        const aTime = new Date(a.date).getTime();
+        const bTime = new Date(b.date).getTime();
+        if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+          return 0;
+        }
+        return aTime - bTime;
+      });
+      let candidate = sorted.find((entry) => entry.status !== 'paid');
+      if (!candidate) {
+        candidate = sorted[sorted.length - 1];
+      }
+      result.push(candidate);
+    });
+
+    return result;
+  }, [debts]);
+
   const handleExport = async () => {
     if (!canUseCloud) {
       addToast('Masuk untuk mengekspor daftar hutang.', 'error');
@@ -285,7 +378,7 @@ export default function Debts() {
     }
     try {
       setExporting(true);
-      if (!debts.length) {
+      if (!visibleDebts.length) {
         addToast('Tidak ada data untuk diekspor', 'info');
         return;
       }
@@ -302,7 +395,7 @@ export default function Debts() {
         'Status',
         'Catatan',
       ];
-      const rows = debts.map((item) => [
+      const rows = visibleDebts.map((item) => [
         item.type === 'debt' ? 'Hutang' : 'Piutang',
         item.party_name,
         item.title,
@@ -603,15 +696,15 @@ export default function Debts() {
 
           <SummaryCards summary={summary} />
 
-          <section className="min-w-0">
-            <DebtsTableResponsive
-              debts={debts}
-              loading={loading}
-              onEdit={handleEditClick}
-              onDelete={handleDeleteRequest}
-              onAddPayment={handleOpenPayment}
-            />
-          </section>
+      <section className="min-w-0">
+        <DebtsTableResponsive
+          debts={visibleDebts}
+          loading={loading}
+          onEdit={handleEditClick}
+          onDelete={handleDeleteRequest}
+          onAddPayment={handleOpenPayment}
+        />
+      </section>
         </div>
       </div>
 
