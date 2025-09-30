@@ -22,7 +22,7 @@ export default function MainLayout({
       {!hideSidebar && sidebar}
       <div
         className={clsx(
-          "flex min-h-screen w-full min-w-0 flex-col transition-[padding-left] duration-300 ease-out",
+          "flex min-h-screen max-h-screen w-full min-w-0 flex-col overflow-hidden transition-[padding-left] duration-300 ease-out",
           hideSidebar ? "pl-0" : "pl-0 lg:pl-[var(--sidebar-width)]"
         )}
       >
