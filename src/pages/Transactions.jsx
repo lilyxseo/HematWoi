@@ -1251,6 +1251,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
   const [notes, setNotes] = useState(initialData?.notes ?? initialData?.note ?? "");
   const [accountId, setAccountId] = useState(initialData?.account_id || "");
   const [receiptUrl, setReceiptUrl] = useState(initialData?.receipt_url || "");
+  const [toAccountId, setToAccountId] = useState(initialData?.to_account_id || "");
   const initialMerchantId = initialData?.merchant_id ?? null;
 
   useEffect(() => {
@@ -1278,9 +1279,11 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
     setNotes(initialData.notes ?? initialData.note ?? "");
     setAccountId(initialData.account_id || "");
     setReceiptUrl(initialData.receipt_url || "");
+    setToAccountId(initialData.to_account_id || "");
   }, [open, initialData]);
 
   const categoryOptions = useMemo(() => {
+    if (type === "transfer") return [];
     return (categories || []).filter((cat) => cat.type === type);
   }, [categories, type]);
 
@@ -1291,9 +1294,20 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
       addToast("Nominal harus lebih besar dari 0", "error");
       return;
     }
-    if (!categoryId) {
-      addToast("Kategori wajib dipilih", "error");
-      return;
+    if (type !== "transfer") {
+      if (!categoryId) {
+        addToast("Kategori wajib dipilih", "error");
+        return;
+      }
+    } else {
+      if (!accountId) {
+        addToast("Pilih akun asal", "error");
+        return;
+      }
+      if (!toAccountId) {
+        addToast("Pilih akun tujuan", "error");
+        return;
+      }
     }
     if (!isEdit) {
       addToast("Data transaksi tidak ditemukan", "error");
@@ -1305,10 +1319,11 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
         type,
         amount: amountNumber,
         date,
-        category_id: categoryId,
+        category_id: type === "transfer" ? null : categoryId,
         title,
         notes,
         account_id: accountId || null,
+        to_account_id: type === "transfer" ? toAccountId || null : null,
         merchant_id: initialMerchantId,
         receipt_url: receiptUrl || null,
       };
@@ -1340,7 +1355,10 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
                 onChange={(event) => {
                   const nextType = event.target.value;
                   setType(nextType);
-                  const nextOptions = (categories || []).filter((cat) => cat.type === nextType);
+                  const nextOptions =
+                    nextType === "transfer"
+                      ? []
+                      : (categories || []).filter((cat) => cat.type === nextType);
                   if (!nextOptions.some((cat) => cat.id === categoryId)) {
                     setCategoryId(nextOptions[0]?.id || "");
                   }
@@ -1349,6 +1367,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
               >
                 <option value="expense">Pengeluaran</option>
                 <option value="income">Pemasukan</option>
+                <option value="transfer">Transfer</option>
               </select>
             </label>
             <label className="flex flex-col gap-2 text-sm">
@@ -1371,36 +1390,73 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
               />
             </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
-              <select
-                value={categoryId}
-                onChange={(event) => setCategoryId(event.target.value)}
-                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              >
-                <option value="">Pilih kategori</option>
-                {categoryOptions.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Akun</span>
-              <select
-                value={accountId}
-                onChange={(event) => setAccountId(event.target.value)}
-                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              >
-                <option value="">Pilih akun</option>
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name || "(Tanpa nama)"}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {type !== "transfer" ? (
+              <>
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
+                  <select
+                    value={categoryId}
+                    onChange={(event) => setCategoryId(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  >
+                    <option value="">Pilih kategori</option>
+                    {categoryOptions.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Akun</span>
+                  <select
+                    value={accountId}
+                    onChange={(event) => setAccountId(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  >
+                    <option value="">Pilih akun</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name || "(Tanpa nama)"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : (
+              <>
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Dari</span>
+                  <select
+                    value={accountId}
+                    onChange={(event) => setAccountId(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  >
+                    <option value="">Pilih akun asal</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name || "(Tanpa nama)"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Tujuan</span>
+                  <select
+                    value={toAccountId}
+                    onChange={(event) => setToAccountId(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  >
+                    <option value="">Pilih akun tujuan</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name || "(Tanpa nama)"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
           </div>
           <label className="flex flex-col gap-2 text-sm">
             <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Judul</span>
