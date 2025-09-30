@@ -32,6 +32,29 @@ export default function MobileGoogleCallback() {
         return;
       }
 
+      // TEMP DEBUG — hapus setelah beres
+useEffect(() => {
+  const p = new URLSearchParams(window.location.search);
+  const idToken = p.get('id_token');
+  if (!idToken) return;
+
+  // decode payload JWT (bagian tengah)
+  const [, payload] = idToken.split('.');
+  const json = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
+
+  console.log('[ID_TOKEN payload]', json);
+  alert(
+    [
+      `aud: ${json.aud}`,     // harus = Web Client ID kamu
+      `azp: ${json.azp ?? '-'}`,
+      `email: ${json.email ?? '-'}`,
+      `iss: ${json.iss}`,     // accounts.google.com / https://accounts.google.com
+      `exp: ${new Date(json.exp * 1000).toISOString()}`
+    ].join('\n')
+  );
+}, []);
+
+
       setMsg('Berhasil login. Mengalihkan…');
 
       const target = DEFAULT_NATIVE_TRIGGER_URL;
