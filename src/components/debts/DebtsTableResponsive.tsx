@@ -137,9 +137,6 @@ export default function DebtsTableResponsive({
                   <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[200px]">
                     Judul
                   </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[140px]">
-                    Tanggal
-                  </th>
                   <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[150px]">
                     Jatuh Tempo
                   </th>
@@ -184,9 +181,6 @@ export default function DebtsTableResponsive({
                           <div className="h-3.5 w-48 animate-pulse rounded bg-border/40" />
                         </td>
                         <td className="px-4 py-3 align-middle">
-                          <div className="h-3.5 w-28 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle">
                           <div className="h-3.5 w-36 animate-pulse rounded bg-border/40" />
                         </td>
                         <td className="px-4 py-3 align-middle text-center">
@@ -220,7 +214,7 @@ export default function DebtsTableResponsive({
 
                 {showEmpty ? (
                   <tr>
-                    <td colSpan={12} className="px-6 py-12 text-center text-sm text-muted-foreground">
+                    <td colSpan={11} className="px-6 py-12 text-center text-sm text-muted-foreground">
                       Tidak ada data hutang sesuai filter.
                     </td>
                   </tr>
@@ -254,9 +248,6 @@ export default function DebtsTableResponsive({
                           <span className="line-clamp-2 text-sm font-medium text-foreground" title={debt.title}>
                             {debt.title}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
-                          {formatDate(debt.date)}
                         </td>
                         <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
                           <div className="flex min-w-0 items-center gap-2">
@@ -348,7 +339,7 @@ export default function DebtsTableResponsive({
 
                 {debts.length > 0 && loading ? (
                   <tr>
-                    <td colSpan={12} className="px-4 py-4">
+                    <td colSpan={11} className="px-4 py-4">
                       <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                         Memuat data hutang…
@@ -436,10 +427,6 @@ export default function DebtsTableResponsive({
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                   <div className="space-y-3">
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Tanggal</p>
-                      <p className="text-sm font-medium text-foreground">{formatDate(debt.date)}</p>
-                    </div>
                     <div className="space-y-1">
                       <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Jatuh tempo</p>
                       <div className="flex items-center gap-2">
