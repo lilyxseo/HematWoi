@@ -368,18 +368,6 @@ export default function DebtForm({ open, mode, initialData, submitting, onSubmit
               {errors.title ? <span className="text-xs text-danger">{errors.title}</span> : null}
             </label>
 
-            <label className="flex min-w-0 flex-col gap-1 text-sm font-medium text-text" htmlFor="date">
-              Tanggal
-              <input
-                id="date"
-                name="date"
-                type="date"
-                value={values.date}
-                onChange={handleChange('date')}
-                className="h-[40px] rounded-xl border border-border bg-surface-1 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-              />
-            </label>
-
             <label className="flex min-w-0 flex-col gap-1 text-sm font-medium text-text" htmlFor="due-date">
               Jatuh tempo
               <input
