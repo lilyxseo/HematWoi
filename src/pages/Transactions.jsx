@@ -1260,6 +1260,30 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
+function getInitialNotesValue(data) {
+  if (!data) return "";
+  const directNotes = data.notes;
+  if (typeof directNotes === "string") {
+    return directNotes;
+  }
+  if (directNotes != null) {
+    return directNotes;
+  }
+  const legacyNote = data.note;
+  if (typeof legacyNote !== "string") {
+    return legacyNote ?? "";
+  }
+  const trimmedLegacy = legacyNote.trim();
+  if (!trimmedLegacy) {
+    return "";
+  }
+  const titleValue = typeof data.title === "string" ? data.title.trim() : "";
+  if (titleValue && trimmedLegacy === titleValue) {
+    return "";
+  }
+  return legacyNote;
+}
+
 function TransactionFormDialog({ open, onClose, initialData, categories, onSuccess, addToast }) {
   const isEdit = Boolean(initialData);
   const [loading, setLoading] = useState(true);
@@ -1272,7 +1296,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
   const [date, setDate] = useState(() => toDateInput(initialData?.date) || new Date().toISOString().slice(0, 10));
   const [categoryId, setCategoryId] = useState(initialData?.category_id || "");
   const [title, setTitle] = useState(initialData?.title || "");
-  const [notes, setNotes] = useState(initialData?.notes ?? initialData?.note ?? "");
+  const [notes, setNotes] = useState(() => getInitialNotesValue(initialData));
   const [accountId, setAccountId] = useState(initialData?.account_id || "");
   const [toAccountId, setToAccountId] = useState(initialData?.to_account_id || "");
   const [receiptUrl, setReceiptUrl] = useState(initialData?.receipt_url || "");
@@ -1300,7 +1324,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
     setDate(toDateInput(initialData.date) || new Date().toISOString().slice(0, 10));
     setCategoryId(initialData.category_id || "");
     setTitle(initialData.title || "");
-    setNotes(initialData.notes ?? initialData.note ?? "");
+    setNotes(getInitialNotesValue(initialData));
     setAccountId(initialData.account_id || "");
     setToAccountId(initialData.to_account_id || "");
     setReceiptUrl(initialData.receipt_url || "");
