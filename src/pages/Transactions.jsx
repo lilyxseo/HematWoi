@@ -59,6 +59,11 @@ const PAGE_DESCRIPTION = "Kelola catatan keuangan";
 const FILTER_PANEL_BREAKPOINT = 768;
 const FILTER_PANEL_STORAGE_KEY = "transactions-filter-open";
 
+const AMOUNT_FORMATTER =
+  typeof Intl !== "undefined"
+    ? new Intl.NumberFormat("id-ID", { maximumFractionDigits: 20 })
+    : null;
+
 function toDateInput(value) {
   if (!value) return "";
   return String(value).slice(0, 10);
@@ -66,6 +71,63 @@ function toDateInput(value) {
 
 function formatIDR(value) {
   return formatCurrency(Number(value ?? 0), "IDR");
+}
+
+function formatAmountInputValue(value) {
+  if (value === null || value === undefined) return "";
+  const stringValue = String(value);
+  const sanitized = stringValue.replace(/[^0-9,]/g, "");
+  if (sanitized === "") {
+    return stringValue.includes(",") ? "," : "";
+  }
+  const hasTrailingComma = stringValue.endsWith(",");
+  const [integerPartRaw, ...decimalParts] = sanitized.split(",");
+  const decimalPart = decimalParts.join("");
+  const normalizedInteger = integerPartRaw.replace(/^0+(?=\d)/g, "") || "0";
+  const groupedInteger = normalizedInteger.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  if (decimalPart || hasTrailingComma) {
+    return `${groupedInteger},${decimalPart}`;
+  }
+  return groupedInteger;
+}
+
+function normalizeAmountValue(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "";
+    return String(value);
+  }
+  const stringValue = String(value).trim();
+  if (!stringValue) return "";
+  if (stringValue.includes(",")) {
+    return stringValue.replace(/\./g, "").replace(/,/g, ".").replace(/[^0-9.]/g, "");
+  }
+  const sanitized = stringValue.replace(/[^0-9.]/g, "");
+  if (!sanitized) return "";
+  const parts = sanitized.split(".");
+  const isThousandGrouping =
+    parts.length > 1 && parts.slice(1).every((segment) => segment.length === 3);
+  if (isThousandGrouping) {
+    return parts.join("");
+  }
+  const firstDotIndex = sanitized.indexOf(".");
+  if (firstDotIndex === -1) return sanitized;
+  const integerPart = sanitized
+    .slice(0, firstDotIndex)
+    .replace(/\./g, "");
+  const decimalPart = sanitized
+    .slice(firstDotIndex + 1)
+    .replace(/\./g, "");
+  return `${integerPart}.${decimalPart}`;
+}
+
+function formatAmountDisplay(value) {
+  if (value === null || value === undefined || value === "") return "";
+  const normalized = normalizeAmountValue(value);
+  if (!normalized) return "";
+  const numberValue = Number(normalized);
+  if (!Number.isFinite(numberValue)) return "";
+  return AMOUNT_FORMATTER ? AMOUNT_FORMATTER.format(numberValue) : normalized;
 }
 
 const TRANSACTION_DATE_FORMATTER =
@@ -123,13 +185,10 @@ export default function Transactions() {
   const [bulkUpdating, setBulkUpdating] = useState(false);
   const [queueCount, setQueueCount] = useState(0);
   const [editTarget, setEditTarget] = useState(null);
-  const filterBarRef = useRef(null);
   const filterPanelId = useId();
-  const [filterBarHeight, setFilterBarHeight] = useState(0);
   const searchInputRef = useRef(null);
   const lastSelectedIdRef = useRef(null);
   const [searchTerm, setSearchTerm] = useState(filter.search);
-  const [filterBarStuck, setFilterBarStuck] = useState(false);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
   const undoTimerRef = useRef(null);
@@ -195,36 +254,6 @@ export default function Transactions() {
       if (undoTimerRef.current) {
         clearTimeout(undoTimerRef.current);
       }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!filterBarRef.current || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      if (!entry) return;
-      setFilterBarHeight(entry.contentRect.height);
-    });
-    observer.observe(filterBarRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const element = filterBarRef.current;
-    if (!element) return;
-
-    const updateStickyState = () => {
-      const style = window.getComputedStyle(element);
-      const topValue = parseFloat(style.top || "0");
-      const { top } = element.getBoundingClientRect();
-      setFilterBarStuck(top <= topValue + 1);
-    };
-
-    updateStickyState();
-    window.addEventListener("scroll", updateStickyState, { passive: true });
-    window.addEventListener("resize", updateStickyState);
-    return () => {
-      window.removeEventListener("scroll", updateStickyState);
-      window.removeEventListener("resize", updateStickyState);
     };
   }, []);
 
@@ -696,7 +725,7 @@ export default function Transactions() {
     navigate("/transaction/add");
   }, [navigate]);
 
-  const tableStickyTop = `calc(var(--app-header-height, var(--app-topbar-h, 64px)) + ${filterBarHeight}px + 16px)`;
+  const tableStickyTop = "calc(var(--app-header-height, var(--app-topbar-h, 64px)) + 16px)";
   const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
   const activeFilterCount = activeChips.length;
 
@@ -732,20 +761,13 @@ export default function Transactions() {
       </PageHeader>
 
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
-        <div
-          ref={filterBarRef}
-          className="sticky z-20"
-          style={{
-            top: "var(--app-header-height, var(--app-topbar-h, 64px))",
-          }}
-        >
+        <div>
           <button
             type="button"
             onClick={toggleFilterPanel}
             className={clsx(
               "md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 text-sm font-semibold text-white shadow transition-colors",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60",
-              filterBarStuck && !isFilterPanelVisible && "border-white/15 shadow-[0_12px_30px_-16px_rgba(15,23,42,0.85)]",
             )}
             aria-controls={filterPanelId}
             aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
@@ -1238,18 +1260,45 @@ function Modal({ open, onClose, title, children }) {
   );
 }
 
+function getInitialNotesValue(data) {
+  if (!data) return "";
+  const directNotes = data.notes;
+  if (typeof directNotes === "string") {
+    return directNotes;
+  }
+  if (directNotes != null) {
+    return directNotes;
+  }
+  const legacyNote = data.note;
+  if (typeof legacyNote !== "string") {
+    return legacyNote ?? "";
+  }
+  const trimmedLegacy = legacyNote.trim();
+  if (!trimmedLegacy) {
+    return "";
+  }
+  const titleValue = typeof data.title === "string" ? data.title.trim() : "";
+  if (titleValue && trimmedLegacy === titleValue) {
+    return "";
+  }
+  return legacyNote;
+}
+
 function TransactionFormDialog({ open, onClose, initialData, categories, onSuccess, addToast }) {
   const isEdit = Boolean(initialData);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [type, setType] = useState(initialData?.type || "expense");
-  const [amount, setAmount] = useState(() => String(initialData?.amount ?? 0));
+  const [amount, setAmount] = useState(() =>
+    formatAmountDisplay(initialData?.amount ?? ""),
+  );
   const [date, setDate] = useState(() => toDateInput(initialData?.date) || new Date().toISOString().slice(0, 10));
   const [categoryId, setCategoryId] = useState(initialData?.category_id || "");
   const [title, setTitle] = useState(initialData?.title || "");
-  const [notes, setNotes] = useState(initialData?.notes ?? initialData?.note ?? "");
+  const [notes, setNotes] = useState(() => getInitialNotesValue(initialData));
   const [accountId, setAccountId] = useState(initialData?.account_id || "");
+  const [toAccountId, setToAccountId] = useState(initialData?.to_account_id || "");
   const [receiptUrl, setReceiptUrl] = useState(initialData?.receipt_url || "");
   const initialMerchantId = initialData?.merchant_id ?? null;
 
@@ -1271,12 +1320,13 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
   useEffect(() => {
     if (!open || !initialData) return;
     setType(initialData.type || "expense");
-    setAmount(String(initialData.amount ?? 0));
+    setAmount(formatAmountDisplay(initialData.amount ?? ""));
     setDate(toDateInput(initialData.date) || new Date().toISOString().slice(0, 10));
     setCategoryId(initialData.category_id || "");
     setTitle(initialData.title || "");
-    setNotes(initialData.notes ?? initialData.note ?? "");
+    setNotes(getInitialNotesValue(initialData));
     setAccountId(initialData.account_id || "");
+    setToAccountId(initialData.to_account_id || "");
     setReceiptUrl(initialData.receipt_url || "");
   }, [open, initialData]);
 
@@ -1284,16 +1334,39 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
     return (categories || []).filter((cat) => cat.type === type);
   }, [categories, type]);
 
+  const isTransfer = type === "transfer";
+
+  useEffect(() => {
+    if (!isTransfer) {
+      setToAccountId("");
+    }
+  }, [isTransfer]);
+
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const amountNumber = Number(amount.toString().replace(/[^0-9.,-]/g, "").replace(/,/g, "."));
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
+    const normalizedAmount = normalizeAmountValue(amount);
+    const amountNumber = Number(normalizedAmount);
+    if (!normalizedAmount || !Number.isFinite(amountNumber) || amountNumber <= 0) {
       addToast("Nominal harus lebih besar dari 0", "error");
       return;
     }
-    if (!categoryId) {
+    if (!isTransfer && !categoryId) {
       addToast("Kategori wajib dipilih", "error");
       return;
+    }
+    if (isTransfer) {
+      if (!accountId) {
+        addToast("Pilih akun sumber untuk transfer", "error");
+        return;
+      }
+      if (!toAccountId) {
+        addToast("Pilih akun tujuan untuk transfer", "error");
+        return;
+      }
+      if (toAccountId === accountId) {
+        addToast("Akun tujuan tidak boleh sama dengan sumber", "error");
+        return;
+      }
     }
     if (!isEdit) {
       addToast("Data transaksi tidak ditemukan", "error");
@@ -1305,10 +1378,11 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
         type,
         amount: amountNumber,
         date,
-        category_id: categoryId,
+        category_id: isTransfer ? null : categoryId,
         title,
         notes,
         account_id: accountId || null,
+        to_account_id: isTransfer ? toAccountId || null : null,
         merchant_id: initialMerchantId,
         receipt_url: receiptUrl || null,
       };
@@ -1349,6 +1423,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
               >
                 <option value="expense">Pengeluaran</option>
                 <option value="income">Pemasukan</option>
+                <option value="transfer">Transfer</option>
               </select>
             </label>
             <label className="flex flex-col gap-2 text-sm">
@@ -1363,44 +1438,80 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
             <label className="flex flex-col gap-2 text-sm">
               <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Nominal</span>
               <input
-                type="number"
-                min="0"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => setAmount(formatAmountInputValue(event.target.value))}
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
               />
             </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
-              <select
-                value={categoryId}
-                onChange={(event) => setCategoryId(event.target.value)}
-                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              >
-                <option value="">Pilih kategori</option>
-                {categoryOptions.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Akun</span>
-              <select
-                value={accountId}
-                onChange={(event) => setAccountId(event.target.value)}
-                className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-              >
-                <option value="">Pilih akun</option>
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name || "(Tanpa nama)"}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {!isTransfer && (
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
+                <select
+                  value={categoryId}
+                  onChange={(event) => setCategoryId(event.target.value)}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                >
+                  <option value="">Pilih kategori</option>
+                  {categoryOptions.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {isTransfer ? (
+              <>
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Dari</span>
+                  <select
+                    value={accountId}
+                    onChange={(event) => setAccountId(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  >
+                    <option value="">Pilih akun sumber</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name || "(Tanpa nama)"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Tujuan</span>
+                  <select
+                    value={toAccountId}
+                    onChange={(event) => setToAccountId(event.target.value)}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  >
+                    <option value="">Pilih akun tujuan</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name || "(Tanpa nama)"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : (
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Akun</span>
+                <select
+                  value={accountId}
+                  onChange={(event) => setAccountId(event.target.value)}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                >
+                  <option value="">Pilih akun</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name || "(Tanpa nama)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
           <label className="flex flex-col gap-2 text-sm">
             <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Judul</span>
