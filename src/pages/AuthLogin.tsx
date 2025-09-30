@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import LoginCard from '../components/auth/LoginCard';
@@ -20,6 +20,7 @@ export default function AuthLogin() {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const lastSignInMethodRef = useRef<'google' | 'email' | null>(null);
   const [prefilledIdentifier] = useState(() => {
     try {
       return localStorage.getItem('hw:lastEmail') ?? '';
@@ -57,11 +58,22 @@ export default function AuthLogin() {
     }
   }, []);
 
+  const markEmailSignIn = useCallback(() => {
+    lastSignInMethodRef.current = 'email';
+  }, []);
+
+  const clearEmailSignInMarker = useCallback(() => {
+    if (lastSignInMethodRef.current === 'email') {
+      lastSignInMethodRef.current = null;
+    }
+  }, []);
+
   const handleGoogleWebSignIn = useCallback(async () => {
     if (googleLoading) return;
     setGoogleError(null);
     setGoogleLoading(true);
-    
+    lastSignInMethodRef.current = 'google';
+
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -75,6 +87,7 @@ export default function AuthLogin() {
       });
       if (error) throw error;
     } catch (error) {
+      lastSignInMethodRef.current = null;
       const message = formatOAuthErrorMessage(
         error,
         'Gagal memulai proses login Google. Silakan coba lagi.'
@@ -86,11 +99,27 @@ export default function AuthLogin() {
 
   const handlePostLoginNavigation = useCallback(
     (provider?: string | null) => {
-      if (provider === 'google') {
+      const method = lastSignInMethodRef.current ?? provider ?? null;
+
+      if (method === 'google') {
+        lastSignInMethodRef.current = null;
         redirectToNativeGoogleLogin();
         return;
       }
 
+      if (method === 'email') {
+        if (typeof window !== 'undefined') {
+          window.setTimeout(() => {
+            if (lastSignInMethodRef.current === 'email') {
+              lastSignInMethodRef.current = null;
+            }
+          }, 1000);
+        } else {
+          lastSignInMethodRef.current = null;
+        }
+      } else {
+        lastSignInMethodRef.current = null;
+      }
       navigate('/', { replace: true });
     },
     [navigate]
@@ -165,6 +194,7 @@ export default function AuthLogin() {
   );
 
   const handleSuccess = useCallback(async () => {
+    lastSignInMethodRef.current = 'email';
     try {
       localStorage.setItem('hw:connectionMode', 'online');
       localStorage.setItem('hw:mode', 'online');
@@ -177,12 +207,12 @@ export default function AuthLogin() {
       if (uid) {
         void syncGuestData(uid);
       }
-      handlePostLoginNavigation(data.session?.user?.app_metadata?.provider ?? null);
+      handlePostLoginNavigation('email');
       return;
     } catch (error) {
       console.error('[AuthLogin] Gagal membaca sesi setelah login', error);
     }
-    handlePostLoginNavigation(null);
+    handlePostLoginNavigation('email');
   }, [handlePostLoginNavigation, syncGuestData]);
 
   return (
@@ -233,7 +263,12 @@ export default function AuthLogin() {
               ) : (
                 <div className="grid gap-4 md:grid-cols-5">
                   <div className="md:col-span-3">
-                    <LoginCard defaultIdentifier={prefilledIdentifier} onSuccess={handleSuccess} />
+                    <LoginCard
+                      defaultIdentifier={prefilledIdentifier}
+                      onSuccess={handleSuccess}
+                      onPasswordSignInStart={markEmailSignIn}
+                      onPasswordSignInError={clearEmailSignInMarker}
+                    />
                   </div>
                   <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm md:col-span-2">
                     <div className="space-y-4">
