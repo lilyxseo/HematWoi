@@ -151,6 +151,39 @@ function toMonthStart(period: string): string {
   return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-01`;
 }
 
+function getPreviousPeriod(period: string): string | null {
+  try {
+    const [yearStr, monthStr] = period.split('-');
+    if (!yearStr || !monthStr) return null;
+    const year = Number.parseInt(yearStr, 10);
+    const month = Number.parseInt(monthStr, 10);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+    const current = new Date(Date.UTC(year, month - 1, 1));
+    current.setUTCMonth(current.getUTCMonth() - 1);
+    const prevYear = current.getUTCFullYear();
+    const prevMonth = (current.getUTCMonth() + 1).toString().padStart(2, '0');
+    return `${prevYear}-${prevMonth}`;
+  } catch (error) {
+    if (isDevelopment) {
+      console.warn('[HW] Failed to resolve previous period', error);
+    }
+    return null;
+  }
+}
+
+async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
+  const { data, error } = await supabase
+    .from('budgets')
+    .select(
+      'id,user_id,category_id,amount_planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name)'
+    )
+    .eq('user_id', userId)
+    .eq('period_month', toMonthStart(period))
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as BudgetRow[];
+}
+
 function getMonthRange(period: string): { start: string; end: string } {
   const start = new Date(`${toMonthStart(period)}T00:00:00.000Z`);
   const end = new Date(start);
@@ -275,16 +308,45 @@ export async function listExpenseCategories(
 export async function listBudgets(period: string): Promise<BudgetRow[]> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
-  const { data, error } = await supabase
-    .from('budgets')
-    .select(
-      'id,user_id,category_id,amount_planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name)'
+  const currentBudgets = await fetchBudgetsForPeriod(userId, period);
+  const existingCategoryIds = new Set(
+    currentBudgets
+      .map((row) => row.category_id)
+      .filter((value): value is string => Boolean(value))
+  );
+
+  const previousPeriod = getPreviousPeriod(period);
+  if (!previousPeriod) {
+    return currentBudgets;
+  }
+
+  const previousBudgets = await fetchBudgetsForPeriod(userId, previousPeriod);
+  const toCarryOver = previousBudgets.filter(
+    (row) => row.carryover_enabled && row.category_id && !existingCategoryIds.has(row.category_id)
+  );
+
+  if (!toCarryOver.length) {
+    return currentBudgets;
+  }
+
+  const results = await Promise.allSettled(
+    toCarryOver.map((row) =>
+      upsertBudget({
+        category_id: row.category_id as string,
+        period,
+        amount_planned: Number(row.amount_planned ?? 0),
+        carryover_enabled: true,
+        notes: row.notes ?? undefined,
+      })
     )
-    .eq('user_id', userId)
-    .eq('period_month', toMonthStart(period))
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+  );
+
+  const hasSuccess = results.some((result) => result.status === 'fulfilled');
+  if (!hasSuccess) {
+    return currentBudgets;
+  }
+
+  return fetchBudgetsForPeriod(userId, period);
 }
 
 export async function computeSpent(period: string): Promise<Record<string, number>> {
