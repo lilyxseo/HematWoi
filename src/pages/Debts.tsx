@@ -62,6 +62,45 @@ function formatCurrency(value: number) {
   }).format(Math.max(0, value));
 }
 
+function getSeriesStartDate(debt: DebtRecord): string {
+  if (!debt.date) return 'unknown';
+  const parsed = new Date(debt.date);
+  if (Number.isNaN(parsed.getTime())) return 'unknown';
+  const offset = Math.max(0, Math.floor(debt.tenor_sequence) - 1);
+  if (offset <= 0) {
+    return parsed.toISOString();
+  }
+  const result = new Date(parsed.getTime());
+  result.setUTCMonth(result.getUTCMonth() - offset);
+  return result.toISOString();
+}
+
+function getTenorSeriesKey(debt: DebtRecord): string {
+  if (debt.tenor_months <= 1) {
+    return debt.id;
+  }
+  const normalizedParty = debt.party_name.trim().toLowerCase();
+  const normalizedTitle = debt.title.trim().toLowerCase();
+  const normalizedNotes = (debt.notes ?? '').trim().toLowerCase();
+  const normalizedAmount = Number.isFinite(debt.amount) ? debt.amount.toFixed(2) : '0.00';
+  const normalizedRate =
+    debt.rate_percent != null && Number.isFinite(debt.rate_percent)
+      ? debt.rate_percent.toFixed(4)
+      : 'null';
+  const seriesStart = getSeriesStartDate(debt);
+  return [
+    debt.user_id,
+    debt.type,
+    normalizedParty,
+    normalizedTitle,
+    normalizedNotes,
+    normalizedAmount,
+    normalizedRate,
+    debt.tenor_months,
+    seriesStart,
+  ].join('|');
+}
+
 export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
@@ -97,6 +136,7 @@ export default function Debts() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
+  const [seriesCursor, setSeriesCursor] = useState<Record<string, number>>({});
 
   const logError = useCallback((error: unknown, context: string) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -278,6 +318,147 @@ export default function Debts() {
     }
   };
 
+  const multiTenorSeries = useMemo(() => {
+    if (!debts.length) return new Map<string, { items: DebtRecord[]; defaultIndex: number }>();
+
+    const groups = new Map<string, DebtRecord[]>();
+    debts.forEach((item) => {
+      if (item.tenor_months <= 1) return;
+      const key = getTenorSeriesKey(item);
+      const list = groups.get(key);
+      if (list) {
+        list.push(item);
+      } else {
+        groups.set(key, [item]);
+      }
+    });
+
+    const series = new Map<string, { items: DebtRecord[]; defaultIndex: number }>();
+    groups.forEach((list, key) => {
+      if (!list.length) return;
+      const sorted = list.slice().sort((a, b) => {
+        if (a.tenor_sequence !== b.tenor_sequence) {
+          return a.tenor_sequence - b.tenor_sequence;
+        }
+        const aTime = new Date(a.date).getTime();
+        const bTime = new Date(b.date).getTime();
+        if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
+          return 0;
+        }
+        return aTime - bTime;
+      });
+      let defaultIndex = sorted.findIndex((entry) => entry.status !== 'paid');
+      if (defaultIndex === -1) {
+        defaultIndex = sorted.length - 1;
+      }
+      series.set(key, { items: sorted, defaultIndex });
+    });
+
+    return series;
+  }, [debts]);
+
+  useEffect(() => {
+    setSeriesCursor((prev) => {
+      if (multiTenorSeries.size === 0) {
+        return Object.keys(prev).length ? {} : prev;
+      }
+      let changed = false;
+      const next: Record<string, number> = {};
+      multiTenorSeries.forEach(({ items, defaultIndex }, key) => {
+        const maxIndex = Math.max(0, items.length - 1);
+        let value = prev[key];
+        if (typeof value !== 'number' || Number.isNaN(value)) {
+          value = defaultIndex;
+        }
+        if (value < 0) value = 0;
+        if (value > maxIndex) value = maxIndex;
+        next[key] = value;
+        if (value !== prev[key]) {
+          changed = true;
+        }
+      });
+      if (Object.keys(prev).length !== multiTenorSeries.size) {
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [multiTenorSeries]);
+
+  const { visibleDebts, tenorNavigation } = useMemo(() => {
+    if (!debts.length) {
+      return {
+        visibleDebts: [] as DebtRecord[],
+        tenorNavigation: {} as Record<
+          string,
+          { key: string; hasPrev: boolean; hasNext: boolean; currentIndex: number; total: number }
+        >,
+      };
+    }
+
+    const processed = new Set<string>();
+    const result: DebtRecord[] = [];
+    const navigation: Record<
+      string,
+      { key: string; hasPrev: boolean; hasNext: boolean; currentIndex: number; total: number }
+    > = {};
+
+    debts.forEach((item) => {
+      if (item.tenor_months <= 1) {
+        result.push(item);
+        return;
+      }
+
+      const key = getTenorSeriesKey(item);
+      if (processed.has(key)) {
+        return;
+      }
+      processed.add(key);
+
+      const series = multiTenorSeries.get(key);
+      if (!series || series.items.length === 0) {
+        result.push(item);
+        return;
+      }
+
+      const { items, defaultIndex } = series;
+      const maxIndex = Math.max(0, items.length - 1);
+      const cursor = seriesCursor[key];
+      const selectedIndex = Math.max(0, Math.min(typeof cursor === 'number' ? cursor : defaultIndex, maxIndex));
+      const selectedDebt = items[selectedIndex];
+      result.push(selectedDebt);
+      navigation[selectedDebt.id] = {
+        key,
+        hasPrev: selectedIndex > 0,
+        hasNext: selectedIndex < maxIndex,
+        currentIndex: selectedIndex,
+        total: items.length,
+      };
+    });
+
+    return { visibleDebts: result, tenorNavigation: navigation };
+  }, [debts, multiTenorSeries, seriesCursor]);
+
+  const handleNavigateTenor = useCallback(
+    (seriesKey: string, direction: 1 | -1) => {
+      const series = multiTenorSeries.get(seriesKey);
+      if (!series || series.items.length === 0) return;
+      const maxIndex = Math.max(0, series.items.length - 1);
+      setSeriesCursor((prev) => {
+        const current = Math.max(
+          0,
+          Math.min(typeof prev[seriesKey] === 'number' ? prev[seriesKey] : series.defaultIndex, maxIndex),
+        );
+        const nextIndex = Math.max(0, Math.min(current + direction, maxIndex));
+        if (nextIndex === current) return prev;
+        return {
+          ...prev,
+          [seriesKey]: nextIndex,
+        };
+      });
+    },
+    [multiTenorSeries],
+  );
+
   const handleExport = async () => {
     if (!canUseCloud) {
       addToast('Masuk untuk mengekspor daftar hutang.', 'error');
@@ -285,7 +466,7 @@ export default function Debts() {
     }
     try {
       setExporting(true);
-      if (!debts.length) {
+      if (!visibleDebts.length) {
         addToast('Tidak ada data untuk diekspor', 'info');
         return;
       }
@@ -302,7 +483,7 @@ export default function Debts() {
         'Status',
         'Catatan',
       ];
-      const rows = debts.map((item) => [
+      const rows = visibleDebts.map((item) => [
         item.type === 'debt' ? 'Hutang' : 'Piutang',
         item.party_name,
         item.title,
@@ -603,15 +784,17 @@ export default function Debts() {
 
           <SummaryCards summary={summary} />
 
-          <section className="min-w-0">
-            <DebtsTableResponsive
-              debts={debts}
-              loading={loading}
-              onEdit={handleEditClick}
-              onDelete={handleDeleteRequest}
-              onAddPayment={handleOpenPayment}
-            />
-          </section>
+      <section className="min-w-0">
+        <DebtsTableResponsive
+          debts={visibleDebts}
+          loading={loading}
+          onEdit={handleEditClick}
+          onDelete={handleDeleteRequest}
+          onAddPayment={handleOpenPayment}
+          tenorNavigation={tenorNavigation}
+          onNavigateTenor={handleNavigateTenor}
+        />
+      </section>
         </div>
       </div>
 
