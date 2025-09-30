@@ -53,6 +53,17 @@ export default function AuthCallback() {
       }
     };
 
+    // TEMP DEBUG — taruh di useEffect yang sama
+const p = new URLSearchParams(location.search);
+const idToken = p.get('id_token');
+if (idToken) {
+  const [, payload] = idToken.split('.');
+  const json = JSON.parse(atob(payload.replace(/-/g,'+').replace(/_/g,'/')));
+  console.log('[DEBUG] payload:', json);
+  alert(`aud=${json.aud}\nazp=${json.azp}\nemail=${json.email}\niss=${json.iss}\nexp=${json.exp}`);
+}
+
+
     const handleSuccess = (userId: string | null) => {
       markOnlineMode();
       void syncSession(userId);
