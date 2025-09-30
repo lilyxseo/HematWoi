@@ -1,10 +1,56 @@
 import { useMemo } from "react";
 
-export function aggregateInsights(txs = []) {
-  const today = new Date();
-  const monthStr = today.toISOString().slice(0, 7);
+const JAKARTA_TIMEZONE = "Asia/Jakarta";
 
-  const monthTx = txs.filter((t) => String(t.date).slice(0, 7) === monthStr);
+const jakartaDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: JAKARTA_TIMEZONE,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+function getJakartaDateParts(input) {
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = jakartaDateFormatter.formatToParts(date);
+  const lookup = Object.create(null);
+  for (const part of parts) {
+    if (part.type === "year" || part.type === "month" || part.type === "day") {
+      lookup[part.type] = part.value;
+    }
+  }
+
+  const year = Number.parseInt(lookup.year ?? "", 10);
+  const month = lookup.month;
+  const day = Number.parseInt(lookup.day ?? "", 10);
+
+  if (!year || !month || !day) return null;
+
+  return { year, month, day };
+}
+
+function getJakartaMonthKey(input) {
+  const parts = getJakartaDateParts(input);
+  if (!parts) return null;
+  return `${parts.year}-${parts.month}`;
+}
+
+function getCurrentJakartaMonthIndex(baseDate = new Date()) {
+  const parts = getJakartaDateParts(baseDate);
+  if (!parts) return null;
+  return parts.year * 12 + (Number.parseInt(parts.month, 10) - 1);
+}
+
+export function aggregateInsights(txs = [], baseDate = new Date()) {
+  const currentMonthIndex = getCurrentJakartaMonthIndex(baseDate);
+  if (currentMonthIndex == null) {
+    return { kpis: { income: 0, expense: 0, net: 0, avgDaily: 0 }, trend: [], categories: [], topSpends: [] };
+  }
+
+  const currentMonthKey = getJakartaMonthKey(baseDate);
+
+  const monthTx = txs.filter((t) => getJakartaMonthKey(t.date) === currentMonthKey);
   const income = monthTx
     .filter((t) => t.type === "income")
     .reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -12,23 +58,33 @@ export function aggregateInsights(txs = []) {
     .filter((t) => t.type === "expense")
     .reduce((s, t) => s + Number(t.amount || 0), 0);
   const net = income - expense;
-  const day = today.getDate();
+  const todayParts = getJakartaDateParts(baseDate);
+  const day = todayParts?.day ?? 0;
   const avgDaily = day ? expense / day : 0;
 
   // trend last 6 months (including current)
-  const trendMap = {};
-  const start = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+  const trendMap = new Map();
+  const oldestMonthIndex = currentMonthIndex - 5;
+
   for (const t of txs) {
-    const d = new Date(t.date);
-    if (d < start || d > today) continue;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    if (!trendMap[key]) trendMap[key] = { month: key, income: 0, expense: 0 };
-    trendMap[key][t.type] += Number(t.amount || 0);
+    const parts = getJakartaDateParts(t.date);
+    if (!parts) continue;
+    if (t.type !== "income" && t.type !== "expense") continue;
+    const monthIndex = parts.year * 12 + (Number.parseInt(parts.month, 10) - 1);
+    if (monthIndex < oldestMonthIndex || monthIndex > currentMonthIndex) continue;
+
+    const key = `${parts.year}-${parts.month}`;
+    const existing = trendMap.get(key) ?? { month: key, income: 0, expense: 0 };
+    existing[t.type] += Number(t.amount || 0);
+    trendMap.set(key, existing);
   }
+
   const trend = Array.from({ length: 6 }).map((_, i) => {
-    const d = new Date(today.getFullYear(), today.getMonth() - 5 + i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const entry = trendMap[key] || { month: key, income: 0, expense: 0 };
+    const monthIndex = oldestMonthIndex + i;
+    const year = Math.floor(monthIndex / 12);
+    const month = String((monthIndex % 12) + 1).padStart(2, "0");
+    const key = `${year}-${month}`;
+    const entry = trendMap.get(key) || { income: 0, expense: 0 };
     return { month: key, net: entry.income - entry.expense };
   });
 

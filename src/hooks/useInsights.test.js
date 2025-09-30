@@ -79,4 +79,33 @@ describe("aggregateInsights", () => {
     const res = aggregateInsights(txs);
     expect(res.topSpends.map((t) => t.amount)).toEqual([400, 300, 200]);
   });
+
+  it("uses Jakarta month boundaries", () => {
+    const originalDate = new Date("2024-06-15T00:00:00.000Z");
+    vi.setSystemTime(new Date("2024-06-01T00:30:00.000Z"));
+
+    const boundaryTxs = [
+      {
+        id: 99,
+        date: "2024-05-31T18:00:00.000Z",
+        type: "expense",
+        amount: 150,
+        category: "Boundary",
+      },
+      {
+        id: 100,
+        date: "2024-05-31T16:59:59.999Z",
+        type: "expense",
+        amount: 200,
+        category: "Previous",
+      },
+    ];
+
+    const res = aggregateInsights(boundaryTxs);
+
+    expect(res.topSpends.map((t) => t.amount)).toEqual([150]);
+    expect(res.categories).toHaveLength(1);
+
+    vi.setSystemTime(originalDate);
+  });
 });
