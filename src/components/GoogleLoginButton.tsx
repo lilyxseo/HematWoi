@@ -1,117 +1,118 @@
-import type { ButtonHTMLAttributes, MouseEvent } from 'react';
-import { isHematWoiApp } from '../lib/ua';
+import type { ButtonHTMLAttributes, MouseEvent, ReactNode } from 'react'
 
-const httpPattern = /^https?:\/\//i;
-const schemePattern = /^[a-z][a-z0-9+.-]*:/i;
-const env = typeof import.meta !== 'undefined' ? import.meta.env ?? {} : {};
+import { isHematWoiApp } from '../lib/ua'
 
-// kandidat base URL dari ENV
-const baseCandidates = [
-  typeof env.VITE_SUPABASE_REDIRECT_URL === 'string' ? env.VITE_SUPABASE_REDIRECT_URL.trim() : undefined,
-  typeof env.VITE_APP_URL === 'string' ? env.VITE_APP_URL.trim() : undefined,
-  typeof env.VITE_PUBLIC_SITE_URL === 'string' ? env.VITE_PUBLIC_SITE_URL.trim() : undefined,
-];
+const DEFAULT_DOMAIN = 'https://www.hemat-woi.me'
+const DEFAULT_WEB_LOGIN_PATH = '/auth/google'
+const DEFAULT_WEB_LOGIN_ABSOLUTE = `${DEFAULT_DOMAIN}${DEFAULT_WEB_LOGIN_PATH}`
+const DEFAULT_NATIVE_LOGIN_PATH = '/native-google-login'
+const DEFAULT_NATIVE_LOGIN_ABSOLUTE = `${DEFAULT_DOMAIN}${DEFAULT_NATIVE_LOGIN_PATH}`
 
-const fallbackOrigin =
-  typeof window !== 'undefined' && httpPattern.test(window.location.origin)
-    ? window.location.origin
-    : undefined;
+type Environment = Record<string, string | undefined>
 
-const baseUrl =
-  baseCandidates.find((value): value is string => typeof value === 'string' && httpPattern.test(value)) ??
-  fallbackOrigin;
+type GoogleLoginButtonProps = {
+  text?: string
+  nativeTriggerUrl?: string
+  webLoginUrl?: string
+  onWebLogin?: (event: MouseEvent<HTMLButtonElement>) => void | Promise<void>
+  children?: ReactNode
+} & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'onClick'>
 
-type ResolveOptions = { allowCustomScheme?: boolean };
+const browserEnv: Environment =
+  typeof import.meta !== 'undefined' && (import.meta as ImportMeta).env
+    ? ((import.meta as ImportMeta).env as Environment)
+    : {}
+const nodeEnv: Environment =
+  typeof process !== 'undefined' && process?.env ? (process.env as Environment) : {}
 
-function resolveUrl(
-  target: string | undefined,
-  defaultPath: string,
-  fallbackAbsolute: string,
-  options: ResolveOptions = {}
-) {
-  const trimmed = target?.trim();
-  if (trimmed) {
-    if (httpPattern.test(trimmed)) return trimmed; // absolute http(s)
-    if (baseUrl) {
-      try {
-        return new URL(trimmed, baseUrl).toString(); // relative to base
-      } catch { /* ignore */ }
-    }
-    if (options.allowCustomScheme) return trimmed; // e.g. hematwoi://native-google-login
-  }
-
-  if (baseUrl) {
-    try {
-      return new URL(defaultPath, baseUrl).toString();
-    } catch { /* ignore */ }
-  }
-  return fallbackAbsolute;
+function getEnvValue(key: string): string | undefined {
+  return browserEnv?.[key] ?? nodeEnv?.[key]
 }
 
-// ENV overrides (opsional)
-const envWebLogin =
-  typeof env.VITE_GOOGLE_WEB_LOGIN_URL === 'string' ? env.VITE_GOOGLE_WEB_LOGIN_URL : undefined;
-const envNativeTrigger =
-  typeof env.VITE_NATIVE_GOOGLE_LOGIN_URL === 'string' ? env.VITE_NATIVE_GOOGLE_LOGIN_URL : undefined;
+function getBaseUrl(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin
+  }
 
-// Web OAuth (flow browser biasa)
-export const DEFAULT_GOOGLE_WEB_LOGIN_URL = resolveUrl(
-  envWebLogin,
-  '/auth/google',
-  'https://www.hemat-woi.me/auth/google'
-);
+  return DEFAULT_DOMAIN
+}
 
-// Trigger untuk WebView Android → native Google Sign-In (chooser)
-export const DEFAULT_NATIVE_TRIGGER_URL = resolveUrl(
-  envNativeTrigger,
-  '/native-google-login',
-  'https://www.hemat-woi.me/native-google-login',
-  { allowCustomScheme: true }
-);
+function makeAbsoluteUrl(url: string | undefined, fallbackAbsolute: string): string {
+  const value = url?.trim()
+  if (!value) {
+    return fallbackAbsolute
+  }
 
-type GoogleLoginButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick' | 'type'> & {
-  text?: string;
-  nativeTriggerUrl?: string; // override jika perlu
-  webLoginUrl?: string;      // override jika perlu
-  onWebLogin?: (event: MouseEvent<HTMLButtonElement>) => void | Promise<void>; // custom web flow
-};
+  const hasScheme = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value)
+  if (hasScheme) {
+    return value
+  }
+
+  try {
+    const base = getBaseUrl()
+    return new URL(value, base).toString()
+  } catch (error) {
+    console.warn('Failed to construct URL for', value, 'falling back to', fallbackAbsolute, error)
+    return fallbackAbsolute
+  }
+}
+
+function resolveUrl(
+  overrideValue: string | undefined,
+  envKey: string,
+  fallbackRelative: string,
+  fallbackAbsolute: string
+): string {
+  const envValue = getEnvValue(envKey)
+  const selected = overrideValue ?? envValue ?? fallbackRelative
+
+  return makeAbsoluteUrl(selected, fallbackAbsolute)
+}
 
 export default function GoogleLoginButton({
   text = 'Login dengan Google',
-  nativeTriggerUrl = DEFAULT_NATIVE_TRIGGER_URL,
-  webLoginUrl = DEFAULT_GOOGLE_WEB_LOGIN_URL,
+  nativeTriggerUrl,
+  webLoginUrl,
   onWebLogin,
   children,
   ...rest
 }: GoogleLoginButtonProps) {
-  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
+  const computedNativeUrl = resolveUrl(
+    nativeTriggerUrl,
+    'VITE_NATIVE_GOOGLE_LOGIN_URL',
+    DEFAULT_NATIVE_LOGIN_PATH,
+    DEFAULT_NATIVE_LOGIN_ABSOLUTE
+  )
 
-    const trimmedNativeTrigger = typeof nativeTriggerUrl === 'string' ? nativeTriggerUrl.trim() : '';
-    const isNativeApp = isHematWoiApp();
-    const canUseNativeTrigger =
-      isNativeApp &&
-      Boolean(trimmedNativeTrigger) &&
-      schemePattern.test(trimmedNativeTrigger) &&
-      !httpPattern.test(trimmedNativeTrigger);
+  const computedWebLoginUrl = resolveUrl(
+    webLoginUrl,
+    'VITE_GOOGLE_WEB_LOGIN_URL',
+    DEFAULT_WEB_LOGIN_PATH,
+    DEFAULT_WEB_LOGIN_ABSOLUTE
+  )
 
-    if (canUseNativeTrigger) {
-      // Di dalam app (WebView) → arahkan ke skema khusus untuk memicu native Google Sign-In
-      if (typeof window !== 'undefined') window.location.href = trimmedNativeTrigger;
-      return;
+  const handleClick = async (event: MouseEvent<HTMLButtonElement>) => {
+    if (isHematWoiApp()) {
+      if (typeof window !== 'undefined') {
+        window.location.href = computedNativeUrl
+      }
+
+      return
     }
 
-    // Di browser biasa → pakai web OAuth (Supabase) atau handler custom
     if (onWebLogin) {
-      void onWebLogin(event);
-      return;
+      await onWebLogin(event)
+      return
     }
-    if (typeof window !== 'undefined') window.location.href = webLoginUrl;
-  };
+
+    if (typeof window !== 'undefined') {
+      window.location.href = computedWebLoginUrl
+    }
+  }
 
   return (
-    <button type="button" onClick={handleClick} {...rest}>
+    <button type="button" {...rest} onClick={handleClick}>
       {children ?? text}
     </button>
-  );
+  )
 }
