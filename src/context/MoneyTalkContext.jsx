@@ -75,10 +75,26 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
   const [current, setCurrent] = useState(null);
   const queue = useRef([]);
   const limiter = useRef(createMoneyTalkLimiter(prefs.moneyTalkIntensity));
+  const retryTimer = useRef(null);
+  const processRef = useRef(() => {});
 
   useEffect(() => {
     limiter.current = createMoneyTalkLimiter(prefs.moneyTalkIntensity);
+    if (retryTimer.current) {
+      clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
+    processRef.current?.();
   }, [prefs.moneyTalkIntensity]);
+
+  useEffect(() => {
+    return () => {
+      if (retryTimer.current) {
+        clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
+    };
+  }, []);
 
   const handleDismiss = useCallback(() => {
     setCurrent(null);
@@ -86,20 +102,32 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
 
   const process = useCallback(() => {
     if (current || !queue.current.length) return;
-    if (!limiter.current.tryConsume()) return;
+    const { allowed, wait } = limiter.current.tryConsume();
+    if (!allowed) {
+      if (!retryTimer.current) {
+        const delay = Math.max(wait || 0, 500);
+        retryTimer.current = setTimeout(() => {
+          retryTimer.current = null;
+          processRef.current?.();
+        }, delay);
+      }
+      return;
+    }
     const next = queue.current.shift();
     setCurrent(next);
     setTimeout(() => {
       handleDismiss();
-      process();
+      processRef.current?.();
     }, next.duration || 5000);
   }, [current, handleDismiss]);
+
+  useEffect(() => {
+    processRef.current = process;
+  }, [process]);
 
   const speak = useCallback(
     ({ category, amount = 0, type = "expense", currency, context = {} }) => {
       if (!prefs.moneyTalkEnabled) return;
-      const chanceMap = { jarang: 0.3, normal: 0.7, ramai: 1 };
-      if (Math.random() > (chanceMap[prefs.moneyTalkIntensity] || 0.7)) return;
       const lang = prefs.moneyTalkLang || "id";
       const langQuotes = resolveLangBlock(quotes, lang);
       const langTips = resolveLangBlock(tips, lang);
@@ -127,9 +155,18 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
           values: templateValues,
         });
         if (!message) {
-          const list = langQuotes?.[category] || [];
-          if (!list.length) return;
-          message = fillTemplate(pickRandom(list), templateValues);
+          const categoryQuotes = langQuotes?.[category] || [];
+          const fallbackQuotes = Object.values(langQuotes || {}).flat();
+          const sourceQuotes = categoryQuotes.length
+            ? categoryQuotes
+            : fallbackQuotes.length
+              ? fallbackQuotes
+              : [
+                  lang === "en"
+                    ? "Thanks for logging a transaction. I'm keeping tabs on your money!"
+                    : "Makasih sudah catat transaksi. Aku siap ngawasin uangmu!",
+                ];
+          message = fillTemplate(pickRandom(sourceQuotes), templateValues);
         }
       }
       const tipList = langTips?.[category] || [];
@@ -146,7 +183,7 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
         duration: 4000 + Math.random() * 2000,
       });
       if (queue.current.length > 3) queue.current.splice(3);
-      process();
+      processRef.current?.();
     },
     [
       prefs.moneyTalkEnabled,
@@ -168,7 +205,7 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
           avatar={current.avatar}
           onDismiss={() => {
             handleDismiss();
-            process();
+            processRef.current?.();
           }}
         />
       )}
