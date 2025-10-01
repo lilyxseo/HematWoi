@@ -1,6 +1,11 @@
 import { createContext, useCallback, useContext, useRef, useState, useEffect } from "react";
 import MoneyTalkBubble from "../components/MoneyTalkBubble";
-import { quotes, tips, special } from "../lib/moneyTalkContent";
+import {
+  quotes,
+  tips,
+  special,
+  buildDynamicMoneyTalk,
+} from "../lib/moneyTalkContent";
 import { createMoneyTalkLimiter } from "../lib/moneyTalkQueue";
 
 const MoneyTalkContext = createContext({ speak: () => {} });
@@ -35,7 +40,7 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
   }, [current, handleDismiss]);
 
   const speak = useCallback(
-    ({ category, context = {} }) => {
+    ({ category, amount = 0, type = "expense", context = {} }) => {
       if (!prefs.moneyTalkEnabled) return;
       const chanceMap = { jarang: 0.3, normal: 0.7, ramai: 1 };
       if (Math.random() > (chanceMap[prefs.moneyTalkIntensity] || 0.7)) return;
@@ -46,8 +51,19 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
       else if (context.isHigh) message = special[lang].high;
       else {
         const list = quotes[lang]?.[category] || [];
-        if (!list.length) return;
-        message = list[Math.floor(Math.random() * list.length)];
+        if (list.length) {
+          message = list[Math.floor(Math.random() * list.length)];
+        }
+      }
+      const dynamicMessage = buildDynamicMoneyTalk({
+        lang,
+        amount,
+        type,
+        category,
+      });
+      if (!message && !dynamicMessage) return;
+      if (dynamicMessage) {
+        message = message ? `${message} ${dynamicMessage}` : dynamicMessage;
       }
       const tipList = tips[lang]?.[category] || [];
       const tip = tipList.length
@@ -65,7 +81,12 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
       if (queue.current.length > 3) queue.current.splice(3);
       process();
     },
-    [prefs.moneyTalkEnabled, prefs.moneyTalkIntensity, prefs.moneyTalkLang, process]
+    [
+      prefs.moneyTalkEnabled,
+      prefs.moneyTalkIntensity,
+      prefs.moneyTalkLang,
+      process,
+    ]
   );
 
   return (

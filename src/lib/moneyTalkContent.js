@@ -169,3 +169,230 @@ export const special = {
   },
 };
 
+const dynamicTemplates = {
+  id: {
+    expense: [
+      {
+        max: 50000,
+        templates: [
+          "Cuma {amount}? Dompet cuma yoga ringan.",
+          "Belanja {category} segini mah masih bikin aku cekikikan.",
+          "Aku anggap {amount} ini cemilan aja.",
+        ],
+      },
+      {
+        max: 200000,
+        templates: [
+          "Oke, {amount} buat {category}. Dompet mulai keringetan dikit.",
+          "{amount} melayang. Tolong bilang {category} ini worth it.",
+          "Transaksi {category} segini bikin aku tarik napas panjang.",
+        ],
+      },
+      {
+        max: Infinity,
+        templates: [
+          "Waduh {amount}! Dompet langsung teriak ke bantal.",
+          "{amount} buat {category}? Aku siap drama FTV.",
+          "Transfer segede {amount}? Bantu kipasin dompet, please.",
+        ],
+      },
+    ],
+    income: [
+      {
+        max: 100000,
+        templates: [
+          "Yeay dapet {amount}! Kecil-kecil cabe rawit.",
+          "Saldo nambah {amount}. Aku goyang tipis-tipis.",
+          "{amount} masuk, lumayan buat senyum 5 menit.",
+        ],
+      },
+      {
+        max: 500000,
+        templates: [
+          "{amount} baru mendarat! Dompet langsung tegap.",
+          "Pendapatan {amount}? Aku siap gemukan tabungan.",
+          "{amount} masuk, aku joget kecil tapi berkelas.",
+        ],
+      },
+      {
+        max: Infinity,
+        templates: [
+          "Wuih {amount}! Gelar karpet merah buat dompet.",
+          "Income segede {amount}? Aku mendadak sultan dadakan.",
+          "{amount} masuk, ayo toast dengan air putih dulu!",
+        ],
+      },
+    ],
+    transfer: [
+      {
+        max: 100000,
+        templates: [
+          "Muter-muter {amount}, aku lagi jalan santai.",
+          "Transfer {amount}? Aku cuma pindah kursi.",
+          "{amount} pindah rekening, nggak pakai drama.",
+        ],
+      },
+      {
+        max: 500000,
+        templates: [
+          "{amount} lagi pindah rumah. Aku bawain kardus.",
+          "Transfer {amount}? Dompet siap jadi tour guide.",
+          "Mengantar {amount} ke alamat baru, perjalanan seru nih.",
+        ],
+      },
+      {
+        max: Infinity,
+        templates: [
+          "Whoa {amount} pindah! Butuh truk sama satpam virtual.",
+          "Transfer jumbo {amount}. Aku minta kipas darurat.",
+          "{amount} cabut bareng koper gede. Dompet butuh teh manis.",
+        ],
+      },
+    ],
+  },
+  en: {
+    expense: [
+      {
+        max: 50000,
+        templates: [
+          "Only {amount}? Wallet still doing light stretches.",
+          "A {category} treat for {amount}. I'm giggling, not screaming.",
+          "Spending {amount} feels like feeding me snacks.",
+        ],
+      },
+      {
+        max: 200000,
+        templates: [
+          "Okay, {amount} for {category}. Wallet just booked a yoga class.",
+          "{amount} flew away. Please tell me {category} was worth it!",
+          "I'm sweating a bit from that {category} bill.",
+        ],
+      },
+      {
+        max: Infinity,
+        templates: [
+          "Whoa, {amount}! My wallet just screamed into a pillow.",
+          "{amount} on {category}? I'm filing for dramatic flair.",
+          "That transfer of {amount} made my zipper faint.",
+        ],
+      },
+    ],
+    income: [
+      {
+        max: 100000,
+        templates: [
+          "Yay, {amount} arrived! Tiny but mighty.",
+          "Balance got {amount} richer. Happy wiggle engaged.",
+          "{amount} in income—I'll treat myself to a humble brag.",
+        ],
+      },
+      {
+        max: 500000,
+        templates: [
+          "{amount} incoming! Wallet flexes politely.",
+          "Hello {amount}! Let's puff up those savings.",
+          "Deposit of {amount}? I'm doing the cha-cha.",
+        ],
+      },
+      {
+        max: Infinity,
+        templates: [
+          "{amount} landed! Roll out the golden carpet.",
+          "Income that big ({amount})? I'm declaring a mini-festival.",
+          "Boom! {amount} just moved in. I'm royalty now.",
+        ],
+      },
+    ],
+    transfer: [
+      {
+        max: 100000,
+        templates: [
+          "Shuffling {amount} around—just a casual jog.",
+          "Tiny transfer of {amount}. I barely packed a suitcase.",
+          "{amount} relocating? I'll send a postcard.",
+        ],
+      },
+      {
+        max: 500000,
+        templates: [
+          "{amount} is changing addresses. Hope it writes!",
+          "Moving {amount}? My wallet brought snacks for the trip.",
+          "Transfer mission: {amount}. Success with mild drama.",
+        ],
+      },
+      {
+        max: Infinity,
+        templates: [
+          "{amount} moved out in one go! Call the moving trucks.",
+          "That {amount} transfer needed a parade escort.",
+          "Huge relocation of {amount}! Wallet needs a nap.",
+        ],
+      },
+    ],
+  },
+};
+
+const defaultTypeLabel = {
+  id: {
+    expense: "pengeluaran",
+    income: "pendapatan",
+    transfer: "transfer",
+  },
+  en: {
+    expense: "expense",
+    income: "income",
+    transfer: "transfer",
+  },
+};
+
+function formatAmountByLang(amount, lang) {
+  const value = Number.isFinite(amount) ? Math.abs(amount) : 0;
+  try {
+    const formatter = new Intl.NumberFormat(lang === "en" ? "en-US" : "id-ID", {
+      style: "currency",
+      currency: "IDR",
+      maximumFractionDigits: 0,
+    });
+    return formatter.format(value);
+  } catch {
+    return `${lang === "en" ? "IDR" : "Rp"} ${value.toLocaleString("en-US")}`;
+  }
+}
+
+function fillTemplate(template, values) {
+  if (!template) return "";
+  return template.replace(/\{(\w+)\}/g, (match, key) => {
+    return Object.prototype.hasOwnProperty.call(values, key)
+      ? values[key]
+      : match;
+  });
+}
+
+export function buildDynamicMoneyTalk({
+  lang = "id",
+  amount = 0,
+  type = "expense",
+  category,
+} = {}) {
+  const normalizedLang = dynamicTemplates[lang] ? lang : "id";
+  const normalizedType = dynamicTemplates[normalizedLang][type]
+    ? type
+    : "expense";
+  const templates = dynamicTemplates[normalizedLang][normalizedType];
+  if (!templates || !templates.length) return "";
+  const value = Number.isFinite(Number(amount)) ? Math.abs(Number(amount)) : 0;
+  const bucket =
+    templates.find((entry) => value <= entry.max) ||
+    templates[templates.length - 1];
+  if (!bucket || !bucket.templates.length) return "";
+  const label = (category && String(category).trim())
+    ? String(category).trim()
+    : defaultTypeLabel[normalizedLang][normalizedType];
+  const template = bucket.templates[Math.floor(Math.random() * bucket.templates.length)];
+  const formattedAmount = formatAmountByLang(value, normalizedLang);
+  return fillTemplate(template, {
+    amount: formattedAmount,
+    category: label,
+  });
+}
+
