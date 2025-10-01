@@ -87,7 +87,25 @@ function getTenorSeriesKey(debt: DebtRecord): string {
     debt.rate_percent != null && Number.isFinite(debt.rate_percent)
       ? debt.rate_percent.toFixed(4)
       : 'null';
-  const seriesStart = getSeriesStartDate(debt);
+  const createdAt = new Date(debt.created_at);
+  let seriesIdentifier: string;
+  if (!Number.isNaN(createdAt.getTime())) {
+    seriesIdentifier = createdAt.toISOString();
+  } else {
+    const startIso = getSeriesStartDate(debt);
+    if (startIso === 'unknown') {
+      seriesIdentifier = startIso;
+    } else {
+      const start = new Date(startIso);
+      if (Number.isNaN(start.getTime())) {
+        seriesIdentifier = startIso;
+      } else {
+        const year = start.getUTCFullYear();
+        const month = String(start.getUTCMonth() + 1).padStart(2, '0');
+        seriesIdentifier = `${year}-${month}`;
+      }
+    }
+  }
   return [
     debt.user_id,
     debt.type,
@@ -97,7 +115,7 @@ function getTenorSeriesKey(debt: DebtRecord): string {
     normalizedAmount,
     normalizedRate,
     debt.tenor_months,
-    seriesStart,
+    seriesIdentifier,
   ].join('|');
 }
 
