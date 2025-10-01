@@ -934,7 +934,6 @@ export default function TransactionAdd({ onAdd }) {
                   ) : (
                     <ul className="space-y-3">
                       {templates.map((template) => {
-                        const typeMeta = TYPE_OPTIONS.find((option) => option.value === template.type);
                         const accountName = accounts.find((item) => item.id === template.account_id)?.name || 'Akun tidak ditemukan';
                         const toAccountName = template.to_account_id
                           ? accounts.find((item) => item.id === template.to_account_id)?.name || 'Akun tidak ditemukan'
@@ -942,69 +941,70 @@ export default function TransactionAdd({ onAdd }) {
                         const categoryName = template.category_id
                           ? categories.find((item) => item.id === template.category_id)?.name || 'Kategori tidak ditemukan'
                           : null;
+                        const categoryDisplay = template.type === 'transfer' ? toAccountName || '—' : categoryName || '—';
                         return (
-                          <li key={template.id} className="space-y-3 rounded-2xl border border-border-subtle p-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-text">{template.name}</p>
-                                <p className="text-xs text-muted">{typeMeta?.label || 'Template'}</p>
-                              </div>
+                          <li
+                            key={template.id}
+                            className="group rounded-3xl border border-border-subtle/80 bg-gradient-to-br from-white/95 via-white to-white/75 p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg dark:from-zinc-900/80 dark:via-zinc-900/60 dark:to-zinc-900/40"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-base font-semibold text-text">{template.name}</p>
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => handleApplyTemplate(template)}
                                   disabled={Boolean(applyingTemplateId)}
-                                  className="inline-flex items-center gap-2 rounded-xl border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-primary/60 bg-primary/10 text-primary transition hover:border-primary hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {applyingTemplateId === template.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                                   ) : (
                                     <Wand2 className="h-4 w-4" aria-hidden="true" />
                                   )}
-                                  {applyingTemplateId === template.id ? 'Memproses...' : 'Gunakan'}
+                                  <span className="sr-only">Gunakan template</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTemplate(template.id)}
                                   disabled={deletingTemplateId === template.id}
-                                  className="inline-flex items-center gap-2 rounded-xl border border-border-subtle px-3 py-1.5 text-xs font-medium text-muted transition hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle/70 text-muted transition hover:border-destructive/40 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {deletingTemplateId === template.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                                   ) : (
                                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                                   )}
-                                  Hapus
+                                  <span className="sr-only">Hapus template</span>
                                 </button>
                               </div>
                             </div>
-                            <div className="grid gap-2 text-xs text-muted sm:grid-cols-2">
-                              <div>
-                                <span className="font-medium text-text">{formatAmountDisplay(template.amount)}</span>
-                                <p>Nominal</p>
-                              </div>
-                              <div>
-                                <span className="font-medium text-text">{accountName || '—'}</span>
-                                <p>Akun sumber</p>
-                              </div>
-                              {template.type === 'transfer' ? (
-                                <div>
-                                  <span className="font-medium text-text">{toAccountName || '—'}</span>
-                                  <p>Akun tujuan</p>
+                            <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                              <div className="flex items-center gap-3 rounded-2xl border border-border-subtle/60 bg-background/60 p-3">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                  <Banknote className="h-4 w-4" aria-hidden="true" />
+                                </span>
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-medium uppercase tracking-wide text-muted">Nominal</p>
+                                  <p className="font-semibold text-text">{formatAmountDisplay(template.amount)}</p>
                                 </div>
-                              ) : (
-                                <div>
-                                  <span className="font-medium text-text">{categoryName || '—'}</span>
-                                  <p>Kategori</p>
-                                </div>
-                              )}
-                              <div>
-                                <span className="font-medium text-text">{template.title || '—'}</span>
-                                <p>Judul</p>
                               </div>
-                              <div className="sm:col-span-2">
-                                <span className="font-medium text-text">{template.notes ? template.notes.slice(0, 80) + (template.notes.length > 80 ? '…' : '') : '—'}</span>
-                                <p>Catatan</p>
+                              <div className="flex items-center gap-3 rounded-2xl border border-border-subtle/60 bg-background/60 p-3">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                  <Wallet className="h-4 w-4" aria-hidden="true" />
+                                </span>
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-medium uppercase tracking-wide text-muted">Sumber dana</p>
+                                  <p className="font-semibold text-text">{accountName || '—'}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3 rounded-2xl border border-border-subtle/60 bg-background/60 p-3">
+                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary">
+                                  <TagIcon className="h-4 w-4" aria-hidden="true" />
+                                </span>
+                                <div className="space-y-0.5">
+                                  <p className="text-xs font-medium uppercase tracking-wide text-muted">Kategori</p>
+                                  <p className="font-semibold text-text">{categoryDisplay}</p>
+                                </div>
                               </div>
                             </div>
                           </li>
