@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getTransactionsSummary, listCategories } from "../lib/api";
 import { listTransactions } from "../lib/api-transactions";
@@ -118,6 +118,7 @@ export default function useTransactionsQuery() {
   const [summary, setSummary] = useState({ income: 0, expense: 0, net: 0 });
   const [categories, setCategories] = useState([]);
   const [refreshToken, setRefreshToken] = useState(0);
+  const preserveItemsRef = useRef(false);
 
   const filterKey = useMemo(
     () => JSON.stringify({ ...filter, page: 0 }),
@@ -143,7 +144,10 @@ export default function useTransactionsQuery() {
     const request = toRequestFilter(filter, page);
     setLoading(true);
     setError(null);
-    if (page === 1) {
+    const preserveItems = preserveItemsRef.current;
+    preserveItemsRef.current = false;
+
+    if (page === 1 && !preserveItems) {
       setItems([]);
     }
 
@@ -219,6 +223,7 @@ export default function useTransactionsQuery() {
 
   const refresh = useCallback(
     ({ keepPage = false } = {}) => {
+      preserveItemsRef.current = keepPage;
       setRefreshToken((token) => token + 1);
       if (keepPage) {
         updateParams({}, page);
