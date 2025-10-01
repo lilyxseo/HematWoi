@@ -796,6 +796,8 @@ function AppShell({ prefs, setPrefs }) {
     speak({
       category,
       amount,
+      type: tx.type,
+      currency: tx.currency || prefs.currency || "IDR",
       context: { isHigh, isSavings, isOverBudget },
     });
   };
