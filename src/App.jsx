@@ -796,6 +796,7 @@ function AppShell({ prefs, setPrefs }) {
     speak({
       category,
       amount,
+      type: tx.type,
       context: { isHigh, isSavings, isOverBudget },
     });
   };
