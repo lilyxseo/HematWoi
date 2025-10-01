@@ -146,6 +146,7 @@ export default function TransactionAdd({ onAdd }) {
   const [templateName, setTemplateName] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
+  const [applyingTemplateId, setApplyingTemplateId] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -378,53 +379,92 @@ export default function TransactionAdd({ onAdd }) {
     }
   };
 
-  const handleApplyTemplate = (template) => {
-    if (!template) return;
-    const accountExists = template.account_id
-      ? accounts.some((item) => item.id === template.account_id)
-      : false;
-    const targetAccountExists = template.to_account_id
-      ? accounts.some((item) => item.id === template.to_account_id)
-      : false;
-    const categoryExists = template.category_id
-      ? categories.some((item) => item.id === template.category_id)
-      : false;
+  const handleApplyTemplate = async (template) => {
+    if (!template || applyingTemplateId) return;
 
-    setType(template.type);
-    if (Number.isFinite(template.amount) && template.amount > 0) {
-      setAmountInput(formatAmountInputValue(template.amount));
+    const amountValid = Number.isFinite(template.amount) && template.amount > 0;
+    if (!amountValid) {
+      addToast('Nominal pada template tidak valid.', 'error');
+      return;
     }
-    if (accountExists) {
-      setAccountId(template.account_id);
+
+    const sourceAccount = accounts.find((item) => item.id === template.account_id);
+    if (!sourceAccount) {
+      addToast('Akun pada template tidak ditemukan.', 'error');
+      return;
     }
+
+    let targetAccount = null;
     if (template.type === 'transfer') {
-      if (targetAccountExists) {
-        setToAccountId(template.to_account_id || '');
-      } else {
-        setToAccountId('');
+      if (!template.to_account_id) {
+        addToast('Template transfer membutuhkan akun tujuan.', 'error');
+        return;
       }
-      setCategoryId('');
-    } else {
-      if (categoryExists) {
-        setCategoryId(template.category_id || '');
+      targetAccount = accounts.find((item) => item.id === template.to_account_id);
+      if (!targetAccount) {
+        addToast('Akun tujuan pada template tidak ditemukan.', 'error');
+        return;
       }
-      setToAccountId('');
-    }
-    setTitle(template.title || '');
-    setNotes(template.notes || '');
-    setErrors({});
-
-    if (!accountExists && template.account_id) {
-      addToast('Akun pada template tidak ditemukan dan dilewati.', 'warning');
-    }
-    if (template.type === 'transfer' && !targetAccountExists && template.to_account_id) {
-      addToast('Akun tujuan pada template tidak ditemukan dan dilewati.', 'warning');
-    }
-    if (template.type !== 'transfer' && template.category_id && !categoryExists) {
-      addToast('Kategori pada template tidak ditemukan dan dilewati.', 'warning');
     }
 
-    addToast('Template transaksi diterapkan.', 'success');
+    let category = null;
+    if (template.type !== 'transfer') {
+      if (template.type === 'expense' && !template.category_id) {
+        addToast('Template pengeluaran membutuhkan kategori.', 'error');
+        return;
+      }
+      if (template.category_id) {
+        category = categories.find((item) => item.id === template.category_id);
+        if (!category) {
+          addToast('Kategori pada template tidak ditemukan.', 'error');
+          return;
+        }
+      }
+    }
+
+    const trimmedTemplateTitle = template.title?.trim() || '';
+    const trimmedTemplateNotes = template.notes?.trim() || '';
+    const transactionDate = date || getDateWithOffset(0);
+
+    setApplyingTemplateId(template.id);
+    try {
+      const saved = await createTransaction({
+        type: template.type,
+        date: transactionDate,
+        amount: template.amount,
+        account_id: template.account_id,
+        to_account_id: template.type === 'transfer' ? template.to_account_id : null,
+        category_id: template.type !== 'transfer' ? template.category_id || null : null,
+        title: trimmedTemplateTitle ? trimmedTemplateTitle : null,
+        notes: trimmedTemplateNotes ? trimmedTemplateNotes : null,
+      });
+
+      const payload = {
+        ...saved,
+        amount: saved.amount ?? template.amount,
+        account: sourceAccount?.name || null,
+        account_id: saved.account_id ?? template.account_id,
+        to_account: template.type === 'transfer' ? targetAccount?.name || null : null,
+        to_account_id:
+          saved.to_account_id ?? (template.type === 'transfer' ? template.to_account_id : null),
+        category: template.type !== 'transfer' ? category?.name || null : null,
+        category_id:
+          saved.category_id ?? (template.type !== 'transfer' ? template.category_id || null : null),
+        title: saved.title ?? (trimmedTemplateTitle || null),
+        notes: saved.notes ?? (trimmedTemplateNotes || null),
+        note: saved.notes ?? (trimmedTemplateNotes || null),
+        receipt_url: saved.receipt_url || null,
+        __persisted: true,
+      };
+
+      onAdd?.(payload);
+      addToast('Transaksi dibuat dari template.', 'success');
+      navigate('/transactions');
+    } catch (err) {
+      addToast(err?.message || 'Gagal membuat transaksi dari template.', 'error');
+    } finally {
+      setApplyingTemplateId(null);
+    }
   };
 
   const handleDeleteTemplate = async (id) => {
@@ -773,11 +813,9 @@ export default function TransactionAdd({ onAdd }) {
               </div>
 
               <div>
-                <label htmlFor="title" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                  Judul (opsional)
-                </label>
                 <input
                   id="title"
+                  aria-label="Judul (opsional)"
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Contoh: Makan siang tim"
@@ -786,11 +824,9 @@ export default function TransactionAdd({ onAdd }) {
               </div>
 
               <div>
-                <label htmlFor="notes" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                  Catatan (opsional)
-                </label>
                 <textarea
                   id="notes"
+                  aria-label="Catatan (opsional)"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   rows={4}
@@ -917,10 +953,15 @@ export default function TransactionAdd({ onAdd }) {
                                 <button
                                   type="button"
                                   onClick={() => handleApplyTemplate(template)}
-                                  className="inline-flex items-center gap-2 rounded-xl border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                  disabled={Boolean(applyingTemplateId)}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                  <Wand2 className="h-4 w-4" aria-hidden="true" />
-                                  Gunakan
+                                  {applyingTemplateId === template.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                  ) : (
+                                    <Wand2 className="h-4 w-4" aria-hidden="true" />
+                                  )}
+                                  {applyingTemplateId === template.id ? 'Memproses...' : 'Gunakan'}
                                 </button>
                                 <button
                                   type="button"
