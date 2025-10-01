@@ -1,8 +1,7 @@
-import { createContext, useCallback, useContext, useRef, useState, useEffect } from "react";
+import { createContext, useCallback, useContext, useRef, useState } from "react";
 import MoneyTalkBubble from "../components/MoneyTalkBubble";
 import { quotes, tips, special, amountReactions } from "../lib/moneyTalkContent";
 import { formatCurrency } from "../lib/format";
-import { createMoneyTalkLimiter } from "../lib/moneyTalkQueue";
 
 const AMOUNT_BUCKETS = [
   { key: "zero", check: (value) => value === 0 },
@@ -36,6 +35,13 @@ function pickRandom(list = []) {
   return list[Math.floor(Math.random() * list.length)];
 }
 
+function flattenQuotes(collection) {
+  if (!collection) return [];
+  return Object.values(collection).flatMap((value) =>
+    Array.isArray(value) ? value : []
+  );
+}
+
 function fillTemplate(template, values) {
   if (!template) return template;
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
@@ -54,6 +60,12 @@ function getBucket(amount) {
 function resolveLangBlock(collection, lang) {
   return collection[lang] || collection.id || Object.values(collection)[0] || {};
 }
+
+const DURATION_MAP = {
+  jarang: 6000,
+  normal: 5000,
+  ramai: 4000,
+};
 
 function createDynamicMessage({ lang, type, amount, values }) {
   const normalizedType = TYPE_NORMALIZER[type] || "expense";
@@ -74,11 +86,6 @@ export function useMoneyTalk() {
 export default function MoneyTalkProvider({ prefs = {}, children }) {
   const [current, setCurrent] = useState(null);
   const queue = useRef([]);
-  const limiter = useRef(createMoneyTalkLimiter(prefs.moneyTalkIntensity));
-
-  useEffect(() => {
-    limiter.current = createMoneyTalkLimiter(prefs.moneyTalkIntensity);
-  }, [prefs.moneyTalkIntensity]);
 
   const handleDismiss = useCallback(() => {
     setCurrent(null);
@@ -86,7 +93,6 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
 
   const process = useCallback(() => {
     if (current || !queue.current.length) return;
-    if (!limiter.current.tryConsume()) return;
     const next = queue.current.shift();
     setCurrent(next);
     setTimeout(() => {
@@ -98,8 +104,6 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
   const speak = useCallback(
     ({ category, amount = 0, type = "expense", currency, context = {} }) => {
       if (!prefs.moneyTalkEnabled) return;
-      const chanceMap = { jarang: 0.3, normal: 0.7, ramai: 1 };
-      if (Math.random() > (chanceMap[prefs.moneyTalkIntensity] || 0.7)) return;
       const lang = prefs.moneyTalkLang || "id";
       const langQuotes = resolveLangBlock(quotes, lang);
       const langTips = resolveLangBlock(tips, lang);
@@ -127,15 +131,24 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
           values: templateValues,
         });
         if (!message) {
-          const list = langQuotes?.[category] || [];
-          if (!list.length) return;
-          message = fillTemplate(pickRandom(list), templateValues);
+          const categoryQuotes = langQuotes?.[category] || [];
+          const fallbackQuotes = flattenQuotes(langQuotes);
+          const options = categoryQuotes.length ? categoryQuotes : fallbackQuotes;
+          if (!options.length) {
+            message =
+              lang === "en"
+                ? "Another transaction logged! I'm keeping an eye on it."
+                : "Transaksi tercatat! Aku tetap siaga mengawasinya.";
+          } else {
+            message = fillTemplate(pickRandom(options), templateValues);
+          }
         }
       }
       const tipList = langTips?.[category] || [];
       const tip = tipList.length
         ? fillTemplate(pickRandom(tipList), templateValues)
         : "";
+      const baseDuration = DURATION_MAP[prefs.moneyTalkIntensity] || DURATION_MAP.normal;
       queue.current.push({
         id:
           globalThis.crypto?.randomUUID?.() ||
@@ -143,7 +156,7 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
         message,
         tip,
         avatar: Math.random() > 0.5 ? "bill" : "coin",
-        duration: 4000 + Math.random() * 2000,
+        duration: baseDuration + Math.random() * 1500,
       });
       if (queue.current.length > 3) queue.current.splice(3);
       process();

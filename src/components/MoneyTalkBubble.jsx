@@ -1,17 +1,30 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 
 export default function MoneyTalkBubble({ message, tip, avatar = "coin", onDismiss }) {
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
   const icon = avatar === "bill" ? "💵" : "🪙";
 
-  return (
-    <div className="fixed bottom-4 right-4 z-50" aria-live="polite">
+  if (!mounted) return null;
+
+  return createPortal(
+    <div
+      className="pointer-events-none fixed bottom-6 right-6 z-50 sm:bottom-8 sm:right-8"
+      aria-live="polite"
+    >
       <div
         tabIndex={0}
         role="status"
         className={clsx(
-          "card shadow-lg p-3 flex items-start gap-2 cursor-pointer focus:outline-none",
+          "pointer-events-auto card shadow-lg p-3 flex items-start gap-2 cursor-pointer focus:outline-none",
           "animate-slide"
         )}
         onClick={() => setOpen((o) => !o)}
@@ -34,10 +47,14 @@ export default function MoneyTalkBubble({ message, tip, avatar = "coin", onDismi
         </button>
       </div>
       {open && tip && (
-        <div className="mt-2 card shadow p-2 text-xs animate-slide" role="dialog">
+        <div
+          className="pointer-events-auto mt-2 card shadow p-2 text-xs animate-slide"
+          role="dialog"
+        >
           {tip}
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
