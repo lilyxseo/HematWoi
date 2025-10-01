@@ -1,102 +1,116 @@
 export const quotes = {
   id: {
     Makan: [
-      "Aku masuk mulut, bukan dompet! 🍜",
-      "Habis makan enak, aku langsung melangsing. 😅",
-      "Perut kenyang, dompet kempes!",
-      "Makan lagi? Aku butuh diet.",
-      "Setiap gigitan, aku semakin tipis.",
-      "Aku lebih suka disimpan daripada dimakan.",
+      "Perutmu bahagia, {amount} ikut terbang! 🍜",
+      "Makan enak lagi? {amount} langsung pamit dari dompet. 😂",
+      "Kupikir ngemil, kok {amount} yang melayang?",
+      "{amount} buat makan? Aku jadi pingin diet juga.",
+      "Setiap suapan bikin {amount} hilang perlahan.",
+      "Aku lebih suka disimpan daripada dihabiskan {amount} begini.",
     ],
     Transport: [
-      "Wusshh! Aku ikut ngebut. 🚗",
-      "Aku capek jadi uang ojek.",
-      "Bensin lagi? Aku kan bukan minyak.",
-      "Mungkin coba jalan kaki?",
-      "Tiap kilometer, aku berpamitan.",
-      "Bis kan murah? hemat dong.",
+      "Wusshh! {amount} melesat bareng kamu. 🚗",
+      "Aku capek jadi ongkos, apalagi {amount} segini.",
+      "Bensin lagi? {amount} serasa isi kilang.",
+      "{amount} buat ngebut, dompetku butuh seat belt.",
+      "Tiap kilometer, {amount} pamit satu-satu.",
+      "Bis kan murah? {amount} bisa disimpan dulu.",
     ],
     Hiburan: [
-      "Yay, diajak bersenang-senang!",
-      "Tiket lagi? Aku ingin liburan juga.",
-      "Nonton boleh, asal aku nggak habis.",
-      "Game baru? Ingat cicilan!",
-      "Aku tertawa, tapi sambil nangis.",
-      "Seru-seru, tapi tabungan melambai.",
+      "Yay, {amount} buat senang-senang! Aku ikut ketawa menangis.",
+      "Tiket lagi? {amount} berasa bayar konser pribadi.",
+      "Nonton boleh, asal sisa lebih dari {amount} ya.",
+      "Game baru harga {amount}? Ingat cicilan, pliss.",
+      "Aku tertawa sambil melihat {amount} kabur.",
+      "Seru sih, tapi {amount} melambai dari kejauhan.",
     ],
     Belanja: [
-      "Keranjangmu penuh, aku kosong.",
-      "Diskon? Aku tetap keluar.",
-      "Belanja terus, aku pusing.",
-      "Mungkin cari yang second?",
-      "Aku berharap kita cuma window shopping.",
-      "Barang baru lagi? Aku belum pulih.",
+      "Keranjang penuh, {amount} langsung cabut.",
+      "Diskon tetap bikin {amount} keluar juga.",
+      "Belanja terus, {amount} jadi jet lag.",
+      "Mungkin cari yang second biar bukan {amount} segini?",
+      "Aku kira cuma window shopping, kok {amount} ilang?",
+      "Barang baru lagi? Dompet belum pulih dari {amount}.",
     ],
     Tagihan: [
-      "Halo, bulan ini aku datang lagi.",
-      "Bayar listrik biar terang, tapi aku gelap.",
-      "Tagihan air? Aku mengalir deras.",
-      "Aku pergi begitu saja tiap tanggal tua.",
-      "Langganan banyak, aku seret.",
-      "Mungkin matikan lampu kalau tidak dipakai.",
+      "Halo, {amount} datang lagi kayak sinetron harian.",
+      "Bayar listrik {amount}, dompet langsung hemat energi.",
+      "Tagihan air {amount}? Aku ikut hanyut.",
+      "Tanggal tua tiba, {amount} pamit tanpa permisi.",
+      "Langganan numpuk, {amount} seret banget.",
+      "Matikan lampu dikit biar bukan {amount} tiap bulan.",
     ],
     Tabungan: [
-      "Tidur dulu ya, bangunkan nanti.",
-      "Aku berkembang di sini.",
-      "Hemat pangkal kaya, ayo!",
-      "Aku senang di celengan.",
-      "Tambah lagi dong biar gemuk.",
-      "Pelan-pelan jadi bukit.",
+      "Syukurlah, {amount} diajak hibernasi di tabungan!",
+      "Aku berkembang nyaman dengan {amount} ini.",
+      "Hemat pangkal kaya, {amount} jadi modal awalnya!",
+      "Celengan senyum lebar nerima {amount}.",
+      "Tambah lagi dong, {amount} bikin aku makin buncit.",
+      "Pelan-pelan {amount} numpuk jadi bukit.",
+    ],
+    default: [
+      "Whoa, {amount} terbang ke kategori {category}. Aku ikut salto!",
+      "{amount} buat {category}? Dompetku langsung drama komedi.",
+      "Transaksi {type} sebesar {amount}, aku merinding diskon.",
+      "{emoji} {amount} baru aja nge-gym, lompat dari dompet ke {category}.",
+      "Aku bingung, {amount} hilang ke {category} lebih cepat dari notifikasi WA.",
     ],
   },
   en: {
     Makan: [
-      "I go to your belly, not your wallet! 🍜",
-      "Great meal, sudden slim wallet. 😅",
-      "Full tummy, empty pocket!",
-      "Eating again? I need a diet.",
-      "Every bite makes me thinner.",
-      "I'd rather be saved than eaten.",
+      "Happy belly, {amount} just flew away! 🍜",
+      "Another tasty bite? {amount} waved goodbye already. 😂",
+      "Thought it was a snack, but {amount} vanished!",
+      "{amount} for food? My wallet needs a diet too.",
+      "Every bite trims {amount} from me.",
+      "I'd rather be saved than seeing {amount} disappear.",
     ],
     Transport: [
-      "Zoom! I'm speeding away. 🚗",
-      "Tired of being ride money.",
-      "Fuel again? I'm not oil.",
-      "Maybe try walking?",
-      "Each kilometer, I say goodbye.",
-      "Buses are cheaper, you know.",
+      "Zoom! {amount} sped off with you. 🚗",
+      "I'm exhausted being fare money, especially {amount} of it.",
+      "Fuel again? {amount} feels like filling a whole tank farm.",
+      "{amount} for speed—my wallet needs a seat belt.",
+      "Every kilometer whispers goodbye to {amount}.",
+      "Buses are cheaper; {amount} could stay with me instead.",
     ],
     Hiburan: [
-      "Yay, out for fun!",
-      "Tickets again? I need a vacation too.",
-      "Movies are fine, just don't spend me all.",
-      "New game? Remember the bills!",
-      "I'm laughing while crying inside.",
-      "Fun times, waving goodbye to savings.",
+      "Yay, {amount} for fun! Laughing while crying inside.",
+      "Tickets again? {amount} feels like a private concert fee.",
+      "Movies? Sure, just leave more than {amount} behind.",
+      "New game worth {amount}? Remember those bills!",
+      "I'm giggling while watching {amount} vanish.",
+      "Fun times waving goodbye to {amount} of savings.",
     ],
     Belanja: [
-      "Your cart is full, I'm empty.",
-      "Sale? I'm still leaving.",
-      "Shopping spree makes me dizzy.",
-      "Maybe buy second-hand?",
-      "I hoped it was just window shopping.",
-      "Another new item? I'm not recovered yet.",
+      "Cart is full, {amount} ran away instantly.",
+      "Sale price still makes {amount} leave.",
+      "Shopping again? {amount} is dizzy too.",
+      "Maybe thrift it so it's not {amount}?",
+      "I thought it was window shopping—why is {amount} gone?",
+      "Another new thing? My balance still misses {amount}.",
     ],
     Tagihan: [
-      "Hello, it's that time of month.",
-      "Paying electricity, but I'm in the dark.",
-      "Water bill? I'm flowing fast.",
-      "I vanish every due date.",
-      "Too many subscriptions drain me.",
-      "Turn off unused lights maybe?",
+      "Hello again—{amount} showed up like a soap opera rerun.",
+      "Paying electricity with {amount}, now my wallet is power-saving.",
+      "Water bill {amount}? I'm floating away.",
+      "Due date hits, {amount} sneaks out without goodbye.",
+      "Subscriptions stack up, {amount} gets drained dry.",
+      "Turn off the lights so it's not {amount} every month.",
     ],
     Tabungan: [
-      "Let me sleep for the future.",
-      "I'm growing safely here.",
-      "Save now, rich later!",
-      "Happy inside the piggy bank.",
-      "Feed me more to grow fat.",
-      "Slowly but surely I pile up.",
+      "Yes! {amount} gets to hibernate safely.",
+      "I'm growing comfy with {amount} in savings.",
+      "Save now, {amount} is the first brick!",
+      "Piggy bank grins wide for {amount}.",
+      "Add more please, {amount} makes me chunky.",
+      "Slowly {amount} piles into a mountain.",
+    ],
+    default: [
+      "Whoa, {amount} zoomed into {category}. I'm still spinning!",
+      "{amount} for {category}? My wallet turned into a sitcom.",
+      "A {type} worth {amount} just happened—got goosebumps.",
+      "{emoji} {amount} just did a backflip out of my wallet.",
+      "Blink and {amount} vanished into {category}.",
     ],
   },
 };
@@ -127,6 +141,10 @@ export const tips = {
       "Setor otomatis tiap bulan.",
       "Pisahkan rekening tabungan.",
     ],
+    default: [
+      "Catat transaksi {type} supaya tahu ke mana {amount} kabur.",
+      "Sisihkan sisa dari {amount} untuk tabungan darurat.",
+    ],
   },
   en: {
     Makan: [
@@ -153,19 +171,206 @@ export const tips = {
       "Automate monthly deposits.",
       "Keep a separate savings account.",
     ],
+    default: [
+      "Log this {type} so you remember where {amount} went.",
+      "Skim a little from that {amount} for your rainy-day fund.",
+    ],
   },
 };
 
 export const special = {
   id: {
-    high: "Kenapa aku dibelikan mahal-mahal? 😵",
-    savings: "Nice! Aku disimpan buat masa depan 💰✨",
-    overbudget: "Aku capek dipakai terus… istirahat dulu ya 😭",
+    high: "Wadaw, {amount} dalam sekali gesek? Aku ngos-ngosan! 😵",
+    savings: "Nice! {amount} disimpan buat masa depan 💰✨",
+    overbudget: "{amount} ini bikin kita lewat anggaran… istirahat dulu ya 😭",
   },
   en: {
-    high: "Why am I bought so pricey? 😵",
-    savings: "Nice! I'm saved for the future 💰✨",
-    overbudget: "I'm tired of being spent… give me a break 😭",
+    high: "Whoa, {amount} in one swipe? I'm dizzy! 😵",
+    savings: "Nice! {amount} is tucked away for the future 💰✨",
+    overbudget: "That {amount} pushed us past budget… I need a break 😭",
+  },
+};
+
+export const amountReactions = {
+  id: {
+    expense: {
+      huge: [
+        "{emoji} {amount} segede gaban! Tolong dompetku diselametin.",
+        "Aku butuh napas buatan habis {amount} ini.",
+      ],
+      large: [
+        "{amount} bikin lututku goyang—serasa diskon palsu.",
+        "Itu {amount} beneran? Kirain salah ketik.",
+      ],
+      medium: [
+        "Oke, {amount} masih bisa kuterima sambil nangis tipis.",
+        "{amount} lumayan bikin keringetan dikit nih.",
+      ],
+      small: [
+        "{amount} masih level ngemil, tapi tetep aja kabur.",
+        "Receh {amount} gini lama-lama jadi bukit, tau.",
+      ],
+      tiny: [
+        "Cuma {amount}, tapi aku tetep drama queen dong.",
+        "Eh, {amount} pun harus pamit sopan ya.",
+      ],
+    },
+    income: {
+      huge: [
+        "🤑 {amount} masuk! Aku siap pesta durian.",
+        "Dompet langsung six-pack gara-gara {amount} ini!",
+      ],
+      large: [
+        "Wow, {amount} masuk! Aku joget dulu.",
+        "Selamat datang {amount}, mari kita rawat baik-baik.",
+      ],
+      medium: [
+        "{amount} bikin dompet sumringah setengah senyum.",
+        "Lumayan! {amount} siap diberi tugas mulia.",
+      ],
+      small: [
+        "{amount} imut-imut tapi bikin hati hangat.",
+        "Masuk kecil {amount}, tapi tetap bikin semangat.",
+      ],
+      tiny: [
+        "{amount} receh? Tetep aku peluk erat.",
+        "Sedikit {amount} bisa jadi bibit kaya lho.",
+      ],
+    },
+    transfer: {
+      huge: [
+        "🔁 {amount} pindah markas, semoga betah di sana.",
+        "Transfer {amount}? Aku ikut antar pake koper.",
+      ],
+      large: [
+        "{amount} boyongan, tolong jaga di rumah barunya.",
+        "Transfer segede {amount} bikin aku deg-degan.",
+      ],
+      medium: [
+        "{amount} pindahan, jangan lupa kabarin kalau kangen.",
+        "Transfer {amount} ini semoga ada pulangnya.",
+      ],
+      small: [
+        "{amount} numpang lewat, jangan lupa salam.",
+        "Transfer mungil {amount} aja udah bikin rame.",
+      ],
+      tiny: [
+        "{amount} cilik pindah kamar, semoga nyaman.",
+        "Transfer recehan {amount} pun tetep tercatat.",
+      ],
+    },
+    default: {
+      huge: [
+        "{emoji} {amount} gede banget, aku sampai megap-megap.",
+        "{amount} bikin aku butuh libur panjang.",
+      ],
+      large: [
+        "Lumayan ngeri ya {amount} ini.",
+        "{amount} bikin jantungku koprol.",
+      ],
+      medium: [
+        "{amount} pas-pasan bikin aku tegang santai.",
+        "Oke, {amount} masih bisa dinegosiasi.",
+      ],
+      small: [
+        "{amount} kecil-kecil cabai rawit.",
+        "Santuy, {amount} masih bisa kutahan.",
+      ],
+      tiny: [
+        "{amount} receh tapi tetep aku catat.",
+        "Seiprit {amount} pun berarti.",
+      ],
+    },
+  },
+  en: {
+    expense: {
+      huge: [
+        "{emoji} {amount} is massive! Send help to my wallet.",
+        "I need CPR after that {amount} spend.",
+      ],
+      large: [
+        "{amount} made my knees wobble—was that a typo?",
+        "{amount}? Thought we were browsing, not buying a planet.",
+      ],
+      medium: [
+        "Alright, {amount} is manageable with a tiny scream.",
+        "{amount} got me sweating just a bit.",
+      ],
+      small: [
+        "{amount} is snack-sized but still counts.",
+        "Those {amount}s add up, you know!",
+      ],
+      tiny: [
+        "Only {amount}, yet I'm still dramatic.",
+        "Even {amount} deserves a polite goodbye.",
+      ],
+    },
+    income: {
+      huge: [
+        "🤑 {amount} landed! Time for a confetti shower.",
+        "Wallet just got abs thanks to {amount}!",
+      ],
+      large: [
+        "Wow, {amount} arrived! Doing a happy dance.",
+        "Welcome aboard {amount}, let's treat you well.",
+      ],
+      medium: [
+        "{amount} makes my balance grin widely.",
+        "Nice! {amount} ready for noble missions.",
+      ],
+      small: [
+        "{amount} is tiny but warms my heart.",
+        "Little {amount} still boosts the mood.",
+      ],
+      tiny: [
+        "{amount} may be coins, still hugging them tight.",
+        "A sprinkle of {amount} can grow mighty later.",
+      ],
+    },
+    transfer: {
+      huge: [
+        "🔁 {amount} moved out—hope the new place is cozy.",
+        "Transferring {amount}? I'm sending it with luggage.",
+      ],
+      large: [
+        "{amount} relocated, please watch over it.",
+        "That {amount} transfer gave me butterflies.",
+      ],
+      medium: [
+        "{amount} switched rooms, keep in touch!",
+        "Transfer of {amount}—may it return with interest.",
+      ],
+      small: [
+        "{amount} is just passing through, say hi.",
+        "That little {amount} transfer still made some noise.",
+      ],
+      tiny: [
+        "{amount} mini transfer, hope it finds snacks.",
+        "Even {amount} on transfer deserves a shoutout.",
+      ],
+    },
+    default: {
+      huge: [
+        "{emoji} {amount} is gigantic, I need a vacation.",
+        "That {amount} nearly gave me a heart attack.",
+      ],
+      large: [
+        "{amount} is a bit intense, huh?",
+        "My balance just did a cartwheel over {amount}.",
+      ],
+      medium: [
+        "{amount} is tense-but-manageable.",
+        "We can negotiate with {amount}… maybe.",
+      ],
+      small: [
+        "{amount} is tiny but mighty.",
+        "No worries, {amount} still under control.",
+      ],
+      tiny: [
+        "Noted that {amount}, even if it's pocket change.",
+        "Every {amount} counts, promise!",
+      ],
+    },
   },
 };
 
