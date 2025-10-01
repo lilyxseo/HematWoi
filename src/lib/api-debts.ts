@@ -131,18 +131,33 @@ function toNum(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function toISODate(value?: string | null): string | null {
+function parseISODateParts(value?: string | null) {
   if (!value) return null;
-  const isoSource = `${value}T00:00:00`;
-  const date = new Date(isoSource);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+  return { year, month, day };
+}
+
+function toISODate(value?: string | null): string | null {
+  const parts = parseISODateParts(value);
+  if (!parts) return null;
+  const { year, month, day } = parts;
+  const date = new Date(Date.UTC(year, month - 1, day));
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
 
 function toISODateEnd(value?: string | null): string | null {
-  if (!value) return null;
-  const isoSource = `${value}T23:59:59`;
-  const date = new Date(isoSource);
+  const parts = parseISODateParts(value);
+  if (!parts) return null;
+  const { year, month, day } = parts;
+  const date = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
