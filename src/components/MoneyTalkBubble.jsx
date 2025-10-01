@@ -6,12 +6,15 @@ export default function MoneyTalkBubble({ message, tip, avatar = "coin", onDismi
   const icon = avatar === "bill" ? "💵" : "🪙";
 
   return (
-    <div className="fixed bottom-4 right-4 z-50" aria-live="polite">
+    <div
+      className="pointer-events-none fixed inset-0 z-50 flex items-end justify-end p-4 sm:p-6"
+      aria-live="polite"
+    >
       <div
         tabIndex={0}
         role="status"
         className={clsx(
-          "card shadow-lg p-3 flex items-start gap-2 cursor-pointer focus:outline-none",
+          "pointer-events-auto card shadow-lg p-3 flex items-start gap-2 cursor-pointer focus:outline-none",
           "animate-slide"
         )}
         onClick={() => setOpen((o) => !o)}
@@ -34,7 +37,10 @@ export default function MoneyTalkBubble({ message, tip, avatar = "coin", onDismi
         </button>
       </div>
       {open && tip && (
-        <div className="mt-2 card shadow p-2 text-xs animate-slide" role="dialog">
+        <div
+          className="pointer-events-auto mt-2 card shadow p-2 text-xs animate-slide"
+          role="dialog"
+        >
           {tip}
         </div>
       )}

@@ -75,10 +75,24 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
   const [current, setCurrent] = useState(null);
   const queue = useRef([]);
   const limiter = useRef(createMoneyTalkLimiter(prefs.moneyTalkIntensity));
+  const retryTimeout = useRef(null);
 
   useEffect(() => {
     limiter.current = createMoneyTalkLimiter(prefs.moneyTalkIntensity);
+    if (retryTimeout.current) {
+      clearTimeout(retryTimeout.current);
+      retryTimeout.current = null;
+    }
   }, [prefs.moneyTalkIntensity]);
+
+  useEffect(() => {
+    return () => {
+      if (retryTimeout.current) {
+        clearTimeout(retryTimeout.current);
+        retryTimeout.current = null;
+      }
+    };
+  }, []);
 
   const handleDismiss = useCallback(() => {
     setCurrent(null);
@@ -86,7 +100,16 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
 
   const process = useCallback(() => {
     if (current || !queue.current.length) return;
-    if (!limiter.current.tryConsume()) return;
+    const allowed = limiter.current.tryConsume();
+    if (!allowed) {
+      if (!retryTimeout.current) {
+        retryTimeout.current = setTimeout(() => {
+          retryTimeout.current = null;
+          process();
+        }, 1000);
+      }
+      return;
+    }
     const next = queue.current.shift();
     setCurrent(next);
     setTimeout(() => {
@@ -98,8 +121,6 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
   const speak = useCallback(
     ({ category, amount = 0, type = "expense", currency, context = {} }) => {
       if (!prefs.moneyTalkEnabled) return;
-      const chanceMap = { jarang: 0.3, normal: 0.7, ramai: 1 };
-      if (Math.random() > (chanceMap[prefs.moneyTalkIntensity] || 0.7)) return;
       const lang = prefs.moneyTalkLang || "id";
       const langQuotes = resolveLangBlock(quotes, lang);
       const langTips = resolveLangBlock(tips, lang);
@@ -145,12 +166,10 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
         avatar: Math.random() > 0.5 ? "bill" : "coin",
         duration: 4000 + Math.random() * 2000,
       });
-      if (queue.current.length > 3) queue.current.splice(3);
       process();
     },
     [
       prefs.moneyTalkEnabled,
-      prefs.moneyTalkIntensity,
       prefs.moneyTalkLang,
       prefs.currency,
       process,
