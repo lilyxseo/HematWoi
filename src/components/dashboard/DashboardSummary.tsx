@@ -146,7 +146,7 @@ function DashboardSummary({
                     {loading ? (
                       <SkeletonBar />
                     ) : (
-                      <span className="text-lg font-semibold text-amber-600 dark:text-amber-400">
+                      <span className="text-lg font-semibold text-amber-600 dark:text-amber-400 whitespace-nowrap">
                         {formatValue(cashBalance)}
                       </span>
                     )}
@@ -161,7 +161,7 @@ function DashboardSummary({
                     {loading ? (
                       <SkeletonBar />
                     ) : (
-                      <span className="text-lg font-semibold text-sky-600 dark:text-sky-400">
+                      <span className="text-lg font-semibold text-sky-600 dark:text-sky-400 whitespace-nowrap">
                         {formatValue(nonCashBalance)}
                       </span>
                     )}
@@ -182,7 +182,7 @@ function DashboardSummary({
               {loading ? (
                 <SkeletonBar />
               ) : (
-                <p className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+                <p className="text-2xl font-bold tracking-tight text-foreground md:text-3xl whitespace-nowrap">
                   {formatValue(totalBalance)}
                 </p>
               )}
