@@ -87,7 +87,8 @@ function getTenorSeriesKey(debt: DebtRecord): string {
     debt.rate_percent != null && Number.isFinite(debt.rate_percent)
       ? debt.rate_percent.toFixed(4)
       : 'null';
-  const seriesStart = getSeriesStartDate(debt);
+  const createdAt = new Date(debt.created_at);
+  const seriesIdentifier = Number.isNaN(createdAt.getTime()) ? getSeriesStartDate(debt) : createdAt.toISOString();
   return [
     debt.user_id,
     debt.type,
@@ -97,7 +98,7 @@ function getTenorSeriesKey(debt: DebtRecord): string {
     normalizedAmount,
     normalizedRate,
     debt.tenor_months,
-    seriesStart,
+    seriesIdentifier,
   ].join('|');
 }
 
