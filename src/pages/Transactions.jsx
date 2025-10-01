@@ -1080,6 +1080,27 @@ function SummaryCards({ summary, loading }) {
   );
 }
 
+function UndoSnackbar({ open, message, onUndo, loading }) {
+  if (!open) return null;
+
+  return (
+    <div className="pointer-events-none fixed bottom-6 left-1/2 z-[60] w-full max-w-sm -translate-x-1/2 px-4 sm:max-w-md">
+      <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-slate-950/95 px-4 py-3 text-sm text-white shadow-xl ring-1 ring-white/10">
+        <span className="flex-1 text-left">{message}</span>
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={loading}
+          className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Check className="h-4 w-4" aria-hidden="true" />}
+          Urungkan
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function EmptyTransactionsState({ onResetFilters, onOpenAdd }) {
   return (
     <div className="flex flex-col items-center justify-center gap-5 rounded-3xl bg-slate-950/70 px-8 py-16 text-center text-slate-200 ring-1 ring-slate-800">
