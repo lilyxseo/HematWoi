@@ -119,6 +119,7 @@ export default function Dashboard({ stats, txs }) {
           stats={stats}
           streak={streak}
           target={savingsTarget}
+          txs={txs}
         />
 
         <QuickActions />
