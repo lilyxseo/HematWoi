@@ -934,7 +934,6 @@ export default function TransactionAdd({ onAdd }) {
                   ) : (
                     <ul className="space-y-3">
                       {templates.map((template) => {
-                        const typeMeta = TYPE_OPTIONS.find((option) => option.value === template.type);
                         const accountName = accounts.find((item) => item.id === template.account_id)?.name || 'Akun tidak ditemukan';
                         const toAccountName = template.to_account_id
                           ? accounts.find((item) => item.id === template.to_account_id)?.name || 'Akun tidak ditemukan'
@@ -943,18 +942,39 @@ export default function TransactionAdd({ onAdd }) {
                           ? categories.find((item) => item.id === template.category_id)?.name || 'Kategori tidak ditemukan'
                           : null;
                         return (
-                          <li key={template.id} className="space-y-3 rounded-2xl border border-border-subtle p-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <p className="text-sm font-semibold text-text">{template.name}</p>
-                                <p className="text-xs text-muted">{typeMeta?.label || 'Template'}</p>
+                          <li
+                            key={template.id}
+                            className="group relative overflow-hidden rounded-2xl border border-border-subtle bg-white/80 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg dark:bg-zinc-900/60"
+                          >
+                            <div className="flex flex-col gap-4">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-semibold text-text">{template.name || 'Tanpa judul'}</p>
+                                  <p className="text-2xl font-bold tracking-tight text-text">
+                                    {formatAmountDisplay(template.amount)}
+                                  </p>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle/80 bg-background px-3 py-1 text-muted-foreground">
+                                    <Wallet className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                                    {accountName || '—'}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle/80 bg-background px-3 py-1 text-muted-foreground">
+                                    {template.type === 'transfer' ? (
+                                      <ArrowRight className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                                    ) : (
+                                      <TagIcon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                                    )}
+                                    {template.type === 'transfer' ? toAccountName || '—' : categoryName || '—'}
+                                  </span>
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center justify-end gap-2">
                                 <button
                                   type="button"
                                   onClick={() => handleApplyTemplate(template)}
                                   disabled={Boolean(applyingTemplateId)}
-                                  className="inline-flex items-center gap-2 rounded-xl border border-primary px-3 py-1.5 text-xs font-medium text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {applyingTemplateId === template.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -967,7 +987,7 @@ export default function TransactionAdd({ onAdd }) {
                                   type="button"
                                   onClick={() => handleDeleteTemplate(template.id)}
                                   disabled={deletingTemplateId === template.id}
-                                  className="inline-flex items-center gap-2 rounded-xl border border-border-subtle px-3 py-1.5 text-xs font-medium text-muted transition hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex items-center gap-2 rounded-full border border-border-subtle px-4 py-2 text-xs font-semibold text-muted transition hover:border-destructive/60 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {deletingTemplateId === template.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -976,35 +996,6 @@ export default function TransactionAdd({ onAdd }) {
                                   )}
                                   Hapus
                                 </button>
-                              </div>
-                            </div>
-                            <div className="grid gap-2 text-xs text-muted sm:grid-cols-2">
-                              <div>
-                                <span className="font-medium text-text">{formatAmountDisplay(template.amount)}</span>
-                                <p>Nominal</p>
-                              </div>
-                              <div>
-                                <span className="font-medium text-text">{accountName || '—'}</span>
-                                <p>Akun sumber</p>
-                              </div>
-                              {template.type === 'transfer' ? (
-                                <div>
-                                  <span className="font-medium text-text">{toAccountName || '—'}</span>
-                                  <p>Akun tujuan</p>
-                                </div>
-                              ) : (
-                                <div>
-                                  <span className="font-medium text-text">{categoryName || '—'}</span>
-                                  <p>Kategori</p>
-                                </div>
-                              )}
-                              <div>
-                                <span className="font-medium text-text">{template.title || '—'}</span>
-                                <p>Judul</p>
-                              </div>
-                              <div className="sm:col-span-2">
-                                <span className="font-medium text-text">{template.notes ? template.notes.slice(0, 80) + (template.notes.length > 80 ? '…' : '') : '—'}</span>
-                                <p>Catatan</p>
                               </div>
                             </div>
                           </li>
