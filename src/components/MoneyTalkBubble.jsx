@@ -2,7 +2,14 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 
-export default function MoneyTalkBubble({ message, tip, avatar = "coin", onDismiss }) {
+export default function MoneyTalkBubble({
+  message,
+  tip,
+  avatar = "coin",
+  variant = "expense",
+  typeLabel,
+  onDismiss,
+}) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
@@ -11,7 +18,21 @@ export default function MoneyTalkBubble({ message, tip, avatar = "coin", onDismi
     return () => setMounted(false);
   }, []);
 
-  const icon = avatar === "bill" ? "💵" : "🪙";
+  const icon =
+    avatar === "bill"
+      ? "💸"
+      : avatar === "transfer"
+      ? "🔁"
+      : "🪙";
+
+  const badgeClass = clsx(
+    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold",
+    variant === "income"
+      ? "bg-emerald-100 text-emerald-700"
+      : variant === "transfer"
+      ? "bg-sky-100 text-sky-700"
+      : "bg-rose-100 text-rose-700"
+  );
 
   if (!mounted) return null;
 
@@ -34,7 +55,10 @@ export default function MoneyTalkBubble({ message, tip, avatar = "coin", onDismi
         }}
       >
         <span className="text-2xl" aria-hidden="true">{icon}</span>
-        <div className="flex-1 text-sm">{message}</div>
+        <div className="flex-1 text-sm">
+          {typeLabel && <div className={badgeClass}>{typeLabel}</div>}
+          <div>{message}</div>
+        </div>
         <button
           type="button"
           className="ml-2 text-xs"
