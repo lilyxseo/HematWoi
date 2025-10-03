@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import type { WishlistCreatePayload, WishlistItem, WishlistStatus } from '../../lib/wishlistApi';
+import { WISHLIST_PRIORITY_LABELS } from '../../lib/wishlistPriority';
 
 interface CategoryOption {
   id: string;
@@ -223,7 +224,7 @@ export default function WishlistFormDialog({
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-200" htmlFor="wishlist-priority">
-                  Prioritas (1-5)
+                  Prioritas
                 </label>
                 <select
                   id="wishlist-priority"
@@ -233,11 +234,11 @@ export default function WishlistFormDialog({
                   disabled={submitting}
                 >
                   <option value="">Pilih prioritas</option>
-                  <option value="1">1 - Mendesak</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                  <option value="5">5 - Nice to have</option>
+                  {Object.entries(WISHLIST_PRIORITY_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
                 {errors.priority ? <p className="text-sm text-rose-300">{errors.priority}</p> : null}
               </div>
