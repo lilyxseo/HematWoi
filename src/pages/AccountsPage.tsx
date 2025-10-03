@@ -32,8 +32,35 @@ const FILTER_OPTIONS: { value: 'all' | AccountType; label: string }[] = [
   { value: 'other', label: 'Lainnya' },
 ];
 
-function sortAccounts(list: AccountRecord[]): AccountRecord[] {
-  return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }));
+type SortOption = 'name-asc' | 'name-desc' | 'created-desc' | 'created-asc';
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'name-asc', label: 'Nama (A-Z)' },
+  { value: 'name-desc', label: 'Nama (Z-A)' },
+  { value: 'created-desc', label: 'Terbaru' },
+  { value: 'created-asc', label: 'Terlama' },
+];
+
+function sortAccounts(list: AccountRecord[], sort: SortOption): AccountRecord[] {
+  return [...list].sort((a, b) => {
+    switch (sort) {
+      case 'name-desc':
+        return (b.name || '').localeCompare(a.name || '', 'id', { sensitivity: 'base' });
+      case 'created-desc':
+        return parseTimestamp(b.created_at) - parseTimestamp(a.created_at);
+      case 'created-asc':
+        return parseTimestamp(a.created_at) - parseTimestamp(b.created_at);
+      case 'name-asc':
+      default:
+        return (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' });
+    }
+  });
+}
+
+function parseTimestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function formatDate(iso: string | null): string {
@@ -50,6 +77,7 @@ export default function AccountsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [filter, setFilter] = useState<'all' | AccountType>('all');
+  const [sortOption, setSortOption] = useState<SortOption>('name-asc');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [modalBusy, setModalBusy] = useState(false);
@@ -69,7 +97,7 @@ export default function AccountsPage() {
     setLoadError(null);
     try {
       const rows = await listAccounts(uid);
-      setAccounts(sortAccounts(rows));
+      setAccounts(rows);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Gagal memuat akun. Silakan coba lagi.';
@@ -84,10 +112,12 @@ export default function AccountsPage() {
     void fetchAccounts();
   }, [fetchAccounts]);
 
+  const sortedAccounts = useMemo(() => sortAccounts(accounts, sortOption), [accounts, sortOption]);
+
   const filteredAccounts = useMemo(() => {
-    if (filter === 'all') return accounts;
-    return accounts.filter((account) => account.type === filter);
-  }, [accounts, filter]);
+    if (filter === 'all') return sortedAccounts;
+    return sortedAccounts.filter((account) => account.type === filter);
+  }, [sortedAccounts, filter]);
 
   const modalInitialValues = useMemo(() => {
     if (modalMode === 'edit' && selectedAccount) {
@@ -128,14 +158,14 @@ export default function AccountsPage() {
       try {
         if (modalMode === 'edit' && selectedAccount) {
           const updated = await updateAccount(selectedAccount.id, values);
-          setAccounts((prev) => sortAccounts(prev.map((acc) => (acc.id === updated.id ? updated : acc))));
+          setAccounts((prev) => prev.map((acc) => (acc.id === updated.id ? updated : acc)));
           addToast('Akun diperbarui', 'success');
         } else {
           if (!user?.id) {
             throw new Error('Anda harus login untuk menambah akun.');
           }
           const created = await createAccount(user.id, values);
-          setAccounts((prev) => sortAccounts([...prev, created]));
+          setAccounts((prev) => [...prev, created]);
           addToast('Akun ditambahkan', 'success');
         }
         resetModalState();
@@ -209,22 +239,39 @@ export default function AccountsPage() {
             </div>
           ) : null}
           <CardBody className="space-y-5">
-            <div className="flex flex-wrap gap-2">
-              {FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setFilter(option.value)}
-                  className={clsx(
-                    'rounded-full border px-4 py-2 text-xs font-semibold transition-colors',
-                    filter === option.value
-                      ? 'border-primary bg-primary/15 text-primary'
-                      : 'border-border-subtle text-muted hover:text-text',
-                  )}
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {FILTER_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFilter(option.value)}
+                    className={clsx(
+                      'rounded-full border px-4 py-2 text-xs font-semibold transition-colors',
+                      filter === option.value
+                        ? 'border-primary bg-primary/15 text-primary'
+                        : 'border-border-subtle text-muted hover:text-text',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-3 text-xs font-semibold text-muted" htmlFor="account-sort">
+                Urutkan
+                <select
+                  id="account-sort"
+                  value={sortOption}
+                  onChange={(event) => setSortOption(event.target.value as SortOption)}
+                  className="h-9 rounded-2xl border border-border-subtle bg-background px-3 text-xs font-medium text-text outline-none transition-colors focus:border-primary"
                 >
-                  {option.label}
-                </button>
-              ))}
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </div>
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-16 text-muted">
