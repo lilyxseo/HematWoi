@@ -673,12 +673,12 @@ function AppShell({ prefs, setPrefs }) {
           budgetRetryVisibilityHandlerRef.current = null;
         }
         const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-        addToast(
-          offline
-            ? "Gagal memuat data anggaran: Tidak ada koneksi internet. Kami akan mencoba lagi setelah tersambung."
-            : "Gagal memuat data anggaran karena jaringan tidak stabil. Mencoba lagi...",
-          "error"
-        );
+        if (offline) {
+          addToast(
+            "Gagal memuat data anggaran: Tidak ada koneksi internet. Kami akan mencoba lagi setelah tersambung.",
+            "error"
+          );
+        }
         const retryFetch = () => {
           budgetRetryTimeoutRef.current = null;
           void fetchBudgetsCloud();
