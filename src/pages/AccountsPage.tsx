@@ -24,6 +24,8 @@ const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   other: 'Lainnya',
 };
 
+type AccountSortOption = 'name-asc' | 'name-desc' | 'newest' | 'oldest';
+
 const FILTER_OPTIONS: { value: 'all' | AccountType; label: string }[] = [
   { value: 'all', label: 'Semua' },
   { value: 'cash', label: 'Tunai' },
@@ -32,8 +34,50 @@ const FILTER_OPTIONS: { value: 'all' | AccountType; label: string }[] = [
   { value: 'other', label: 'Lainnya' },
 ];
 
-function sortAccounts(list: AccountRecord[]): AccountRecord[] {
-  return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }));
+const SORT_OPTIONS: { value: AccountSortOption; label: string }[] = [
+  { value: 'name-asc', label: 'Nama (A-Z)' },
+  { value: 'name-desc', label: 'Nama (Z-A)' },
+  { value: 'newest', label: 'Terbaru' },
+  { value: 'oldest', label: 'Terlama' },
+];
+
+function sortAccounts(list: AccountRecord[], option: AccountSortOption): AccountRecord[] {
+  const compareByName = (a: AccountRecord, b: AccountRecord) =>
+    (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' });
+
+  const toTimestamp = (value: string | null): number => {
+    if (!value) return Number.NEGATIVE_INFINITY;
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? Number.NEGATIVE_INFINITY : time;
+  };
+
+  const items = [...list];
+
+  switch (option) {
+    case 'name-desc':
+      return items.sort((a, b) => compareByName(b, a));
+    case 'newest':
+      return items.sort((a, b) => {
+        const timeA = toTimestamp(a.created_at);
+        const timeB = toTimestamp(b.created_at);
+        if (timeA === timeB) {
+          return compareByName(a, b);
+        }
+        return timeB - timeA;
+      });
+    case 'oldest':
+      return items.sort((a, b) => {
+        const timeA = toTimestamp(a.created_at);
+        const timeB = toTimestamp(b.created_at);
+        if (timeA === timeB) {
+          return compareByName(a, b);
+        }
+        return timeA - timeB;
+      });
+    case 'name-asc':
+    default:
+      return items.sort(compareByName);
+  }
 }
 
 function formatDate(iso: string | null): string {
@@ -50,6 +94,7 @@ export default function AccountsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [filter, setFilter] = useState<'all' | AccountType>('all');
+  const [sort, setSort] = useState<AccountSortOption>('name-asc');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [modalBusy, setModalBusy] = useState(false);
@@ -69,7 +114,7 @@ export default function AccountsPage() {
     setLoadError(null);
     try {
       const rows = await listAccounts(uid);
-      setAccounts(sortAccounts(rows));
+      setAccounts(rows);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Gagal memuat akun. Silakan coba lagi.';
@@ -84,10 +129,12 @@ export default function AccountsPage() {
     void fetchAccounts();
   }, [fetchAccounts]);
 
+  const sortedAccounts = useMemo(() => sortAccounts(accounts, sort), [accounts, sort]);
+
   const filteredAccounts = useMemo(() => {
-    if (filter === 'all') return accounts;
-    return accounts.filter((account) => account.type === filter);
-  }, [accounts, filter]);
+    if (filter === 'all') return sortedAccounts;
+    return sortedAccounts.filter((account) => account.type === filter);
+  }, [sortedAccounts, filter]);
 
   const modalInitialValues = useMemo(() => {
     if (modalMode === 'edit' && selectedAccount) {
@@ -128,14 +175,14 @@ export default function AccountsPage() {
       try {
         if (modalMode === 'edit' && selectedAccount) {
           const updated = await updateAccount(selectedAccount.id, values);
-          setAccounts((prev) => sortAccounts(prev.map((acc) => (acc.id === updated.id ? updated : acc))));
+          setAccounts((prev) => prev.map((acc) => (acc.id === updated.id ? updated : acc)));
           addToast('Akun diperbarui', 'success');
         } else {
           if (!user?.id) {
             throw new Error('Anda harus login untuk menambah akun.');
           }
           const created = await createAccount(user.id, values);
-          setAccounts((prev) => sortAccounts([...prev, created]));
+          setAccounts((prev) => [...prev, created]);
           addToast('Akun ditambahkan', 'success');
         }
         resetModalState();
@@ -209,22 +256,44 @@ export default function AccountsPage() {
             </div>
           ) : null}
           <CardBody className="space-y-5">
-            <div className="flex flex-wrap gap-2">
-              {FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setFilter(option.value)}
-                  className={clsx(
-                    'rounded-full border px-4 py-2 text-xs font-semibold transition-colors',
-                    filter === option.value
-                      ? 'border-primary bg-primary/15 text-primary'
-                      : 'border-border-subtle text-muted hover:text-text',
-                  )}
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="flex flex-wrap gap-2">
+                {FILTER_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setFilter(option.value)}
+                    className={clsx(
+                      'rounded-full border px-4 py-2 text-xs font-semibold transition-colors',
+                      filter === option.value
+                        ? 'border-primary bg-primary/15 text-primary'
+                        : 'border-border-subtle text-muted hover:text-text',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="accounts-sort"
+                  className="text-xs font-semibold uppercase tracking-wide text-muted"
                 >
-                  {option.label}
-                </button>
-              ))}
+                  Urutkan
+                </label>
+                <select
+                  id="accounts-sort"
+                  value={sort}
+                  onChange={(event) => setSort(event.target.value as AccountSortOption)}
+                  className="h-9 rounded-full border border-border-subtle bg-surface px-3 text-xs font-semibold text-text shadow-sm"
+                >
+                  {SORT_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
             {loading ? (
               <div className="flex items-center justify-center gap-2 py-16 text-muted">
