@@ -40,55 +40,79 @@ export default function AccountFormModal({
   const [name, setName] = useState('');
   const [type, setType] = useState<AccountType>('cash');
   const [currency, setCurrency] = useState('IDR');
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [nameTouched, setNameTouched] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setName(initialValues?.name ?? '');
     setType(initialValues?.type ?? 'cash');
     setCurrency(initialValues?.currency ?? 'IDR');
-    setLocalError(null);
+    setFormError(null);
+    setNameTouched(false);
   }, [open, initialValues?.name, initialValues?.type, initialValues?.currency]);
 
   useEffect(() => {
     if (error) {
-      setLocalError(error);
+      setFormError(error);
     }
   }, [error]);
 
   const selectOptions = useMemo(() => ACCOUNT_TYPE_OPTIONS, []);
   const title = mode === 'create' ? 'Tambah Akun' : 'Edit Akun';
   const submitLabel = mode === 'create' ? 'Simpan' : 'Simpan perubahan';
+  const trimmedName = name.trim();
+  const isNameValid = trimmedName.length > 0;
+  const nameError = nameTouched && !isNameValid ? 'Nama akun wajib diisi.' : null;
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy) return;
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setLocalError('Nama akun wajib diisi.');
+    const nextName = name.trim();
+    if (!nextName) {
+      setNameTouched(true);
+      setFormError('Nama akun wajib diisi.');
       return;
     }
 
     const trimmedCurrency = currency.trim() || 'IDR';
 
     try {
-      setLocalError(null);
-      await onSubmit({ name: trimmedName, type, currency: trimmedCurrency });
+      setFormError(null);
+      await onSubmit({ name: nextName, type, currency: trimmedCurrency });
     } catch (err) {
       if (err instanceof Error && err.message) {
-        setLocalError(err.message);
+        setFormError(err.message);
       } else if (typeof err === 'string') {
-        setLocalError(err);
+        setFormError(err);
       } else {
-        setLocalError('Terjadi kesalahan saat menyimpan akun.');
+        setFormError('Terjadi kesalahan saat menyimpan akun.');
       }
     }
   };
 
+  const showFormError = formError && formError !== nameError ? formError : null;
+
   return (
     <Modal open={open} title={title} onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-5">
-        <Input label="Nama akun" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nama akun" required />
+        <Input
+          label="Nama akun"
+          value={name}
+          onChange={(e) => {
+            setName(e.target.value);
+            if (!nameTouched) {
+              setNameTouched(true);
+            }
+            if (formError) {
+              setFormError(null);
+            }
+          }}
+          onBlur={() => setNameTouched(true)}
+          placeholder="Nama akun"
+          required
+          error={nameError ?? undefined}
+        />
         <Select
           label="Tipe akun"
           value={type}
@@ -99,16 +123,21 @@ export default function AccountFormModal({
         <Input
           label="Mata uang"
           value={currency}
-          onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+          onChange={(e) => {
+            setCurrency(e.target.value.toUpperCase());
+            if (formError && formError === 'Nama akun wajib diisi.') {
+              setFormError(null);
+            }
+          }}
           placeholder="IDR"
           maxLength={10}
         />
-        {localError ? <p className="text-sm font-medium text-danger">{localError}</p> : null}
+        {showFormError ? <p className="text-sm font-medium text-danger">{showFormError}</p> : null}
         <div className="flex justify-end gap-2">
           <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
             Batal
           </button>
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy || !isNameValid}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : submitLabel}
           </button>
         </div>

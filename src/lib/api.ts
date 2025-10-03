@@ -65,6 +65,9 @@ function toUserMessage(error: unknown, fallback: string): string {
     if (typed.code === '23505') {
       return 'Nama akun sudah digunakan. Silakan gunakan nama lain.';
     }
+    if (typed.code === '23502') {
+      return 'Nama akun wajib diisi.';
+    }
     if (typeof typed.message === 'string' && typed.message.trim()) {
       return `${fallback.replace(/[:.]?$/, '')}: ${typed.message}`;
     }
