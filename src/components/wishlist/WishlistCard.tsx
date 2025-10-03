@@ -11,6 +11,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { WishlistItem, WishlistStatus } from '../../lib/wishlistApi';
+import { getWishlistPriorityLabel } from '../../lib/wishlistPriority';
 
 interface WishlistCardProps {
   item: WishlistItem;
@@ -100,12 +101,13 @@ export default function WishlistCard({
 
   const priorityBadge = useMemo(() => {
     const value = item.priority != null ? Math.round(item.priority) : null;
-    if (!value || value < 1 || value > 5) return null;
+    const label = getWishlistPriorityLabel(item.priority);
+    if (!value || value < 1 || value > 5 || !label) return null;
     return (
       <span
         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${PRIORITY_STYLE[value]}`}
       >
-        Prioritas {value}
+        Prioritas {label}
       </span>
     );
   }, [item.priority]);

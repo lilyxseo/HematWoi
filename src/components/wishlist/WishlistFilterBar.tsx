@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent } from 'react';
 import { RotateCcw, Search } from 'lucide-react';
 import type { WishlistStatus } from '../../lib/wishlistApi';
+import { WISHLIST_PRIORITY_LABELS } from '../../lib/wishlistPriority';
 import type { WishlistFilters } from '../../hooks/useWishlist';
 
 export interface WishlistFilterState extends WishlistFilters {
@@ -35,11 +36,10 @@ const STATUS_OPTIONS: { value: WishlistFilterState['status']; label: string }[] 
 
 const PRIORITY_OPTIONS: { value: WishlistFilterState['priority']; label: string }[] = [
   { value: 'all', label: 'Semua prioritas' },
-  { value: 1, label: 'Prioritas 1' },
-  { value: 2, label: 'Prioritas 2' },
-  { value: 3, label: 'Prioritas 3' },
-  { value: 4, label: 'Prioritas 4' },
-  { value: 5, label: 'Prioritas 5' },
+  ...(Object.entries(WISHLIST_PRIORITY_LABELS).map(([value, label]) => ({
+    value: Number(value) as WishlistFilterState['priority'],
+    label: `Prioritas ${label}`,
+  })) as { value: WishlistFilterState['priority']; label: string }[]),
 ];
 
 const SORT_OPTIONS: { value: WishlistFilterState['sort']; label: string }[] = [

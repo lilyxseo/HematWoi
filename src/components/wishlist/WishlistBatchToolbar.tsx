@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import type { WishlistStatus } from '../../lib/wishlistApi';
+import { WISHLIST_PRIORITY_LABELS } from '../../lib/wishlistPriority';
 
 interface WishlistBatchToolbarProps {
   selectedCount: number;
@@ -66,11 +67,11 @@ export default function WishlistBatchToolbar({
                 disabled={disabled}
               >
                 <option value="">Set prioritas…</option>
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-                <option value="5">5</option>
+                {Object.entries(WISHLIST_PRIORITY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    Prioritas {label}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
