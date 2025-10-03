@@ -35,7 +35,12 @@ function ToastItem({ toast, onDismiss }) {
 
 export default function Toast({ toasts = [], onDismiss }) {
   return (
-    <div className="fixed top-4 right-4 space-y-2 z-50">
+    <div
+      className="fixed right-4 space-y-2 z-50"
+      style={{
+        top: "calc(var(--app-header-height, var(--app-topbar-h, 0px)) + 16px)",
+      }}
+    >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
       ))}
