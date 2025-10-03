@@ -197,7 +197,7 @@ export default function AccountsPage() {
       }
       setReorderBusy(true);
       try {
-        await reorderAccounts(user.id, nextOrdered.map((item) => item.id));
+        await reorderAccounts(user.id, nextOrdered);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Gagal mengurutkan akun. Silakan coba lagi.';
@@ -270,7 +270,7 @@ export default function AccountsPage() {
         });
         if (user?.id && nextAccounts) {
           try {
-            await reorderAccounts(user.id, nextAccounts.map((item) => item.id));
+            await reorderAccounts(user.id, nextAccounts);
           } catch (error) {
             const message =
               error instanceof Error

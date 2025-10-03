@@ -197,22 +197,27 @@ export async function updateAccount(
   return normalizeAccount(data);
 }
 
+type ReorderAccountInput = Pick<AccountRecord, 'id' | 'name' | 'type' | 'currency'>;
+
 export async function reorderAccounts(
   userId: string,
-  orderedIds: string[],
+  orderedAccounts: ReorderAccountInput[],
 ): Promise<void> {
   if (!userId) {
     throw new Error('ID pengguna tidak valid.');
   }
 
-  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+  if (!Array.isArray(orderedAccounts) || orderedAccounts.length === 0) {
     return;
   }
 
-  const payload = orderedIds.map((id, index) => ({
-    id,
+  const payload = orderedAccounts.map((account, index) => ({
+    id: account.id,
     user_id: userId,
     sort_order: index,
+    name: account.name,
+    type: normalizeAccountType(account.type),
+    currency: normalizeCurrency(account.currency),
   }));
 
   const { error } = await supabase
