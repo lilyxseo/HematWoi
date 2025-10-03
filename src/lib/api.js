@@ -864,6 +864,8 @@ export async function upsertCategories({ income = [], expense = [] }) {
 // -- ACCOUNTS ------------------------------------------
 
 function mapAccountRow(row = {}, userId) {
+  const rawSortOrder = row.sort_order ?? row.order_index;
+  const sortOrder = parseOrderIndex(rawSortOrder);
   return {
     id: row.id,
     user_id: row.user_id ?? userId ?? null,
@@ -872,9 +874,43 @@ function mapAccountRow(row = {}, userId) {
     currency: row.currency ?? row.account_currency ?? row.currency_code ?? "IDR",
     balance: Number(row.balance ?? row.current_balance ?? row.initial_balance ?? 0),
     is_archived: row.is_archived ?? row.archived ?? false,
+    sort_order: sortOrder,
     created_at: row.created_at ?? null,
     updated_at: row.updated_at ?? null,
   };
+}
+
+function getSortOrderValue(value) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : Number.POSITIVE_INFINITY;
+}
+
+function toTimestamp(value) {
+  if (!value) return Number.POSITIVE_INFINITY;
+  const date = new Date(value);
+  const time = date.getTime();
+  return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
+}
+
+function sortAccountsForDisplay(list = []) {
+  return [...list].sort((a, b) => {
+    const orderA = getSortOrderValue(a?.sort_order);
+    const orderB = getSortOrderValue(b?.sort_order);
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+
+    const createdA = toTimestamp(a?.created_at);
+    const createdB = toTimestamp(b?.created_at);
+    if (createdA !== createdB) {
+      return createdA - createdB;
+    }
+
+    const nameA = (a?.name ?? "").toString();
+    const nameB = (b?.name ?? "").toString();
+    return nameA.localeCompare(nameB, "id", { sensitivity: "base" });
+  });
 }
 
 export async function listAccounts() {
@@ -883,7 +919,8 @@ export async function listAccounts() {
 
   if (!navigator.onLine || window.__sync?.fakeOffline) {
     const cached = await dbCache.list("accounts");
-    return cached.map((row) => mapAccountRow(row, userId));
+    const mapped = cached.map((row) => mapAccountRow(row, userId));
+    return sortAccountsForDisplay(mapped);
   }
 
   try {
@@ -891,15 +928,20 @@ export async function listAccounts() {
       .from("accounts")
       .select("*")
       .eq("user_id", userId)
+      .order("sort_order", { ascending: true, nullsFirst: true })
+      .order("created_at", { ascending: true })
       .order("name", { ascending: true });
     if (error) throw error;
-    const rows = (data || []).map((row) => mapAccountRow(row, userId));
+    const rows = sortAccountsForDisplay(
+      (data || []).map((row) => mapAccountRow(row, userId)),
+    );
     await dbCache.bulkSet("accounts", rows);
     return rows;
   } catch (err) {
     console.error("listAccounts failed, falling back to cache", err);
     const cached = await dbCache.list("accounts");
-    return cached.map((row) => mapAccountRow(row, userId));
+    const mapped = cached.map((row) => mapAccountRow(row, userId));
+    return sortAccountsForDisplay(mapped);
   }
 }
 
