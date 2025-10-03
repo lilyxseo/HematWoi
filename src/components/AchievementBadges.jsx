@@ -159,22 +159,31 @@ export default function AchievementBadges({
   if (balance >= 500000) {
     badges.push({
       id: "saving",
-      icon: <Star className="h-4 w-4 text-yellow-500" />,
-      text: `Badge Hemat ${toRupiah(balance)} bulan ini 🎉`,
+      icon: <Star className="h-5 w-5 text-yellow-500" />,
+      title: "Penjaga Dompet Unggul",
+      description: `Kamu berhasil menyisihkan ${toRupiah(
+        balance
+      )} bulan ini. Lanjutkan kebiasaan hebat ini!`,
+      highlight: `+${toRupiah(balance)}`,
     });
   }
   if (target && balance >= target) {
     badges.push({
       id: "target",
-      icon: <Target className="h-4 w-4 text-success" />,
-      text: "Target tabungan tercapai 🎯",
+      icon: <Target className="h-5 w-5 text-success" />,
+      title: "Penuntasan Target",
+      description: `Selamat! Kamu menuntaskan target tabungan sebesar ${toRupiah(
+        target
+      )}. Saatnya membuat tujuan baru!`,
     });
   }
   if (streak >= 3) {
     badges.push({
       id: "streak",
-      icon: <Award className="h-4 w-4 text-orange-500" />,
-      text: `Streak ${streak} hari 🔥`,
+      icon: <Award className="h-5 w-5 text-orange-500" />,
+      title: "Ritual Konsisten",
+      description: `Sudah ${streak} hari berturut-turut kamu memantau keuangan. Konsistensi ini layak dirayakan!`,
+      highlight: `${streak} hari`,
     });
   }
   const currentMonthKey = getCurrentMonthKey();
@@ -196,10 +205,11 @@ export default function AchievementBadges({
     if (topCategory) {
       badges.push({
         id: "top-category",
-        icon: <Flame className="h-4 w-4 text-destructive" />,
-        text: `Pengeluaran terbesar ada di kategori ${topCategory.name} sebesar ${toRupiah(
+        icon: <Flame className="h-5 w-5 text-destructive" />,
+        title: "Fokus Anggaran",
+        description: `Kategori ${topCategory.name} menjadi fokus utama bulan ini dengan alokasi ${toRupiah(
           topCategory.total
-        )}. Yuk cek lagi kebutuhannya!`,
+        )}. Bagus sudah memetakan prioritasmu!`,
       });
     }
 
@@ -210,9 +220,10 @@ export default function AchievementBadges({
     if (favoriteCategory) {
       badges.push({
         id: "favorite-category",
-        icon: <Sparkles className="h-4 w-4 text-brand" />,
-        text: `Kategori favoritmu bulan ini adalah ${favoriteCategory.name} dengan ${favoriteCategory.count} transaksi.`,
-      });
+        icon: <Sparkles className="h-5 w-5 text-brand" />,
+        title: "Kategori Favorit",
+        description: `Kategori ${favoriteCategory.name} paling sering kamu kelola dengan ${favoriteCategory.count} transaksi. Kamu tahu betul kebiasaanmu!`,
+    });
     }
 
     const bestImprovement = monthCategories
@@ -227,8 +238,10 @@ export default function AchievementBadges({
     if (bestImprovement) {
       badges.push({
         id: "category-improvement",
-        icon: <Leaf className="h-4 w-4 text-success" />,
-        text: `Pengeluaran ${bestImprovement.cat.name} turun ${bestImprovement.drop}% dibanding bulan lalu. Pertahankan!`,
+        icon: <Leaf className="h-5 w-5 text-success" />,
+        title: "Penghematan Terbaik",
+        description: `Pengeluaran ${bestImprovement.cat.name} berhasil turun ${bestImprovement.drop}% dibanding bulan lalu. Pertahankan momen baik ini!`,
+        highlight: `-${bestImprovement.drop}%`,
       });
     }
 
@@ -238,8 +251,10 @@ export default function AchievementBadges({
     if (noSpendStreak >= 2) {
       badges.push({
         id: "no-spend-streak",
-        icon: <MoonStar className="h-4 w-4 text-indigo-500" />,
-        text: `Ada ${noSpendStreak} hari berturut-turut tanpa pengeluaran bulan ini. Good job!`,
+        icon: <MoonStar className="h-5 w-5 text-indigo-500" />,
+        title: "Hari Tanpa Belanja",
+        description: `Kamu mencatat ${noSpendStreak} hari berturut-turut tanpa pengeluaran bulan ini. Disiplin yang menginspirasi!`,
+        highlight: `${noSpendStreak} hari`,
       });
     }
   }
@@ -250,15 +265,27 @@ export default function AchievementBadges({
 
   return (
     <div className="card animate-slide h-full">
-      <h2 className="mb-[var(--block-y)] font-semibold">Achievements</h2>
+      <h2 className="mb-[var(--block-y)] font-semibold">Penghargaan</h2>
       <ul className="space-y-[var(--block-y)]">
         {visible.map((b) => (
           <li
             key={b.id}
-            className="flex items-center gap-2 rounded bg-surface-2 p-2 text-sm"
+            className="flex items-start gap-3 rounded bg-surface-2 p-3"
           >
-            {b.icon}
-            <span className="line-clamp-2">{b.text}</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-3 shadow-inner">
+              {b.icon}
+            </div>
+            <div className="flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold">{b.title}</p>
+                {b.highlight ? (
+                  <span className="rounded-full bg-surface-1 px-2 py-0.5 text-xs font-medium text-emerald-500">
+                    {b.highlight}
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-xs text-muted-foreground">{b.description}</p>
+            </div>
           </li>
         ))}
       </ul>
