@@ -125,7 +125,24 @@ async function requireUser() {
   return user;
 }
 
+function normalizeTimestamp(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    if (Number.isNaN(ms)) {
+      return null;
+    }
+    return new Date(ms).toISOString();
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return null;
+}
+
 async function mapProfileRow(row: any): Promise<UserProfile> {
+  const createdAt = normalizeTimestamp(row.created_at) ?? new Date().toISOString();
+  const updatedAt = normalizeTimestamp(row.updated_at) ?? createdAt;
+
   return {
     id: row.id,
     full_name: row.full_name ?? null,
@@ -143,8 +160,8 @@ async function mapProfileRow(row: any): Promise<UserProfile> {
       bill_due: Boolean(row.notifications?.bill_due ?? true),
       goal_reminder: Boolean(row.notifications?.goal_reminder ?? true),
     },
-    created_at: row.created_at ?? new Date().toISOString(),
-    updated_at: row.updated_at ?? new Date().toISOString(),
+    created_at: createdAt,
+    updated_at: updatedAt,
   };
 }
 
