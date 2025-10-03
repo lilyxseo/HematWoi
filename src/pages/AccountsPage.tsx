@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';
@@ -13,6 +13,7 @@ import {
   createAccount,
   deleteAccount,
   listAccounts,
+  reorderAccounts,
   updateAccount,
 } from '../lib/api.ts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
@@ -32,8 +33,41 @@ const FILTER_OPTIONS: { value: 'all' | AccountType; label: string }[] = [
   { value: 'other', label: 'Lainnya' },
 ];
 
+function getSortOrderValue(value: number | null | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : Number.POSITIVE_INFINITY;
+}
+
 function sortAccounts(list: AccountRecord[]): AccountRecord[] {
-  return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' }));
+  return [...list].sort((a, b) => {
+    const orderA = getSortOrderValue(a.sort_order);
+    const orderB = getSortOrderValue(b.sort_order);
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    const createdA = a.created_at ? new Date(a.created_at).getTime() : Number.POSITIVE_INFINITY;
+    const createdB = b.created_at ? new Date(b.created_at).getTime() : Number.POSITIVE_INFINITY;
+    if (createdA !== createdB) {
+      return createdA - createdB;
+    }
+    return (a.name || '').localeCompare(b.name || '', 'id', { sensitivity: 'base' });
+  });
+}
+
+function withSequentialOrder(list: AccountRecord[]): AccountRecord[] {
+  return list.map((account, index) =>
+    account.sort_order === index ? account : { ...account, sort_order: index },
+  );
+}
+
+function prevMaxSortOrder(list: AccountRecord[]): number {
+  return list.reduce((max, account) => {
+    const value = typeof account.sort_order === 'number' && Number.isFinite(account.sort_order)
+      ? account.sort_order
+      : -1;
+    return Math.max(max, value);
+  }, -1);
 }
 
 function formatDate(iso: string | null): string {
@@ -56,6 +90,8 @@ export default function AccountsPage() {
   const [modalError, setModalError] = useState<string | null>(null);
   const [selectedAccount, setSelectedAccount] = useState<AccountRecord | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [reorderBusy, setReorderBusy] = useState(false);
+  const allowReorder = filter === 'all';
 
   const fetchAccounts = useCallback(async () => {
     const uid = user?.id ?? null;
@@ -69,7 +105,7 @@ export default function AccountsPage() {
     setLoadError(null);
     try {
       const rows = await listAccounts(uid);
-      setAccounts(sortAccounts(rows));
+      setAccounts(withSequentialOrder(sortAccounts(rows)));
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Gagal memuat akun. Silakan coba lagi.';
@@ -128,14 +164,17 @@ export default function AccountsPage() {
       try {
         if (modalMode === 'edit' && selectedAccount) {
           const updated = await updateAccount(selectedAccount.id, values);
-          setAccounts((prev) => sortAccounts(prev.map((acc) => (acc.id === updated.id ? updated : acc))));
+          setAccounts((prev) =>
+            withSequentialOrder(sortAccounts(prev.map((acc) => (acc.id === updated.id ? updated : acc)))),
+          );
           addToast('Akun diperbarui', 'success');
         } else {
           if (!user?.id) {
             throw new Error('Anda harus login untuk menambah akun.');
           }
-          const created = await createAccount(user.id, values);
-          setAccounts((prev) => sortAccounts([...prev, created]));
+          const nextOrder = prevMaxSortOrder(accounts) + 1;
+          const created = await createAccount(user.id, { ...values, sort_order: nextOrder });
+          setAccounts((prev) => withSequentialOrder(sortAccounts([...prev, created])));
           addToast('Akun ditambahkan', 'success');
         }
         resetModalState();
@@ -147,7 +186,68 @@ export default function AccountsPage() {
         setModalBusy(false);
       }
     },
-    [addToast, modalMode, resetModalState, selectedAccount, user?.id],
+    [accounts, addToast, modalMode, resetModalState, selectedAccount, user?.id],
+  );
+
+  const persistReorder = useCallback(
+    async (nextOrdered: AccountRecord[], previous: AccountRecord[]) => {
+      if (!user?.id) {
+        setAccounts(withSequentialOrder(sortAccounts(previous)));
+        return;
+      }
+      setReorderBusy(true);
+      try {
+        await reorderAccounts(user.id, nextOrdered.map((item) => item.id));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Gagal mengurutkan akun. Silakan coba lagi.';
+        setAccounts(withSequentialOrder(sortAccounts(previous)));
+        addToast(message, 'error');
+      } finally {
+        setReorderBusy(false);
+      }
+    },
+    [addToast, user?.id],
+  );
+
+  const moveAccount = useCallback(
+    (id: string, direction: 'up' | 'down') => {
+      if (reorderBusy || !allowReorder) {
+        return;
+      }
+      setAccounts((current) => {
+        const index = current.findIndex((item) => item.id === id);
+        if (index < 0) {
+          return current;
+        }
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        if (targetIndex < 0 || targetIndex >= current.length) {
+          return current;
+        }
+        const previous = current;
+        const reordered = [...current];
+        const [moved] = reordered.splice(index, 1);
+        reordered.splice(targetIndex, 0, moved);
+        const normalized = withSequentialOrder(reordered);
+        void persistReorder(normalized, previous);
+        return normalized;
+      });
+    },
+    [allowReorder, persistReorder, reorderBusy],
+  );
+
+  const handleMoveUp = useCallback(
+    (id: string) => {
+      moveAccount(id, 'up');
+    },
+    [moveAccount],
+  );
+
+  const handleMoveDown = useCallback(
+    (id: string) => {
+      moveAccount(id, 'down');
+    },
+    [moveAccount],
   );
 
   const handleDelete = useCallback(
@@ -161,7 +261,24 @@ export default function AccountsPage() {
       setDeletingId(account.id);
       try {
         await deleteAccount(account.id);
-        setAccounts((prev) => prev.filter((item) => item.id !== account.id));
+        let nextAccounts: AccountRecord[] | null = null;
+        setAccounts((prev) => {
+          const filtered = prev.filter((item) => item.id !== account.id);
+          const sorted = withSequentialOrder(sortAccounts(filtered));
+          nextAccounts = sorted;
+          return sorted;
+        });
+        if (user?.id && nextAccounts) {
+          try {
+            await reorderAccounts(user.id, nextAccounts.map((item) => item.id));
+          } catch (error) {
+            const message =
+              error instanceof Error
+                ? error.message
+                : 'Gagal memperbarui urutan akun setelah penghapusan.';
+            addToast(message, 'error');
+          }
+        }
         addToast('Akun dihapus', 'success');
       } catch (error) {
         const message =
@@ -171,7 +288,7 @@ export default function AccountsPage() {
         setDeletingId(null);
       }
     },
-    [addToast],
+    [addToast, user?.id],
   );
 
   const handleModalClose = useCallback(() => {
@@ -249,7 +366,10 @@ export default function AccountsPage() {
               </div>
             ) : (
               <ul className="space-y-3">
-                {filteredAccounts.map((account) => (
+                {filteredAccounts.map((account, index) => {
+                  const isFirst = index === 0;
+                  const isLast = index === filteredAccounts.length - 1;
+                  return (
                   <li
                     key={account.id}
                     className="rounded-3xl border border-border-subtle bg-surface-alt/60 p-5 shadow-sm transition-all hover:border-border-strong"
@@ -270,6 +390,28 @@ export default function AccountsPage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        {allowReorder ? (
+                          <div className="mr-2 flex items-center gap-1">
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => handleMoveUp(account.id)}
+                              disabled={reorderBusy || deletingId === account.id || isFirst}
+                              aria-label="Naikkan urutan"
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              onClick={() => handleMoveDown(account.id)}
+                              disabled={reorderBusy || deletingId === account.id || isLast}
+                              aria-label="Turunkan urutan"
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : null}
                         <button
                           type="button"
                           className="btn btn-secondary"
@@ -294,7 +436,8 @@ export default function AccountsPage() {
                       </div>
                     </div>
                   </li>
-                ))}
+                );
+                })}
               </ul>
             )}
           </CardBody>

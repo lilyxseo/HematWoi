@@ -9,6 +9,7 @@ export interface AccountRecord {
   type: AccountType;
   currency: string;
   created_at: string | null;
+  sort_order: number | null;
   user_id?: string;
 }
 
@@ -16,6 +17,7 @@ type CreateAccountPayload = {
   name: string;
   type: AccountType;
   currency?: string;
+  sort_order?: number;
 };
 
 type UpdateAccountPayload = Partial<{
@@ -53,6 +55,19 @@ function normalizeAccount(row: Record<string, any>): AccountRecord {
     type: normalizeAccountType(row.type),
     currency: normalizeCurrency(row.currency),
     created_at: row.created_at ?? null,
+    sort_order: (() => {
+      if (typeof row.sort_order === 'number' && Number.isFinite(row.sort_order)) {
+        return row.sort_order;
+      }
+      if (row.sort_order === null || typeof row.sort_order === 'undefined') {
+        return null;
+      }
+      if (typeof row.sort_order === 'string') {
+        const parsed = Number.parseInt(row.sort_order, 10);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    })(),
     user_id: row.user_id ? String(row.user_id) : undefined,
   };
 }
@@ -81,9 +96,11 @@ function toUserMessage(error: unknown, fallback: string): string {
 export async function listAccounts(userId: string): Promise<AccountRecord[]> {
   const { data, error } = await supabase
     .from('accounts')
-    .select('id,name,type,currency,created_at,user_id')
+    .select('id,name,type,currency,created_at,user_id,sort_order')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false });
+    .order('sort_order', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true })
+    .order('name', { ascending: true });
 
   if (error) {
     throw new Error(toUserMessage(error, 'Gagal memuat akun.'));
@@ -106,12 +123,16 @@ export async function createAccount(
     name,
     type: normalizeAccountType(payload.type),
     currency: normalizeCurrency(payload.currency),
+    sort_order:
+      typeof payload.sort_order === 'number' && Number.isFinite(payload.sort_order)
+        ? payload.sort_order
+        : undefined,
   };
 
   const { data, error } = await supabase
     .from('accounts')
     .insert([record])
-    .select('id,name,type,currency,created_at,user_id')
+    .select('id,name,type,currency,created_at,user_id,sort_order')
     .single();
 
   if (error) {
@@ -159,7 +180,7 @@ export async function updateAccount(
     .from('accounts')
     .update(updates)
     .eq('id', id)
-    .select('id,name,type,currency,created_at,user_id')
+    .select('id,name,type,currency,created_at,user_id,sort_order')
     .single();
 
   if (error) {
@@ -171,6 +192,33 @@ export async function updateAccount(
   }
 
   return normalizeAccount(data);
+}
+
+export async function reorderAccounts(
+  userId: string,
+  orderedIds: string[],
+): Promise<void> {
+  if (!userId) {
+    throw new Error('ID pengguna tidak valid.');
+  }
+
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return;
+  }
+
+  const payload = orderedIds.map((id, index) => ({
+    id,
+    user_id: userId,
+    sort_order: index,
+  }));
+
+  const { error } = await supabase
+    .from('accounts')
+    .upsert(payload, { onConflict: 'id' });
+
+  if (error) {
+    throw new Error(toUserMessage(error, 'Gagal mengurutkan akun.'));
+  }
 }
 
 export async function deleteAccount(id: string): Promise<void> {
