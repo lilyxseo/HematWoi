@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
   listUsers,
   updateUserProfile,
+  loginAsUser,
   type ListUsersParams,
   type UpdateUserProfileInput,
   type UserProfileRecord,
@@ -72,6 +74,149 @@ function Avatar({ user }: { user: UserProfileRecord }) {
   );
 }
 
+type EditFormState = {
+  username: string;
+  email: string;
+  password: string;
+};
+
+type EditUserDialogProps = {
+  open: boolean;
+  user: UserProfileRecord | null;
+  form: EditFormState;
+  onChange: (patch: Partial<EditFormState>) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  busy: boolean;
+  error: string | null;
+};
+
+function EditUserDialog({ open, user, form, onChange, onClose, onSubmit, busy, error }: EditUserDialogProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose, busy]);
+
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setTimeout(() => {
+      dialogRef.current?.querySelector<HTMLInputElement>('input[name="username"]')?.focus();
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+
+  if (!open || !user) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[95] flex items-center justify-center bg-black/50 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-user-title"
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !busy) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="w-full max-w-lg overflow-hidden rounded-3xl border border-border/60 bg-background shadow-xl"
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+          className="flex h-full flex-col"
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border/60 px-5 py-4">
+            <h3 id="edit-user-title" className="text-lg font-semibold text-foreground">
+              Ubah informasi pengguna
+            </h3>
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-sm text-muted-foreground transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={busy}
+            >
+              Tutup
+            </button>
+          </div>
+          <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4 text-sm">
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold text-muted-foreground">Username</span>
+              <input
+                name="username"
+                value={form.username}
+                onChange={(event) => onChange({ username: event.target.value })}
+                className={INPUT_CLASS}
+                placeholder="Nama pengguna"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold text-muted-foreground">Email</span>
+              <input
+                name="email"
+                type="email"
+                required
+                value={form.email}
+                onChange={(event) => onChange({ email: event.target.value })}
+                className={INPUT_CLASS}
+                placeholder="alamat@email.com"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="font-semibold text-muted-foreground">Password baru</span>
+              <input
+                name="password"
+                type="password"
+                value={form.password}
+                onChange={(event) => onChange({ password: event.target.value })}
+                className={INPUT_CLASS}
+                placeholder="Kosongkan jika tidak diganti"
+              />
+            </label>
+            <p className="text-xs text-muted-foreground">Kosongkan password untuk mempertahankan password saat ini.</p>
+            {error ? (
+              <p className="text-sm font-medium text-destructive" aria-live="assertive">
+                {error}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex items-center justify-end gap-3 border-t border-border/60 bg-muted/20 px-5 py-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-11 rounded-2xl border border-border/60 px-4 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy}
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="h-11 rounded-2xl bg-primary px-5 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+            >
+              {busy ? 'Menyimpan…' : 'Simpan perubahan'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function AdminUsersTab() {
   const { addToast } = useToast();
   const [users, setUsers] = useState<UserProfileRecord[]>([]);
@@ -84,6 +229,32 @@ export default function AdminUsersTab() {
   const [drafts, setDrafts] = useState<UserDraftMap>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [editingUser, setEditingUser] = useState<UserProfileRecord | null>(null);
+  const [editForm, setEditForm] = useState<EditFormState>({ username: '', email: '', password: '' });
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
+
+  const closeEditDialog = useCallback(() => {
+    setEditingUser(null);
+    setEditForm({ username: '', email: '', password: '' });
+    setEditError(null);
+  }, []);
+
+  const openEditDialog = useCallback((user: UserProfileRecord) => {
+    setEditingUser(user);
+    setEditForm({
+      username: user.username ?? '',
+      email: user.email ?? '',
+      password: '',
+    });
+    setEditError(null);
+  }, []);
+
+  const handleEditChange = useCallback((patch: Partial<EditFormState>) => {
+    setEditForm((prev) => ({ ...prev, ...patch }));
+    setEditError(null);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -158,6 +329,71 @@ export default function AdminUsersTab() {
     });
   };
 
+  const handleEditSubmit = async () => {
+    if (!editingUser) return;
+
+    const trimmedEmail = editForm.email.trim();
+    if (!trimmedEmail) {
+      setEditError('Email wajib diisi');
+      return;
+    }
+
+    const trimmedUsername = editForm.username.trim();
+    const payload: UpdateUserProfileInput = {};
+
+    const normalizedUsername = trimmedUsername ? trimmedUsername : null;
+    if (normalizedUsername !== (editingUser.username ?? null)) {
+      payload.username = normalizedUsername;
+    }
+
+    if (trimmedEmail !== (editingUser.email ?? '')) {
+      payload.email = trimmedEmail;
+    }
+
+    const trimmedPassword = editForm.password.trim();
+    if (trimmedPassword) {
+      payload.password = trimmedPassword;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      setEditError('Tidak ada perubahan untuk disimpan');
+      return;
+    }
+
+    setEditBusy(true);
+    setEditError(null);
+    try {
+      const updated = await updateUserProfile(editingUser.id, payload);
+      setUsers((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      addToast('Informasi pengguna diperbarui', 'success');
+      closeEditDialog();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal memperbarui informasi pengguna';
+      setEditError(message);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
+  const handleImpersonate = async (user: UserProfileRecord) => {
+    if (!user.email) {
+      addToast('Pengguna tidak memiliki email untuk login', 'error');
+      return;
+    }
+
+    setImpersonatingId(user.id);
+    try {
+      await loginAsUser(user.email);
+      addToast(`Berhasil login sebagai ${user.username || user.email}`, 'success');
+      window.location.replace('/');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal login sebagai pengguna';
+      addToast(message, 'error');
+    } finally {
+      setImpersonatingId(null);
+    }
+  };
+
   const handleSave = async (user: UserProfileRecord) => {
     const draft = drafts[user.id];
     if (!draft) return;
@@ -226,6 +462,7 @@ export default function AdminUsersTab() {
     const isDirty = Boolean(draft);
     const isSelf = sessionUserId === user.id;
     const disableSelf = isSelf && user.role === 'admin' && user.is_active && activeAdminCount <= 1;
+    const isImpersonating = impersonatingId === user.id;
 
     return (
       <div key={user.id} className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm">
@@ -285,6 +522,21 @@ export default function AdminUsersTab() {
           >
             Batalkan
           </button>
+          <button
+            type="button"
+            onClick={() => openEditDialog(user)}
+            className="h-11 flex-1 rounded-2xl border border-border/60 px-4 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+          >
+            Edit info
+          </button>
+          <button
+            type="button"
+            onClick={() => handleImpersonate(user)}
+            className="h-11 flex-1 rounded-2xl bg-muted px-4 text-sm font-medium text-foreground transition hover:bg-muted/80 disabled:opacity-50"
+            disabled={isImpersonating || !user.email}
+          >
+            {isImpersonating ? 'Masuk…' : 'Login sebagai'}
+          </button>
         </div>
       </div>
     );
@@ -312,6 +564,7 @@ export default function AdminUsersTab() {
               const isDirty = Boolean(draft);
               const isSelf = sessionUserId === user.id;
               const disableSelf = isSelf && user.role === 'admin' && user.is_active && activeAdminCount <= 1;
+              const isImpersonating = impersonatingId === user.id;
 
               return (
                 <tr key={user.id} className="odd:bg-muted/10">
@@ -363,6 +616,21 @@ export default function AdminUsersTab() {
                         disabled={!isDirty || savingId === user.id}
                       >
                         Batalkan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditDialog(user)}
+                        className="h-11 rounded-2xl border border-border/60 px-4 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
+                      >
+                        Edit info
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleImpersonate(user)}
+                        className="h-11 rounded-2xl bg-muted px-4 text-sm font-medium text-foreground transition hover:bg-muted/80 disabled:opacity-50"
+                        disabled={isImpersonating || !user.email}
+                      >
+                        {isImpersonating ? 'Masuk…' : 'Login sebagai'}
                       </button>
                     </div>
                   </td>
@@ -438,6 +706,17 @@ export default function AdminUsersTab() {
           {renderDesktopTable()}
         </>
       )}
+      <EditUserDialog
+        open={Boolean(editingUser)}
+        user={editingUser}
+        form={editForm}
+        onChange={handleEditChange}
+        onClose={closeEditDialog}
+        onSubmit={handleEditSubmit}
+        busy={editBusy}
+        error={editError}
+      />
     </div>
   );
 }
+
