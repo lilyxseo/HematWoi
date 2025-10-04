@@ -863,6 +863,41 @@ export async function upsertCategories({ income = [], expense = [] }) {
 
 // -- ACCOUNTS ------------------------------------------
 
+function parseSortOrder(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function sortAccountRows(list = []) {
+  const getOrderValue = (value) => {
+    const parsed = parseSortOrder(value);
+    return typeof parsed === "number" ? parsed : Number.POSITIVE_INFINITY;
+  };
+  const getCreatedValue = (value) => {
+    if (!value) return Number.POSITIVE_INFINITY;
+    const time = new Date(value).getTime();
+    return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+  };
+
+  return [...list].sort((a, b) => {
+    const orderA = getOrderValue(a?.sort_order);
+    const orderB = getOrderValue(b?.sort_order);
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    const createdA = getCreatedValue(a?.created_at);
+    const createdB = getCreatedValue(b?.created_at);
+    if (createdA !== createdB) {
+      return createdA - createdB;
+    }
+    return (a?.name ?? "").localeCompare(b?.name ?? "", "id", { sensitivity: "base" });
+  });
+}
+
 function mapAccountRow(row = {}, userId) {
   return {
     id: row.id,
@@ -874,6 +909,7 @@ function mapAccountRow(row = {}, userId) {
     is_archived: row.is_archived ?? row.archived ?? false,
     created_at: row.created_at ?? null,
     updated_at: row.updated_at ?? null,
+    sort_order: parseSortOrder(row.sort_order ?? row.order_index ?? row.order),
   };
 }
 
@@ -883,7 +919,7 @@ export async function listAccounts() {
 
   if (!navigator.onLine || window.__sync?.fakeOffline) {
     const cached = await dbCache.list("accounts");
-    return cached.map((row) => mapAccountRow(row, userId));
+    return sortAccountRows(cached.map((row) => mapAccountRow(row, userId)));
   }
 
   try {
@@ -891,15 +927,18 @@ export async function listAccounts() {
       .from("accounts")
       .select("*")
       .eq("user_id", userId)
+      .order("sort_order", { ascending: true, nullsFirst: true })
+      .order("created_at", { ascending: true })
       .order("name", { ascending: true });
     if (error) throw error;
     const rows = (data || []).map((row) => mapAccountRow(row, userId));
-    await dbCache.bulkSet("accounts", rows);
-    return rows;
+    const sorted = sortAccountRows(rows);
+    await dbCache.bulkSet("accounts", sorted);
+    return sorted;
   } catch (err) {
     console.error("listAccounts failed, falling back to cache", err);
     const cached = await dbCache.list("accounts");
-    return cached.map((row) => mapAccountRow(row, userId));
+    return sortAccountRows(cached.map((row) => mapAccountRow(row, userId)));
   }
 }
 

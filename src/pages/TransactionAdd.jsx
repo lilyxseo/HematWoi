@@ -159,12 +159,12 @@ export default function TransactionAdd({ onAdd }) {
           listCategories('income'),
         ]);
         if (!active) return;
-        const sortedAccounts = (accountRows || []).slice().sort((a, b) => {
-          return (a.name || '').localeCompare(b.name || '', 'id');
-        });
-        setAccounts(sortedAccounts);
-        if (sortedAccounts.length) {
-          setAccountId(sortedAccounts[0].id);
+        const orderedAccounts = Array.isArray(accountRows)
+          ? accountRows.filter(Boolean)
+          : [];
+        setAccounts(orderedAccounts);
+        if (orderedAccounts.length) {
+          setAccountId((prev) => prev || orderedAccounts[0].id);
         }
         const combinedCategories = [
           ...(expenseRows || []),
