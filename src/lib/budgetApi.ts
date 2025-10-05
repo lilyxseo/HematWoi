@@ -478,8 +478,6 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   if (transactionsResponse.error) throw transactionsResponse.error;
 
   const weeklySpentMap = new Map<string, number>();
-  const categorySpentMap = new Map<string, number>();
-
   for (const row of (transactionsResponse.data ?? []) as any[]) {
     const categoryId = row?.category_id as string | null;
     if (!categoryId) continue;
@@ -490,7 +488,6 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     const weekStart = getWeekStartForDate(parseIsoDate(dateValue));
     const key = `${categoryId}|${weekStart}`;
     weeklySpentMap.set(key, (weeklySpentMap.get(key) ?? 0) + amount);
-    categorySpentMap.set(categoryId, (categorySpentMap.get(categoryId) ?? 0) + amount);
   }
 
   const summaryAccumulator = new Map<
@@ -500,6 +497,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
       category_name: string;
       category_type: 'income' | 'expense' | null;
       planned: number;
+      spent: number;
     }
   >();
 
@@ -520,11 +518,13 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
         category_name: row.category?.name ?? 'Tanpa kategori',
         category_type: row.category?.type ?? null,
         planned: 0,
+        spent: 0,
       });
     }
     const current = summaryAccumulator.get(row.category_id);
     if (current) {
       current.planned += planned;
+      current.spent += spent;
     }
 
     return {
@@ -537,7 +537,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   });
 
   const summaryByCategory: WeeklyBudgetCategorySummary[] = Array.from(summaryAccumulator.values()).map((item) => {
-    const spent = categorySpentMap.get(item.category_id) ?? 0;
+    const spent = item.spent;
     const remaining = item.planned - spent;
     const percentage = item.planned > 0 ? Math.min(spent / item.planned, 1) : 0;
     return {
@@ -586,22 +586,34 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
     throw error;
   }
 
-  const payload: Record<string, unknown> = {
-    user_id: userId,
+  const weekStart = normalizeWeekStart(input.week_start);
+  const basePayload = {
     category_id: input.category_id,
     planned_amount: Number(input.amount_planned ?? 0),
-    week_start: normalizeWeekStart(input.week_start),
+    week_start: weekStart,
     carryover_enabled: Boolean(input.carryover_enabled),
     notes: input.notes ?? null,
   };
 
   if (input.id) {
-    payload.id = input.id;
+    const { error } = await supabase
+      .from('budgets_weekly')
+      .update(basePayload)
+      .eq('user_id', userId)
+      .eq('id', input.id);
+
+    if (error) {
+      throw error;
+    }
+    return;
   }
 
   const { error } = await supabase
     .from('budgets_weekly')
-    .upsert(payload, { onConflict: 'user_id,category_id,week_start' });
+    .upsert({
+      ...basePayload,
+      user_id: userId,
+    }, { onConflict: 'user_id,category_id,week_start' });
 
   if (error) {
     throw error;
