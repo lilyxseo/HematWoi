@@ -6,6 +6,7 @@ export interface WeeklyBudgetFormValues {
   week_start: string;
   category_id: string;
   amount_planned: number;
+  carryover_enabled: boolean;
   notes: string;
 }
 
@@ -126,7 +127,7 @@ export default function WeeklyBudgetFormModal({
     return Array.from(groups.entries());
   }, [categories]);
 
-  const handleChange = (field: keyof WeeklyBudgetFormValues, value: string | number) => {
+  const handleChange = (field: keyof WeeklyBudgetFormValues, value: string | number | boolean) => {
     setValues((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -254,6 +255,23 @@ export default function WeeklyBudgetFormModal({
               </span>
             </div>
             {errors.amount_planned ? <span className="text-xs font-medium text-rose-500">{errors.amount_planned}</span> : null}
+          </label>
+
+          <label className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-surface px-4 py-3 text-sm font-medium text-text shadow-sm transition">
+            <span>Aktifkan carryover ke minggu berikutnya</span>
+            <button
+              type="button"
+              onClick={() => handleChange('carryover_enabled', !values.carryover_enabled)}
+              className={`relative inline-flex h-6 w-12 cursor-pointer items-center rounded-full ${
+                values.carryover_enabled ? 'bg-brand/80' : 'bg-border/80'
+              }`}
+            >
+              <span
+                className={`ml-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                  values.carryover_enabled ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
           </label>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">

@@ -197,6 +197,8 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
           <div className="grid gap-3 sm:grid-cols-2">
             {cards.map((card) => {
               const progress = Math.min(1.2, Math.max(0, card.progress));
+              const progressPercent = Math.round(progress * 100);
+              const progressWidth = Math.min(100, Math.max(0, progress * 100));
               const color = getProgressColor(progress);
               const badge = card.kind === 'monthly' ? 'Bulanan' : 'Mingguan';
               const remainingLabel = card.remaining >= 0 ? formatCurrency(card.remaining, 'IDR') : `-${formatCurrency(Math.abs(card.remaining), 'IDR')}`;
@@ -235,13 +237,13 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>Progress</span>
-                      <span>{Math.round(card.progress * 100)}%</span>
+                      <span>{progressPercent}%</span>
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted/20 dark:bg-muted/30">
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: `${Math.min(100, Math.max(0, card.progress * 100))}%`,
+                          width: `${progressWidth}%`,
                           backgroundColor: color,
                         }}
                       />
