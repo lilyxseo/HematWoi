@@ -114,7 +114,6 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
 
     const monthlyMap = new Map(monthly.rows.map((row) => [String(row.id), row]));
     const weeklyMap = new Map(weekly.rows.map((row) => [String(row.id), row]));
-    const weeklySummary = new Map(weekly.summaryByCategory.map((item) => [String(item.category_id), item]));
 
     return highlights
       .map((item) => {
@@ -139,11 +138,16 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
 
         const row = weeklyMap.get(String(item.budget_id));
         if (!row) return null;
-        const summary = weeklySummary.get(String(row.category_id));
-        const planned = summary ? Number(summary.planned ?? 0) : Number(row.amount_planned ?? 0);
-        const spent = summary ? Number(summary.spent ?? 0) : Number(row.spent ?? 0);
+        const planned = Number(row.amount_planned ?? 0);
+        const spent = Number(row.spent ?? 0);
         const remaining = planned - spent;
         const progress = planned > 0 ? Math.min(spent / planned, 2) : 0;
+        const weekMeta = weekly.weeks.find((week) => week.start === row.week_start);
+        const subtitleParts: string[] = [];
+        if (weekMeta) {
+          subtitleParts.push(`Minggu ke-${weekMeta.sequence}`);
+        }
+        subtitleParts.push(formatWeekRange(row.week_start, row.week_end));
         return {
           id: `${item.id}-weekly`,
           kind: 'weekly' as HighlightKind,
@@ -153,11 +157,11 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
           spent,
           remaining,
           progress,
-          subtitle: formatWeekRange(row.week_start, row.week_end),
+          subtitle: subtitleParts.join(' • '),
         } satisfies HighlightCardData;
       })
       .filter((card): card is HighlightCardData => Boolean(card));
-  }, [highlights, loading, monthly.loading, monthly.rows, weekly.loading, weekly.rows, weekly.summaryByCategory]);
+  }, [highlights, loading, monthly.loading, monthly.rows, weekly.loading, weekly.rows, weekly.weeks]);
 
   const isLoading = loading || monthly.loading || weekly.loading;
   const displayError = error || monthly.error || weekly.error;
