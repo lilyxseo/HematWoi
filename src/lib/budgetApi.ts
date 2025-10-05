@@ -23,6 +23,10 @@ const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
 const CATEGORY_SELECT_COLUMNS = 'id,user_id,type,name,inserted_at,group_name,order_index';
 const CATEGORY_ORDER = 'order_index.asc.nullsfirst,name.asc';
+const WEEKLY_BUDGET_SELECT =
+  'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)';
+const WEEKLY_CARRYOVER_LOOKBACK_WEEKS = 4;
+const MAX_WEEKLY_CARRYOVER_ITERATIONS = 8;
 
 let categoriesViewUnavailable = false;
 let categoriesFallbackWarned = false;
@@ -273,6 +277,94 @@ function getWeekEndFromStart(weekStart: string): string {
   return formatIsoDateUTC(startDate);
 }
 
+function subtractWeeks(date: Date, weeks: number): Date {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() - weeks * 7);
+  return result;
+}
+
+function addWeeks(date: Date, weeks: number): Date {
+  const result = new Date(date);
+  result.setUTCDate(result.getUTCDate() + weeks * 7);
+  return result;
+}
+
+function normalizeCarryoverValue(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return Boolean(value);
+}
+
+async function ensureWeeklyCarryoverRows(
+  userId: string,
+  initialRows: WeeklyBudgetRow[],
+  carryoverStart: string,
+  rangeEnd: string
+): Promise<WeeklyBudgetRow[]> {
+  let rows = initialRows;
+
+  for (let attempt = 0; attempt < MAX_WEEKLY_CARRYOVER_ITERATIONS; attempt += 1) {
+    const existingKeys = new Set(
+      rows.map((row) => `${row.category_id ?? 'null'}::${row.week_start}`)
+    );
+    const tasks: Promise<void>[] = [];
+
+    for (const row of rows) {
+      const carryoverEnabled = normalizeCarryoverValue(row.carryover_enabled);
+      if (!carryoverEnabled) continue;
+      const categoryId = row.category_id;
+      if (!categoryId) continue;
+
+      const nextWeekStart = getWeekStartForDate(addWeeks(parseIsoDate(row.week_start), 1));
+      if (nextWeekStart < carryoverStart) continue;
+      if (nextWeekStart >= rangeEnd) continue;
+
+      const key = `${categoryId}::${nextWeekStart}`;
+      if (existingKeys.has(key)) continue;
+
+      tasks.push(
+        upsertWeeklyBudget({
+          category_id: categoryId,
+          week_start: nextWeekStart,
+          amount_planned: Number(row.amount_planned ?? 0),
+          carryover_enabled: carryoverEnabled,
+          notes: row.notes ?? undefined,
+        })
+      );
+
+      existingKeys.add(key);
+    }
+
+    if (tasks.length === 0) {
+      return rows;
+    }
+
+    const results = await Promise.allSettled(tasks);
+    const hasSuccess = results.some((result) => result.status === 'fulfilled');
+    if (!hasSuccess) {
+      return rows;
+    }
+
+    const refreshed = await supabase
+      .from('budgets_weekly')
+      .select(WEEKLY_BUDGET_SELECT)
+      .eq('user_id', userId)
+      .gte('week_start', carryoverStart)
+      .lt('week_start', rangeEnd)
+      .order('week_start', { ascending: true })
+      .order('created_at', { ascending: false });
+
+    if (refreshed.error) throw refreshed.error;
+    rows = (refreshed.data ?? []) as WeeklyBudgetRow[];
+  }
+
+  return rows;
+}
+
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   async function fetchFromCloud(): Promise<ExpenseCategory[]> {
     const userId = await getCurrentUserId();
@@ -452,15 +544,16 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   ensureAuth(userId);
   const { start, end } = getMonthRange(period);
   const firstWeekStart = getWeekStartForDate(parseIsoDate(start));
+  const carryoverLookbackStart = formatIsoDateUTC(
+    subtractWeeks(parseIsoDate(firstWeekStart), WEEKLY_CARRYOVER_LOOKBACK_WEEKS)
+  );
 
   const [budgetsResponse, transactionsResponse] = await Promise.all([
     supabase
       .from('budgets_weekly')
-      .select(
-        'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
-      )
+      .select(WEEKLY_BUDGET_SELECT)
       .eq('user_id', userId)
-      .gte('week_start', firstWeekStart)
+      .gte('week_start', carryoverLookbackStart)
       .lt('week_start', end)
       .order('week_start', { ascending: true })
       .order('created_at', { ascending: false }),
@@ -477,6 +570,17 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
 
   if (budgetsResponse.error) throw budgetsResponse.error;
   if (transactionsResponse.error) throw transactionsResponse.error;
+
+  const initialBudgetRows = (budgetsResponse.data ?? []) as WeeklyBudgetRow[];
+  const budgetRowsWithCarryover = await ensureWeeklyCarryoverRows(
+    userId,
+    initialBudgetRows,
+    carryoverLookbackStart,
+    end
+  );
+  const effectiveBudgetRows = budgetRowsWithCarryover.filter(
+    (row) => row.week_start >= firstWeekStart
+  );
 
   const transactionsByCategory = new Map<string, { date: string; amount: number }[]>();
 
@@ -503,7 +607,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     }
   >();
 
-  const rows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).map((row) => {
+  const rows = effectiveBudgetRows.map((row) => {
     const rawWeekStart = row.week_start ?? start;
     const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
     const weekEnd = getWeekEndFromStart(normalizedWeekStart);
@@ -515,9 +619,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
         : total;
     }, 0);
     const remaining = planned - spent;
-    const carryoverEnabled = typeof row.carryover_enabled === 'boolean'
-      ? row.carryover_enabled
-      : Boolean(row.carryover_enabled);
+    const carryoverEnabled = normalizeCarryoverValue(row.carryover_enabled);
 
     if (!summaryAccumulator.has(row.category_id)) {
       summaryAccumulator.set(row.category_id, {
