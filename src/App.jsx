@@ -699,6 +699,9 @@ function AppShell({ prefs, setPrefs }) {
         return;
       }
       if (isAbortError) return;
+      if (message && message.toLowerCase().includes("failed to fetch")) {
+        return;
+      }
       const detail = message ? `: ${message}` : "";
       addToast(`Gagal memuat data anggaran${detail}`, "error");
     }
