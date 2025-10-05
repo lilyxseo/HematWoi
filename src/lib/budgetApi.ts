@@ -104,6 +104,7 @@ export interface BudgetRow {
   category: {
     id: UUID;
     name: string;
+    type?: 'income' | 'expense' | null;
   } | null;
 }
 
@@ -122,6 +123,52 @@ export interface BudgetSummary {
   spent: number;
   remaining: number;
   percentage: number;
+}
+
+export interface WeeklyBudgetRow {
+  id: UUID;
+  user_id: UUID;
+  category_id: UUID;
+  amount_planned: number;
+  notes: Nullable<string>;
+  week_start: string;
+  created_at: string;
+  updated_at: string;
+  category: {
+    id: UUID;
+    name: string;
+    type?: 'income' | 'expense' | null;
+  } | null;
+}
+
+export interface WeeklyBudgetWithSpent extends WeeklyBudgetRow {
+  week_end: string;
+  spent: number;
+  remaining: number;
+}
+
+export interface WeeklyBudgetCategorySummary {
+  category_id: UUID;
+  category_name: string;
+  category_type: 'income' | 'expense' | null;
+  planned: number;
+  spent: number;
+  remaining: number;
+  percentage: number;
+}
+
+export interface WeeklyBudgetsResult {
+  rows: WeeklyBudgetWithSpent[];
+  summaryByCategory: WeeklyBudgetCategorySummary[];
+}
+
+export type HighlightBudgetType = 'monthly' | 'weekly';
+
+export interface HighlightBudgetSelection {
+  id: UUID;
+  user_id: UUID;
+  budget_type: HighlightBudgetType;
+  budget_id: UUID;
 }
 
 export interface UpsertBudgetInput {
@@ -175,7 +222,7 @@ async function fetchBudgetsForPeriod(userId: string, period: string): Promise<Bu
   const { data, error } = await supabase
     .from('budgets')
     .select(
-      'id,user_id,category_id,amount_planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name)'
+      'id,user_id,category_id,amount_planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
@@ -198,6 +245,31 @@ function getMonthRange(period: string): { start: string; end: string } {
     start: format(start),
     end: format(end),
   };
+}
+
+function formatIsoDateUTC(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+  const day = date.getUTCDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseIsoDate(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function getWeekStartForDate(date: Date): string {
+  const result = new Date(date);
+  const day = result.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1; // convert Sunday (0) to 6
+  result.setUTCDate(result.getUTCDate() - diff);
+  return formatIsoDateUTC(result);
+}
+
+function getWeekEndFromStart(weekStart: string): string {
+  const startDate = parseIsoDate(weekStart);
+  startDate.setUTCDate(startDate.getUTCDate() + 6);
+  return formatIsoDateUTC(startDate);
 }
 
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
@@ -372,6 +444,257 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
     totals[categoryId] = (totals[categoryId] ?? 0) + amount;
   }
   return totals;
+}
+
+export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsResult> {
+  const userId = await getCurrentUserId();
+  ensureAuth(userId);
+  const { start, end } = getMonthRange(period);
+
+  const [budgetsResponse, transactionsResponse] = await Promise.all([
+    supabase
+      .from('budgets_weekly')
+      .select(
+        'id,user_id,category_id,amount_planned,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
+      )
+      .eq('user_id', userId)
+      .gte('week_start', start)
+      .lt('week_start', end)
+      .order('week_start', { ascending: true })
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('transactions')
+      .select('category_id, amount, date, to_account_id')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .eq('type', 'expense')
+      .is('to_account_id', null)
+      .gte('date', start)
+      .lt('date', end),
+  ]);
+
+  if (budgetsResponse.error) throw budgetsResponse.error;
+  if (transactionsResponse.error) throw transactionsResponse.error;
+
+  const weeklySpentMap = new Map<string, number>();
+  const categorySpentMap = new Map<string, number>();
+
+  for (const row of (transactionsResponse.data ?? []) as any[]) {
+    const categoryId = row?.category_id as string | null;
+    if (!categoryId) continue;
+    const amount = Number(row?.amount ?? 0);
+    if (!Number.isFinite(amount)) continue;
+    const dateValue = typeof row?.date === 'string' ? row.date : null;
+    if (!dateValue) continue;
+    const weekStart = getWeekStartForDate(parseIsoDate(dateValue));
+    const key = `${categoryId}|${weekStart}`;
+    weeklySpentMap.set(key, (weeklySpentMap.get(key) ?? 0) + amount);
+    categorySpentMap.set(categoryId, (categorySpentMap.get(categoryId) ?? 0) + amount);
+  }
+
+  const summaryAccumulator = new Map<
+    string,
+    {
+      category_id: string;
+      category_name: string;
+      category_type: 'income' | 'expense' | null;
+      planned: number;
+    }
+  >();
+
+  const rows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).map((row) => {
+    const weekStart = row.week_start ?? start;
+    const weekEnd = getWeekEndFromStart(weekStart);
+    const key = `${row.category_id}|${weekStart}`;
+    const planned = Number(row.amount_planned ?? 0);
+    const spent = weeklySpentMap.get(key) ?? 0;
+    const remaining = planned - spent;
+
+    if (!summaryAccumulator.has(row.category_id)) {
+      summaryAccumulator.set(row.category_id, {
+        category_id: row.category_id,
+        category_name: row.category?.name ?? 'Tanpa kategori',
+        category_type: row.category?.type ?? null,
+        planned: 0,
+      });
+    }
+    const current = summaryAccumulator.get(row.category_id);
+    if (current) {
+      current.planned += planned;
+    }
+
+    return {
+      ...row,
+      week_end: weekEnd,
+      spent,
+      remaining,
+    } satisfies WeeklyBudgetWithSpent;
+  });
+
+  const summaryByCategory: WeeklyBudgetCategorySummary[] = Array.from(summaryAccumulator.values()).map((item) => {
+    const spent = categorySpentMap.get(item.category_id) ?? 0;
+    const remaining = item.planned - spent;
+    const percentage = item.planned > 0 ? Math.min(spent / item.planned, 1) : 0;
+    return {
+      category_id: item.category_id,
+      category_name: item.category_name,
+      category_type: item.category_type,
+      planned: item.planned,
+      spent,
+      remaining,
+      percentage,
+    };
+  });
+
+  summaryByCategory.sort((a, b) => a.category_name.localeCompare(b.category_name));
+
+  return {
+    rows,
+    summaryByCategory,
+  };
+}
+
+export interface UpsertWeeklyBudgetInput {
+  id?: UUID;
+  category_id: UUID;
+  week_start: string; // YYYY-MM-DD
+  amount_planned: number;
+  notes?: Nullable<string>;
+}
+
+function normalizeWeekStart(input: string): string {
+  if (!input) throw new Error('Tanggal minggu wajib diisi');
+  return getWeekStartForDate(parseIsoDate(input));
+}
+
+export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promise<void> {
+  const userId = await getCurrentUserId();
+  ensureAuth(userId);
+
+  try {
+    await getUserToken();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Not signed in') {
+      throw new Error('Silakan login untuk menyimpan anggaran');
+    }
+    throw error;
+  }
+
+  const payload: Record<string, unknown> = {
+    user_id: userId,
+    category_id: input.category_id,
+    amount_planned: Number(input.amount_planned ?? 0),
+    week_start: normalizeWeekStart(input.week_start),
+    notes: input.notes ?? null,
+  };
+
+  if (input.id) {
+    payload.id = input.id;
+  }
+
+  const { error } = await supabase
+    .from('budgets_weekly')
+    .upsert(payload, { onConflict: 'user_id,category_id,week_start' });
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteWeeklyBudget(id: UUID): Promise<void> {
+  const userId = await getCurrentUserId();
+  ensureAuth(userId);
+  const { error } = await supabase.from('budgets_weekly').delete().eq('user_id', userId).eq('id', id);
+  if (error) throw error;
+}
+
+async function fetchHighlightSelections(userId: string): Promise<HighlightBudgetSelection[]> {
+  const { data, error } = await supabase
+    .from('user_highlight_budgets')
+    .select('id,user_id,budget_type,budget_id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as HighlightBudgetSelection[];
+}
+
+export async function listHighlightBudgets(): Promise<HighlightBudgetSelection[]> {
+  const userId = await getCurrentUserId();
+  ensureAuth(userId);
+  return fetchHighlightSelections(userId);
+}
+
+export interface ToggleHighlightInput {
+  type: HighlightBudgetType;
+  id: UUID;
+}
+
+export interface ToggleHighlightResult {
+  highlighted: boolean;
+  highlights: HighlightBudgetSelection[];
+}
+
+export async function toggleHighlight(input: ToggleHighlightInput): Promise<ToggleHighlightResult> {
+  const userId = await getCurrentUserId();
+  ensureAuth(userId);
+  const existing = await fetchHighlightSelections(userId);
+  const matched = existing.find(
+    (row) => row.budget_type === input.type && String(row.budget_id) === String(input.id)
+  );
+
+  if (matched) {
+    const { error } = await supabase
+      .from('user_highlight_budgets')
+      .delete()
+      .eq('user_id', userId)
+      .eq('id', matched.id);
+    if (error) throw error;
+    return {
+      highlighted: false,
+      highlights: existing.filter((row) => row.id !== matched.id),
+    };
+  }
+
+  if (existing.length >= 2) {
+    const err = new Error('Maks. 2 highlight');
+    (err as { code?: string }).code = 'LIMIT_REACHED';
+    throw err;
+  }
+
+  const insertResponse = await supabase
+    .from('user_highlight_budgets')
+    .insert({
+      user_id: userId,
+      budget_type: input.type,
+      budget_id: input.id,
+    })
+    .select('id,user_id,budget_type,budget_id');
+
+  if (insertResponse.error) {
+    const message = (insertResponse.error.message ?? '').toLowerCase();
+    if (message.includes('max') && message.includes('highlight')) {
+      const err = new Error('Maks. 2 highlight');
+      (err as { code?: string }).code = 'LIMIT_REACHED';
+      throw err;
+    }
+    throw insertResponse.error;
+  }
+
+  const insertedRows = Array.isArray(insertResponse.data)
+    ? (insertResponse.data as HighlightBudgetSelection[])
+    : insertResponse.data
+    ? [insertResponse.data as HighlightBudgetSelection]
+    : [];
+
+  const inserted = insertedRows[0];
+  if (!inserted) {
+    throw new Error('Gagal menandai highlight');
+  }
+
+  return {
+    highlighted: true,
+    highlights: [...existing, inserted],
+  };
 }
 
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
