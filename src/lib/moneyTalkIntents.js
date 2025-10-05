@@ -1,121 +1,3 @@
-const CATEGORY_ALIASES = [
-  {
-    key: "makan",
-    keywords: [
-      "makan",
-      "food",
-      "resto",
-      "restaurant",
-      "dining",
-      "drink",
-      "minum",
-      "coffee",
-      "kopi",
-      "cafe",
-      "warteg",
-      "warung",
-      "kuliner",
-    ],
-  },
-  {
-    key: "transport",
-    keywords: [
-      "transport",
-      "transportasi",
-      "ride",
-      "gojek",
-      "grab",
-      "uber",
-      "angkot",
-      "bus",
-      "kereta",
-      "commute",
-      "tol",
-      "parkir",
-      "parking",
-      "bbm",
-      "bensin",
-      "fuel",
-      "pertalite",
-      "pertamax",
-      "shell",
-      "gas",
-      "ojek",
-    ],
-  },
-  {
-    key: "hiburan",
-    keywords: [
-      "hiburan",
-      "entertainment",
-      "game",
-      "gaming",
-      "nonton",
-      "movie",
-      "film",
-      "musik",
-      "music",
-      "hobi",
-      "hobby",
-      "stream",
-      "streaming",
-      "konser",
-    ],
-  },
-  {
-    key: "belanja",
-    keywords: [
-      "belanja",
-      "shopping",
-      "shop",
-      "mall",
-      "fashion",
-      "pakaian",
-      "clothes",
-      "gadget",
-      "elektronik",
-      "perabot",
-      "grocer",
-      "pasar",
-    ],
-  },
-  {
-    key: "tagihan",
-    keywords: [
-      "tagihan",
-      "bill",
-      "bills",
-      "subscription",
-      "langganan",
-      "listrik",
-      "internet",
-      "wifi",
-      "telkom",
-      "telepon",
-      "pdam",
-      "water",
-      "bpjs",
-    ],
-  },
-  {
-    key: "tabungan",
-    keywords: [
-      "tabung",
-      "saving",
-      "savings",
-      "nabung",
-      "invest",
-      "investment",
-      "deposit",
-      "emas",
-      "gold",
-      "dana",
-      "emergency",
-      "darurat",
-    ],
-  },
-];
-
 const KEYWORD_RULES = [
   {
     category: "makan",
@@ -367,6 +249,29 @@ const KEYWORD_RULES = [
   },
 ];
 
+function buildTitleTriggerList(rules) {
+  if (!Array.isArray(rules)) return [];
+  const seen = new Set();
+  const triggers = [];
+
+  for (const rule of rules) {
+    if (!Array.isArray(rule?.keywords)) continue;
+    for (const keyword of rule.keywords) {
+      if (typeof keyword !== "string") continue;
+      const normalized = keyword.toLowerCase();
+      if (seen.has(normalized)) continue;
+      seen.add(normalized);
+      triggers.push(keyword);
+    }
+  }
+
+  return triggers.sort((a, b) => a.localeCompare(b));
+}
+
+export const MONEY_TALK_TITLE_TRIGGERS = Object.freeze(
+  buildTitleTriggerList(KEYWORD_RULES)
+);
+
 function fillTemplate(template, values) {
   if (!template) return template;
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
@@ -375,18 +280,8 @@ function fillTemplate(template, values) {
   });
 }
 
-function normalizeCategoryName(category) {
-  if (!category) return null;
-  const normalized = String(category).toLowerCase();
-  const alias = CATEGORY_ALIASES.find((entry) =>
-    entry.keywords.some((keyword) => normalized.includes(keyword))
-  );
-  return alias ? alias.key : null;
-}
-
-function matchesRule(rule, category, title) {
+function matchesRule(rule, title) {
   if (!rule || !title) return false;
-  if (rule.category && rule.category !== category) return false;
   if (!Array.isArray(rule.keywords) || rule.keywords.length === 0) return false;
   const normalizedTitle = title.toLowerCase();
   return rule.keywords.some((keyword) => {
@@ -396,11 +291,9 @@ function matchesRule(rule, category, title) {
   });
 }
 
-export function resolveMoneyTalkIntent({ lang = "id", category, title, values }) {
+export function resolveMoneyTalkIntent({ lang = "id", title, values }) {
   if (!title) return null;
-  const normalizedCategory = normalizeCategoryName(category);
-  if (!normalizedCategory) return null;
-  const rule = KEYWORD_RULES.find((item) => matchesRule(item, normalizedCategory, title));
+  const rule = KEYWORD_RULES.find((item) => matchesRule(item, title));
   if (!rule) return null;
   const localized = rule.responses?.[lang] || rule.responses?.id || null;
   if (!localized) return null;

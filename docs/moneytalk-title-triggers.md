@@ -1,0 +1,122 @@
+# MoneyTalk Title Triggers
+
+Daftar judul atau kata kunci transaksi yang memicu respon MoneyTalk berdasarkan kecocokan teks pada judul.
+
+Total entri: 116
+
+- americano
+- angkot
+- angkut
+- angkutan
+- apple music
+- apple tv
+- ayam
+- baju
+- bakso
+- bensin
+- bitcoin
+- boba
+- boots
+- burger
+- bus
+- cadangan
+- camera
+- celana
+- coffee
+- crypto
+- dana
+- darurat
+- data
+- diamond
+- diesel
+- disney
+- dress
+- electric
+- emas
+- emergency
+- espresso
+- fashion
+- fiber
+- fried chicken
+- fuel
+- fund
+- gadget
+- game
+- gaming
+- gas
+- genshin
+- gojek
+- gold
+- grab
+- heels
+- hoodie
+- hp
+- indihome
+- internet
+- invest
+- iqiyi
+- jacket
+- jaket
+- kamera
+- kemeja
+- kereta
+- kopi
+- laptop
+- latte
+- listrik
+- lrt
+- mlbb
+- modem
+- monitor
+- mrt
+- mutual
+- netflix
+- ngopi
+- nintendo
+- ojek
+- ojol
+- outfit
+- pakaian
+- pants
+- pc
+- pertalite
+- pertamax
+- phone
+- pizza
+- playstation
+- pln
+- power
+- prime
+- ps4
+- ps5
+- ramen
+- reksa
+- saham
+- sandals
+- sepatu
+- shell
+- shirt
+- shoes
+- sinking fund
+- sneaker
+- sneakers
+- spotify
+- steak
+- steam
+- stock
+- sushi
+- tablet
+- taksi
+- taxi
+- tea
+- teh
+- token
+- top up
+- train
+- uber
+- valorant
+- vidio
+- viu
+- wifi
+- xbox
+- youtube
