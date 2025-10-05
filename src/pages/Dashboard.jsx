@@ -15,6 +15,7 @@ import useDashboardBalances from "../hooks/useDashboardBalances";
 import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 import BudgetHighlights from "../components/dashboard/BudgetHighlights";
+import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighlightedBudgets";
 
 const DEFAULT_PRESET = "month";
 
@@ -123,6 +124,8 @@ export default function Dashboard({ stats, txs }) {
         />
 
         <QuickActions />
+
+        <DashboardHighlightedBudgets period={periodRange} />
 
         <BudgetHighlights period={periodRange} />
 
