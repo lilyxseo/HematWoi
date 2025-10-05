@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  buildSummary,
-  computeSpent,
-  listBudgets,
-  mergeBudgetsWithSpent,
-  type BudgetSummary,
-  type BudgetWithSpent,
-} from '../lib/budgetApi';
+import { buildSummary, listMonthlyBudgets, type BudgetSummary, type BudgetWithSpent } from '../lib/budgetApi';
 
 const EMPTY_SUMMARY: BudgetSummary = {
   planned: 0,
@@ -28,10 +21,7 @@ export function useBudgets(period: string): UseBudgetsResult {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchCombined = useCallback(async () => {
-    const [budgetRows, spentMap] = await Promise.all([listBudgets(period), computeSpent(period)]);
-    return mergeBudgetsWithSpent(budgetRows, spentMap);
-  }, [period]);
+  const fetchCombined = useCallback(() => listMonthlyBudgets(period), [period]);
 
   useEffect(() => {
     let active = true;
