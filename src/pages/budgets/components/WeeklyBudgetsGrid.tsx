@@ -141,6 +141,11 @@ export default function WeeklyBudgetsGrid({
                     <span className="inline-flex items-center rounded-full bg-muted/30 px-3 py-1 text-xs font-medium text-muted dark:bg-muted/20">
                       {formatRange(row.week_start, row.week_end)}
                     </span>
+                    {row.carryover_enabled ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
+                        Carryover
+                      </span>
+                    ) : null}
                     {isHighlighted ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-brand shadow-sm ring-1 ring-brand/40">
                         <Sparkles className="h-3.5 w-3.5" /> Highlight
