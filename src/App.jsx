@@ -181,6 +181,14 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
   const location = useLocation();
   const hideNav = location.pathname.startsWith("/add");
 
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [location.pathname, location.search, location.hash]);
+
   return (
     <MainLayout
       hideSidebar={hideNav}
