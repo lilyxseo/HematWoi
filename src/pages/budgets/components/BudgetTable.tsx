@@ -148,6 +148,8 @@ export default function BudgetTable({
         const categoryInitial = categoryName.trim().charAt(0).toUpperCase() || 'B';
         const StatusIcon = status.icon;
 
+        const notes = row.notes?.trim();
+
         const cardClassName = clsx(
           CARD_CLASS,
           isHighlighted
@@ -312,19 +314,19 @@ export default function BudgetTable({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-dashed border-border/60 bg-surface/70 p-4 text-sm shadow-inner">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/20 text-muted">
-                    <NotebookPen className="h-4 w-4" />
-                  </span>
-                  <div className="space-y-1">
-                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted">Catatan</p>
-                    <p className="leading-relaxed text-text dark:text-zinc-100">
-                      {row.notes?.trim() ? row.notes : 'Tidak ada catatan.'}
-                    </p>
+              {notes ? (
+                <div className="rounded-xl border border-dashed border-border/60 bg-surface/70 p-4 text-sm shadow-inner">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/20 text-muted">
+                      <NotebookPen className="h-4 w-4" />
+                    </span>
+                    <div className="space-y-1">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted">Catatan</p>
+                      <p className="leading-relaxed text-text dark:text-zinc-100">{row.notes}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : null}
             </section>
           </article>
         );

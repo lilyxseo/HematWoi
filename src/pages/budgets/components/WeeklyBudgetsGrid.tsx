@@ -112,6 +112,8 @@ export default function WeeklyBudgetsGrid({
 
         const categoryName = row.category?.name ?? 'Tanpa kategori';
 
+        const notes = row.notes?.trim();
+
         const cardClassName = clsx(
           'relative flex h-full flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60',
           isHighlighted
@@ -256,19 +258,19 @@ export default function WeeklyBudgetsGrid({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-dashed border-border/60 bg-surface/70 p-4 text-sm shadow-inner">
-                <div className="flex items-start gap-3">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/20 text-muted">
-                    <NotebookPen className="h-4 w-4" />
-                  </span>
-                  <div className="space-y-1">
-                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted">Catatan</p>
-                    <p className="leading-relaxed text-text dark:text-zinc-100">
-                      {row.notes?.trim() ? row.notes : 'Tidak ada catatan.'}
-                    </p>
+              {notes ? (
+                <div className="rounded-xl border border-dashed border-border/60 bg-surface/70 p-4 text-sm shadow-inner">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted/20 text-muted">
+                      <NotebookPen className="h-4 w-4" />
+                    </span>
+                    <div className="space-y-1">
+                      <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted">Catatan</p>
+                      <p className="leading-relaxed text-text dark:text-zinc-100">{row.notes}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : null}
             </section>
           </article>
         );
