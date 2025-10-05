@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Calendar, PiggyBank } from 'lucide-react';
+import { Calendar, ChevronDown, PiggyBank } from 'lucide-react';
 import type { ExpenseCategory } from '../../../lib/budgetApi';
 
 export interface BudgetFormValues {
@@ -183,7 +183,7 @@ export default function BudgetFormModal({
                 <select
                   value={values.category_id}
                   onChange={(event) => handleChange('category_id', event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  className="h-11 w-full appearance-none rounded-2xl border border-border bg-surface pl-11 pr-14 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   required
                   disabled={categories.length === 0}
                 >
@@ -200,6 +200,9 @@ export default function BudgetFormModal({
                     </optgroup>
                   ))}
                 </select>
+                <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-zinc-400">
+                  <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                </span>
               </div>
               {errors.category_id ? (
                 <span className="text-xs font-medium text-rose-500">{errors.category_id}</span>
