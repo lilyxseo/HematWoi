@@ -273,6 +273,12 @@ function getWeekEndFromStart(weekStart: string): string {
   return formatIsoDateUTC(startDate);
 }
 
+function addDaysToIsoDate(date: string, days: number): string {
+  const parsed = parseIsoDate(date);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return formatIsoDateUTC(parsed);
+}
+
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   async function fetchFromCloud(): Promise<ExpenseCategory[]> {
     const userId = await getCurrentUserId();
@@ -478,6 +484,82 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   if (budgetsResponse.error) throw budgetsResponse.error;
   if (transactionsResponse.error) throw transactionsResponse.error;
 
+  let weeklyBudgetRows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).slice();
+
+  const normalizedCarryoverRows = weeklyBudgetRows.map((row) => {
+    const rawWeekStart = row.week_start ?? start;
+    const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
+    const carryoverEnabled =
+      typeof row.carryover_enabled === 'boolean'
+        ? row.carryover_enabled
+        : Boolean(row.carryover_enabled);
+    return { row, normalizedWeekStart, carryoverEnabled };
+  });
+
+  const existingWeeksByCategory = new Map<string, Set<string>>();
+  for (const item of normalizedCarryoverRows) {
+    const categoryId = item.row.category_id;
+    if (!categoryId) continue;
+    const set = existingWeeksByCategory.get(categoryId) ?? new Set<string>();
+    set.add(item.normalizedWeekStart);
+    existingWeeksByCategory.set(categoryId, set);
+  }
+
+  const carryoverCandidates: {
+    category_id: string;
+    week_start: string;
+    amount_planned: number;
+    notes?: string;
+  }[] = [];
+
+  for (const item of normalizedCarryoverRows) {
+    if (!item.carryoverEnabled) continue;
+    const categoryId = item.row.category_id;
+    if (!categoryId) continue;
+    const nextWeekStart = addDaysToIsoDate(item.normalizedWeekStart, 7);
+    if (nextWeekStart >= end) continue;
+    const existingWeeks = existingWeeksByCategory.get(categoryId);
+    if (existingWeeks?.has(nextWeekStart)) continue;
+    carryoverCandidates.push({
+      category_id: categoryId,
+      week_start: nextWeekStart,
+      amount_planned: Number(item.row.amount_planned ?? 0),
+      notes: item.row.notes ?? undefined,
+    });
+    existingWeeks?.add(nextWeekStart);
+  }
+
+  if (carryoverCandidates.length > 0) {
+    const results = await Promise.allSettled(
+      carryoverCandidates.map((payload) =>
+        upsertWeeklyBudget({
+          category_id: payload.category_id,
+          week_start: payload.week_start,
+          amount_planned: payload.amount_planned,
+          carryover_enabled: true,
+          notes: payload.notes,
+        })
+      )
+    );
+
+    const hasSuccess = results.some((result) => result.status === 'fulfilled');
+    if (hasSuccess) {
+      const refreshed = await supabase
+        .from('budgets_weekly')
+        .select(
+          'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
+        )
+        .eq('user_id', userId)
+        .gte('week_start', firstWeekStart)
+        .lt('week_start', end)
+        .order('week_start', { ascending: true })
+        .order('created_at', { ascending: false });
+
+      if (refreshed.error) throw refreshed.error;
+      weeklyBudgetRows = ((refreshed.data ?? []) as WeeklyBudgetRow[]).slice();
+    }
+  }
+
   const transactionsByCategory = new Map<string, { date: string; amount: number }[]>();
 
   for (const row of (transactionsResponse.data ?? []) as any[]) {
@@ -503,7 +585,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     }
   >();
 
-  const rows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).map((row) => {
+  const rows = weeklyBudgetRows.map((row) => {
     const rawWeekStart = row.week_start ?? start;
     const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
     const weekEnd = getWeekEndFromStart(normalizedWeekStart);
