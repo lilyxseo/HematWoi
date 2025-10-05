@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Clock } from "lucide-react";
+import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Clock } from "lucide-react";
 import clsx from "clsx";
 import Segmented from "./ui/Segmented";
 import Card, { CardBody, CardHeader } from "./Card";
@@ -22,6 +22,24 @@ function formatDate(value) {
     year: "numeric",
   }).format(date);
 }
+
+const TYPE_META = {
+  income: {
+    icon: ArrowDownLeft,
+    iconClass: "bg-success/10 text-success",
+    amountClass: "text-success",
+  },
+  expense: {
+    icon: ArrowUpRight,
+    iconClass: "bg-danger/10 text-danger",
+    amountClass: "text-danger",
+  },
+  transfer: {
+    icon: ArrowRightLeft,
+    iconClass: "bg-info/10 text-info",
+    amountClass: "text-muted",
+  },
+};
 
 export default function RecentTransactions({ txs = [] }) {
   const [period, setPeriod] = useState("week");
@@ -110,8 +128,9 @@ export default function RecentTransactions({ txs = [] }) {
         {visible.length > 0 ? (
           <ul className="space-y-3">
             {visible.map((row) => {
-              const isIncome = row.type === "income";
               const amount = Math.abs(Number(row.amount) || 0);
+              const meta = TYPE_META[row.type] || TYPE_META.transfer;
+              const TypeIcon = meta.icon;
 
               return (
                 <li key={row.id || `${row.note}-${row.date}-${row.amount}`}>
@@ -120,15 +139,11 @@ export default function RecentTransactions({ txs = [] }) {
                       <div
                         className={clsx(
                           "mt-1 flex h-9 w-9 items-center justify-center rounded-xl",
-                          isIncome ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+                          meta.iconClass
                         )}
                         aria-hidden="true"
                       >
-                        {isIncome ? (
-                          <ArrowDownLeft className="h-4 w-4" />
-                        ) : (
-                          <ArrowUpRight className="h-4 w-4" />
-                        )}
+                        <TypeIcon className="h-4 w-4" />
                       </div>
                       <div className="space-y-1">
                         <p className="text-sm font-semibold text-text dark:text-slate-100">
@@ -139,12 +154,7 @@ export default function RecentTransactions({ txs = [] }) {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p
-                        className={clsx(
-                          "text-sm font-semibold",
-                          isIncome ? "text-success" : "text-danger"
-                        )}
-                      >
+                      <p className={clsx("text-sm font-semibold", meta.amountClass)}>
                         {formatCurrency(amount)}
                       </p>
                     </div>
