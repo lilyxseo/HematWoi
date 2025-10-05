@@ -477,8 +477,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   if (budgetsResponse.error) throw budgetsResponse.error;
   if (transactionsResponse.error) throw transactionsResponse.error;
 
-  const weeklySpentMap = new Map<string, number>();
-  const categorySpentMap = new Map<string, number>();
+  const transactionsByCategory = new Map<string, { date: string; amount: number }[]>();
 
   for (const row of (transactionsResponse.data ?? []) as any[]) {
     const categoryId = row?.category_id as string | null;
@@ -487,10 +486,9 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     if (!Number.isFinite(amount)) continue;
     const dateValue = typeof row?.date === 'string' ? row.date : null;
     if (!dateValue) continue;
-    const weekStart = getWeekStartForDate(parseIsoDate(dateValue));
-    const key = `${categoryId}|${weekStart}`;
-    weeklySpentMap.set(key, (weeklySpentMap.get(key) ?? 0) + amount);
-    categorySpentMap.set(categoryId, (categorySpentMap.get(categoryId) ?? 0) + amount);
+    const list = transactionsByCategory.get(categoryId) ?? [];
+    list.push({ date: dateValue, amount });
+    transactionsByCategory.set(categoryId, list);
   }
 
   const summaryAccumulator = new Map<
@@ -500,15 +498,21 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
       category_name: string;
       category_type: 'income' | 'expense' | null;
       planned: number;
+      spent: number;
     }
   >();
 
   const rows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).map((row) => {
-    const weekStart = row.week_start ?? start;
-    const weekEnd = getWeekEndFromStart(weekStart);
-    const key = `${row.category_id}|${weekStart}`;
+    const rawWeekStart = row.week_start ?? start;
+    const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
+    const weekEnd = getWeekEndFromStart(normalizedWeekStart);
     const planned = Number(row.amount_planned ?? 0);
-    const spent = weeklySpentMap.get(key) ?? 0;
+    const transactions = transactionsByCategory.get(row.category_id) ?? [];
+    const spent = transactions.reduce((total, transaction) => {
+      return transaction.date >= normalizedWeekStart && transaction.date <= weekEnd
+        ? total + transaction.amount
+        : total;
+    }, 0);
     const remaining = planned - spent;
     const carryoverEnabled = typeof row.carryover_enabled === 'boolean'
       ? row.carryover_enabled
@@ -520,15 +524,18 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
         category_name: row.category?.name ?? 'Tanpa kategori',
         category_type: row.category?.type ?? null,
         planned: 0,
+        spent: 0,
       });
     }
     const current = summaryAccumulator.get(row.category_id);
     if (current) {
       current.planned += planned;
+      current.spent += spent;
     }
 
     return {
       ...row,
+      week_start: normalizedWeekStart,
       carryover_enabled: carryoverEnabled,
       week_end: weekEnd,
       spent,
@@ -537,15 +544,14 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   });
 
   const summaryByCategory: WeeklyBudgetCategorySummary[] = Array.from(summaryAccumulator.values()).map((item) => {
-    const spent = categorySpentMap.get(item.category_id) ?? 0;
-    const remaining = item.planned - spent;
-    const percentage = item.planned > 0 ? Math.min(spent / item.planned, 1) : 0;
+    const remaining = item.planned - item.spent;
+    const percentage = item.planned > 0 ? Math.min(item.spent / item.planned, 1) : 0;
     return {
       category_id: item.category_id,
       category_name: item.category_name,
       category_type: item.category_type,
       planned: item.planned,
-      spent,
+      spent: item.spent,
       remaining,
       percentage,
     };
@@ -586,24 +592,45 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
     throw error;
   }
 
-  const payload: Record<string, unknown> = {
-    user_id: userId,
+  const normalizedWeekStart = normalizeWeekStart(input.week_start);
+  const sharedPayload = {
     category_id: input.category_id,
     planned_amount: Number(input.amount_planned ?? 0),
-    week_start: normalizeWeekStart(input.week_start),
+    week_start: normalizedWeekStart,
     carryover_enabled: Boolean(input.carryover_enabled),
     notes: input.notes ?? null,
   };
 
   if (input.id) {
-    payload.id = input.id;
+    const { error } = await supabase
+      .from('budgets_weekly')
+      .update(sharedPayload)
+      .eq('user_id', userId)
+      .eq('id', input.id);
+    if (error) {
+      const errorCode = (error as { code?: string } | null)?.code;
+      if (errorCode === '23505') {
+        throw new Error('Anggaran untuk kategori dan minggu ini sudah ada');
+      }
+      throw error;
+    }
+    return;
   }
+
+  const insertPayload = {
+    ...sharedPayload,
+    user_id: userId,
+  };
 
   const { error } = await supabase
     .from('budgets_weekly')
-    .upsert(payload, { onConflict: 'user_id,category_id,week_start' });
+    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' });
 
   if (error) {
+    const errorCode = (error as { code?: string } | null)?.code;
+    if (errorCode === '23505') {
+      throw new Error('Anggaran untuk kategori dan minggu ini sudah ada');
+    }
     throw error;
   }
 }
