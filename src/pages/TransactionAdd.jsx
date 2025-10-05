@@ -685,12 +685,11 @@ export default function TransactionAdd({ onAdd }) {
                       Kemarin
                     </button>
                     <div className="relative">
-                      <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
                       <input
                         type="date"
                         value={date}
                         onChange={(event) => handleDateSelect(event.target.value)}
-                        className={`${INPUT_CLASS} pl-9`}
+                        className={INPUT_CLASS}
                       />
                     </div>
                   </div>
