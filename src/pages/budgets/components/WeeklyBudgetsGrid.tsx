@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Eye, NotebookPen, Pencil, Sparkles, Star, Trash2 } from 'lucide-react';
+import { Eye, NotebookPen, Pencil, RefreshCcw, Sparkles, Star, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../lib/format';
 import type { WeeklyBudgetWithSpent } from '../../../lib/budgetApi';
 
@@ -12,6 +12,7 @@ interface WeeklyBudgetsGridProps {
   onDelete: (row: WeeklyBudgetWithSpent) => void;
   onViewTransactions: (row: WeeklyBudgetWithSpent) => void;
   onToggleHighlight: (row: WeeklyBudgetWithSpent) => void;
+  onToggleCarryover: (row: WeeklyBudgetWithSpent, carryover: boolean) => void;
 }
 
 const GRID_CLASS = 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
@@ -78,6 +79,7 @@ export default function WeeklyBudgetsGrid({
   onDelete,
   onViewTransactions,
   onToggleHighlight,
+  onToggleCarryover,
 }: WeeklyBudgetsGridProps) {
   if (loading) {
     return <LoadingCards />;
@@ -141,6 +143,11 @@ export default function WeeklyBudgetsGrid({
                     <span className="inline-flex items-center rounded-full bg-muted/30 px-3 py-1 text-xs font-medium text-muted dark:bg-muted/20">
                       {formatRange(row.week_start, row.week_end)}
                     </span>
+                    {row.carryover_enabled ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
+                        <RefreshCcw className="h-3.5 w-3.5" /> Carryover aktif
+                      </span>
+                    ) : null}
                     {isHighlighted ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-brand shadow-sm ring-1 ring-brand/40">
                         <Sparkles className="h-3.5 w-3.5" /> Highlight
@@ -173,6 +180,20 @@ export default function WeeklyBudgetsGrid({
                     )}
                   >
                     <Star className="h-4 w-4" fill={isHighlighted ? 'currentColor' : 'none'} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleCarryover(row, !row.carryover_enabled)}
+                    aria-pressed={row.carryover_enabled}
+                    aria-label={`${row.carryover_enabled ? 'Nonaktifkan' : 'Aktifkan'} carryover untuk ${categoryName}`}
+                    className={clsx(
+                      'inline-flex h-9 w-9 items-center justify-center rounded-xl border text-muted shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                      row.carryover_enabled
+                        ? 'border-emerald-400/70 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
+                        : 'border-border/60 bg-surface/80 hover:-translate-y-0.5 hover:text-text'
+                    )}
+                  >
+                    <RefreshCcw className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
