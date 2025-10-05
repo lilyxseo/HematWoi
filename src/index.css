@@ -176,7 +176,7 @@
       input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
       select,
       textarea
-    ):invalid {
+    )[aria-invalid='true'] {
     @apply border-danger/60;
   }
 
@@ -184,7 +184,7 @@
       input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
       select,
       textarea
-    ):focus-visible:invalid {
+    )[aria-invalid='true']:focus-visible {
     @apply border-danger ring-2 ring-danger/40;
   }
 

@@ -204,6 +204,7 @@ export default function WeeklyBudgetFormModal({
                   onChange={(event) => handleWeekChange(event.target.value)}
                   className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   required
+                  aria-invalid={Boolean(errors.week_start)}
                 />
               </div>
               {weekLabel ? (
@@ -224,6 +225,7 @@ export default function WeeklyBudgetFormModal({
                   className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   required
                   disabled={categories.length === 0}
+                  aria-invalid={Boolean(errors.category_id)}
                 >
                   <option value="" disabled>
                     Pilih kategori
@@ -253,6 +255,7 @@ export default function WeeklyBudgetFormModal({
                 onChange={(event) => handleAmountChange(event.target.value)}
                 className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                 placeholder="0"
+                aria-invalid={Boolean(errors.amount_planned)}
               />
               <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-xs font-semibold uppercase tracking-[0.18em] text-muted">
                 IDR
@@ -285,6 +288,7 @@ export default function WeeklyBudgetFormModal({
               onChange={(event) => handleChange('notes', event.target.value)}
               className="h-28 w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               placeholder="Opsional"
+              aria-invalid={Boolean(errors.notes)}
             />
           </label>
 
