@@ -185,7 +185,12 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
+      if (typeof document === "undefined") {
+        return;
+      }
+
       const behavior = prefersReducedMotion ? "auto" : "smooth";
+      const scrollContainer = document.getElementById("main");
 
       if (location.hash) {
         const target = document.querySelector(location.hash);
@@ -193,6 +198,16 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
           target.scrollIntoView({ behavior, block: "start" });
           return;
         }
+      }
+
+      if (scrollContainer && typeof scrollContainer.scrollTo === "function") {
+        scrollContainer.scrollTo({ top: 0, behavior });
+        return;
+      }
+
+      if (scrollContainer) {
+        scrollContainer.scrollTop = 0;
+        return;
       }
 
       window.scrollTo({ top: 0, behavior });
