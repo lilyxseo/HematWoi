@@ -32,6 +32,7 @@ import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
 import useChallenges from "./hooks/useChallenges.js";
+import usePrefersReducedMotion from "./hooks/usePrefersReducedMotion.js";
 import AuthGuard from "./components/AuthGuard";
 import AdminGuard from "./components/AdminGuard";
 import { DataProvider } from "./context/DataContext";
@@ -179,15 +180,31 @@ function loadInitial() {
 
 function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
   const location = useLocation();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const hideNav = location.pathname.startsWith("/add");
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      const behavior = prefersReducedMotion ? "auto" : "smooth";
+
+      if (location.hash) {
+        const target = document.querySelector(location.hash);
+        if (target) {
+          target.scrollIntoView({ behavior, block: "start" });
+          return;
+        }
+      }
+
+      window.scrollTo({ top: 0, behavior });
     });
 
     return () => cancelAnimationFrame(frame);
-  }, [location.pathname, location.search, location.hash]);
+  }, [
+    location.pathname,
+    location.search,
+    location.hash,
+    prefersReducedMotion,
+  ]);
 
   return (
     <MainLayout
