@@ -137,7 +137,7 @@ export default function BudgetTable({
               ? '#fb923c'
               : '#f43f5e';
 
-        const isHighlighted = highlightSet.has(row.id);
+        const isHighlighted = highlightSet.has(String(row.id));
         const disableHighlight = !isHighlighted && limitReached;
         const categoryType = row.category?.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
         const categoryTypeClass = row.category?.type === 'income'
