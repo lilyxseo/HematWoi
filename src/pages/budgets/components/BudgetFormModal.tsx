@@ -169,6 +169,7 @@ export default function BudgetFormModal({
                   onChange={(event) => handleChange('period', event.target.value)}
                   className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   required
+                  aria-invalid={Boolean(errors.period)}
                 />
               </div>
               {errors.period ? <span className="text-xs font-medium text-rose-500">{errors.period}</span> : null}
@@ -186,6 +187,7 @@ export default function BudgetFormModal({
                   className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   required
                   disabled={categories.length === 0}
+                  aria-invalid={Boolean(errors.category_id)}
                 >
                   <option value="" disabled>
                     Pilih kategori
@@ -219,6 +221,7 @@ export default function BudgetFormModal({
               placeholder="Masukkan nominal"
               className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               required
+              aria-invalid={Boolean(errors.amount_planned)}
             />
             {errors.amount_planned ? <span className="text-xs font-medium text-rose-500">{errors.amount_planned}</span> : null}
           </label>
@@ -250,6 +253,7 @@ export default function BudgetFormModal({
               onChange={(event) => handleChange('notes', event.target.value)}
               className="min-h-[96px] rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               placeholder="Catatan tambahan untuk anggaran ini"
+              aria-invalid={Boolean(errors.notes)}
             />
           </label>
 
