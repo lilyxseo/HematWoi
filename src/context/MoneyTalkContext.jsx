@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useRef, useState } from "react";
 import MoneyTalkBubble from "../components/MoneyTalkBubble";
 import { quotes, tips, special, amountReactions } from "../lib/moneyTalkContent";
+import { resolveMoneyTalkIntent } from "../lib/moneyTalkIntents";
 import { formatCurrency } from "../lib/format";
 
 const AMOUNT_BUCKETS = [
@@ -102,7 +103,14 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
   }, [current, handleDismiss]);
 
   const speak = useCallback(
-    ({ category, amount = 0, type = "expense", currency, context = {} }) => {
+    ({
+      category,
+      title,
+      amount = 0,
+      type = "expense",
+      currency,
+      context = {},
+    }) => {
       if (!prefs.moneyTalkEnabled) return;
       const lang = prefs.moneyTalkLang || "id";
       const langQuotes = resolveLangBlock(quotes, lang);
@@ -112,18 +120,37 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
       const normalizedType = TYPE_NORMALIZER[type] || "expense";
       const currencyCode = currency || prefs.currency || "IDR";
       const rawAmount = Math.abs(Number(amount) || 0);
+      const trimmedTitle = typeof title === "string" ? title.trim() : "";
+      const fallbackTitle = trimmedTitle
+        ? trimmedTitle
+        : lang === "en"
+          ? "untitled transaction"
+          : "transaksi tanpa judul";
       const templateValues = {
         amount: formatCurrency(rawAmount, currencyCode),
         category:
           category || (lang === "en" ? "mystery category" : "kategori misterius"),
         type: langTypeLabels?.[normalizedType] || normalizedType,
+        title: fallbackTitle,
       };
+      const contextualReaction =
+        context.isSavings || context.isOverBudget || context.isHigh
+          ? null
+          : resolveMoneyTalkIntent({
+              lang,
+              category,
+              title: trimmedTitle,
+              values: templateValues,
+            });
+
       let message = "";
       if (context.isSavings) message = fillTemplate(langSpecial.savings, templateValues);
       else if (context.isOverBudget)
         message = fillTemplate(langSpecial.overbudget, templateValues);
       else if (context.isHigh) message = fillTemplate(langSpecial.high, templateValues);
-      else {
+      else if (contextualReaction?.message) {
+        message = contextualReaction.message;
+      } else {
         message = createDynamicMessage({
           lang,
           type,
@@ -135,19 +162,22 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
           const fallbackQuotes = flattenQuotes(langQuotes);
           const options = categoryQuotes.length ? categoryQuotes : fallbackQuotes;
           if (!options.length) {
-            message =
+            const template =
               lang === "en"
-                ? "Another transaction logged! I'm keeping an eye on it."
-                : "Transaksi tercatat! Aku tetap siaga mengawasinya.";
+                ? "Recorded {{title}} for {{category}}. I'm keeping an eye on it."
+                : "Transaksi {{title}} di kategori {{category}} tercatat. Aku tetap siaga mengawasinya.";
+            message = fillTemplate(template, templateValues);
           } else {
             message = fillTemplate(pickRandom(options), templateValues);
           }
         }
       }
       const tipList = langTips?.[category] || [];
-      const tip = tipList.length
-        ? fillTemplate(pickRandom(tipList), templateValues)
-        : "";
+      const tip = contextualReaction?.tip
+        ? contextualReaction.tip
+        : tipList.length
+          ? fillTemplate(pickRandom(tipList), templateValues)
+          : "";
       const baseDuration = DURATION_MAP[prefs.moneyTalkIntensity] || DURATION_MAP.normal;
       queue.current.push({
         id:
