@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Eye, NotebookPen, Pencil, Star, Trash2 } from 'lucide-react';
+import { Eye, NotebookPen, Pencil, Sparkles, Star, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../lib/format';
 import type { WeeklyBudgetWithSpent } from '../../../lib/budgetApi';
 
@@ -109,12 +109,23 @@ export default function WeeklyBudgetsGrid({
 
         const categoryName = row.category?.name ?? 'Tanpa kategori';
 
+        const cardClassName = clsx(
+          'relative flex h-full flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60',
+          isHighlighted
+            ? 'border-brand/60 bg-gradient-to-br from-brand/15 via-surface/80 to-surface/80 ring-2 ring-brand/40 shadow-[0_32px_64px_-36px_rgba(59,130,246,0.55)] dark:from-brand/25'
+            : null
+        );
+
         return (
-          <article
-            key={row.id}
-            className="flex h-full flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60"
-          >
-            <header className="flex flex-col gap-4">
+          <article key={row.id} className={cardClassName} data-highlighted={isHighlighted || undefined}>
+            {isHighlighted ? (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full blur-3xl"
+                style={{ background: 'radial-gradient(circle at center, rgba(59,130,246,0.45) 0%, rgba(59,130,246,0.2) 45%, rgba(255,255,255,0) 75%)' }}
+              />
+            ) : null}
+            <header className="relative z-10 flex flex-col gap-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -130,6 +141,11 @@ export default function WeeklyBudgetsGrid({
                     <span className="inline-flex items-center rounded-full bg-muted/30 px-3 py-1 text-xs font-medium text-muted dark:bg-muted/20">
                       {formatRange(row.week_start, row.week_end)}
                     </span>
+                    {isHighlighted ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-brand shadow-sm ring-1 ring-brand/40">
+                        <Sparkles className="h-3.5 w-3.5" /> Highlight
+                      </span>
+                    ) : null}
                   </div>
                   <p className="text-xs text-muted">Target minggu ini</p>
                 </div>
@@ -178,7 +194,7 @@ export default function WeeklyBudgetsGrid({
               </div>
             </header>
 
-            <section className="space-y-4">
+            <section className="relative z-10 space-y-4">
               <div className="rounded-xl border border-border/50 bg-surface/70 p-4 shadow-inner">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-1">
