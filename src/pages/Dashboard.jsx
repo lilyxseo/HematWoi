@@ -14,7 +14,7 @@ import PeriodPicker, {
 import useDashboardBalances from "../hooks/useDashboardBalances";
 import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
-import BudgetHighlights from "../components/dashboard/BudgetHighlights";
+import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighlightedBudgets";
 
 const DEFAULT_PRESET = "month";
 
@@ -124,7 +124,7 @@ export default function Dashboard({ stats, txs }) {
 
         <QuickActions />
 
-        <BudgetHighlights period={periodRange} />
+        <DashboardHighlightedBudgets period={periodRange} />
 
         <section className="space-y-6 sm:space-y-8 lg:space-y-10">
           <SectionHeader title="Analisis Bulanan" />

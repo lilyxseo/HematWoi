@@ -2,11 +2,13 @@ import clsx from 'clsx';
 import {
   AlertTriangle,
   CheckCircle2,
+  Eye,
   Flame,
   NotebookPen,
   Pencil,
   RefreshCcw,
   Sparkles,
+  Star,
   Trash2,
 } from 'lucide-react';
 import { formatCurrency } from '../../../lib/format';
@@ -15,12 +17,16 @@ import type { BudgetWithSpent } from '../../../lib/budgetApi';
 interface BudgetTableProps {
   rows: BudgetWithSpent[];
   loading?: boolean;
+  highlightedIds?: Set<string>;
+  highlightLimitReached?: boolean;
   onEdit: (row: BudgetWithSpent) => void;
   onDelete: (row: BudgetWithSpent) => void;
   onToggleCarryover: (row: BudgetWithSpent, carryover: boolean) => void;
+  onViewTransactions: (row: BudgetWithSpent) => void;
+  onToggleHighlight: (row: BudgetWithSpent) => void;
 }
 
-const CARD_WRAPPER_CLASS = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3';
+const CARD_WRAPPER_CLASS = 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
 const CARD_CLASS =
   'relative flex flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60';
@@ -63,7 +69,17 @@ function EmptyState() {
   );
 }
 
-export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleCarryover }: BudgetTableProps) {
+export default function BudgetTable({
+  rows,
+  loading,
+  highlightedIds,
+  highlightLimitReached,
+  onEdit,
+  onDelete,
+  onToggleCarryover,
+  onViewTransactions,
+  onToggleHighlight,
+}: BudgetTableProps) {
   if (loading) {
     return <LoadingCards />;
   }
@@ -72,14 +88,18 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
     return <EmptyState />;
   }
 
+  const highlightSet = highlightedIds ?? new Set<string>();
+  const limitReached = Boolean(highlightLimitReached);
+
   return (
     <div className={CARD_WRAPPER_CLASS}>
       {rows.map((row) => {
         const planned = Number(row.amount_planned ?? 0);
         const spent = Number(row.spent ?? 0);
         const remaining = Number(row.remaining ?? 0);
-        const percentage = planned > 0 ? Math.min(200, Math.round((spent / planned) * 100)) : spent > 0 ? 200 : 0;
-        const displayPercentage = Math.min(100, percentage);
+        const rawPercentage = planned > 0 ? (spent / planned) * 100 : spent > 0 ? 200 : 0;
+        const percentage = Math.max(0, Math.min(200, Math.round(rawPercentage)));
+        const displayPercentage = Math.min(100, Math.max(0, Math.round(rawPercentage)));
         const overBudget = remaining < 0;
 
         const status = overBudget
@@ -89,7 +109,6 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
               badgeClass:
                 'bg-rose-500/10 text-rose-600 ring-rose-500/40 dark:bg-rose-500/15 dark:text-rose-200 dark:ring-rose-500/30',
               highlight: 'rgba(244, 63, 94, 0.18)',
-              progressGradient: 'linear-gradient(90deg, rgba(244,63,94,0.95), rgba(248,113,113,0.7))',
               insight: `Pengeluaran sudah melebihi anggaran sebesar ${formatCurrency(Math.abs(remaining), 'IDR')}.`,
             }
           : percentage >= 90
@@ -99,7 +118,6 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                 badgeClass:
                   'bg-amber-500/10 text-amber-600 ring-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/30',
                 highlight: 'rgba(245, 158, 11, 0.18)',
-                progressGradient: 'linear-gradient(90deg, rgba(245,158,11,0.9), rgba(253,186,116,0.7))',
                 insight: `Sisa dana tinggal ${formatCurrency(remaining, 'IDR')} — waktunya rem pengeluaran.`,
               }
             : {
@@ -108,9 +126,23 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                 badgeClass:
                   'bg-emerald-500/10 text-emerald-600 ring-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-500/30',
                 highlight: 'rgba(16, 185, 129, 0.18)',
-                progressGradient: 'linear-gradient(90deg, rgba(16,185,129,0.9), rgba(52,211,153,0.7))',
                 insight: `Masih tersedia ${formatCurrency(remaining, 'IDR')} dari anggaran ini.`,
               };
+
+        const progressColor = rawPercentage <= 74
+          ? 'var(--accent)'
+          : rawPercentage <= 89
+            ? '#f59e0b'
+            : rawPercentage <= 100
+              ? '#fb923c'
+              : '#f43f5e';
+
+        const isHighlighted = highlightSet.has(row.id);
+        const disableHighlight = !isHighlighted && limitReached;
+        const categoryType = row.category?.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+        const categoryTypeClass = row.category?.type === 'income'
+          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
+          : 'bg-rose-500/10 text-rose-600 dark:text-rose-300';
 
         const categoryName = row.category?.name ?? 'Tanpa kategori';
         const categoryInitial = categoryName.trim().charAt(0).toUpperCase() || 'B';
@@ -133,6 +165,14 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-base font-semibold text-text dark:text-white">{categoryName}</h3>
+                      <span
+                        className={clsx(
+                          'inline-flex items-center rounded-full px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide',
+                          categoryTypeClass
+                        )}
+                      >
+                        {categoryType}
+                      </span>
                       <span
                         className={clsx(
                           'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset shadow-sm backdrop-blur',
@@ -167,6 +207,30 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                       <span className="relative ml-[3px] h-3.5 w-3.5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5 dark:bg-zinc-900" />
                     </label>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => onViewTransactions(row)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-surface/80 text-muted shadow-sm transition hover:-translate-y-0.5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                    aria-label={`Lihat transaksi untuk ${categoryName}`}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleHighlight(row)}
+                    disabled={disableHighlight}
+                    aria-pressed={isHighlighted}
+                    aria-label={`${isHighlighted ? 'Hapus' : 'Tambah'} highlight untuk ${categoryName}`}
+                    className={clsx(
+                      'inline-flex h-9 w-9 items-center justify-center rounded-xl border text-muted shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                      isHighlighted
+                        ? 'border-brand/40 bg-brand/10 text-brand'
+                        : 'border-border/60 bg-surface/80 hover:-translate-y-0.5 hover:text-text',
+                      disableHighlight ? 'cursor-not-allowed opacity-60 hover:translate-y-0' : null
+                    )}
+                  >
+                    <Star className="h-4 w-4" fill={isHighlighted ? 'currentColor' : 'none'} />
+                  </button>
                   <button
                     type="button"
                     onClick={() => onEdit(row)}
@@ -222,7 +286,10 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                   <div className="h-2 w-full overflow-hidden rounded-full bg-muted/20 dark:bg-muted/30">
                     <div
                       className="h-full rounded-full transition-all"
-                      style={{ width: `${displayPercentage}%`, background: status.progressGradient }}
+                      style={{
+                        width: `${displayPercentage}%`,
+                        backgroundColor: progressColor,
+                      }}
                     />
                   </div>
                   <p className={clsx('text-xs', overBudget ? 'text-rose-500 dark:text-rose-300' : 'text-muted')}>
