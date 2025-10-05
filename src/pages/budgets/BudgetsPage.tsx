@@ -86,6 +86,7 @@ const DEFAULT_WEEKLY_FORM: WeeklyBudgetFormValues = {
   week_start: getFirstWeekStartOfPeriod(getCurrentPeriod()),
   category_id: '',
   amount_planned: 0,
+  carryover_enabled: false,
   notes: '',
 };
 
@@ -183,6 +184,7 @@ export default function BudgetsPage() {
         week_start: editingWeekly.week_start,
         category_id: editingWeekly.category_id ?? '',
         amount_planned: Number(editingWeekly.amount_planned ?? 0),
+        carryover_enabled: editingWeekly.carryover_enabled,
         notes: editingWeekly.notes ?? '',
       };
     }
@@ -295,6 +297,23 @@ export default function BudgetsPage() {
     }
   };
 
+  const handleToggleWeeklyCarryover = async (row: WeeklyBudgetWithSpent, carryover: boolean) => {
+    try {
+      await upsertWeeklyBudget({
+        id: row.id,
+        category_id: row.category_id,
+        week_start: row.week_start,
+        amount_planned: Number(row.amount_planned ?? 0),
+        carryover_enabled: carryover,
+        notes: row.notes ?? undefined,
+      });
+      await weekly.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal memperbarui carryover';
+      addToast(message, 'error');
+    }
+  };
+
   const handleSubmitMonthly = async (values: BudgetFormValues) => {
     try {
       setSubmittingMonthly(true);
@@ -325,6 +344,7 @@ export default function BudgetsPage() {
         category_id: values.category_id,
         week_start: values.week_start,
         amount_planned: Number(values.amount_planned),
+        carryover_enabled: values.carryover_enabled,
         notes: values.notes ? values.notes : undefined,
       });
       setWeeklyModalOpen(false);
@@ -478,6 +498,7 @@ export default function BudgetsPage() {
             onViewTransactions={(row) =>
               handleViewTransactions(row.category_id ?? '', { start: row.week_start, end: row.week_end })
             }
+            onToggleCarryover={handleToggleWeeklyCarryover}
             onToggleHighlight={(row) => handleToggleHighlight('weekly', row.id)}
           />
         </Section>

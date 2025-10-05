@@ -130,6 +130,7 @@ export interface WeeklyBudgetRow {
   user_id: UUID;
   category_id: UUID;
   amount_planned: number;
+  carryover_enabled: boolean;
   notes: Nullable<string>;
   week_start: string;
   created_at: string;
@@ -455,7 +456,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     supabase
       .from('budgets_weekly')
       .select(
-        'id,user_id,category_id,amount_planned:planned_amount,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
+        'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
       )
       .eq('user_id', userId)
       .gte('week_start', start)
@@ -509,6 +510,9 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     const planned = Number(row.amount_planned ?? 0);
     const spent = weeklySpentMap.get(key) ?? 0;
     const remaining = planned - spent;
+    const carryoverEnabled = typeof row.carryover_enabled === 'boolean'
+      ? row.carryover_enabled
+      : Boolean(row.carryover_enabled);
 
     if (!summaryAccumulator.has(row.category_id)) {
       summaryAccumulator.set(row.category_id, {
@@ -525,6 +529,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
 
     return {
       ...row,
+      carryover_enabled: carryoverEnabled,
       week_end: weekEnd,
       spent,
       remaining,
@@ -559,6 +564,7 @@ export interface UpsertWeeklyBudgetInput {
   category_id: UUID;
   week_start: string; // YYYY-MM-DD
   amount_planned: number;
+  carryover_enabled: boolean;
   notes?: Nullable<string>;
 }
 
@@ -585,6 +591,7 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
     category_id: input.category_id,
     planned_amount: Number(input.amount_planned ?? 0),
     week_start: normalizeWeekStart(input.week_start),
+    carryover_enabled: Boolean(input.carryover_enabled),
     notes: input.notes ?? null,
   };
 

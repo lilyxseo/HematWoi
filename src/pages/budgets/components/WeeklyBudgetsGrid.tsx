@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { Eye, NotebookPen, Pencil, Sparkles, Star, Trash2 } from 'lucide-react';
+import { Eye, NotebookPen, Pencil, RefreshCcw, Sparkles, Star, Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../../lib/format';
 import type { WeeklyBudgetWithSpent } from '../../../lib/budgetApi';
 
@@ -11,6 +11,7 @@ interface WeeklyBudgetsGridProps {
   onEdit: (row: WeeklyBudgetWithSpent) => void;
   onDelete: (row: WeeklyBudgetWithSpent) => void;
   onViewTransactions: (row: WeeklyBudgetWithSpent) => void;
+  onToggleCarryover: (row: WeeklyBudgetWithSpent, carryover: boolean) => void;
   onToggleHighlight: (row: WeeklyBudgetWithSpent) => void;
 }
 
@@ -77,6 +78,7 @@ export default function WeeklyBudgetsGrid({
   onEdit,
   onDelete,
   onViewTransactions,
+  onToggleCarryover,
   onToggleHighlight,
 }: WeeklyBudgetsGridProps) {
   if (loading) {
@@ -99,6 +101,7 @@ export default function WeeklyBudgetsGrid({
         const rawPercentage = planned > 0 ? (spent / planned) * 100 : spent > 0 ? 200 : 0;
         const displayPercentage = Math.max(0, Math.min(100, Math.round(rawPercentage)));
         const progressColor = getProgressColor(rawPercentage);
+        const carryoverEnabled = Boolean(row.carryover_enabled);
         const isHighlighted = highlightSet.has(String(row.id));
         const disableHighlight = !isHighlighted && limitReached;
 
@@ -150,6 +153,25 @@ export default function WeeklyBudgetsGrid({
                   <p className="text-xs text-muted">Target minggu ini</p>
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex items-center gap-2 rounded-full border border-border/60 bg-surface/70 px-3 py-1.5 text-[0.7rem] font-medium text-muted shadow-inner">
+                    <RefreshCcw className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Carryover</span>
+                    <span className="sm:hidden">CO</span>
+                    <span className="text-[0.7rem] uppercase tracking-widest text-muted/80">
+                      {carryoverEnabled ? 'Aktif' : 'Nonaktif'}
+                    </span>
+                    <label className="relative inline-flex h-5 w-10 cursor-pointer items-center">
+                      <input
+                        type="checkbox"
+                        checked={carryoverEnabled}
+                        onChange={(event) => onToggleCarryover(row, event.target.checked)}
+                        className="peer sr-only"
+                        aria-label={`Atur carryover untuk ${categoryName}`}
+                      />
+                      <span className="absolute inset-0 rounded-full bg-muted/30 transition peer-checked:bg-emerald-500/70 dark:bg-muted/40 dark:peer-checked:bg-emerald-500/60" />
+                      <span className="relative ml-[3px] h-3.5 w-3.5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5 dark:bg-zinc-900" />
+                    </label>
+                  </div>
                   <button
                     type="button"
                     onClick={() => onViewTransactions(row)}
