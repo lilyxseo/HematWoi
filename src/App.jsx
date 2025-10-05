@@ -13,6 +13,7 @@ import MainLayout from "./layout/MainLayout";
 import AppTopbar from "./layout/AppTopbar";
 import SettingsPanel from "./components/SettingsPanel";
 import BootGate from "./components/BootGate";
+import SmoothScrollRestoration from "./components/SmoothScrollRestoration";
 
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
@@ -180,14 +181,6 @@ function loadInitial() {
 function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
   const location = useLocation();
   const hideNav = location.pathname.startsWith("/add");
-
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    });
-
-    return () => cancelAnimationFrame(frame);
-  }, [location.pathname, location.search, location.hash]);
 
   return (
     <MainLayout
@@ -1080,6 +1073,7 @@ function AppShell({ prefs, setPrefs }) {
     <CategoryProvider catMeta={catMeta}>
       <BootGate>
         <>
+          <SmoothScrollRestoration />
           <Routes>
             <Route path="/auth" element={<AuthLogin />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
