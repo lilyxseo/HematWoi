@@ -420,6 +420,7 @@ function AppShell({ prefs, setPrefs }) {
     root.style.setProperty('--brand-soft', `hsl(${brand.h} ${brand.s}% ${softLightness}%)`);
     root.style.setProperty('--brand-ring', `hsl(${brand.h} ${brand.s}% ${ringLightness}%)`);
     root.style.setProperty('--brand', `hsl(${brand.h} ${brand.s}% ${brand.l}%)`);
+    root.style.setProperty('--accent', `hsl(${brand.h} ${brand.s}% ${brand.l}%)`);
 
     const useDarkForeground = brand.l > 65;
     root.style.setProperty(

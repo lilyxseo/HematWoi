@@ -87,6 +87,7 @@ const DEFAULT_WEEKLY_FORM: WeeklyBudgetFormValues = {
   category_id: '',
   amount_planned: 0,
   notes: '',
+  carryover_enabled: false,
 };
 
 export default function BudgetsPage() {
@@ -184,6 +185,7 @@ export default function BudgetsPage() {
         category_id: editingWeekly.category_id ?? '',
         amount_planned: Number(editingWeekly.amount_planned ?? 0),
         notes: editingWeekly.notes ?? '',
+        carryover_enabled: editingWeekly.carryover_enabled,
       };
     }
     return {
@@ -326,6 +328,7 @@ export default function BudgetsPage() {
         week_start: values.week_start,
         amount_planned: Number(values.amount_planned),
         notes: values.notes ? values.notes : undefined,
+        carryover_enabled: values.carryover_enabled,
       });
       setWeeklyModalOpen(false);
       setEditingWeekly(null);

@@ -64,6 +64,7 @@
     --brand-foreground: hsl(var(--color-primary-foreground));
     --brand-soft: hsl(var(--color-primary-soft));
     --brand-ring: hsl(var(--color-ring-primary));
+    --accent: var(--brand);
 
     --tx-expense: #f87171;
     --tx-income: #34d399;
