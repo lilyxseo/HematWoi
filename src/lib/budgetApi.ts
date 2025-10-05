@@ -130,6 +130,7 @@ export interface WeeklyBudgetRow {
   user_id: UUID;
   category_id: UUID;
   amount_planned: number;
+  carryover_enabled: boolean;
   notes: Nullable<string>;
   week_start: string;
   created_at: string;
@@ -270,6 +271,123 @@ function getWeekEndFromStart(weekStart: string): string {
   const startDate = parseIsoDate(weekStart);
   startDate.setUTCDate(startDate.getUTCDate() + 6);
   return formatIsoDateUTC(startDate);
+}
+
+const WEEK_IN_MS = 7 * 24 * 60 * 60 * 1000;
+
+function getPeriodBaseWeekStart(period: string): Date {
+  const { start } = getMonthRange(period);
+  const base = getWeekStartForDate(parseIsoDate(start));
+  return parseIsoDate(base);
+}
+
+function getWeekIndexInPeriod(period: string, weekStart: string): number | null {
+  try {
+    const base = getPeriodBaseWeekStart(period);
+    const current = parseIsoDate(weekStart);
+    const diff = current.getTime() - base.getTime();
+    if (diff < 0) return null;
+    const weeks = Math.round(diff / WEEK_IN_MS);
+    return weeks >= 0 ? weeks : null;
+  } catch (error) {
+    if (isDevelopment) {
+      console.warn('[HW] Failed to compute weekly carryover index', error);
+    }
+    return null;
+  }
+}
+
+function getWeekStartForPeriodIndex(period: string, index: number): string | null {
+  if (index < 0) return null;
+  try {
+    const base = getPeriodBaseWeekStart(period);
+    base.setUTCDate(base.getUTCDate() + index * 7);
+    return formatIsoDateUTC(base);
+  } catch (error) {
+    if (isDevelopment) {
+      console.warn('[HW] Failed to resolve week start for carryover', error);
+    }
+    return null;
+  }
+}
+
+async function ensureWeeklyCarryovers(
+  userId: string,
+  period: string,
+  range: { start: string; end: string }
+): Promise<void> {
+  const { start, end } = range;
+  const existingKeys = new Set<string>();
+
+  const currentResponse = await supabase
+    .from('budgets_weekly')
+    .select('category_id,week_start')
+    .eq('user_id', userId)
+    .gte('week_start', start)
+    .lt('week_start', end);
+
+  if (currentResponse.error) throw currentResponse.error;
+
+  for (const row of (currentResponse.data ?? []) as any[]) {
+    const categoryId = typeof row?.category_id === 'string' ? row.category_id : null;
+    const weekStart = typeof row?.week_start === 'string' ? row.week_start : null;
+    if (!categoryId || !weekStart) continue;
+    existingKeys.add(`${categoryId}|${weekStart}`);
+  }
+
+  const previousPeriod = getPreviousPeriod(period);
+  if (!previousPeriod) {
+    return;
+  }
+
+  const previousRange = getMonthRange(previousPeriod);
+  const previousResponse = await supabase
+    .from('budgets_weekly')
+    .select('category_id,planned_amount,notes,week_start,carryover_enabled')
+    .eq('user_id', userId)
+    .gte('week_start', previousRange.start)
+    .lt('week_start', previousRange.end);
+
+  if (previousResponse.error) throw previousResponse.error;
+
+  const payloads: Record<string, unknown>[] = [];
+
+  for (const row of (previousResponse.data ?? []) as any[]) {
+    const categoryId = typeof row?.category_id === 'string' ? row.category_id : null;
+    if (!categoryId) continue;
+    const carryoverEnabled = Boolean(row?.carryover_enabled);
+    if (!carryoverEnabled) continue;
+    const previousWeekStart = typeof row?.week_start === 'string' ? row.week_start : null;
+    if (!previousWeekStart) continue;
+    const weekIndex = getWeekIndexInPeriod(previousPeriod, previousWeekStart);
+    if (weekIndex == null) continue;
+    const targetWeekStart = getWeekStartForPeriodIndex(period, weekIndex);
+    if (!targetWeekStart) continue;
+    if (targetWeekStart < start || targetWeekStart >= end) continue;
+    const key = `${categoryId}|${targetWeekStart}`;
+    if (existingKeys.has(key)) continue;
+    existingKeys.add(key);
+    payloads.push({
+      user_id: userId,
+      category_id: categoryId,
+      planned_amount: Number(row?.planned_amount ?? 0),
+      week_start: targetWeekStart,
+      notes: typeof row?.notes === 'string' ? row.notes : null,
+      carryover_enabled: true,
+    });
+  }
+
+  if (!payloads.length) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from('budgets_weekly')
+    .upsert(payloads, { onConflict: 'user_id,category_id,week_start' });
+
+  if (error && isDevelopment) {
+    console.warn('[HW] Failed to carry over weekly budgets', error);
+  }
 }
 
 export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
@@ -451,11 +569,13 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   ensureAuth(userId);
   const { start, end } = getMonthRange(period);
 
+  await ensureWeeklyCarryovers(userId, period, { start, end });
+
   const [budgetsResponse, transactionsResponse] = await Promise.all([
     supabase
       .from('budgets_weekly')
       .select(
-        'id,user_id,category_id,amount_planned:planned_amount,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
+        'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
       )
       .eq('user_id', userId)
       .gte('week_start', start)
@@ -509,6 +629,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     const planned = Number(row.amount_planned ?? 0);
     const spent = weeklySpentMap.get(key) ?? 0;
     const remaining = planned - spent;
+    const carryoverEnabled = Boolean(row.carryover_enabled);
 
     if (!summaryAccumulator.has(row.category_id)) {
       summaryAccumulator.set(row.category_id, {
@@ -525,6 +646,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
 
     return {
       ...row,
+      carryover_enabled: carryoverEnabled,
       week_end: weekEnd,
       spent,
       remaining,
@@ -559,6 +681,7 @@ export interface UpsertWeeklyBudgetInput {
   category_id: UUID;
   week_start: string; // YYYY-MM-DD
   amount_planned: number;
+  carryover_enabled?: boolean;
   notes?: Nullable<string>;
 }
 
@@ -585,6 +708,7 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
     category_id: input.category_id,
     planned_amount: Number(input.amount_planned ?? 0),
     week_start: normalizeWeekStart(input.week_start),
+    carryover_enabled: Boolean(input.carryover_enabled),
     notes: input.notes ?? null,
   };
 
