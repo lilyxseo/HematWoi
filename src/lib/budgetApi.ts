@@ -455,7 +455,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     supabase
       .from('budgets_weekly')
       .select(
-        'id,user_id,category_id,amount_planned,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
+        'id,user_id,category_id,amount_planned:planned_amount,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
       )
       .eq('user_id', userId)
       .gte('week_start', start)
@@ -583,7 +583,7 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
   const payload: Record<string, unknown> = {
     user_id: userId,
     category_id: input.category_id,
-    amount_planned: Number(input.amount_planned ?? 0),
+    planned_amount: Number(input.amount_planned ?? 0),
     week_start: normalizeWeekStart(input.week_start),
     notes: input.notes ?? null,
   };
