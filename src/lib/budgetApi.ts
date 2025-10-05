@@ -158,9 +158,16 @@ export interface WeeklyBudgetCategorySummary {
   percentage: number;
 }
 
+export interface WeeklyBudgetPeriod {
+  start: string;
+  end: string;
+  sequence: number;
+}
+
 export interface WeeklyBudgetsResult {
   rows: WeeklyBudgetWithSpent[];
   summaryByCategory: WeeklyBudgetCategorySummary[];
+  weeks: WeeklyBudgetPeriod[];
 }
 
 export type HighlightBudgetType = 'monthly' | 'weekly';
@@ -707,9 +714,29 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
 
   summaryByCategory.sort((a, b) => a.category_name.localeCompare(b.category_name));
 
+  const weeks: WeeklyBudgetPeriod[] = [];
+  {
+    const periodEndDate = parseIsoDate(end);
+    const firstWeekDate = parseIsoDate(firstWeekStart);
+    for (
+      let index = 0, cursor = new Date(firstWeekDate);
+      cursor < periodEndDate;
+      index += 1, cursor.setUTCDate(cursor.getUTCDate() + 7)
+    ) {
+      const weekStart = formatIsoDateUTC(cursor);
+      const weekEnd = getWeekEndFromStart(weekStart);
+      weeks.push({
+        start: weekStart,
+        end: weekEnd,
+        sequence: index + 1,
+      });
+    }
+  }
+
   return {
     rows,
     summaryByCategory,
+    weeks,
   };
 }
 

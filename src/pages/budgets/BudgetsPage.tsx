@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { CalendarDays, CalendarRange, Plus, RefreshCw } from 'lucide-react';
+import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Plus, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
@@ -99,6 +99,21 @@ const DEFAULT_WEEKLY_FORM: WeeklyBudgetFormValues = {
   notes: '',
 };
 
+const WEEK_RANGE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'short',
+});
+
+function formatWeekRangeLabel(start: string, end: string): string {
+  try {
+    const startLabel = WEEK_RANGE_FORMATTER.format(new Date(`${start}T00:00:00.000Z`));
+    const endLabel = WEEK_RANGE_FORMATTER.format(new Date(`${end}T00:00:00.000Z`));
+    return `${startLabel} – ${endLabel}`;
+  } catch (error) {
+    return `${start} – ${end}`;
+  }
+}
+
 export default function BudgetsPage() {
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -114,6 +129,7 @@ export default function BudgetsPage() {
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [highlightSelections, setHighlightSelections] = useState<HighlightBudgetSelection[]>([]);
   const [highlightLoading, setHighlightLoading] = useState(true);
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string | null>(null);
 
   const monthly = useBudgets(period);
   const weekly = useWeeklyBudgets(period);
@@ -174,6 +190,38 @@ export default function BudgetsPage() {
     }
   }, [tab, weekly.error, addToast]);
 
+  useEffect(() => {
+    setSelectedWeekStart(null);
+  }, [period]);
+
+  useEffect(() => {
+    if (weekly.weeks.length === 0) {
+      setSelectedWeekStart(null);
+      return;
+    }
+    setSelectedWeekStart((prev) => {
+      if (prev && weekly.weeks.some((week) => week.start === prev)) {
+        return prev;
+      }
+
+      const [yearStr, monthStr] = period.split('-');
+      const parsedYear = Number.parseInt(yearStr ?? '', 10);
+      const parsedMonth = Number.parseInt(monthStr ?? '', 10) - 1;
+      const fallbackNow = new Date();
+      const reference = Number.isFinite(parsedYear) && Number.isFinite(parsedMonth)
+        ? new Date(Date.UTC(parsedYear, parsedMonth, 1))
+        : new Date(Date.UTC(fallbackNow.getUTCFullYear(), fallbackNow.getUTCMonth(), 1));
+      const referencePeriod = `${reference.getUTCFullYear()}-${`${reference.getUTCMonth() + 1}`.padStart(2, '0')}`;
+      const currentPeriod = getCurrentPeriod();
+      const targetIso = referencePeriod === currentPeriod
+        ? new Date().toISOString().slice(0, 10)
+        : reference.toISOString().slice(0, 10);
+
+      const preferred = weekly.weeks.find((week) => targetIso >= week.start && targetIso <= week.end);
+      return preferred?.start ?? weekly.weeks[0]?.start ?? prev;
+    });
+  }, [period, weekly.weeks]);
+
   const monthlyInitialValues = useMemo<BudgetFormValues>(() => {
     if (editingMonthly) {
       return {
@@ -197,11 +245,12 @@ export default function BudgetsPage() {
         notes: editingWeekly.notes ?? '',
       };
     }
+    const fallbackWeek = selectedWeekStart ?? getFirstWeekStartOfPeriod(period);
     return {
       ...DEFAULT_WEEKLY_FORM,
-      week_start: getFirstWeekStartOfPeriod(period),
+      week_start: fallbackWeek,
     };
-  }, [editingWeekly, period]);
+  }, [editingWeekly, period, selectedWeekStart]);
 
   const highlightedMonthlyIds = useMemo(() => {
     return new Set(
@@ -218,6 +267,87 @@ export default function BudgetsPage() {
         .map((item) => String(item.budget_id))
     );
   }, [highlightSelections]);
+
+  const selectedWeek = useMemo(() => {
+    if (!selectedWeekStart) return null;
+    return weekly.weeks.find((week) => week.start === selectedWeekStart) ?? null;
+  }, [selectedWeekStart, weekly.weeks]);
+
+  const weeklyRowsForDisplay = useMemo(() => {
+    if (!selectedWeek) return weekly.rows;
+    return weekly.rows.filter((row) => row.week_start === selectedWeek.start);
+  }, [weekly.rows, selectedWeek]);
+
+  const weekSelector = useMemo(() => {
+    if (weekly.weeks.length === 0) {
+      return null;
+    }
+    const currentIndex = selectedWeek
+      ? weekly.weeks.findIndex((week) => week.start === selectedWeek.start)
+      : -1;
+    const total = weekly.weeks.length;
+    const hasPrev = currentIndex > 0;
+    const hasNext = currentIndex >= 0 && currentIndex < total - 1;
+
+    const goTo = (offset: number) => {
+      const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+      const next = weekly.weeks[baseIndex + offset];
+      if (next) {
+        setSelectedWeekStart(next.start);
+      }
+    };
+
+    const selectValue = selectedWeekStart ?? weekly.weeks[0]?.start ?? '';
+
+    return (
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-surface/80 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-text">
+              {selectedWeek ? `Minggu ke-${selectedWeek.sequence} dari ${total}` : 'Pilih minggu'}
+            </p>
+            {selectedWeek ? (
+              <p className="text-xs text-muted">
+                Periode {formatWeekRangeLabel(selectedWeek.start, selectedWeek.end)}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => goTo(-1)}
+              disabled={!hasPrev}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-surface/70 text-muted shadow-sm transition hover:-translate-y-0.5 hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Minggu sebelumnya"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <select
+              value={selectValue}
+              onChange={(event) => setSelectedWeekStart(event.target.value || null)}
+              className="h-9 min-w-[10rem] rounded-xl border border-border/60 bg-surface/90 px-3 text-sm font-medium text-text shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              aria-label="Pilih minggu"
+            >
+              {weekly.weeks.map((week) => (
+                <option key={week.start} value={week.start}>
+                  {`Minggu ke-${week.sequence} (${formatWeekRangeLabel(week.start, week.end)})`}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => goTo(1)}
+              disabled={!hasNext}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-surface/70 text-muted shadow-sm transition hover:-translate-y-0.5 hover:text-text disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Minggu selanjutnya"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }, [selectedWeek, selectedWeekStart, weekly.weeks]);
 
   const highlightLimitReached = !highlightLoading && highlightSelections.length >= 2;
 
@@ -499,6 +629,7 @@ export default function BudgetsPage() {
           <div className="space-y-4">
             <h2 className="text-base font-semibold text-text">Total Weekly (Month-to-date)</h2>
             <MonthlyFromWeeklySummary summary={weekly.summaryByCategory} loading={weeklyLoading} />
+            {weekSelector}
           </div>
         </Section>
       )}
@@ -527,7 +658,7 @@ export default function BudgetsPage() {
       ) : (
         <Section>
           <WeeklyBudgetsGrid
-            rows={weekly.rows}
+            rows={weeklyRowsForDisplay}
             loading={weeklyLoading}
             highlightedIds={highlightedWeeklyIds}
             highlightLimitReached={highlightLimitReached}
