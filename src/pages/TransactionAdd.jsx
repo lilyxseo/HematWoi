@@ -66,7 +66,7 @@ const SEGMENTED_CLASS =
 const SEGMENT_ITEM_CLASS =
   'flex items-center gap-2 rounded-xl px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
-const QUICK_AMOUNT_OPTIONS = [5000, 10000, 50000, 100000, 500000];
+const QUICK_AMOUNT_OPTIONS = [1000, 5000, 10000, 50000, 100000, 500000];
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
