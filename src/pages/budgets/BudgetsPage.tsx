@@ -35,6 +35,15 @@ const TABS = [
 
 type TabValue = (typeof TABS)[number]['value'];
 
+type ViewTransactionsParams = {
+  categoryId?: string | null;
+  categoryType?: 'income' | 'expense' | null;
+  range: 'month' | 'custom';
+  month?: string;
+  start?: string;
+  end?: string;
+};
+
 function formatPeriod(date: Date): string {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
@@ -359,14 +368,36 @@ export default function BudgetsPage() {
     }
   };
 
-  const handleViewTransactions = (categoryId: string, week?: { start: string; end: string }) => {
+  const handleViewTransactions = ({
+    categoryId,
+    categoryType,
+    range,
+    month: monthParam,
+    start,
+    end,
+  }: ViewTransactionsParams) => {
     const params = new URLSearchParams();
-    params.set('category', categoryId);
-    params.set('period', period);
-    if (week) {
-      params.set('week_start', week.start);
-      params.set('week_end', week.end);
+    params.set('range', range);
+
+    if (range === 'month') {
+      const monthValue = monthParam ?? period;
+      params.set('month', monthValue);
+      params.delete('start');
+      params.delete('end');
+    } else {
+      if (start) params.set('start', start);
+      if (end) params.set('end', end);
+      params.delete('month');
     }
+
+    if (categoryId) {
+      params.set('categories', categoryId);
+    }
+
+    if (categoryType === 'income' || categoryType === 'expense') {
+      params.set('type', categoryType);
+    }
+
     navigate(`/transactions?${params.toString()}`);
   };
 
@@ -482,7 +513,14 @@ export default function BudgetsPage() {
             onEdit={handleEditMonthly}
             onDelete={handleDeleteMonthly}
             onToggleCarryover={handleToggleCarryover}
-            onViewTransactions={(row) => handleViewTransactions(row.category_id ?? '', undefined)}
+            onViewTransactions={(row) =>
+              handleViewTransactions({
+                categoryId: row.category_id,
+                categoryType: row.category?.type ?? null,
+                range: 'month',
+                month: row.period_month?.slice(0, 7) ?? period,
+              })
+            }
             onToggleHighlight={(row) => handleToggleHighlight('monthly', row.id)}
           />
         </Section>
@@ -496,7 +534,13 @@ export default function BudgetsPage() {
             onEdit={handleEditWeekly}
             onDelete={handleDeleteWeekly}
             onViewTransactions={(row) =>
-              handleViewTransactions(row.category_id ?? '', { start: row.week_start, end: row.week_end })
+              handleViewTransactions({
+                categoryId: row.category_id,
+                categoryType: row.category?.type ?? null,
+                range: 'custom',
+                start: row.week_start,
+                end: row.week_end,
+              })
             }
             onToggleCarryover={handleToggleWeeklyCarryover}
             onToggleHighlight={(row) => handleToggleHighlight('weekly', row.id)}
