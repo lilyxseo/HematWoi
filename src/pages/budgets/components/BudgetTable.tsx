@@ -7,6 +7,7 @@ import {
   Pencil,
   RefreshCcw,
   Sparkles,
+  Star,
   Trash2,
 } from 'lucide-react';
 import { formatCurrency } from '../../../lib/format';
@@ -18,6 +19,8 @@ interface BudgetTableProps {
   onEdit: (row: BudgetWithSpent) => void;
   onDelete: (row: BudgetWithSpent) => void;
   onToggleCarryover: (row: BudgetWithSpent, carryover: boolean) => void;
+  onToggleHighlight: (row: BudgetWithSpent) => void;
+  isHighlighted: (id: string) => boolean;
 }
 
 const CARD_WRAPPER_CLASS = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3';
@@ -63,7 +66,15 @@ function EmptyState() {
   );
 }
 
-export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleCarryover }: BudgetTableProps) {
+export default function BudgetTable({
+  rows,
+  loading,
+  onEdit,
+  onDelete,
+  onToggleCarryover,
+  onToggleHighlight,
+  isHighlighted,
+}: BudgetTableProps) {
   if (loading) {
     return <LoadingCards />;
   }
@@ -115,6 +126,7 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
         const categoryName = row.category?.name ?? 'Tanpa kategori';
         const categoryInitial = categoryName.trim().charAt(0).toUpperCase() || 'B';
         const StatusIcon = status.icon;
+        const highlighted = isHighlighted(row.id);
 
         return (
           <article key={row.id} className={CARD_CLASS}>
@@ -167,6 +179,19 @@ export default function BudgetTable({ rows, loading, onEdit, onDelete, onToggleC
                       <span className="relative ml-[3px] h-3.5 w-3.5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5 dark:bg-zinc-900" />
                     </label>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => onToggleHighlight(row)}
+                    className={clsx(
+                      'inline-flex h-9 w-9 items-center justify-center rounded-xl border bg-surface/80 text-muted shadow-sm transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                      highlighted
+                        ? 'border-amber-400/60 text-amber-500 hover:text-amber-500'
+                        : 'border-border/60 hover:text-text'
+                    )}
+                    aria-label={highlighted ? `Hapus highlight ${categoryName}` : `Highlight ${categoryName}`}
+                  >
+                    <Star className={clsx('h-4 w-4', highlighted ? 'fill-current' : undefined)} aria-hidden="true" />
+                  </button>
                   <button
                     type="button"
                     onClick={() => onEdit(row)}
