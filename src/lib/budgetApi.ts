@@ -643,6 +643,67 @@ export async function deleteWeeklyBudget(id: UUID): Promise<void> {
   if (error) throw error;
 }
 
+async function removeMissingHighlightSelections(
+  userId: string,
+  selections: HighlightBudgetSelection[]
+): Promise<HighlightBudgetSelection[]> {
+  if (selections.length === 0) {
+    return selections;
+  }
+
+  const monthlyIds = selections
+    .filter((selection) => selection.budget_type === 'monthly')
+    .map((selection) => selection.budget_id);
+  const weeklyIds = selections
+    .filter((selection) => selection.budget_type === 'weekly')
+    .map((selection) => selection.budget_id);
+
+  const missingIds = new Set<string>();
+
+  if (monthlyIds.length > 0) {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('id')
+      .eq('user_id', userId)
+      .in('id', monthlyIds);
+    if (error) throw error;
+    const existing = new Set((data ?? []).map((row) => String(row.id)));
+    for (const selection of selections) {
+      if (selection.budget_type === 'monthly' && !existing.has(String(selection.budget_id))) {
+        missingIds.add(String(selection.id));
+      }
+    }
+  }
+
+  if (weeklyIds.length > 0) {
+    const { data, error } = await supabase
+      .from('budgets_weekly')
+      .select('id')
+      .eq('user_id', userId)
+      .in('id', weeklyIds);
+    if (error) throw error;
+    const existing = new Set((data ?? []).map((row) => String(row.id)));
+    for (const selection of selections) {
+      if (selection.budget_type === 'weekly' && !existing.has(String(selection.budget_id))) {
+        missingIds.add(String(selection.id));
+      }
+    }
+  }
+
+  if (missingIds.size === 0) {
+    return selections;
+  }
+
+  const { error: deleteError } = await supabase
+    .from('user_highlight_budgets')
+    .delete()
+    .eq('user_id', userId)
+    .in('id', Array.from(missingIds));
+  if (deleteError) throw deleteError;
+
+  return selections.filter((selection) => !missingIds.has(String(selection.id)));
+}
+
 async function fetchHighlightSelections(userId: string): Promise<HighlightBudgetSelection[]> {
   const { data, error } = await supabase
     .from('user_highlight_budgets')
@@ -650,7 +711,8 @@ async function fetchHighlightSelections(userId: string): Promise<HighlightBudget
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
   if (error) throw error;
-  return (data ?? []) as HighlightBudgetSelection[];
+  const selections = (data ?? []) as HighlightBudgetSelection[];
+  return removeMissingHighlightSelections(userId, selections);
 }
 
 export async function listHighlightBudgets(): Promise<HighlightBudgetSelection[]> {
