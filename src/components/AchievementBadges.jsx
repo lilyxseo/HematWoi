@@ -157,24 +157,29 @@ export default function AchievementBadges({
   const badges = [];
   const balance = stats?.balance ?? 0;
   if (balance >= 500000) {
+    const formattedBalance = toRupiah(balance);
     badges.push({
       id: "saving",
       icon: <Star className="h-4 w-4 text-yellow-500" />,
-      text: `Badge Hemat ${toRupiah(balance)} bulan ini 🎉`,
+      title: "Penjaga Tabungan",
+      description: `Saldo tabunganmu menyentuh ${formattedBalance} bulan ini. Selamat menjaga konsistensi!`,
     });
   }
   if (target && balance >= target) {
+    const formattedTarget = toRupiah(target);
     badges.push({
       id: "target",
       icon: <Target className="h-4 w-4 text-success" />,
-      text: "Target tabungan tercapai 🎯",
+      title: "Target Tuntas",
+      description: `Kamu sukses mencapai target tabungan sebesar ${formattedTarget}. Rayakan kemenangan kecil ini!`,
     });
   }
   if (streak >= 3) {
     badges.push({
       id: "streak",
       icon: <Award className="h-4 w-4 text-orange-500" />,
-      text: `Streak ${streak} hari 🔥`,
+      title: "Rantai Kebiasaan",
+      description: `Kedisiplinanmu terjaga ${streak} hari berturut-turut. Terus pertahankan ritme hebat ini!`,
     });
   }
   const currentMonthKey = getCurrentMonthKey();
@@ -194,12 +199,12 @@ export default function AchievementBadges({
       null
     );
     if (topCategory) {
+      const formattedTopSpend = toRupiah(topCategory.total);
       badges.push({
         id: "top-category",
         icon: <Flame className="h-4 w-4 text-destructive" />,
-        text: `Pengeluaran terbesar ada di kategori ${topCategory.name} sebesar ${toRupiah(
-          topCategory.total
-        )}. Yuk cek lagi kebutuhannya!`,
+        title: `Pengamat ${topCategory.name}`,
+        description: `Kategori ini menyerap ${formattedTopSpend} dari anggaranmu bulan ini. Kamu layak dapat penghargaan karena tetap waspada!`,
       });
     }
 
@@ -211,7 +216,8 @@ export default function AchievementBadges({
       badges.push({
         id: "favorite-category",
         icon: <Sparkles className="h-4 w-4 text-brand" />,
-        text: `Kategori favoritmu bulan ini adalah ${favoriteCategory.name} dengan ${favoriteCategory.count} transaksi.`,
+        title: "Kategori Andalan",
+        description: `Kamu paling sering bertransaksi di ${favoriteCategory.name} sebanyak ${favoriteCategory.count} kali. Pintar mengelola kebutuhan utama!`,
       });
     }
 
@@ -225,10 +231,12 @@ export default function AchievementBadges({
       .sort((a, b) => b.drop - a.drop)[0];
 
     if (bestImprovement) {
+      const categoryName = bestImprovement.cat.name;
       badges.push({
         id: "category-improvement",
         icon: <Leaf className="h-4 w-4 text-success" />,
-        text: `Pengeluaran ${bestImprovement.cat.name} turun ${bestImprovement.drop}% dibanding bulan lalu. Pertahankan!`,
+        title: "Penghematan Terbaik",
+        description: `Pengeluaran ${categoryName} turun ${bestImprovement.drop}% dibanding bulan lalu. Salut atas kerja kerasmu!`,
       });
     }
 
@@ -239,7 +247,8 @@ export default function AchievementBadges({
       badges.push({
         id: "no-spend-streak",
         icon: <MoonStar className="h-4 w-4 text-indigo-500" />,
-        text: `Ada ${noSpendStreak} hari berturut-turut tanpa pengeluaran bulan ini. Good job!`,
+        title: "Malam Tenang",
+        description: `Ada ${noSpendStreak} hari berturut-turut tanpa pengeluaran bulan ini. Disiplinmu luar biasa!`,
       });
     }
   }
@@ -258,7 +267,10 @@ export default function AchievementBadges({
             className="flex items-center gap-2 rounded bg-surface-2 p-2 text-sm"
           >
             {b.icon}
-            <span className="line-clamp-2">{b.text}</span>
+            <div className="space-y-1">
+              <p className="font-medium leading-none">{b.title}</p>
+              <p className="text-xs text-muted line-clamp-2">{b.description}</p>
+            </div>
           </li>
         ))}
       </ul>
