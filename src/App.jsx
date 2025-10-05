@@ -798,6 +798,7 @@ function AppShell({ prefs, setPrefs }) {
       : false;
     speak({
       category,
+      title: tx.title || tx.notes || tx.note || "",
       amount,
       type: tx.type,
       currency: tx.currency || prefs.currency || "IDR",
