@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { CalendarDays, PiggyBank } from 'lucide-react';
 import type { ExpenseCategory } from '../../../lib/budgetApi';
 
 export interface WeeklyBudgetFormValues {
@@ -194,18 +193,13 @@ export default function WeeklyBudgetFormModal({
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
               Minggu mulai
-              <div className="relative">
-                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
-                  <CalendarDays className="h-4 w-4" />
-                </span>
-                <input
-                  type="date"
-                  value={values.week_start}
-                  onChange={(event) => handleWeekChange(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                  required
-                />
-              </div>
+              <input
+                type="date"
+                value={values.week_start}
+                onChange={(event) => handleWeekChange(event.target.value)}
+                className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                required
+              />
               {weekLabel ? (
                 <span className="text-xs text-muted">Periode Senin–Minggu: {weekLabel}</span>
               ) : null}
@@ -214,31 +208,26 @@ export default function WeeklyBudgetFormModal({
 
             <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
               Kategori
-              <div className="relative">
-                <span className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-zinc-400">
-                  <PiggyBank className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <select
-                  value={values.category_id}
-                  onChange={(event) => handleChange('category_id', event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border bg-surface pl-11 pr-10 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                  required
-                  disabled={categories.length === 0}
-                >
-                  <option value="" disabled>
-                    Pilih kategori
-                  </option>
-                  {groupedCategories.map(([groupName, groupCategories]) => (
-                    <optgroup key={groupName} label={groupName}>
-                      {groupCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
-              </div>
+              <select
+                value={values.category_id}
+                onChange={(event) => handleChange('category_id', event.target.value)}
+                className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                required
+                disabled={categories.length === 0}
+              >
+                <option value="" disabled>
+                  Pilih kategori
+                </option>
+                {groupedCategories.map(([groupName, groupCategories]) => (
+                  <optgroup key={groupName} label={groupName}>
+                    {groupCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
               {errors.category_id ? <span className="text-xs font-medium text-rose-500">{errors.category_id}</span> : null}
             </label>
           </div>
