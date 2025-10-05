@@ -99,7 +99,7 @@ export default function WeeklyBudgetsGrid({
         const rawPercentage = planned > 0 ? (spent / planned) * 100 : spent > 0 ? 200 : 0;
         const displayPercentage = Math.max(0, Math.min(100, Math.round(rawPercentage)));
         const progressColor = getProgressColor(rawPercentage);
-        const isHighlighted = highlightSet.has(row.id);
+        const isHighlighted = highlightSet.has(String(row.id));
         const disableHighlight = !isHighlighted && limitReached;
 
         const categoryType = row.category?.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
