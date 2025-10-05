@@ -451,6 +451,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   const userId = await getCurrentUserId();
   ensureAuth(userId);
   const { start, end } = getMonthRange(period);
+  const firstWeekStart = getWeekStartForDate(parseIsoDate(start));
 
   const [budgetsResponse, transactionsResponse] = await Promise.all([
     supabase
@@ -459,7 +460,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
         'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
       )
       .eq('user_id', userId)
-      .gte('week_start', start)
+      .gte('week_start', firstWeekStart)
       .lt('week_start', end)
       .order('week_start', { ascending: true })
       .order('created_at', { ascending: false }),
@@ -470,7 +471,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
       .is('deleted_at', null)
       .eq('type', 'expense')
       .is('to_account_id', null)
-      .gte('date', start)
+      .gte('date', firstWeekStart)
       .lt('date', end),
   ]);
 

@@ -152,7 +152,8 @@ export default function WeeklyBudgetFormModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const nextValues = { ...values, notes: values.notes.trim() };
+    const noteText = typeof values.notes === 'string' ? values.notes.trim() : '';
+    const nextValues = { ...values, notes: noteText };
     const validation = validate(nextValues);
     setErrors(validation);
     if (Object.keys(validation).length > 0) return;
