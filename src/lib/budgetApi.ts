@@ -314,6 +314,17 @@ export function getFirstWeekStartOfPeriod(period: string): string {
   }
 }
 
+export function getWeeklyTransactionEndExclusive(period: string): string {
+  const { end } = getMonthRange(period);
+  const lastDayOfPeriod = parseIsoDate(end);
+  lastDayOfPeriod.setUTCDate(lastDayOfPeriod.getUTCDate() - 1);
+  const lastWeekStart = getWeekStartForDate(lastDayOfPeriod);
+  const lastWeekEnd = getWeekEndFromStart(lastWeekStart);
+  const exclusive = parseIsoDate(lastWeekEnd);
+  exclusive.setUTCDate(exclusive.getUTCDate() + 1);
+  return formatIsoDateUTC(exclusive);
+}
+
 interface WeeklyCarryoverEntry {
   planned_amount: number;
   carryover_enabled: boolean;
@@ -633,6 +644,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   ensureAuth(userId);
   const { start, end } = getMonthRange(period);
   const firstWeekStart = getFirstWeekStartOfPeriod(period);
+  const transactionRangeEndExclusive = getWeeklyTransactionEndExclusive(period);
 
   const carryoverRangeStartDate = parseIsoDate(firstWeekStart);
   carryoverRangeStartDate.setUTCDate(carryoverRangeStartDate.getUTCDate() - 7);
@@ -659,7 +671,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     .eq('type', 'expense')
     .is('to_account_id', null)
     .gte('date', firstWeekStart)
-    .lt('date', end);
+    .lt('date', transactionRangeEndExclusive);
 
   const [budgetsResponse, transactionsResponse] = await Promise.all([budgetsPromise, transactionsPromise]);
 
