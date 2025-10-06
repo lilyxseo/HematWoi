@@ -246,8 +246,8 @@ export default function AuthLogin() {
             </ul>
           </section>
 
-          <section className="flex flex-1 items-center justify-center">
-            <div className="w-full max-w-2xl space-y-6">
+          <section className="flex w-full flex-1 items-center justify-center lg:items-start lg:justify-start">
+            <div className="w-full max-w-2xl space-y-6 lg:max-w-3xl xl:max-w-4xl">
               {sessionError ? (
                 <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
                   {sessionError}
@@ -261,8 +261,8 @@ export default function AuthLogin() {
               {checking ? (
                 skeleton
               ) : (
-                <div className="grid gap-4 md:grid-cols-5">
-                  <div className="md:col-span-3">
+                <div className="grid gap-4 md:grid-cols-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:gap-6">
+                  <div className="md:col-span-3 lg:col-span-1">
                     <LoginCard
                       defaultIdentifier={prefilledIdentifier}
                       onSuccess={handleSuccess}
@@ -270,7 +270,7 @@ export default function AuthLogin() {
                       onPasswordSignInError={clearEmailSignInMarker}
                     />
                   </div>
-                  <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm md:col-span-2">
+                  <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm md:col-span-2 md:self-stretch lg:col-span-1">
                     <div className="space-y-4">
                       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                         <svg className="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
