@@ -673,7 +673,9 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     if (!categoryId) continue;
     const amount = Number(row?.amount ?? 0);
     if (!Number.isFinite(amount)) continue;
-    const dateValue = typeof row?.date === 'string' ? row.date : null;
+    const rawDate = typeof row?.date === 'string' ? row.date : null;
+    if (!rawDate) continue;
+    const dateValue = rawDate.length >= 10 ? rawDate.slice(0, 10) : null;
     if (!dateValue) continue;
     const list = transactionsByCategory.get(categoryId) ?? [];
     list.push({ date: dateValue, amount });
