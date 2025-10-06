@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 import { getCurrentUserId, getUserToken } from './session';
 import { listCategories as listAllCategories } from './api-categories';
 import { buildSupabaseHeaders, createRestUrl } from './supabaseRest';
+import { getFirstWeekStartOfPeriod } from './weekPeriods';
 
 type UUID = string;
 
@@ -295,9 +296,15 @@ async function ensureWeeklyCarryover(
 
   const normalizedStart = getWeekStartForDate(parseIsoDate(rangeStart));
   const startDate = parseIsoDate(normalizedStart);
-  const endDate = parseIsoDate(rangeEnd);
+  const rangeEndDate = parseIsoDate(rangeEnd);
 
-  if (!(startDate < endDate)) {
+  const today = new Date();
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const currentWeekStart = parseIsoDate(getWeekStartForDate(todayUtc));
+  currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() + 7);
+  const effectiveEndDate = currentWeekStart < rangeEndDate ? currentWeekStart : rangeEndDate;
+
+  if (!(startDate < effectiveEndDate)) {
     return;
   }
 
@@ -348,7 +355,7 @@ async function ensureWeeklyCarryover(
   }
 
   const weekStartDates: string[] = [];
-  for (let current = new Date(startDate); current < endDate; current.setUTCDate(current.getUTCDate() + 7)) {
+  for (let current = new Date(startDate); current < effectiveEndDate; current.setUTCDate(current.getUTCDate() + 7)) {
     weekStartDates.push(formatIsoDateUTC(current));
   }
 
@@ -369,7 +376,7 @@ async function ensureWeeklyCarryover(
 
       const nextWeekDate = parseIsoDate(weekStart);
       nextWeekDate.setUTCDate(nextWeekDate.getUTCDate() + 7);
-      if (!(nextWeekDate < endDate)) continue;
+      if (!(nextWeekDate < effectiveEndDate)) continue;
 
       const nextWeekStart = formatIsoDateUTC(nextWeekDate);
       let nextWeekBudgets = budgetsByWeek.get(nextWeekStart);
@@ -598,7 +605,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   const userId = await getCurrentUserId();
   ensureAuth(userId);
   const { start, end } = getMonthRange(period);
-  const firstWeekStart = getWeekStartForDate(parseIsoDate(start));
+  const firstWeekStart = getFirstWeekStartOfPeriod(period);
 
   const carryoverRangeStartDate = parseIsoDate(firstWeekStart);
   carryoverRangeStartDate.setUTCDate(carryoverRangeStartDate.getUTCDate() - 7);
@@ -658,7 +665,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   >();
 
   const rows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).map((row) => {
-    const rawWeekStart = row.week_start ?? start;
+    const rawWeekStart = row.week_start ?? firstWeekStart;
     const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
     const weekEnd = getWeekEndFromStart(normalizedWeekStart);
     const planned = Number(row.amount_planned ?? 0);
