@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HematWoi finance icon">
+  <rect width="512" height="512" rx="120" fill="#e5e9ff" />
+  <g fill="#4a56f0">
+    <rect x="132" y="248" width="56" height="144" rx="12" />
+    <rect x="212" y="212" width="56" height="180" rx="12" />
+    <rect x="292" y="172" width="56" height="220" rx="12" />
+    <rect x="372" y="124" width="56" height="268" rx="12" />
+    <path d="M96 348c7.5 0 14.7-3.2 23.4-11.7l80.5-77.6 62.2 48.4a24 24 0 0 0 29.4-1.4l65.2-55.5 31.8 32.2-24.9 1.1 56.3 56.3 5.8-82.8-22.2 20.5-42.9-43.4a24 24 0 0 0-33.6-.5l-66.8 56.8-61.8-48a24 24 0 0 0-31.3 2.5l-88 84.8A24 24 0 0 0 96 348z" />
+  </g>
+</svg>
