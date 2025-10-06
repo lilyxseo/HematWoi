@@ -8,6 +8,7 @@ import {
   type HighlightBudgetSelection,
 } from '../../lib/budgetApi';
 import { formatCurrency } from '../../lib/format';
+import { formatWeekSequenceLabel } from '../../lib/weekPeriods';
 import type { PeriodRange } from './PeriodPicker';
 
 interface DashboardHighlightedBudgetsProps {
@@ -145,7 +146,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         const weekMeta = weekly.weeks.find((week) => week.start === row.week_start);
         const subtitleParts: string[] = [];
         if (weekMeta) {
-          subtitleParts.push(`Minggu ke-${weekMeta.sequence}`);
+          subtitleParts.push(formatWeekSequenceLabel(weekMeta.sequence, weekMeta.start));
         }
         subtitleParts.push(formatWeekRange(row.week_start, row.week_end));
         return {

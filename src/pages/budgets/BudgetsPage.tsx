@@ -27,6 +27,7 @@ import {
   type HighlightBudgetSelection,
   type WeeklyBudgetWithSpent,
 } from '../../lib/budgetApi';
+import { formatWeekSequenceLabel, getFirstWeekStartOfPeriod } from '../../lib/weekPeriods';
 
 const TABS = [
   { value: 'monthly', label: 'Bulanan', icon: CalendarDays },
@@ -64,23 +65,6 @@ function toHumanReadable(period: string): string {
 function isoToPeriod(isoDate: string | null | undefined): string {
   if (!isoDate) return getCurrentPeriod();
   return isoDate.slice(0, 7);
-}
-
-function getFirstWeekStartOfPeriod(period: string): string {
-  const [yearStr, monthStr] = period.split('-');
-  const year = Number.parseInt(yearStr ?? '', 10);
-  const month = Number.parseInt(monthStr ?? '', 10);
-  if (!Number.isFinite(year) || !Number.isFinite(month)) {
-    return getCurrentPeriod();
-  }
-  const date = new Date(Date.UTC(year, month - 1, 1));
-  const day = date.getUTCDay();
-  const diff = day === 0 ? 6 : day - 1;
-  date.setUTCDate(date.getUTCDate() - diff);
-  const startYear = date.getUTCFullYear();
-  const startMonth = `${date.getUTCMonth() + 1}`.padStart(2, '0');
-  const startDay = `${date.getUTCDate()}`.padStart(2, '0');
-  return `${startYear}-${startMonth}-${startDay}`;
 }
 
 const DEFAULT_MONTHLY_FORM: BudgetFormValues = {
@@ -304,7 +288,9 @@ export default function BudgetsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <p className="text-sm font-semibold text-text">
-              {selectedWeek ? `Minggu ke-${selectedWeek.sequence} dari ${total}` : 'Pilih minggu'}
+              {selectedWeek
+                ? formatWeekSequenceLabel(selectedWeek.sequence, selectedWeek.start)
+                : 'Pilih minggu'}
             </p>
             {selectedWeek ? (
               <p className="text-xs text-muted">
@@ -330,7 +316,7 @@ export default function BudgetsPage() {
             >
               {weekly.weeks.map((week) => (
                 <option key={week.start} value={week.start}>
-                  {`Minggu ke-${week.sequence} (${formatWeekRangeLabel(week.start, week.end)})`}
+                  {`${formatWeekSequenceLabel(week.sequence, week.start)} (${formatWeekRangeLabel(week.start, week.end)})`}
                 </option>
               ))}
             </select>
