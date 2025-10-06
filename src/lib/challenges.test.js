@@ -7,14 +7,14 @@ describe("evaluateChallenge", () => {
   it("fails avoid challenge when violation occurs", () => {
     const challenge = {
       type: "avoid",
-      rules: { category: "Makan" },
+      rules: { category: "Makanan" },
       durationDays: 7,
       startDate: today,
       endDate: new Date(Date.now() + 6 * 86400000).toISOString(),
       status: "active",
     };
     const txs = [
-      { id: 1, category: "Makan", date: today, type: "expense", amount: 10000 },
+      { id: 1, category: "Makanan", date: today, type: "expense", amount: 10000 },
     ];
     const { status } = evaluateChallenge(challenge, txs, new Date());
     expect(status).toBe("failed");
