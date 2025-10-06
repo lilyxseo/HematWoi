@@ -162,6 +162,7 @@ export interface WeeklyBudgetPeriod {
   start: string;
   end: string;
   sequence: number;
+  label: string;
 }
 
 export interface WeeklyBudgetsResult {
@@ -266,6 +267,14 @@ function parseIsoDate(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);
 }
 
+function getWeekStartOnOrAfter(date: Date): string {
+  const result = new Date(date);
+  const day = result.getUTCDay();
+  const diff = (8 - day) % 7;
+  result.setUTCDate(result.getUTCDate() + diff);
+  return formatIsoDateUTC(result);
+}
+
 function getWeekStartForDate(date: Date): string {
   const result = new Date(date);
   const day = result.getUTCDay();
@@ -278,6 +287,31 @@ function getWeekEndFromStart(weekStart: string): string {
   const startDate = parseIsoDate(weekStart);
   startDate.setUTCDate(startDate.getUTCDate() + 6);
   return formatIsoDateUTC(startDate);
+}
+
+const WEEK_LABEL_MONTH_FORMATTER = new Intl.DateTimeFormat('id-ID', { month: 'long' });
+
+function formatWeeklyLabel(sequence: number, weekStart: string): string {
+  try {
+    const monthNameRaw = WEEK_LABEL_MONTH_FORMATTER.format(new Date(`${weekStart}T00:00:00.000Z`));
+    const monthName = monthNameRaw.charAt(0).toUpperCase() + monthNameRaw.slice(1);
+    return `Minggu ke ${sequence} bulan ${monthName}`;
+  } catch (error) {
+    return `Minggu ke ${sequence}`;
+  }
+}
+
+export function getFirstWeekStartOfPeriod(period: string): string {
+  try {
+    const monthStart = toMonthStart(period);
+    return getWeekStartOnOrAfter(parseIsoDate(monthStart));
+  } catch (error) {
+    const fallback = new Date();
+    const fallbackMonthStart = new Date(
+      Date.UTC(fallback.getUTCFullYear(), fallback.getUTCMonth(), 1)
+    );
+    return getWeekStartOnOrAfter(fallbackMonthStart);
+  }
 }
 
 interface WeeklyCarryoverEntry {
@@ -598,7 +632,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   const userId = await getCurrentUserId();
   ensureAuth(userId);
   const { start, end } = getMonthRange(period);
-  const firstWeekStart = getWeekStartForDate(parseIsoDate(start));
+  const firstWeekStart = getFirstWeekStartOfPeriod(period);
 
   const carryoverRangeStartDate = parseIsoDate(firstWeekStart);
   carryoverRangeStartDate.setUTCDate(carryoverRangeStartDate.getUTCDate() - 7);
@@ -725,10 +759,12 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     ) {
       const weekStart = formatIsoDateUTC(cursor);
       const weekEnd = getWeekEndFromStart(weekStart);
+      const sequence = index + 1;
       weeks.push({
         start: weekStart,
         end: weekEnd,
-        sequence: index + 1,
+        sequence,
+        label: formatWeeklyLabel(sequence, weekStart),
       });
     }
   }
