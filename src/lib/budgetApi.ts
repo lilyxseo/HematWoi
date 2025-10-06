@@ -289,16 +289,8 @@ function getWeekEndFromStart(weekStart: string): string {
   return formatIsoDateUTC(startDate);
 }
 
-const WEEK_LABEL_MONTH_FORMATTER = new Intl.DateTimeFormat('id-ID', { month: 'long' });
-
-function formatWeeklyLabel(sequence: number, weekStart: string): string {
-  try {
-    const monthNameRaw = WEEK_LABEL_MONTH_FORMATTER.format(new Date(`${weekStart}T00:00:00.000Z`));
-    const monthName = monthNameRaw.charAt(0).toUpperCase() + monthNameRaw.slice(1);
-    return `Minggu ke ${sequence} bulan ${monthName}`;
-  } catch (error) {
-    return `Minggu ke ${sequence}`;
-  }
+function formatWeeklyLabel(sequence: number): string {
+  return `Minggu ke ${sequence}`;
 }
 
 export function getFirstWeekStartOfPeriod(period: string): string {
@@ -776,7 +768,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
         start: weekStart,
         end: weekEnd,
         sequence,
-        label: formatWeeklyLabel(sequence, weekStart),
+        label: formatWeeklyLabel(sequence),
       });
     }
   }

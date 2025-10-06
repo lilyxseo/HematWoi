@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Plus, RefreshCw } from 'lucide-react';
+import {
+  CalendarDays,
+  CalendarRange,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';
@@ -288,11 +296,11 @@ export default function BudgetsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <p className="text-sm font-semibold text-text">
-              {selectedWeek ? selectedWeek.label : 'Pilih minggu'}
+              {selectedWeek ? `Minggu ke ${selectedWeek.sequence}` : 'Pilih minggu'}
             </p>
             {selectedWeek ? (
               <p className="text-xs text-muted">
-                {`Minggu ke ${selectedWeek.sequence} dari ${total} • Periode ${formatWeekRangeLabel(selectedWeek.start, selectedWeek.end)}`}
+                {formatWeekRangeLabel(selectedWeek.start, selectedWeek.end)}
               </p>
             ) : null}
           </div>
@@ -306,18 +314,21 @@ export default function BudgetsPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <select
-              value={selectValue}
-              onChange={(event) => setSelectedWeekStart(event.target.value || null)}
-              className="h-9 min-w-[10rem] rounded-xl border border-border/60 bg-surface/90 px-3 text-sm font-medium text-text shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              aria-label="Pilih minggu"
-            >
-              {weekly.weeks.map((week) => (
-                <option key={week.start} value={week.start}>
-                  {`${week.label} (${formatWeekRangeLabel(week.start, week.end)})`}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <select
+                value={selectValue}
+                onChange={(event) => setSelectedWeekStart(event.target.value || null)}
+                className="h-9 min-w-[10rem] appearance-none rounded-xl border border-border/60 bg-surface/90 px-3 pr-10 text-sm font-medium text-text shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                aria-label="Pilih minggu"
+              >
+                {weekly.weeks.map((week) => (
+                  <option key={week.start} value={week.start}>
+                    {`Minggu ke ${week.sequence} (${formatWeekRangeLabel(week.start, week.end)})`}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+            </div>
             <button
               type="button"
               onClick={() => goTo(1)}
