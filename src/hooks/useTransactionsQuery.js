@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getTransactionsSummary, listCategories } from "../lib/api";
 import { listTransactions } from "../lib/api-transactions";
@@ -118,6 +118,8 @@ export default function useTransactionsQuery() {
   const [summary, setSummary] = useState({ income: 0, expense: 0, net: 0 });
   const [categories, setCategories] = useState([]);
   const [refreshToken, setRefreshToken] = useState(0);
+  const cacheRef = useRef(new Map());
+  const summaryCacheRef = useRef(new Map());
 
   const filterKey = useMemo(
     () => JSON.stringify({ ...filter, page: 0 }),
@@ -141,22 +143,107 @@ export default function useTransactionsQuery() {
   useEffect(() => {
     let cancelled = false;
     const request = toRequestFilter(filter, page);
-    setLoading(true);
-    setError(null);
-    if (page === 1) {
-      setItems([]);
+    const cacheKey = filterKey;
+    const existingEntry = cacheRef.current.get(cacheKey);
+
+    const hasFullCache = Boolean(
+      existingEntry &&
+        Array.from({ length: page }, (_, index) => existingEntry.pages?.has(index + 1)).every(Boolean),
+    );
+
+    if (hasFullCache) {
+      const aggregated = [];
+      for (let index = 1; index <= page; index += 1) {
+        const pageRows = existingEntry.pages.get(index);
+        if (!pageRows) break;
+        aggregated.push(...pageRows);
+      }
+      setItems(aggregated);
+      if (typeof existingEntry.total === "number") {
+        setTotal(existingEntry.total);
+      }
+      setLoading(false);
+    } else {
+      if (existingEntry) {
+        const aggregated = [];
+        for (let index = 1; index < page; index += 1) {
+          const pageRows = existingEntry.pages.get(index);
+          if (!pageRows) break;
+          aggregated.push(...pageRows);
+        }
+        setItems(aggregated);
+        if (typeof existingEntry.total === "number") {
+          setTotal(existingEntry.total);
+        }
+      } else {
+        setItems([]);
+        setTotal(0);
+      }
+      setLoading(true);
     }
+
+    setError(null);
 
     listTransactions(request)
       .then(({ rows, total }) => {
         if (cancelled) return;
-        setTotal(total || 0);
-        setItems((prev) => {
-          if (page === 1) return rows;
-          const existing = prev.slice(0, (page - 1) * PAGE_SIZE);
-          return [...existing, ...(rows || [])];
+        const normalizedRows = Array.isArray(rows) ? rows : [];
+        const normalizedTotal =
+          typeof total === "number" && Number.isFinite(total)
+            ? total
+            : existingEntry?.total ?? normalizedRows.length + (page - 1) * PAGE_SIZE;
+
+        const previousEntry = cacheRef.current.get(cacheKey);
+        const nextPages = previousEntry ? new Map(previousEntry.pages) : new Map();
+        nextPages.set(page, normalizedRows);
+
+        cacheRef.current.set(cacheKey, {
+          total: normalizedTotal,
+          pages: nextPages,
+          timestamp: Date.now(),
         });
+
+        const aggregated = [];
+        for (let index = 1; index <= page; index += 1) {
+          const pageRows = nextPages.get(index);
+          if (!pageRows) break;
+          aggregated.push(...pageRows);
+        }
+
+        setTotal(normalizedTotal);
+        setItems(aggregated);
         setLoading(false);
+
+        if (normalizedTotal > page * PAGE_SIZE) {
+          const nextPage = page + 1;
+          if (!nextPages.has(nextPage)) {
+            const nextRequest = toRequestFilter(filter, nextPage);
+            listTransactions(nextRequest)
+              .then((result) => {
+                if (cancelled) return;
+                const currentEntry = cacheRef.current.get(cacheKey);
+                if (!currentEntry || currentEntry.pages.has(nextPage)) {
+                  return;
+                }
+                const nextRows = Array.isArray(result?.rows) ? result.rows : [];
+                const updatedPages = new Map(currentEntry.pages);
+                updatedPages.set(nextPage, nextRows);
+                cacheRef.current.set(cacheKey, {
+                  total:
+                    typeof result?.total === "number" && Number.isFinite(result.total)
+                      ? result.total
+                      : currentEntry.total,
+                  pages: updatedPages,
+                  timestamp: Date.now(),
+                });
+              })
+              .catch((prefetchError) => {
+                if (!cancelled) {
+                  console.error("Failed to prefetch transactions page", prefetchError);
+                }
+              });
+          }
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -171,11 +258,43 @@ export default function useTransactionsQuery() {
 
   useEffect(() => {
     let cancelled = false;
-    getTransactionsSummary(toRequestFilter(filter, 1))
+    const request = toRequestFilter(filter, 1);
+    const summaryKey = JSON.stringify(request);
+    const cachedSummary = summaryCacheRef.current.get(summaryKey);
+    if (cachedSummary) {
+      setSummary(cachedSummary);
+    }
+    getTransactionsSummary(request)
       .then((value) => {
-        if (!cancelled) setSummary(value);
+        if (cancelled) return;
+        const normalizedSummary =
+          value && typeof value === "object"
+            ? {
+                income: Number.isFinite(value.income)
+                  ? value.income
+                  : Number.isFinite(Number(value.income))
+                    ? Number(value.income)
+                    : 0,
+                expense: Number.isFinite(value.expense)
+                  ? value.expense
+                  : Number.isFinite(Number(value.expense))
+                    ? Number(value.expense)
+                    : 0,
+                net: Number.isFinite(value.net)
+                  ? value.net
+                  : Number.isFinite(Number(value.net))
+                    ? Number(value.net)
+                    : 0,
+              }
+            : { income: 0, expense: 0, net: 0 };
+        setSummary(normalizedSummary);
+        summaryCacheRef.current.set(summaryKey, normalizedSummary);
       })
-      .catch((err) => console.error("Failed to fetch summary", err));
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("Failed to fetch summary", err);
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -219,6 +338,9 @@ export default function useTransactionsQuery() {
 
   const refresh = useCallback(
     ({ keepPage = false } = {}) => {
+      cacheRef.current.delete(filterKey);
+      const summaryKey = JSON.stringify(toRequestFilter(filter, 1));
+      summaryCacheRef.current.delete(summaryKey);
       setRefreshToken((token) => token + 1);
       if (keepPage) {
         updateParams({}, page);
@@ -226,7 +348,7 @@ export default function useTransactionsQuery() {
         updateParams({}, 1);
       }
     },
-    [page, updateParams],
+    [filter, filterKey, page, updateParams],
   );
 
   const hasMore = items.length < total;
