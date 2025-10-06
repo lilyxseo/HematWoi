@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -23,6 +23,7 @@ import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
+import { useMoneyTalk } from '../context/MoneyTalkContext';
 import { listAccounts, listCategories } from '../lib/api';
 import { listCategoriesExpense } from '../lib/budgetApi';
 import { createTransaction } from '../lib/transactionsApi';
@@ -32,6 +33,7 @@ import {
   listTransactionTemplates,
 } from '../lib/transactionTemplatesApi';
 import { supabase } from '../lib/supabase';
+import { findMoneyTalkKeywordMatch } from '../lib/moneyTalkIntents';
 
 const TYPE_OPTIONS = [
   {
@@ -125,6 +127,7 @@ async function uploadReceipt(file, transactionId) {
 export default function TransactionAdd({ onAdd }) {
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const { speak } = useMoneyTalk();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState('expense');
@@ -147,6 +150,7 @@ export default function TransactionAdd({ onAdd }) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
+  const moneyTalkTokenRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -273,6 +277,7 @@ export default function TransactionAdd({ onAdd }) {
   const selectedAccount = accounts.find((item) => item.id === accountId);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
   const selectedCategory = categories.find((item) => item.id === categoryId);
+  const selectedCategoryName = selectedCategory?.name || '';
   const typeMeta = useMemo(
     () => TYPE_OPTIONS.find((option) => option.value === type),
     [type],
@@ -303,6 +308,52 @@ export default function TransactionAdd({ onAdd }) {
     ? 'Struk akan tersimpan bersama transaksi ini.'
     : 'Unggah struk untuk dokumentasi dan audit.';
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
+
+  useEffect(() => {
+    if (!trimmedTitle) {
+      moneyTalkTokenRef.current = null;
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const match = findMoneyTalkKeywordMatch(trimmedTitle);
+      if (!match) {
+        moneyTalkTokenRef.current = null;
+        return;
+      }
+
+      if (moneyTalkTokenRef.current === match.token) {
+        return;
+      }
+
+      moneyTalkTokenRef.current = match.token;
+      const categoryName = !isTransfer && selectedCategoryName ? selectedCategoryName : null;
+      const amount = Number.isFinite(amountValue) ? amountValue : 0;
+      const isSavingsCategory =
+        !isTransfer && typeof categoryName === 'string' && categoryName.toLowerCase() === 'tabungan';
+
+      speak({
+        category: categoryName || undefined,
+        title: trimmedTitle,
+        amount,
+        type,
+        context: {
+          isHigh: false,
+          isSavings: isSavingsCategory,
+          isOverBudget: false,
+        },
+      });
+    }, 400);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    trimmedTitle,
+    speak,
+    isTransfer,
+    selectedCategoryName,
+    amountValue,
+    type,
+  ]);
 
   const handleAmountChange = (event) => {
     const formatted = formatAmountInputValue(event.target.value);

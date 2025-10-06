@@ -249,6 +249,22 @@ const KEYWORD_RULES = [
   },
 ];
 
+function keywordMatchesTitle(keyword, normalizedTitle) {
+  if (!keyword) return false;
+  if (keyword instanceof RegExp) {
+    keyword.lastIndex = 0;
+    return keyword.test(normalizedTitle);
+  }
+  return normalizedTitle.includes(String(keyword).toLowerCase());
+}
+
+function createMatchToken(keyword) {
+  if (keyword instanceof RegExp) {
+    return keyword.toString();
+  }
+  return String(keyword).toLowerCase();
+}
+
 function buildTitleTriggerList(rules) {
   if (!Array.isArray(rules)) return [];
   const seen = new Set();
@@ -280,20 +296,26 @@ function fillTemplate(template, values) {
   });
 }
 
-function matchesRule(rule, title) {
-  if (!rule || !title) return false;
-  if (!Array.isArray(rule.keywords) || rule.keywords.length === 0) return false;
+export function findMoneyTalkKeywordMatch(title) {
+  if (!title) return null;
   const normalizedTitle = title.toLowerCase();
-  return rule.keywords.some((keyword) => {
-    if (!keyword) return false;
-    if (keyword instanceof RegExp) return keyword.test(normalizedTitle);
-    return normalizedTitle.includes(String(keyword).toLowerCase());
-  });
+  for (const rule of KEYWORD_RULES) {
+    if (!Array.isArray(rule?.keywords) || rule.keywords.length === 0) continue;
+    for (const keyword of rule.keywords) {
+      if (!keywordMatchesTitle(keyword, normalizedTitle)) continue;
+      return {
+        rule,
+        token: createMatchToken(keyword),
+      };
+    }
+  }
+  return null;
 }
 
 export function resolveMoneyTalkIntent({ lang = "id", title, values }) {
   if (!title) return null;
-  const rule = KEYWORD_RULES.find((item) => matchesRule(item, title));
+  const match = findMoneyTalkKeywordMatch(title);
+  const rule = match?.rule;
   if (!rule) return null;
   const localized = rule.responses?.[lang] || rule.responses?.id || null;
   if (!localized) return null;
@@ -302,6 +324,7 @@ export function resolveMoneyTalkIntent({ lang = "id", title, values }) {
   return {
     message,
     tip,
+    token: match?.token,
   };
 }
 
