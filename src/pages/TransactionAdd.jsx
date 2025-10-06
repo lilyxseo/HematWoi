@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -150,7 +150,6 @@ export default function TransactionAdd({ onAdd }) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
-  const moneyTalkTokenRef = useRef(null);
 
   useEffect(() => {
     let active = true;
@@ -308,52 +307,6 @@ export default function TransactionAdd({ onAdd }) {
     ? 'Struk akan tersimpan bersama transaksi ini.'
     : 'Unggah struk untuk dokumentasi dan audit.';
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
-
-  useEffect(() => {
-    if (!trimmedTitle) {
-      moneyTalkTokenRef.current = null;
-      return undefined;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      const match = findMoneyTalkKeywordMatch(trimmedTitle);
-      if (!match) {
-        moneyTalkTokenRef.current = null;
-        return;
-      }
-
-      if (moneyTalkTokenRef.current === match.token) {
-        return;
-      }
-
-      moneyTalkTokenRef.current = match.token;
-      const categoryName = !isTransfer && selectedCategoryName ? selectedCategoryName : null;
-      const amount = Number.isFinite(amountValue) ? amountValue : 0;
-      const isSavingsCategory =
-        !isTransfer && typeof categoryName === 'string' && categoryName.toLowerCase() === 'tabungan';
-
-      speak({
-        category: categoryName || undefined,
-        title: trimmedTitle,
-        amount,
-        type,
-        context: {
-          isHigh: false,
-          isSavings: isSavingsCategory,
-          isOverBudget: false,
-        },
-      });
-    }, 400);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    trimmedTitle,
-    speak,
-    isTransfer,
-    selectedCategoryName,
-    amountValue,
-    type,
-  ]);
 
   const handleAmountChange = (event) => {
     const formatted = formatAmountInputValue(event.target.value);
@@ -623,6 +576,28 @@ export default function TransactionAdd({ onAdd }) {
 
       onAdd?.(payload);
       addToast('Transaksi tersimpan', 'success');
+
+      if (trimmedTitle) {
+        const match = findMoneyTalkKeywordMatch(trimmedTitle);
+        if (match) {
+          const categoryName = !isTransfer && selectedCategoryName ? selectedCategoryName : null;
+          const amount = Number.isFinite(amountValue) ? amountValue : 0;
+          const isSavingsCategory =
+            !isTransfer && typeof categoryName === 'string' && categoryName.toLowerCase() === 'tabungan';
+
+          speak({
+            category: categoryName || undefined,
+            title: trimmedTitle,
+            amount,
+            type,
+            context: {
+              isHigh: false,
+              isSavings: isSavingsCategory,
+              isOverBudget: false,
+            },
+          });
+        }
+      }
       navigate('/transactions');
     } catch (err) {
       addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
