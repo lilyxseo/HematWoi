@@ -168,24 +168,23 @@ export default function AuthLogin() {
 
   const skeleton = useMemo(
     () => (
-      <div className="grid w-full animate-pulse gap-4 md:grid-cols-5">
-        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm md:col-span-2">
-          <div className="space-y-4 text-center">
-            <div className="mx-auto h-12 w-12 rounded-full bg-surface-alt" />
-            <div className="mx-auto h-4 w-24 rounded-full bg-surface-alt" />
-            <div className="mx-auto h-3 w-3/4 rounded-full bg-surface-alt" />
-            <div className="mx-auto h-10 w-full rounded-2xl bg-surface-alt" />
-          </div>
-        </div>
-        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm md:col-span-3">
-          <div className="space-y-4">
-            <div className="h-6 w-3/4 rounded-full bg-surface-alt" />
-            <div className="h-4 w-1/2 rounded-full bg-surface-alt" />
-            <div className="space-y-3 pt-2">
+      <div className="flex w-full animate-pulse flex-col gap-4 lg:grid lg:grid-cols-5">
+        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm lg:col-span-3">
+          <div className="space-y-5">
+            <div className="h-6 w-1/3 rounded-full bg-surface-alt" />
+            <div className="space-y-3">
               <div className="h-11 rounded-2xl bg-surface-alt" />
               <div className="h-11 rounded-2xl bg-surface-alt" />
               <div className="h-11 rounded-2xl bg-surface-alt" />
             </div>
+          </div>
+        </div>
+        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm lg:col-span-2">
+          <div className="space-y-4 text-center lg:text-left">
+            <div className="mx-auto h-10 w-10 rounded-full bg-surface-alt lg:mx-0" />
+            <div className="h-4 w-1/2 rounded-full bg-surface-alt" />
+            <div className="h-8 rounded-2xl bg-surface-alt" />
+            <div className="h-3 w-3/4 rounded-full bg-surface-alt" />
           </div>
         </div>
       </div>
@@ -217,101 +216,117 @@ export default function AuthLogin() {
 
   return (
     <ErrorBoundary>
-      <main className="min-h-screen bg-gradient-to-b from-surface-alt via-surface-alt to-surface px-6 py-12 text-text transition-colors sm:py-16">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 lg:flex-row lg:items-start lg:justify-between">
-          <section className="flex flex-1 flex-col gap-6">
-            <div className="rounded-3xl border border-border-subtle/60 bg-gradient-to-br from-primary/10 via-surface to-surface-alt p-6 shadow-sm">
-              <div className="inline-flex items-center rounded-full bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-                Mode online yang aman
+      <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-surface via-surface-alt to-surface px-6 py-12 text-text transition-colors sm:px-10 lg:px-12">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.18),_transparent_55%)]"
+        />
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 lg:flex-row lg:items-center lg:justify-between">
+          <section className="w-full space-y-8 lg:max-w-xl">
+            <div className="overflow-hidden rounded-[2.25rem] border border-border-subtle/60 bg-gradient-to-br from-primary/20 via-surface to-surface-alt p-8 shadow-lg">
+              <div className="inline-flex items-center rounded-full bg-surface/70 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                Aman & tersinkronisasi
               </div>
-              <div className="mt-6 space-y-3 text-center sm:text-left">
-                <h1 className="text-3xl font-semibold sm:text-4xl">Selamat datang kembali di HematWoi</h1>
+              <div className="mt-6 space-y-4 text-center lg:text-left">
+                <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">Kelola keuanganmu dengan percaya diri</h1>
                 <p className="text-base text-muted">
-                  Sinkronkan transaksi, kelola anggaran, dan capai tujuan finansialmu dengan pengalaman login yang lebih mulus.
+                  Masuk untuk menyatukan transaksi dari semua perangkat, menjaga anggaran tetap teratur, dan memantau progres finansialmu kapan pun.
                 </p>
               </div>
             </div>
-            <ul className="hidden gap-3 sm:grid sm:grid-cols-2">
+            <ul className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 sm:grid sm:grid-cols-2 sm:gap-5 sm:overflow-visible sm:pb-0">
               {heroTips.map((tip) => (
                 <li
                   key={tip}
-                  className="flex items-start gap-3 rounded-3xl border border-border-subtle/60 bg-surface px-4 py-3 shadow-sm"
+                  className="min-w-[230px] snap-start rounded-3xl border border-border-subtle/60 bg-surface px-5 py-4 shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
                 >
-                  <span className="mt-1 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
-                    ✓
-                  </span>
-                  <span className="text-sm text-text">{tip}</span>
+                  <div className="flex items-start gap-3">
+                    <span className="mt-1 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M5 12l5 5L20 7" />
+                      </svg>
+                    </span>
+                    <span className="text-sm font-medium text-text/90">{tip}</span>
+                  </div>
                 </li>
               ))}
             </ul>
           </section>
 
-          <section className="flex flex-1 items-center justify-center">
-            <div className="w-full max-w-2xl space-y-6">
-              {sessionError ? (
-                <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
-                  {sessionError}
+          <section className="w-full lg:max-w-xl xl:max-w-2xl">
+            <div className="relative overflow-hidden rounded-[2.25rem] border border-border-subtle/60 bg-surface shadow-xl">
+              <div
+                aria-hidden="true"
+                className="absolute -top-24 right-0 h-48 w-48 rounded-full bg-primary/10 blur-3xl"
+              />
+              <div className="relative space-y-6 p-6 sm:p-8">
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold text-text">Masuk ke HematWoi</h2>
+                  <p className="text-sm text-muted">Gunakan email atau akun Google untuk melanjutkan pengalaman hematmu.</p>
                 </div>
-              ) : null}
-              {googleError ? (
-                <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="assertive">
-                  {googleError}
-                </div>
-              ) : null}
-              {checking ? (
-                skeleton
-              ) : (
-                <div className="grid gap-4 md:grid-cols-5">
-                  <div className="md:col-span-3">
-                    <LoginCard
-                      defaultIdentifier={prefilledIdentifier}
-                      onSuccess={handleSuccess}
-                      onPasswordSignInStart={markEmailSignIn}
-                      onPasswordSignInError={clearEmailSignInMarker}
-                    />
+                {sessionError ? (
+                  <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
+                    {sessionError}
                   </div>
-                  <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm md:col-span-2">
-                    <div className="space-y-4">
-                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <svg className="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
-                          <path
-                            fill="currentColor"
-                            d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 17.93V19h-2v.93A8.012 8.012 0 0 1 4.07 13H5v-2h-.93A8.012 8.012 0 0 1 11 4.07V5h2v-.93A8.012 8.012 0 0 1 19.93 11H19v2h.93A8.012 8.012 0 0 1 13 19.93ZM15 11h-2V7h-2v6h4Z"
-                          />
-                        </svg>
+                ) : null}
+                {googleError ? (
+                  <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="assertive">
+                    {googleError}
+                  </div>
+                ) : null}
+                {checking ? (
+                  skeleton
+                ) : (
+                  <div className="flex flex-col gap-4 lg:grid lg:grid-cols-5">
+                    <div className="lg:col-span-3">
+                      <LoginCard
+                        defaultIdentifier={prefilledIdentifier}
+                        onSuccess={handleSuccess}
+                        onPasswordSignInStart={markEmailSignIn}
+                        onPasswordSignInError={clearEmailSignInMarker}
+                      />
+                    </div>
+                    <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface-alt/60 p-6 text-center shadow-sm transition lg:col-span-2 lg:text-left">
+                      <div className="space-y-4">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary lg:mx-0">
+                          <svg className="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
+                            <path
+                              fill="currentColor"
+                              d="M12 2a10 10 0 1 0 10 10A10.011 10.011 0 0 0 12 2Zm1 17.93V19h-2v.93A8.012 8.012 0 0 1 4.07 13H5v-2h-.93A8.012 8.012 0 0 1 11 4.07V5h2v-.93A8.012 8.012 0 0 1 19.93 11H19v2h.93A8.012 8.012 0 0 1 13 19.93ZM15 11h-2V7h-2v6h4Z"
+                            />
+                          </svg>
+                        </div>
+                        <div className="space-y-1">
+                          <h3 className="text-base font-semibold text-text">Masuk instan</h3>
+                          <p className="text-sm text-muted">Login sekali, tetap sinkron, dan nikmati backup otomatis di semua perangkat.</p>
+                        </div>
                       </div>
-                      <div className="space-y-1">
-                        <h2 className="text-lg font-semibold text-text">Masuk instan</h2>
-                        <p className="text-sm text-muted">
-                          Gunakan akun Google kamu untuk terhubung lebih cepat dan aman.
+                      <div className="space-y-2">
+                        <GoogleLoginButton
+                          onWebLogin={handleGoogleWebSignIn}
+                          disabled={googleLoading}
+                          className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-[1px] hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {googleLoading ? (
+                            <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent" aria-hidden="true" />
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
+                            >
+                              G
+                            </span>
+                          )}
+                          <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
+                        </GoogleLoginButton>
+                        <p className="text-xs text-muted">
+                          Jika pop-up tertutup, tekan tombol lagi atau pilih metode email di samping.
                         </p>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <GoogleLoginButton
-                        onWebLogin={handleGoogleWebSignIn}
-                        disabled={googleLoading}
-                        className="inline-flex h-11 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {googleLoading ? (
-                          <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent" aria-hidden="true" />
-                        ) : (
-                          <span
-                            aria-hidden="true"
-                            className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
-                          >
-                            G
-                          </span>
-                        )}
-                        <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
-                      </GoogleLoginButton>
-                      <p className="text-xs text-muted">
-                        Jika pop-up tertutup, cukup tekan tombol lagi atau pilih metode email di samping.
-                      </p>
-                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </section>
         </div>
