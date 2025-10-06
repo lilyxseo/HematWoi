@@ -582,8 +582,8 @@ export default function BudgetsPage() {
       </PageHeader>
 
       <Section first>
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:auto-cols-fr md:grid-flow-col">
+        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto] lg:items-stretch lg:gap-6">
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-2 md:auto-cols-fr md:grid-flow-col lg:w-full">
             {TABS.map(({ value, label, icon: Icon }) => {
               const active = value === tab;
               return (
@@ -610,17 +610,19 @@ export default function BudgetsPage() {
             })}
           </div>
 
-          <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-surface/80 px-3 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/40">
-            <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
-            <input
-              type="month"
-              value={period}
-              onChange={(event) => handlePeriodChange(event.target.value)}
-              className="w-full appearance-none bg-transparent text-sm font-medium text-text outline-none"
-              aria-label="Pilih periode bulan"
-            />
-            <span className="hidden text-xs text-muted md:inline">{toHumanReadable(period)}</span>
-          </label>
+          <div className="flex w-full items-center justify-start sm:w-auto sm:justify-end">
+            <label className="flex h-10 w-full min-w-[12rem] items-center gap-2 rounded-xl border border-border/60 bg-surface/80 px-3 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/40 sm:w-auto sm:min-w-[16rem] lg:min-w-[18rem] xl:min-w-[20rem]">
+              <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
+              <input
+                type="month"
+                value={period}
+                onChange={(event) => handlePeriodChange(event.target.value)}
+                className="w-full appearance-none bg-transparent text-sm font-medium text-text outline-none lg:text-base"
+                aria-label="Pilih periode bulan"
+              />
+              <span className="hidden text-xs text-muted md:inline">{toHumanReadable(period)}</span>
+            </label>
+          </div>
         </div>
       </Section>
 
@@ -630,10 +632,19 @@ export default function BudgetsPage() {
         </Section>
       ) : (
         <Section>
-          <div className="space-y-4">
-            <h2 className="text-base font-semibold text-text">Total Weekly (Month-to-date)</h2>
-            <MonthlyFromWeeklySummary summary={weekly.summaryByCategory} loading={weeklyLoading} />
-            {weekSelector}
+          <div className="space-y-4 xl:grid xl:grid-cols-[minmax(0,2.15fr)_minmax(0,1fr)] xl:items-start xl:gap-6">
+            <div className="space-y-4">
+              <h2 className="text-base font-semibold text-text xl:text-lg">Total Weekly (Month-to-date)</h2>
+              <MonthlyFromWeeklySummary summary={weekly.summaryByCategory} loading={weeklyLoading} />
+              {weekSelector ? <div className="xl:hidden">{weekSelector}</div> : null}
+            </div>
+            {weekSelector ? (
+              <div className="hidden xl:block xl:space-y-4 xl:rounded-3xl xl:border xl:border-border/60 xl:bg-surface/80 xl:p-1 xl:shadow-[0_24px_45px_-30px_rgba(15,23,42,0.45)] xl:backdrop-blur xl:supports-[backdrop-filter]:bg-surface/60">
+                <div className="xl:sticky xl:top-[calc(var(--page-y)+4.5rem)] xl:p-3 xl:pb-4">
+                  {weekSelector}
+                </div>
+              </div>
+            ) : null}
           </div>
         </Section>
       )}
