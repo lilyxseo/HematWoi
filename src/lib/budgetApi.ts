@@ -162,6 +162,8 @@ export interface WeeklyBudgetPeriod {
   start: string;
   end: string;
   sequence: number;
+  monthLabel: string;
+  label: string;
 }
 
 export interface WeeklyBudgetsResult {
@@ -278,6 +280,27 @@ function getWeekEndFromStart(weekStart: string): string {
   const startDate = parseIsoDate(weekStart);
   startDate.setUTCDate(startDate.getUTCDate() + 6);
   return formatIsoDateUTC(startDate);
+}
+
+function getFirstWeekStartWithinRange(rangeStart: string): string {
+  const initial = getWeekStartForDate(parseIsoDate(rangeStart));
+  if (initial < rangeStart) {
+    const next = parseIsoDate(initial);
+    next.setUTCDate(next.getUTCDate() + 7);
+    return formatIsoDateUTC(next);
+  }
+  return initial;
+}
+
+const WEEK_MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat('id-ID', { month: 'long' });
+
+function getMonthLabelForWeekStart(weekStart: string): string {
+  try {
+    return WEEK_MONTH_LABEL_FORMATTER.format(new Date(`${weekStart}T00:00:00.000Z`));
+  } catch (error) {
+    const [, month] = weekStart.split('-');
+    return month ?? weekStart;
+  }
 }
 
 interface WeeklyCarryoverEntry {
@@ -598,7 +621,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   const userId = await getCurrentUserId();
   ensureAuth(userId);
   const { start, end } = getMonthRange(period);
-  const firstWeekStart = getWeekStartForDate(parseIsoDate(start));
+  const firstWeekStart = getFirstWeekStartWithinRange(start);
 
   const carryoverRangeStartDate = parseIsoDate(firstWeekStart);
   carryoverRangeStartDate.setUTCDate(carryoverRangeStartDate.getUTCDate() - 7);
@@ -612,7 +635,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
       'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
-    .gte('week_start', firstWeekStart)
+    .gte('week_start', carryoverRangeStart)
     .lt('week_start', end)
     .order('week_start', { ascending: true })
     .order('created_at', { ascending: false });
@@ -660,6 +683,9 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   const rows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).map((row) => {
     const rawWeekStart = row.week_start ?? start;
     const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
+    if (normalizedWeekStart < firstWeekStart) {
+      return null;
+    }
     const weekEnd = getWeekEndFromStart(normalizedWeekStart);
     const planned = Number(row.amount_planned ?? 0);
     const transactions = transactionsByCategory.get(row.category_id) ?? [];
@@ -696,7 +722,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
       spent,
       remaining,
     } satisfies WeeklyBudgetWithSpent;
-  });
+  }).filter((row): row is WeeklyBudgetWithSpent => Boolean(row));
 
   const summaryByCategory: WeeklyBudgetCategorySummary[] = Array.from(summaryAccumulator.values()).map((item) => {
     const remaining = item.planned - item.spent;
@@ -725,10 +751,13 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     ) {
       const weekStart = formatIsoDateUTC(cursor);
       const weekEnd = getWeekEndFromStart(weekStart);
+      const monthLabel = getMonthLabelForWeekStart(weekStart);
       weeks.push({
         start: weekStart,
         end: weekEnd,
         sequence: index + 1,
+        monthLabel,
+        label: `Minggu ke-${index + 1} bulan ${monthLabel}`,
       });
     }
   }

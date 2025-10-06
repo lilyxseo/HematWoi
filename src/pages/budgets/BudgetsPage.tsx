@@ -73,13 +73,17 @@ function getFirstWeekStartOfPeriod(period: string): string {
   if (!Number.isFinite(year) || !Number.isFinite(month)) {
     return getCurrentPeriod();
   }
-  const date = new Date(Date.UTC(year, month - 1, 1));
-  const day = date.getUTCDay();
+  const startDate = new Date(Date.UTC(year, month - 1, 1));
+  const initial = new Date(startDate);
+  const day = initial.getUTCDay();
   const diff = day === 0 ? 6 : day - 1;
-  date.setUTCDate(date.getUTCDate() - diff);
-  const startYear = date.getUTCFullYear();
-  const startMonth = `${date.getUTCMonth() + 1}`.padStart(2, '0');
-  const startDay = `${date.getUTCDate()}`.padStart(2, '0');
+  initial.setUTCDate(initial.getUTCDate() - diff);
+  if (initial < startDate) {
+    initial.setUTCDate(initial.getUTCDate() + 7);
+  }
+  const startYear = initial.getUTCFullYear();
+  const startMonth = `${initial.getUTCMonth() + 1}`.padStart(2, '0');
+  const startDay = `${initial.getUTCDate()}`.padStart(2, '0');
   return `${startYear}-${startMonth}-${startDay}`;
 }
 
@@ -304,7 +308,7 @@ export default function BudgetsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1">
             <p className="text-sm font-semibold text-text">
-              {selectedWeek ? `Minggu ke-${selectedWeek.sequence} dari ${total}` : 'Pilih minggu'}
+              {selectedWeek ? selectedWeek.label : 'Pilih minggu'}
             </p>
             {selectedWeek ? (
               <p className="text-xs text-muted">
@@ -330,7 +334,7 @@ export default function BudgetsPage() {
             >
               {weekly.weeks.map((week) => (
                 <option key={week.start} value={week.start}>
-                  {`Minggu ke-${week.sequence} (${formatWeekRangeLabel(week.start, week.end)})`}
+                  {`${week.label} (${formatWeekRangeLabel(week.start, week.end)})`}
                 </option>
               ))}
             </select>

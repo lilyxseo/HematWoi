@@ -145,7 +145,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         const weekMeta = weekly.weeks.find((week) => week.start === row.week_start);
         const subtitleParts: string[] = [];
         if (weekMeta) {
-          subtitleParts.push(`Minggu ke-${weekMeta.sequence}`);
+          subtitleParts.push(weekMeta.label);
         }
         subtitleParts.push(formatWeekRange(row.week_start, row.week_end));
         return {
