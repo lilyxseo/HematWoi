@@ -70,6 +70,7 @@ export default function AppSidebar({
       <aside
         className={clsx(
           "hidden lg:fixed lg:inset-y-0 lg:z-[70] lg:flex lg:h-[100dvh] lg:min-w-0 lg:flex-col lg:overflow-y-auto lg:border-r lg:border-border lg:bg-surface-1/95 lg:text-text lg:shadow-sm lg:backdrop-blur lg:transition-[width,background-color,color] lg:duration-200",
+          "lg:[scrollbar-width:thin] lg:[scrollbar-color:hsl(var(--color-primary)/0.35)_transparent] lg:[&::-webkit-scrollbar]:w-2 lg:[&::-webkit-scrollbar-thumb]:rounded-full lg:[&::-webkit-scrollbar-thumb]:bg-[hsl(var(--color-primary)/0.35)] lg:[&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--color-primary)/0.55)] lg:[&::-webkit-scrollbar-track]:bg-transparent",
           collapsed ? "lg:w-16" : "lg:w-64"
         )}
       >
