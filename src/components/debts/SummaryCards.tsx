@@ -28,6 +28,12 @@ const CARDS = [
     tone: 'text-orange-400 dark:text-orange-300',
   },
   {
+    key: 'debtDueNextMonth' as const,
+    label: 'Hutang Bulan Depan',
+    description: 'Total hutang jatuh tempo di bulan berikutnya',
+    tone: 'text-violet-400 dark:text-violet-300',
+  },
+  {
     key: 'totalReceivable' as const,
     label: 'Total Piutang',
     description: 'Tagihan yang perlu ditagih',

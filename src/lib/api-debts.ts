@@ -44,6 +44,7 @@ export interface DebtPaymentRecord {
 export interface DebtSummary {
   totalDebt: number;
   debtDueThisMonth: number;
+  debtDueNextMonth: number;
   totalReceivable: number;
   totalPaidThisMonth: number;
   dueSoon: number;
@@ -277,6 +278,7 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
   const now = new Date();
   const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+  const monthAfterNext = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1));
 
   const [{ data: debtsRows, error: debtsError }, { data: paymentRows, error: paymentError }] = await Promise.all([
     supabase
@@ -297,6 +299,7 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
   const summary: DebtSummary = {
     totalDebt: 0,
     debtDueThisMonth: 0,
+    debtDueNextMonth: 0,
     totalReceivable: 0,
     totalPaidThisMonth: 0,
     dueSoon: 0,
@@ -319,6 +322,12 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
           due.getTime() < nextMonth.getTime()
         ) {
           summary.debtDueThisMonth += remaining;
+        } else if (
+          !Number.isNaN(due.getTime()) &&
+          due.getTime() >= nextMonth.getTime() &&
+          due.getTime() < monthAfterNext.getTime()
+        ) {
+          summary.debtDueNextMonth += remaining;
         }
       }
     }
