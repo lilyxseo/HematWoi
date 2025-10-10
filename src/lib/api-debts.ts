@@ -133,7 +133,14 @@ function toNum(value: unknown): number | undefined {
 
 function toISODate(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = `${value}T00:00:00`;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
+  const isoSource = hasTimezone
+    ? trimmed
+    : trimmed.includes('T')
+    ? `${trimmed}Z`
+    : `${trimmed}T00:00:00Z`;
   const date = new Date(isoSource);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
@@ -141,7 +148,14 @@ function toISODate(value?: string | null): string | null {
 
 function toISODateEnd(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = `${value}T23:59:59`;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const hasTimezone = /[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed);
+  const isoSource = hasTimezone
+    ? trimmed
+    : trimmed.includes('T')
+    ? `${trimmed}Z`
+    : `${trimmed}T23:59:59Z`;
   const date = new Date(isoSource);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
