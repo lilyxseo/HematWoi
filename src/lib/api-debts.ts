@@ -131,18 +131,45 @@ function toNum(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function parseDateOnly(value: string): Date | null {
+  const trimmed = value.trim();
+  const match = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(trimmed);
+  if (!match) return null;
+  const [, yearStr, monthStr, dayStr] = match;
+  const year = Number(yearStr);
+  const monthIndex = Number(monthStr) - 1;
+  const day = Number(dayStr);
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || !Number.isFinite(day)) {
+    return null;
+  }
+  const date = new Date(Date.UTC(year, monthIndex, day));
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
 function toISODate(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = `${value}T00:00:00`;
-  const date = new Date(isoSource);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const dateOnly = parseDateOnly(trimmed);
+  const date = dateOnly ?? new Date(trimmed);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
 
 function toISODateEnd(value?: string | null): string | null {
   if (!value) return null;
-  const isoSource = `${value}T23:59:59`;
-  const date = new Date(isoSource);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const dateOnly = parseDateOnly(trimmed);
+  if (dateOnly) {
+    dateOnly.setUTCHours(23, 59, 59, 999);
+    return dateOnly.toISOString();
+  }
+
+  const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
 }
