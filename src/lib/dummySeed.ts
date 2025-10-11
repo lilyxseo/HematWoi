@@ -5,9 +5,22 @@ export function dummySeed() {
   const categories = [
     { id: uid(), name: 'Gaji', type: 'income' },
     { id: uid(), name: 'Bonus', type: 'income' },
-    { id: uid(), name: 'Makan', type: 'expense' },
+    { id: uid(), name: 'Makanan', type: 'expense' },
+    { id: uid(), name: 'Minuman', type: 'expense' },
+    { id: uid(), name: 'Jajan', type: 'expense' },
+    { id: uid(), name: 'Bensin', type: 'expense' },
+    { id: uid(), name: 'Perawatan Motor', type: 'expense' },
     { id: uid(), name: 'Transport', type: 'expense' },
+    { id: uid(), name: 'Kuota', type: 'expense' },
+    { id: uid(), name: 'Belanja', type: 'expense' },
+    { id: uid(), name: 'Belanja Online', type: 'expense' },
+    { id: uid(), name: 'Tagihan', type: 'expense' },
+    { id: uid(), name: 'Baju', type: 'expense' },
+    { id: uid(), name: 'Celana', type: 'expense' },
+    { id: uid(), name: 'Kesehatan', type: 'expense' },
     { id: uid(), name: 'Hiburan', type: 'expense' },
+    { id: uid(), name: 'Tabungan', type: 'expense' },
+    { id: uid(), name: 'Lainnya', type: 'expense' },
   ];
 
   const budgets = categories
