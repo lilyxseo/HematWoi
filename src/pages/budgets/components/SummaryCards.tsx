@@ -24,7 +24,7 @@ function SummarySkeleton() {
 export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
   if (loading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
         {Array.from({ length: 4 }).map((_, index) => (
           <SummarySkeleton key={index} />
         ))}
@@ -76,7 +76,7 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
   ] as const;
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
       {cards.map(({
         label,
         description,

@@ -26,10 +26,10 @@ interface BudgetTableProps {
   onToggleHighlight: (row: BudgetWithSpent) => void;
 }
 
-const CARD_WRAPPER_CLASS = 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+const CARD_WRAPPER_CLASS = 'grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4';
 
 const CARD_CLASS =
-  'relative flex flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60';
+  'relative flex h-full flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60';
 
 function LoadingCards() {
   return (
