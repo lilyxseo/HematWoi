@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Download, Plus } from 'lucide-react';
+import { CalendarRange, ChevronDown, Download, Plus } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';
@@ -60,6 +60,47 @@ function formatCurrency(value: number) {
     currency: 'IDR',
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
+}
+
+const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  month: 'long',
+  year: 'numeric',
+});
+
+function getMonthRange(monthValue: string): { start: string; end: string } | null {
+  const [yearStr, monthStr] = monthValue.split('-');
+  const year = Number.parseInt(yearStr ?? '', 10);
+  const month = Number.parseInt(monthStr ?? '', 10);
+  if (!year || !month) return null;
+  const normalizedMonth = `${month}`.padStart(2, '0');
+  const start = `${year}-${normalizedMonth}-01`;
+  const endDate = new Date(year, month, 0).getDate();
+  const end = `${year}-${normalizedMonth}-${String(endDate).padStart(2, '0')}`;
+  return { start, end };
+}
+
+function deriveMonthFromFilters(state: DebtsFilterState): string {
+  if (!state.dateFrom || !state.dateTo) return '';
+  if (state.dateFrom.length < 10 || state.dateTo.length < 10) return '';
+  const monthCandidate = state.dateFrom.slice(0, 7);
+  const range = getMonthRange(monthCandidate);
+  if (!range) return '';
+  if (state.dateFrom !== range.start || state.dateTo !== range.end) return '';
+  if (state.dateTo.slice(0, 7) !== monthCandidate) return '';
+  return monthCandidate;
+}
+
+function formatMonthLabel(monthValue: string): string {
+  if (!monthValue) return 'Semua bulan';
+  const [yearStr, monthStr] = monthValue.split('-');
+  const year = Number.parseInt(yearStr ?? '', 10);
+  const month = Number.parseInt(monthStr ?? '', 10);
+  if (!year || !month) return 'Semua bulan';
+  try {
+    return MONTH_LABEL_FORMATTER.format(new Date(year, month - 1, 1));
+  } catch (error) {
+    return 'Semua bulan';
+  }
 }
 
 function getSeriesStartDate(debt: DebtRecord): string {
@@ -138,6 +179,8 @@ export default function Debts() {
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
   const [seriesCursor, setSeriesCursor] = useState<Record<string, number>>({});
+
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => deriveMonthFromFilters(INITIAL_FILTERS));
 
   const logError = useCallback((error: unknown, context: string) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -702,6 +745,38 @@ export default function Debts() {
     setFilterPanelOpen((prev) => !prev);
   };
 
+  const handleMonthChange = useCallback(
+    (value: string) => {
+      setSelectedMonth(value);
+      setFilters((prev) => {
+        if (!value) {
+          if (prev.dateFrom === null && prev.dateTo === null) {
+            return prev;
+          }
+          return { ...prev, dateFrom: null, dateTo: null };
+        }
+        const range = getMonthRange(value);
+        if (!range) {
+          return prev;
+        }
+        if (prev.dateFrom === range.start && prev.dateTo === range.end) {
+          return prev;
+        }
+        return { ...prev, dateFrom: range.start, dateTo: range.end };
+      });
+    },
+    [setFilters],
+  );
+
+  useEffect(() => {
+    setSelectedMonth((prev) => {
+      const derived = deriveMonthFromFilters(filters);
+      return prev === derived ? prev : derived;
+    });
+  }, [filters]);
+
+  const selectedMonthLabel = useMemo(() => formatMonthLabel(selectedMonth), [selectedMonth]);
+
   return (
     <Page>
       <div className="space-y-6 min-w-0">
@@ -727,19 +802,20 @@ export default function Debts() {
         </PageHeader>
 
         <div className="space-y-6">
-          <div className="space-y-3">
-            <button
-              type="button"
-              onClick={toggleFilterPanel}
-              className={clsx(
-                'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-3 md:flex-1">
+              <button
+                type="button"
+                onClick={toggleFilterPanel}
+                className={clsx(
+                  'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]',
               )}
-              aria-controls={filterPanelId}
-              aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
-            >
-              <span className="flex items-center gap-2">
-                Filter
+                aria-controls={filterPanelId}
+                aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
+              >
+                <span className="flex items-center gap-2">
+                  Filter
                 {activeFilterCount > 0 ? (
                   <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-brand-foreground">
                     {activeFilterCount}
@@ -773,6 +849,19 @@ export default function Debts() {
                 onReset={() => setFilters(INITIAL_FILTERS)}
               />
             </div>
+            </div>
+
+            <label className="flex h-10 w-full items-center gap-2 rounded-xl border border-border/60 bg-surface-1/90 px-3 text-sm font-medium text-text shadow-sm transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-[color:var(--brand-ring)] md:w-auto">
+              <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(event) => handleMonthChange(event.target.value)}
+                className="w-full appearance-none bg-transparent text-sm font-medium text-text outline-none"
+                aria-label="Pilih bulan hutang"
+              />
+              <span className="hidden text-xs text-muted md:inline">{selectedMonthLabel}</span>
+            </label>
           </div>
 
           {!userLoading && !canUseCloud ? (
@@ -783,17 +872,17 @@ export default function Debts() {
 
           <SummaryCards summary={summary} />
 
-      <section className="min-w-0">
-        <DebtsTableResponsive
-          debts={visibleDebts}
-          loading={loading}
-          onEdit={handleEditClick}
-          onDelete={handleDeleteRequest}
-          onAddPayment={handleOpenPayment}
-          tenorNavigation={tenorNavigation}
-          onNavigateTenor={handleNavigateTenor}
-        />
-      </section>
+          <section className="min-w-0">
+            <DebtsTableResponsive
+              debts={visibleDebts}
+              loading={loading}
+              onEdit={handleEditClick}
+              onDelete={handleDeleteRequest}
+              onAddPayment={handleOpenPayment}
+              tenorNavigation={tenorNavigation}
+              onNavigateTenor={handleNavigateTenor}
+            />
+          </section>
         </div>
       </div>
 
