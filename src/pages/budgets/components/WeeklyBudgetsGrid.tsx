@@ -15,7 +15,8 @@ interface WeeklyBudgetsGridProps {
   onToggleHighlight: (row: WeeklyBudgetWithSpent) => void;
 }
 
-const GRID_CLASS = 'grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+const GRID_CLASS =
+  'grid gap-4 md:grid-cols-2 md:gap-5 lg:grid-cols-3 xl:grid-cols-4 xl:gap-6 [@media(min-width:1600px)]:grid-cols-5';
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
   day: 'numeric',
