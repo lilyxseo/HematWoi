@@ -44,10 +44,8 @@ export interface DebtPaymentRecord {
 export interface DebtSummary {
   totalDebt: number;
   debtDueThisMonth: number;
-  debtDueNextMonth: number;
   totalReceivable: number;
   totalPaidThisMonth: number;
-  dueSoon: number;
 }
 
 export interface DebtFilters {
@@ -292,7 +290,6 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
   const now = new Date();
   const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const monthAfterNext = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 2, 1));
 
   const [{ data: debtsRows, error: debtsError }, { data: paymentRows, error: paymentError }] = await Promise.all([
     supabase
@@ -313,13 +310,9 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
   const summary: DebtSummary = {
     totalDebt: 0,
     debtDueThisMonth: 0,
-    debtDueNextMonth: 0,
     totalReceivable: 0,
     totalPaidThisMonth: 0,
-    dueSoon: 0,
   };
-
-  const soonThreshold = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   for (const row of debtsRows ?? []) {
     const amount = safeNumber(row.amount);
@@ -336,23 +329,10 @@ async function buildSummary(userId: string): Promise<DebtSummary> {
           due.getTime() < nextMonth.getTime()
         ) {
           summary.debtDueThisMonth += remaining;
-        } else if (
-          !Number.isNaN(due.getTime()) &&
-          due.getTime() >= nextMonth.getTime() &&
-          due.getTime() < monthAfterNext.getTime()
-        ) {
-          summary.debtDueNextMonth += remaining;
         }
       }
     }
     if (row.type === 'receivable') summary.totalReceivable += Math.max(amount - paidTotal, 0);
-
-    if (row.status !== 'paid' && row.due_date) {
-      const due = new Date(row.due_date);
-      if (!Number.isNaN(due.getTime()) && due <= soonThreshold) {
-        summary.dueSoon += Math.max(amount - paidTotal, 0);
-      }
-    }
   }
 
   for (const payment of paymentRows ?? []) {

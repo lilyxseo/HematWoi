@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { ChangeEvent, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Download, Plus } from 'lucide-react';
+import { CalendarRange, ChevronDown, Download, Plus } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';
@@ -60,6 +60,72 @@ function formatCurrency(value: number) {
     currency: 'IDR',
     maximumFractionDigits: 0,
   }).format(Math.max(0, value));
+}
+
+const monthFormatter = new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' });
+
+function formatMonthLabel(value: string): string {
+  const [yearStr, monthStr] = value.split('-');
+  const year = Number.parseInt(yearStr ?? '', 10);
+  const month = Number.parseInt(monthStr ?? '', 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return value;
+  }
+  try {
+    return monthFormatter.format(new Date(year, month - 1, 1));
+  } catch (error) {
+    return value;
+  }
+}
+
+function getMonthRange(value: string): { start: string; end: string } | null {
+  const [yearStr, monthStr] = value.split('-');
+  const year = Number.parseInt(yearStr ?? '', 10);
+  const month = Number.parseInt(monthStr ?? '', 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return null;
+  }
+  if (month < 1 || month > 12) {
+    return null;
+  }
+  const paddedMonth = `${month}`.padStart(2, '0');
+  const start = `${year}-${paddedMonth}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const end = `${year}-${paddedMonth}-${`${lastDay}`.padStart(2, '0')}`;
+  return { start, end };
+}
+
+function deriveMonthFromFilters(filters: DebtsFilterState): string {
+  if (!filters.dateFrom || !filters.dateTo) {
+    return '';
+  }
+
+  const start = new Date(`${filters.dateFrom}T00:00:00`);
+  const end = new Date(`${filters.dateTo}T00:00:00`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return '';
+  }
+
+  if (start.getUTCFullYear() !== end.getUTCFullYear()) {
+    return '';
+  }
+  if (start.getUTCMonth() !== end.getUTCMonth()) {
+    return '';
+  }
+
+  const startDay = start.getUTCDate();
+  const endDay = end.getUTCDate();
+  if (startDay !== 1) {
+    return '';
+  }
+
+  const expectedEndDay = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
+  if (endDay !== expectedEndDay) {
+    return '';
+  }
+
+  const month = `${start.getUTCMonth() + 1}`.padStart(2, '0');
+  return `${start.getUTCFullYear()}-${month}`;
 }
 
 function getSeriesStartDate(debt: DebtRecord): string {
@@ -697,6 +763,33 @@ export default function Debts() {
     return count;
   }, [filters]);
 
+  const selectedMonth = useMemo(() => deriveMonthFromFilters(filters), [filters]);
+  const selectedMonthLabel = useMemo(
+    () => (selectedMonth ? formatMonthLabel(selectedMonth) : 'Semua data'),
+    [selectedMonth],
+  );
+
+  const handleMonthChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    if (!value) {
+      setFilters((prev) => ({
+        ...prev,
+        dateFrom: null,
+        dateTo: null,
+      }));
+      return;
+    }
+    const range = getMonthRange(value);
+    if (!range) {
+      return;
+    }
+    setFilters((prev) => ({
+      ...prev,
+      dateFrom: range.start,
+      dateTo: range.end,
+    }));
+  };
+
   const toggleFilterPanel = () => {
     if (isDesktopFilterView) return;
     setFilterPanelOpen((prev) => !prev);
@@ -727,6 +820,20 @@ export default function Debts() {
         </PageHeader>
 
         <div className="space-y-6">
+          <div>
+            <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-surface-1/80 px-3 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-[color:var(--brand-ring)]">
+              <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={handleMonthChange}
+                className="w-full appearance-none bg-transparent text-sm font-medium text-text outline-none"
+                aria-label="Pilih bulan untuk filter hutang"
+              />
+              <span className="hidden text-xs text-muted md:inline">{selectedMonthLabel}</span>
+            </label>
+          </div>
+
           <div className="space-y-3">
             <button
               type="button"
