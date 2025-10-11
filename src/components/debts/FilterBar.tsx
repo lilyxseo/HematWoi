@@ -57,6 +57,14 @@ export default function FilterBar({ filters, onChange, onReset }: FilterBarProps
     key: keyof DebtsFilterState,
   ) => {
     const value = event.target.value as DebtsFilterState[keyof DebtsFilterState];
+    if (key === 'dateFrom' || key === 'dateTo') {
+      onChange({
+        ...filters,
+        dateField: 'due_date',
+        [key]: value,
+      });
+      return;
+    }
     onChange({ ...filters, [key]: value });
   };
 
