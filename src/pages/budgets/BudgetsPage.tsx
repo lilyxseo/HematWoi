@@ -556,6 +556,66 @@ export default function BudgetsPage() {
   const monthlyLoading = monthly.loading || submittingMonthly;
   const weeklyLoading = weekly.loading || submittingWeekly;
 
+  const summaryPanel = tab === 'monthly'
+    ? (
+      <SummaryCards summary={monthly.summary} loading={monthlyLoading} />
+    )
+    : (
+      <div className="space-y-4 rounded-2xl border border-border/60 bg-surface/70 p-5 shadow-sm">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold text-text">Total Weekly (Month-to-date)</h2>
+          <p className="text-xs leading-relaxed text-muted">
+            Ringkasan kategori mingguan dan pilihan periode untuk fokus ke minggu tertentu.
+          </p>
+        </div>
+        <MonthlyFromWeeklySummary summary={weekly.summaryByCategory} loading={weeklyLoading} />
+        {weekSelector}
+      </div>
+    );
+
+  const mainPanel = tab === 'monthly'
+    ? (
+      <BudgetTable
+        rows={monthly.rows}
+        loading={monthlyLoading}
+        highlightedIds={highlightedMonthlyIds}
+        highlightLimitReached={highlightLimitReached}
+        onEdit={handleEditMonthly}
+        onDelete={handleDeleteMonthly}
+        onToggleCarryover={handleToggleCarryover}
+        onViewTransactions={(row) =>
+          handleViewTransactions({
+            categoryId: row.category_id,
+            categoryType: row.category?.type ?? null,
+            range: 'month',
+            month: row.period_month?.slice(0, 7) ?? period,
+          })
+        }
+        onToggleHighlight={(row) => handleToggleHighlight('monthly', row.id)}
+      />
+    )
+    : (
+      <WeeklyBudgetsGrid
+        rows={weeklyRowsForDisplay}
+        loading={weeklyLoading}
+        highlightedIds={highlightedWeeklyIds}
+        highlightLimitReached={highlightLimitReached}
+        onEdit={handleEditWeekly}
+        onDelete={handleDeleteWeekly}
+        onViewTransactions={(row) =>
+          handleViewTransactions({
+            categoryId: row.category_id,
+            categoryType: row.category?.type ?? null,
+            range: 'custom',
+            start: row.week_start,
+            end: row.week_end,
+          })
+        }
+        onToggleCarryover={handleToggleWeeklyCarryover}
+        onToggleHighlight={(row) => handleToggleHighlight('weekly', row.id)}
+      />
+    );
+
   return (
     <Page>
       <PageHeader
@@ -582,8 +642,8 @@ export default function BudgetsPage() {
       </PageHeader>
 
       <Section first>
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="grid w-full grid-cols-2 gap-2 md:w-auto md:auto-cols-fr md:grid-flow-col">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+          <div className="grid w-full grid-cols-2 gap-2 md:auto-cols-fr md:grid-flow-col">
             {TABS.map(({ value, label, icon: Icon }) => {
               const active = value === tab;
               return (
@@ -610,7 +670,7 @@ export default function BudgetsPage() {
             })}
           </div>
 
-          <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-surface/80 px-3 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/40">
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-surface/80 px-3 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/40 md:justify-self-end">
             <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
             <input
               type="month"
@@ -624,64 +684,17 @@ export default function BudgetsPage() {
         </div>
       </Section>
 
-      {tab === 'monthly' ? (
-        <Section>
-          <SummaryCards summary={monthly.summary} loading={monthlyLoading} />
-        </Section>
-      ) : (
-        <Section>
-          <div className="space-y-4">
-            <h2 className="text-base font-semibold text-text">Total Weekly (Month-to-date)</h2>
-            <MonthlyFromWeeklySummary summary={weekly.summaryByCategory} loading={weeklyLoading} />
-            {weekSelector}
-          </div>
-        </Section>
-      )}
+      <Section>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,2.25fr)_minmax(300px,1fr)] xl:items-start">
+          <aside className="order-1 flex flex-col gap-6 xl:order-2 xl:sticky xl:top-[calc(var(--app-header-height,var(--app-topbar-h,64px))+24px)]">
+            {summaryPanel}
+          </aside>
 
-      {tab === 'monthly' ? (
-        <Section>
-          <BudgetTable
-            rows={monthly.rows}
-            loading={monthlyLoading}
-            highlightedIds={highlightedMonthlyIds}
-            highlightLimitReached={highlightLimitReached}
-            onEdit={handleEditMonthly}
-            onDelete={handleDeleteMonthly}
-            onToggleCarryover={handleToggleCarryover}
-            onViewTransactions={(row) =>
-              handleViewTransactions({
-                categoryId: row.category_id,
-                categoryType: row.category?.type ?? null,
-                range: 'month',
-                month: row.period_month?.slice(0, 7) ?? period,
-              })
-            }
-            onToggleHighlight={(row) => handleToggleHighlight('monthly', row.id)}
-          />
-        </Section>
-      ) : (
-        <Section>
-          <WeeklyBudgetsGrid
-            rows={weeklyRowsForDisplay}
-            loading={weeklyLoading}
-            highlightedIds={highlightedWeeklyIds}
-            highlightLimitReached={highlightLimitReached}
-            onEdit={handleEditWeekly}
-            onDelete={handleDeleteWeekly}
-            onViewTransactions={(row) =>
-              handleViewTransactions({
-                categoryId: row.category_id,
-                categoryType: row.category?.type ?? null,
-                range: 'custom',
-                start: row.week_start,
-                end: row.week_end,
-              })
-            }
-            onToggleCarryover={handleToggleWeeklyCarryover}
-            onToggleHighlight={(row) => handleToggleHighlight('weekly', row.id)}
-          />
-        </Section>
-      )}
+          <div className="order-2 flex flex-col gap-6 xl:order-1">
+            {mainPanel}
+          </div>
+        </div>
+      </Section>
 
       <BudgetFormModal
         open={monthlyModalOpen}
