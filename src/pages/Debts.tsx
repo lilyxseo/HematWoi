@@ -30,7 +30,7 @@ const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
   type: 'all',
   status: 'all',
-  dateField: 'created_at',
+  dateField: 'due_date',
   dateFrom: null,
   dateTo: null,
   sort: 'newest',
@@ -690,7 +690,7 @@ export default function Debts() {
     if (filters.q.trim()) count += 1;
     if (filters.type !== 'all') count += 1;
     if (filters.status !== 'all') count += 1;
-    if (filters.dateField !== 'created_at') count += 1;
+    if (filters.dateField !== 'due_date') count += 1;
     if (filters.dateFrom) count += 1;
     if (filters.dateTo) count += 1;
     if (filters.sort !== 'newest') count += 1;
