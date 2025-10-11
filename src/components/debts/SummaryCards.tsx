@@ -28,12 +28,6 @@ const CARDS = [
     tone: 'text-orange-400 dark:text-orange-300',
   },
   {
-    key: 'debtDueNextMonth' as const,
-    label: 'Hutang Bulan Depan',
-    description: 'Total hutang jatuh tempo di bulan berikutnya',
-    tone: 'text-violet-400 dark:text-violet-300',
-  },
-  {
     key: 'totalReceivable' as const,
     label: 'Total Piutang',
     description: 'Tagihan yang perlu ditagih',
@@ -44,12 +38,6 @@ const CARDS = [
     label: 'Terbayar Bulan Ini',
     description: 'Akumulasi cicilan tercatat bulan ini',
     tone: 'text-sky-400 dark:text-sky-300',
-  },
-  {
-    key: 'dueSoon' as const,
-    label: 'Jatuh Tempo ≤7 Hari',
-    description: 'Sisa tagihan dengan jatuh tempo dekat',
-    tone: 'text-amber-400 dark:text-amber-300',
   },
 ] satisfies {
   key: keyof DebtSummary;

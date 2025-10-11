@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Download, Plus } from 'lucide-react';
+import { CalendarRange, ChevronDown, Download, Plus } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';
@@ -26,15 +26,70 @@ import {
 import useSupabaseUser from '../hooks/useSupabaseUser';
 import { listAccounts, type AccountRecord } from '../lib/api';
 
-const INITIAL_FILTERS: DebtsFilterState = {
-  q: '',
-  type: 'all',
-  status: 'all',
-  dateField: 'created_at',
-  dateFrom: null,
-  dateTo: null,
-  sort: 'newest',
-};
+function formatPeriod(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function getCurrentPeriod(): string {
+  return formatPeriod(new Date());
+}
+
+function toHumanReadablePeriod(period: string): string {
+  const [year, month] = period.split('-').map((value) => Number.parseInt(value, 10));
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return period;
+  const formatter = new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' });
+  return formatter.format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function parsePeriod(period: string): { year: number; month: number } | null {
+  const [yearStr, monthStr] = period.split('-');
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return { year, month };
+}
+
+function formatDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getPeriodRange(period: string): { start: string; end: string } {
+  const parsed = parsePeriod(period) ?? parsePeriod(getCurrentPeriod());
+  if (!parsed) {
+    const current = new Date();
+    return {
+      start: formatDateInput(new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), 1))),
+      end: formatDateInput(new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, 0))),
+    };
+  }
+  const start = new Date(Date.UTC(parsed.year, parsed.month - 1, 1));
+  const end = new Date(Date.UTC(parsed.year, parsed.month, 0));
+  return {
+    start: formatDateInput(start),
+    end: formatDateInput(end),
+  };
+}
+
+const INITIAL_PERIOD = getCurrentPeriod();
+
+function createInitialFilters(period: string = INITIAL_PERIOD): DebtsFilterState {
+  const range = getPeriodRange(period);
+  return {
+    q: '',
+    type: 'all',
+    status: 'all',
+    dateField: 'created_at',
+    dateFrom: range.start,
+    dateTo: range.end,
+    sort: 'newest',
+  };
+}
+
+const INITIAL_FILTERS: DebtsFilterState = createInitialFilters(INITIAL_PERIOD);
 
 function toISO(date: string | null | undefined) {
   if (!date) return null;
@@ -106,7 +161,8 @@ export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
   const canUseCloud = Boolean(user?.id);
-  const [filters, setFilters] = useState<DebtsFilterState>(INITIAL_FILTERS);
+  const [filters, setFilters] = useState<DebtsFilterState>(() => ({ ...INITIAL_FILTERS }));
+  const [period, setPeriod] = useState<string>(INITIAL_PERIOD);
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [summary, setSummary] = useState<DebtSummary | null>(null);
   const [loading, setLoading] = useState(false);
@@ -138,6 +194,30 @@ export default function Debts() {
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
   const [seriesCursor, setSeriesCursor] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!filters.dateFrom && !filters.dateTo) {
+      if (period !== '') {
+        setPeriod('');
+      }
+      return;
+    }
+    if (!filters.dateFrom || !filters.dateTo) {
+      if (period !== '') {
+        setPeriod('');
+      }
+      return;
+    }
+    const startMonth = filters.dateFrom.slice(0, 7);
+    const endMonth = filters.dateTo.slice(0, 7);
+    if (startMonth === endMonth) {
+      if (period !== startMonth) {
+        setPeriod(startMonth);
+      }
+    } else if (period !== '') {
+      setPeriod('');
+    }
+  }, [filters.dateFrom, filters.dateTo, period]);
 
   const logError = useCallback((error: unknown, context: string) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -189,6 +269,24 @@ export default function Debts() {
       logError(error, 'refresh debts');
     }
   }, [filters, logError, canUseCloud]);
+
+  const handlePeriodChange = useCallback((value: string) => {
+    setPeriod(value);
+    if (!value) {
+      setFilters((prev) => ({
+        ...prev,
+        dateFrom: null,
+        dateTo: null,
+      }));
+      return;
+    }
+    const range = getPeriodRange(value);
+    setFilters((prev) => ({
+      ...prev,
+      dateFrom: range.start,
+      dateTo: range.end,
+    }));
+  }, []);
 
   const handleCreateClick = () => {
     if (!canUseCloud) {
@@ -662,6 +760,16 @@ export default function Debts() {
 
   const disableActions = !canUseCloud;
 
+  const periodLabel = useMemo(() => {
+    if (!filters.dateFrom && !filters.dateTo) {
+      return 'Semua periode';
+    }
+    if (!period) {
+      return 'Rentang khusus';
+    }
+    return toHumanReadablePeriod(period);
+  }, [filters.dateFrom, filters.dateTo, period]);
+
   useEffect(() => {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
       return undefined;
@@ -702,6 +810,12 @@ export default function Debts() {
     setFilterPanelOpen((prev) => !prev);
   };
 
+  const handleResetFilters = () => {
+    const nextPeriod = getCurrentPeriod();
+    setPeriod(nextPeriod);
+    setFilters(createInitialFilters(nextPeriod));
+  };
+
   return (
     <Page>
       <div className="space-y-6 min-w-0">
@@ -728,32 +842,46 @@ export default function Debts() {
 
         <div className="space-y-6">
           <div className="space-y-3">
-            <button
-              type="button"
-              onClick={toggleFilterPanel}
-              className={clsx(
-                'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]',
-              )}
-              aria-controls={filterPanelId}
-              aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
-            >
-              <span className="flex items-center gap-2">
-                Filter
-                {activeFilterCount > 0 ? (
-                  <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-brand-foreground">
-                    {activeFilterCount}
-                  </span>
-                ) : null}
-              </span>
-              <ChevronDown
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <button
+                type="button"
+                onClick={toggleFilterPanel}
                 className={clsx(
-                  'h-4 w-4 text-muted transition-transform duration-200',
-                  isFilterPanelVisible ? 'rotate-180' : 'rotate-0',
+                  'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]',
                 )}
-                aria-hidden="true"
-              />
-            </button>
+                aria-controls={filterPanelId}
+                aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
+              >
+                <span className="flex items-center gap-2">
+                  Filter
+                  {activeFilterCount > 0 ? (
+                    <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-brand-foreground">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
+                </span>
+                <ChevronDown
+                  className={clsx(
+                    'h-4 w-4 text-muted transition-transform duration-200',
+                    isFilterPanelVisible ? 'rotate-180' : 'rotate-0',
+                  )}
+                  aria-hidden="true"
+                />
+              </button>
+
+              <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-surface/80 px-3 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/40 md:ml-auto">
+                <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
+                <input
+                  type="month"
+                  value={period}
+                  onChange={(event) => handlePeriodChange(event.target.value)}
+                  className="w-full appearance-none bg-transparent text-sm font-medium text-text outline-none"
+                  aria-label="Pilih periode bulan"
+                />
+                <span className="hidden text-xs text-muted md:inline">{periodLabel}</span>
+              </label>
+            </div>
 
             <div
               id={filterPanelId}
@@ -770,7 +898,7 @@ export default function Debts() {
               <FilterBar
                 filters={filters}
                 onChange={setFilters}
-                onReset={() => setFilters(INITIAL_FILTERS)}
+                onReset={handleResetFilters}
               />
             </div>
           </div>
