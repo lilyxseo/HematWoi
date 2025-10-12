@@ -33,7 +33,6 @@ interface TransactionsTableProps {
   formatAmount: (value: number) => string;
   formatDate: (value?: string | null) => string;
   toDateValue: (value?: string | null) => string;
-  parseTags: (value: TransactionRowData["tags"]) => string[];
   typeLabels: Record<string, string>;
   sort: string;
   onSortChange: (next: string) => void;
@@ -66,7 +65,6 @@ export default function TransactionsTable({
   formatAmount,
   formatDate,
   toDateValue,
-  parseTags,
   typeLabels,
   sort,
   onSortChange,
@@ -155,9 +153,6 @@ export default function TransactionsTable({
                 <th scope="col" className="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-400">
                   Akun
                 </th>
-                <th scope="col" className="px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-400">
-                  Tag
-                </th>
                 <th scope="col" className="px-4 py-3 text-right text-xs uppercase tracking-wide text-slate-400">
                   <button
                     type="button"
@@ -178,7 +173,6 @@ export default function TransactionsTable({
                 ? Array.from({ length: 6 }).map((_, index) => <SkeletonRow key={index} />)
                 : items.map((item) => {
                     const selected = selectedIds.has(item.id);
-                    const tags = parseTags(item.tags);
                     const note = item.title || item.description || item.notes || item.note || "";
                     const description = note.trim() || "(Tanpa judul)";
                     const formattedDate = formatDate(item.date);
@@ -233,22 +227,6 @@ export default function TransactionsTable({
                             </span>
                           ) : (
                             <span className="truncate">{item.account || "—"}</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 align-middle text-sm text-slate-200">
-                          {tags.length ? (
-                            <div className="flex flex-wrap gap-2">
-                              {tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="inline-flex items-center rounded-full bg-slate-900 px-3 py-1 text-xs text-slate-300 ring-1 ring-slate-800"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-slate-500">—</span>
                           )}
                         </td>
                         <td className="px-4 py-4 align-middle">
@@ -329,12 +307,6 @@ function SkeletonRow() {
       </td>
       <td className="px-4 py-4">
         <div className="h-3 w-24 rounded-full bg-slate-800" />
-      </td>
-      <td className="px-4 py-4">
-        <div className="flex gap-2">
-          <span className="h-5 w-16 rounded-full bg-slate-800" />
-          <span className="h-5 w-16 rounded-full bg-slate-800/80" />
-        </div>
       </td>
       <td className="px-4 py-4">
         <div className="ml-auto h-3 w-20 rounded-full bg-slate-800" />
