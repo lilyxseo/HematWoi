@@ -5,7 +5,7 @@ import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';
 import FilterBar, { DebtsFilterState } from '../components/debts/FilterBar';
-import DebtsTableResponsive from '../components/debts/DebtsTableResponsive';
+import DebtsGrid from '../components/debts/DebtsGrid';
 import DebtForm from '../components/debts/DebtForm';
 import PaymentDrawer from '../components/debts/PaymentDrawer';
 import ConfirmDialog from '../components/debts/ConfirmDialog';
@@ -837,7 +837,7 @@ export default function Debts() {
           <SummaryCards summary={summary} />
 
       <section className="min-w-0">
-        <DebtsTableResponsive
+        <DebtsGrid
           debts={visibleDebts}
           loading={loading}
           onEdit={handleEditClick}
