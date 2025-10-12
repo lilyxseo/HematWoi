@@ -58,7 +58,7 @@ export default function Dashboard({ stats, txs }) {
         data={digest.data}
         onClose={digest.close}
       />
-      <div className="space-y-6 sm:space-y-8 lg:space-y-10">
+      <div className="max-w-full space-y-6 overflow-hidden px-3 sm:space-y-8 sm:px-4 md:space-y-10 md:px-6 max-[400px]:space-y-5 max-[400px]:px-2">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
