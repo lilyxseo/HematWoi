@@ -108,6 +108,28 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
     };
   }, []);
 
+  const currentWeekStart = useMemo(() => {
+    if (!weekly.weeks.length) return null;
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const match = weekly.weeks.find((week) => todayIso >= week.start && todayIso <= week.end);
+    return match?.start ?? null;
+  }, [weekly.weeks]);
+
+  const weeklyRowsByCategory = useMemo(() => {
+    const map = new Map<string, typeof weekly.rows>();
+    for (const row of weekly.rows) {
+      const categoryId = row.category_id ? String(row.category_id) : null;
+      if (!categoryId) continue;
+      const existing = map.get(categoryId);
+      if (existing) {
+        existing.push(row);
+      } else {
+        map.set(categoryId, [row]);
+      }
+    }
+    return map;
+  }, [weekly.rows]);
+
   const cards = useMemo<HighlightCardData[]>(() => {
     if (loading || monthly.loading || weekly.loading) return [];
     if (!highlights.length) return [];
@@ -136,8 +158,28 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
           } satisfies HighlightCardData;
         }
 
-        const row = weeklyMap.get(String(item.budget_id));
-        if (!row) return null;
+        const baseRow = weeklyMap.get(String(item.budget_id));
+        if (!baseRow) return null;
+
+        let row = baseRow;
+        if (currentWeekStart && row.week_start !== currentWeekStart) {
+          const categoryId = row.category_id ? String(row.category_id) : null;
+          if (categoryId) {
+            const candidates = weeklyRowsByCategory.get(categoryId) ?? [];
+            const preferred = candidates.find((candidate) => candidate.week_start === currentWeekStart);
+            if (preferred) {
+              row = preferred;
+            } else {
+              const overlapping = candidates.find(
+                (candidate) => currentWeekStart >= candidate.week_start && currentWeekStart <= candidate.week_end
+              );
+              if (overlapping) {
+                row = overlapping;
+              }
+            }
+          }
+        }
+
         const planned = Number(row.amount_planned ?? 0);
         const spent = Number(row.spent ?? 0);
         const remaining = planned - spent;
@@ -161,7 +203,17 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         } satisfies HighlightCardData;
       })
       .filter((card): card is HighlightCardData => Boolean(card));
-  }, [highlights, loading, monthly.loading, monthly.rows, weekly.loading, weekly.rows, weekly.weeks]);
+  }, [
+    currentWeekStart,
+    highlights,
+    loading,
+    monthly.loading,
+    monthly.rows,
+    weekly.loading,
+    weekly.rows,
+    weekly.weeks,
+    weeklyRowsByCategory,
+  ]);
 
   const isLoading = loading || monthly.loading || weekly.loading;
   const displayError = error || monthly.error || weekly.error;
