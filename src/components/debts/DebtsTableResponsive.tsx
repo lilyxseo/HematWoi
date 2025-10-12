@@ -121,387 +121,196 @@ export default function DebtsTableResponsive({
   );
 
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="hidden min-w-0 sm:block">
-        <div className="min-w-0 rounded-2xl border border-border bg-card/80 shadow-sm">
-          <div className="-mx-3 md:mx-0 px-3 md:px-0 overflow-x-auto">
-            <table className="table-auto md:table-fixed w-full text-sm">
-              <thead className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/75">
-                <tr>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center w-12">
-                    Tipe
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[160px]">
-                    Pihak
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[200px]">
-                    Judul
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-left min-w-[150px]">
-                    Jatuh Tempo
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center min-w-[110px]">
-                    Tenor
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right min-w-[120px]">
-                    Bunga %
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right min-w-[140px]">
-                    Jumlah
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right min-w-[140px]">
-                    Terbayar
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-right min-w-[140px]">
-                    Sisa
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center min-w-[120px]">
-                    Status
-                  </th>
-                  <th scope="col" className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground text-center w-[140px]">
-                    Aksi
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {showSkeleton
-                  ? Array.from({ length: 6 }).map((_, index) => (
-                      <tr
-                        key={`debt-skeleton-${index}`}
-                        className="odd:bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <td className="px-4 py-3 align-middle text-center">
-                          <div className="mx-auto h-6 w-6 animate-pulse rounded-full bg-border/50" />
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <div className="h-3.5 w-32 animate-pulse rounded bg-border/40" />
-                          <div className="mt-2 h-3 w-24 animate-pulse rounded bg-border/30" />
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <div className="h-3.5 w-48 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <div className="h-3.5 w-36 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle text-center">
-                          <div className="mx-auto h-3.5 w-12 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <div className="ml-auto h-3.5 w-16 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right">
-                          <div className="ml-auto h-3.5 w-24 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right">
-                          <div className="ml-auto h-3.5 w-24 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right">
-                          <div className="ml-auto h-3.5 w-24 animate-pulse rounded bg-border/40" />
-                        </td>
-                        <td className="px-4 py-3 align-middle text-center">
-                          <div className="mx-auto h-6 w-20 animate-pulse rounded-full bg-border/30" />
-                        </td>
-                        <td className="px-4 py-3 align-middle text-center">
-                          <div className="mx-auto flex max-w-[120px] justify-center gap-2">
-                            <div className="h-9 w-9 animate-pulse rounded-full bg-border/40" />
-                            <div className="h-9 w-9 animate-pulse rounded-full bg-border/40" />
-                            <div className="h-9 w-9 animate-pulse rounded-full bg-border/40" />
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  : null}
-
-                {showEmpty ? (
-                  <tr>
-                    <td colSpan={11} className="px-6 py-12 text-center text-sm text-muted-foreground">
-                      Tidak ada data hutang sesuai filter.
-                    </td>
-                  </tr>
-                ) : null}
-
-                {!showEmpty &&
-                  debts.map((debt) => {
-                    const overdue = isOverdue(debt);
-                    const navigation = tenorNavigation?.[debt.id];
-                    return (
-                      <tr
-                        key={debt.id}
-                        className="odd:bg-muted/30 hover:bg-muted/50 transition-colors"
-                      >
-                        <td className="px-4 py-3 align-middle text-center">
-                          {renderTypeChip(debt.type)}
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <div className="min-w-0 space-y-1">
-                            <p className="truncate font-medium text-foreground" title={debt.party_name}>
-                              {debt.party_name}
-                            </p>
-                            {debt.notes ? (
-                              <p className="truncate text-xs text-muted-foreground" title={debt.notes}>
-                                {debt.notes}
-                              </p>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 align-middle">
-                          <span className="line-clamp-2 text-sm font-medium text-foreground" title={debt.title}>
-                            {debt.title}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 align-middle text-sm text-muted-foreground">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className={`truncate ${overdue ? 'font-semibold text-rose-300' : ''}`}>
-                              {formatDate(debt.due_date)}
-                            </span>
-                            {overdue ? (
-                              <span className="inline-flex items-center rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/30">
-                                Jatuh tempo
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 align-middle text-center text-sm tabular-nums text-muted-foreground">
-                          <div className="flex items-center justify-center gap-1">
-                            {debt.tenor_months > 1 && navigation ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                                  aria-label="Lihat tenor sebelumnya"
-                                  onClick={() => navigation.hasPrev && onNavigateTenor?.(navigation.key, -1)}
-                                  disabled={!navigation.hasPrev}
-                                >
-                                  <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                                </button>
-                                <span className="font-semibold text-foreground">{formatTenor(debt)}</span>
-                                <button
-                                  type="button"
-                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                                  aria-label="Lihat tenor selanjutnya"
-                                  onClick={() => navigation.hasNext && onNavigateTenor?.(navigation.key, 1)}
-                                  disabled={!navigation.hasNext}
-                                >
-                                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                                </button>
-                              </>
-                            ) : (
-                              <span className={debt.tenor_months > 1 ? 'font-semibold text-foreground' : ''}>{formatTenor(debt)}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right text-sm tabular-nums text-muted-foreground">
-                          {formatPercent(debt.rate_percent)}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right font-semibold tabular-nums text-foreground">
-                          {formatCurrency(debt.amount)}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right tabular-nums text-muted-foreground">
-                          {formatCurrency(debt.paid_total)}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-right font-semibold tabular-nums text-foreground">
-                          {formatCurrency(debt.remaining)}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-center">
-                          {renderStatusChip(debt.status)}
-                        </td>
-                        <td className="px-4 py-3 align-middle text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => onAddPayment(debt)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                              aria-label="Catat pembayaran"
-                            >
-                              <Wallet className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onEdit(debt)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                              aria-label="Ubah hutang"
-                            >
-                              <Pencil className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDelete(debt)}
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                              aria-label="Hapus hutang"
-                            >
-                              <Trash2 className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                {debts.length > 0 && loading ? (
-                  <tr>
-                    <td colSpan={11} className="px-4 py-4">
-                      <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        Memuat data hutang…
-                      </div>
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-3 px-3 sm:hidden">
-        {showSkeleton
-          ? Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={`debt-card-skeleton-${index}`}
-                className="rounded-2xl border border-border bg-card/60 p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="h-4 w-32 animate-pulse rounded bg-border/40" />
-                  <div className="h-5 w-12 animate-pulse rounded-full bg-border/40" />
-                </div>
-                <div className="mt-3 h-3.5 w-full animate-pulse rounded bg-border/30" />
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-                  <div className="space-y-2">
+    <div className="space-y-4">
+      {showSkeleton ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              // eslint-disable-next-line react/no-array-index-key
+              key={`debt-card-skeleton-${index}`}
+              className="rounded-3xl border border-border/70 bg-surface-1/60 p-5 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="h-6 w-6 animate-pulse rounded-full bg-border/40" />
+                <div className="h-5 w-20 animate-pulse rounded-full bg-border/40" />
+              </div>
+              <div className="mt-4 h-4 w-3/4 animate-pulse rounded bg-border/40" />
+              <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-border/30" />
+              <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
+                <div className="space-y-3">
+                  <div className="space-y-1">
                     <div className="h-3 w-20 animate-pulse rounded bg-border/30" />
-                    <div className="h-3 w-24 animate-pulse rounded bg-border/30" />
+                    <div className="h-3 w-28 animate-pulse rounded bg-border/30" />
+                  </div>
+                  <div className="space-y-1">
                     <div className="h-3 w-16 animate-pulse rounded bg-border/30" />
-                    <div className="h-3 w-20 animate-pulse rounded bg-border/30" />
-                  </div>
-                  <div className="space-y-2 text-right">
-                    <div className="ml-auto h-3 w-24 animate-pulse rounded bg-border/30" />
-                    <div className="ml-auto h-3 w-24 animate-pulse rounded bg-border/30" />
-                    <div className="ml-auto h-3 w-24 animate-pulse rounded bg-border/30" />
+                    <div className="h-3 w-24 animate-pulse rounded bg-border/30" />
                   </div>
                 </div>
-                <div className="mt-4 flex items-center gap-2">
-                  <div className="h-9 flex-1 animate-pulse rounded-xl bg-border/40" />
-                  <div className="h-9 flex-1 animate-pulse rounded-xl bg-border/40" />
-                  <div className="h-9 w-9 animate-pulse rounded-full bg-border/40" />
+                <div className="space-y-3 text-right">
+                  <div className="h-3 w-24 animate-pulse rounded bg-border/30 ml-auto" />
+                  <div className="h-3 w-24 animate-pulse rounded bg-border/30 ml-auto" />
+                  <div className="h-3 w-24 animate-pulse rounded bg-border/30 ml-auto" />
                 </div>
               </div>
-            ))
-          : null}
+              <div className="mt-5 h-2 w-full animate-pulse rounded-full bg-border/30" />
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <div className="h-10 flex-1 min-w-[140px] animate-pulse rounded-xl bg-border/30" />
+                <div className="h-10 flex-1 min-w-[120px] animate-pulse rounded-xl bg-border/30" />
+                <div className="h-10 w-10 animate-pulse rounded-full bg-border/30" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
-        {showEmpty ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-card/50 p-6 text-center text-sm text-muted-foreground">
-            Tidak ada data hutang sesuai filter.
-          </div>
-        ) : null}
+      {showEmpty ? (
+        <div className="rounded-3xl border border-dashed border-border/70 bg-surface-1/70 px-6 py-10 text-center text-sm text-muted-foreground">
+          Tidak ada data hutang sesuai filter.
+        </div>
+      ) : null}
 
-        {!showEmpty &&
-          debts.map((debt) => {
+      {!showEmpty ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {debts.map((debt) => {
             const overdue = isOverdue(debt);
             const navigation = tenorNavigation?.[debt.id];
             const statusStyle = STATUS_STYLE[debt.status] ?? '';
+            const progressPercent = debt.amount > 0 ? Math.max(0, Math.min(100, (debt.paid_total / debt.amount) * 100)) : 0;
+            const progressDisplay = Number.isFinite(progressPercent)
+              ? Number.parseFloat(progressPercent.toFixed(1))
+              : 0;
+
             return (
               <article
                 key={debt.id}
-                className="rounded-2xl border border-border bg-card/80 p-4 shadow-sm transition-transform hover:translate-y-[1px]"
+                className="group flex h-full flex-col justify-between rounded-3xl border border-border bg-card/80 p-5 shadow-sm transition hover:border-brand/40 hover:shadow-lg"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <p
-                    className="min-w-0 truncate text-base font-semibold text-foreground"
-                    role="heading"
-                    aria-level={3}
-                    title={debt.party_name}
-                  >
-                    {debt.party_name}
-                  </p>
-                  <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-200 ring-1 ring-primary/20">
-                    {TYPE_NAME[debt.type]}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-start justify-between gap-3 text-xs text-muted-foreground">
-                  <p className="min-w-0 flex-1 text-left text-muted-foreground line-clamp-2" title={debt.title}>
-                    {debt.title}
-                  </p>
-                  <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${statusStyle}`}>
-                    {STATUS_LABEL[debt.status] ?? debt.status}
-                  </span>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Jatuh tempo</p>
-                      <div className="flex items-center gap-2">
-                        <p className={`text-sm font-medium ${overdue ? 'text-rose-300' : 'text-foreground'}`}>
-                          {formatDate(debt.due_date)}
-                        </p>
+                <div className="space-y-5">
+                  <header className="flex items-start justify-between gap-3">
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        {renderTypeChip(debt.type)}
+                        {renderStatusChip(debt.status)}
                         {overdue ? (
                           <span className="inline-flex items-center rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300 ring-1 ring-rose-500/30">
                             Jatuh tempo
                           </span>
                         ) : null}
                       </div>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Tenor</p>
-                      {debt.tenor_months > 1 && navigation ? (
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                            aria-label="Lihat tenor sebelumnya"
-                            onClick={() => navigation.hasPrev && onNavigateTenor?.(navigation.key, -1)}
-                            disabled={!navigation.hasPrev}
-                          >
-                            <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                          </button>
-                          <p className="text-sm font-semibold text-foreground">{formatTenor(debt)}</p>
-                          <button
-                            type="button"
-                            className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-                            aria-label="Lihat tenor selanjutnya"
-                            onClick={() => navigation.hasNext && onNavigateTenor?.(navigation.key, 1)}
-                            disabled={!navigation.hasNext}
-                          >
-                            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                          </button>
-                        </div>
-                      ) : (
-                        <p className={`text-sm font-semibold ${debt.tenor_months > 1 ? 'text-foreground' : 'text-muted-foreground'}`}>
-                          {formatTenor(debt)}
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-semibold text-foreground" title={debt.title}>
+                          {debt.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground" title={debt.party_name}>
+                          {debt.party_name}
                         </p>
-                      )}
+                      </div>
+                      {debt.notes ? (
+                        <p className="text-xs leading-relaxed text-muted-foreground/80" title={debt.notes}>
+                          {debt.notes}
+                        </p>
+                      ) : null}
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Bunga</p>
-                      <p className="text-sm font-medium text-foreground tabular-nums">{formatPercent(debt.rate_percent)}</p>
+
+                    <div className="flex flex-col items-end gap-1 text-right text-xs text-muted-foreground">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em]">Tenor</span>
+                      <div className="flex items-center gap-1">
+                        {debt.tenor_months > 1 && navigation ? (
+                          <>
+                            <button
+                              type="button"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label="Lihat tenor sebelumnya"
+                              onClick={() => navigation.hasPrev && onNavigateTenor?.(navigation.key, -1)}
+                              disabled={!navigation.hasPrev}
+                            >
+                              <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                            <span className="text-sm font-semibold text-foreground">{formatTenor(debt)}</span>
+                            <button
+                              type="button"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/60 bg-card text-muted-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label="Lihat tenor selanjutnya"
+                              onClick={() => navigation.hasNext && onNavigateTenor?.(navigation.key, 1)}
+                              disabled={!navigation.hasNext}
+                            >
+                              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-sm font-semibold text-foreground">{formatTenor(debt)}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-3 text-right">
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Jumlah</p>
-                      <p className="text-sm font-semibold text-foreground tabular-nums">
-                        {formatCurrency(debt.amount)}
-                      </p>
+                  </header>
+
+                  <dl className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                          Jatuh Tempo
+                        </dt>
+                        <dd className={`text-sm font-medium ${overdue ? 'text-rose-300' : 'text-foreground'}`}>
+                          {formatDate(debt.due_date)}
+                        </dd>
+                      </div>
+                      <div className="space-y-1">
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                          Bunga
+                        </dt>
+                        <dd className="text-sm font-medium text-foreground tabular-nums">
+                          {formatPercent(debt.rate_percent)}
+                        </dd>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Terbayar</p>
-                      <p className="text-sm text-muted-foreground tabular-nums">
-                        {formatCurrency(debt.paid_total)}
-                      </p>
+                    <div className="space-y-3 text-right">
+                      <div className="space-y-1">
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                          Jumlah
+                        </dt>
+                        <dd className="text-sm font-semibold text-foreground tabular-nums">
+                          {formatCurrency(debt.amount)}
+                        </dd>
+                      </div>
+                      <div className="space-y-1">
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                          Terbayar
+                        </dt>
+                        <dd className="text-sm text-muted-foreground tabular-nums">
+                          {formatCurrency(debt.paid_total)}
+                        </dd>
+                      </div>
+                      <div className="space-y-1">
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80">
+                          Sisa
+                        </dt>
+                        <dd className="text-sm font-semibold text-foreground tabular-nums">
+                          {formatCurrency(debt.remaining)}
+                        </dd>
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <p className="text-[11px] uppercase tracking-wide text-muted-foreground/70">Sisa</p>
-                      <p className="text-sm font-semibold text-foreground tabular-nums">
-                        {formatCurrency(debt.remaining)}
-                      </p>
+                  </dl>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Progres pembayaran</span>
+                      <span className="font-semibold text-foreground">{formatPercent(progressDisplay)}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-border/50">
+                      <div
+                        className="h-full rounded-full bg-brand transition-all"
+                        style={{ width: `${progressPercent}%` }}
+                      />
                     </div>
                   </div>
                 </div>
 
-                <footer className="mt-4 flex flex-wrap items-center gap-2">
+                <footer className="mt-6 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onAddPayment(debt)}
-                    className="inline-flex w-full min-w-[180px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-3 py-2 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex min-w-[160px] flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-foreground shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
                     aria-label="Catat pembayaran"
                   >
                     <Wallet className="h-4 w-4" aria-hidden="true" />
@@ -510,7 +319,7 @@ export default function DebtsTableResponsive({
                   <button
                     type="button"
                     onClick={() => onEdit(debt)}
-                    className="inline-flex w-full min-w-[150px] flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
                     aria-label="Ubah hutang"
                   >
                     <Pencil className="h-4 w-4" aria-hidden="true" />
@@ -519,7 +328,7 @@ export default function DebtsTableResponsive({
                   <button
                     type="button"
                     onClick={() => onDelete(debt)}
-                    className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-border bg-card text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-border bg-card text-danger transition hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
                     aria-label="Hapus hutang"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden="true" />
@@ -528,14 +337,15 @@ export default function DebtsTableResponsive({
               </article>
             );
           })}
+        </div>
+      ) : null}
 
-        {debts.length > 0 && loading ? (
-          <div className="flex items-center justify-center gap-2 rounded-2xl border border-border bg-card/70 px-4 py-3 text-xs text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-            Memuat data hutang…
-          </div>
-        ) : null}
-      </div>
+      {debts.length > 0 && loading ? (
+        <div className="flex items-center justify-center gap-2 rounded-3xl border border-border bg-card/70 px-4 py-3 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          Memuat data hutang…
+        </div>
+      ) : null}
     </div>
   );
 }
