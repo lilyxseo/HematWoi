@@ -448,11 +448,11 @@ export async function listTransactions(options = {}) {
     inserted_at,
     updated_at,
     deleted_at,
-    account:account_id (*),
-    to_account:to_account_id (*),
-    category:category_id (*),
-    merchant:merchant_id (*),
-    receipts:receipts (*)
+    account:account_id (id, name, type),
+    to_account:to_account_id (id, name, type),
+    category:category_id (id, name, color),
+    merchant:merchant_id (id, name),
+    receipts:receipts (id, public_url, mime_type, size, created_at)
   `;
 
   let query = supabase
