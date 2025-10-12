@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, CalendarClock, Flame, Info, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import Card, { CardBody, CardHeader } from '../Card'
 import FinancialInsightItem, { FinancialInsightItemSkeleton } from './FinancialInsightItem'
-import ProgressTiny from './ProgressTiny'
 import {
   formatAmount,
   getBudgetProgressMTD,
@@ -101,17 +100,14 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
   }
 
   const topSpending = topSpendingQuery.data ?? null
-  const { nearLimit = [], overLimit = [], totalPlanned = 0, totalActual = 0 } = budgetQuery.data ?? {}
+  const { nearLimit = [], overLimit = [] } = budgetQuery.data ?? {}
   const debts = debtQuery.data ?? []
   const uncategorized = uncategorizedQuery.data ?? 0
   const weeklyTrend = weeklyTrendQuery.data
 
   const limitedNear = nearLimit.slice(0, 3)
-  const limitedOver = overLimit.slice(0, 3)
-  const hasWarnings = limitedNear.length > 0 || limitedOver.length > 0 || debts.length > 0 || uncategorized > 0
-
-  const remainingBudget = totalPlanned - totalActual
-  const burnRate = totalPlanned > 0 ? totalActual / totalPlanned : 0
+  const overLimitCount = overLimit.length
+  const hasWarnings = limitedNear.length > 0 || overLimitCount > 0 || debts.length > 0 || uncategorized > 0
 
   return (
     <Card className="rounded-3xl border border-border/70 bg-card/70 p-5 shadow-sm">
@@ -172,28 +168,12 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
               ))
             : null}
 
-          {limitedOver.length > 0
-            ? limitedOver.map((item) => (
-                <BudgetInsightRow key={`over-${item.id}`} item={item} tone="danger" navigate={navigate} />
-              ))
-            : null}
-
-          {limitedNear.length === 0 ? (
-            <FinancialInsightItem
-              icon={<AlertTriangle className="h-5 w-5 text-amber-500" aria-hidden="true" />}
-              title="Tidak ada budget yang hampir melebihi limit"
-              subtitle="Pantau terus pengeluaranmu agar tetap terkendali."
-              tone="info"
-              onClick={() => navigate('/budgets?tab=monthly&filter=near-limit')}
-            />
-          ) : null}
-
-          {limitedOver.length === 0 ? (
+          {overLimitCount > 0 ? (
             <FinancialInsightItem
               icon={<Flame className="h-5 w-5 text-rose-500" aria-hidden="true" />}
-              title="Belum ada budget yang terlampaui"
-              subtitle="Bagus! Pertahankan ritme pengeluaranmu."
-              tone="info"
+              title={`${overLimitCount} kategori melebihi limit anggaran`}
+              subtitle="Segera evaluasi pos-pos ini agar tidak makin membengkak."
+              tone="danger"
               onClick={() => navigate('/budgets?tab=monthly&filter=over-limit')}
             />
           ) : null}
@@ -201,16 +181,6 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
           {debts.slice(0, 3).map((item) => (
             <DebtInsightRow key={`${item.kind}-${item.id}`} item={item} navigate={navigate} />
           ))}
-
-          {debts.length === 0 ? (
-            <FinancialInsightItem
-              icon={<CalendarClock className="h-5 w-5 text-[color:var(--accent-dark)]" aria-hidden="true" />}
-              title="Tidak ada hutang/tagihan jatuh tempo 7 hari lagi"
-              subtitle="Tetap cek berkala untuk menghindari denda."
-              tone="info"
-              onClick={() => navigate('/debts?filter=due-7')}
-            />
-          ) : null}
 
           {weeklyTrend ? (
             <FinancialInsightItem
@@ -245,19 +215,6 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
               onClick={() => navigate('/transactions?filter=uncategorized')}
             />
           ) : null}
-
-          {(totalPlanned > 0 || totalActual > 0) && (
-            <div className="rounded-2xl border border-border-subtle/70 bg-surface/60 p-4 text-xs text-muted-foreground">
-              <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-text">
-                <span className="font-medium">Sisa anggaran bulan ini</span>
-                <span className="font-semibold text-text">{formatAmount(Math.max(remainingBudget, 0))}</span>
-              </div>
-              <ProgressTiny value={burnRate} tone={burnRate >= 1 ? 'danger' : burnRate >= 0.8 ? 'warning' : 'accent'} className="mt-3" />
-              <p className="mt-2 text-xs text-muted-foreground">
-                Burn-rate {percentageFormatter.format(burnRate)} dari total budget. Jaga agar tetap di bawah 100%.
-              </p>
-            </div>
-          )}
 
           {!hasWarnings ? (
             <div className="mt-2 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-200">
