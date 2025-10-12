@@ -20,30 +20,39 @@ const CARDS = [
     label: 'Total Hutang',
     description: 'Jumlah kewajiban yang belum terbayar',
     tone: 'text-rose-400 dark:text-rose-300',
+    edgeGradient:
+      'from-transparent via-rose-400/60 to-transparent dark:via-rose-300/60 dark:from-transparent dark:to-transparent',
   },
   {
     key: 'debtDueThisMonth' as const,
     label: 'Hutang Bulan Ini',
     description: 'Total hutang jatuh tempo di bulan berjalan',
     tone: 'text-orange-400 dark:text-orange-300',
+    edgeGradient:
+      'from-transparent via-orange-400/60 to-transparent dark:via-orange-300/60 dark:from-transparent dark:to-transparent',
   },
   {
     key: 'totalReceivable' as const,
     label: 'Total Piutang',
     description: 'Tagihan yang perlu ditagih',
     tone: 'text-emerald-400 dark:text-emerald-300',
+    edgeGradient:
+      'from-transparent via-emerald-400/60 to-transparent dark:via-emerald-300/60 dark:from-transparent dark:to-transparent',
   },
   {
     key: 'totalPaidThisMonth' as const,
     label: 'Terbayar Bulan Ini',
     description: 'Akumulasi cicilan tercatat bulan ini',
     tone: 'text-sky-400 dark:text-sky-300',
+    edgeGradient:
+      'from-transparent via-sky-400/60 to-transparent dark:via-sky-300/60 dark:from-transparent dark:to-transparent',
   },
 ] satisfies {
   key: keyof DebtSummary;
   label: string;
   description: string;
   tone: string;
+  edgeGradient: string;
 }[];
 
 export default function SummaryCards({ summary }: SummaryCardsProps) {
@@ -54,8 +63,16 @@ export default function SummaryCards({ summary }: SummaryCardsProps) {
         return (
           <article
             key={card.key}
-            className="card min-w-0 space-y-2 border border-border/60 bg-surface-1/90 p-4 text-left md:p-5"
+            className="card relative min-w-0 space-y-2 overflow-hidden border border-border/60 bg-surface-1/90 p-4 text-left md:p-5"
           >
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-gradient-to-b ${card.edgeGradient}`}
+            />
+            <span
+              aria-hidden="true"
+              className={`pointer-events-none absolute inset-y-0 right-0 w-[3px] bg-gradient-to-b ${card.edgeGradient}`}
+            />
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               {card.label}
             </p>
