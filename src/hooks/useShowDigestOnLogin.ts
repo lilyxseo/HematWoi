@@ -41,6 +41,7 @@ export interface DigestUpcomingItem {
 export interface DailyDigestModalData {
   todayKey: string;
   todayLabel: string;
+  yesterdayLabel: string;
   monthKey: string;
   monthLabel: string;
   balance: number;
@@ -49,6 +50,9 @@ export interface DailyDigestModalData {
   todayNet: number;
   todayCount: number;
   topTodayExpenses: Array<{ name: string; amount: number }>;
+  yesterdayExpense: number;
+  yesterdayCount: number;
+  yesterdayDetails: Array<{ name: string; amount: number }>;
   upcoming: DigestUpcomingItem[];
 }
 
@@ -117,12 +121,19 @@ function buildDigestData(
   const monthKey = todayKey.slice(0, 7);
   const todayLabel = HUMAN_FORMATTER.format(new Date(`${todayKey}T00:00:00+07:00`));
   const monthLabel = MONTH_LABEL_FORMATTER.format(new Date(`${todayKey}T00:00:00+07:00`));
+  const yesterdayDate = new Date(`${todayKey}T00:00:00+07:00`);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayKey = DATE_FORMATTER.format(yesterdayDate);
+  const yesterdayLabel = HUMAN_FORMATTER.format(yesterdayDate);
 
   let computedBalance = 0;
   let todayIncome = 0;
   let todayExpense = 0;
   let todayCount = 0;
+  let yesterdayExpense = 0;
+  let yesterdayCount = 0;
   const todayCategoryTotals = new Map<string, number>();
+  const yesterdayCategoryTotals = new Map<string, number>();
 
   for (const tx of transactions ?? []) {
     const type = typeof tx?.type === 'string' ? tx.type.toLowerCase() : '';
@@ -145,6 +156,14 @@ function buildDigestData(
         const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
         const label = category || 'Tanpa kategori';
         todayCategoryTotals.set(label, (todayCategoryTotals.get(label) || 0) + amount);
+      } else if (dateKey === yesterdayKey) {
+        yesterdayExpense += amount;
+        if (amount > 0) {
+          yesterdayCount += 1;
+        }
+        const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
+        const label = category || 'Tanpa kategori';
+        yesterdayCategoryTotals.set(label, (yesterdayCategoryTotals.get(label) || 0) + amount);
       }
     }
   }
@@ -159,11 +178,16 @@ function buildDigestData(
     .slice(0, 3)
     .map(([name, amount]) => ({ name, amount }));
 
+  const yesterdayDetails = Array.from(yesterdayCategoryTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, amount]) => ({ name, amount }));
+
   const todayNet = todayIncome - todayExpense;
 
   return {
     todayKey,
     todayLabel,
+    yesterdayLabel,
     monthKey,
     monthLabel,
     balance: resolvedBalance,
@@ -172,6 +196,9 @@ function buildDigestData(
     todayNet,
     todayCount,
     topTodayExpenses,
+    yesterdayExpense,
+    yesterdayCount,
+    yesterdayDetails,
     upcoming,
   };
 }
