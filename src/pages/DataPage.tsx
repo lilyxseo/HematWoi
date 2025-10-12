@@ -186,7 +186,7 @@ function sortOptionsFor(tab: string) {
 async function fetchCategories(filter, userId) {
   let query = supabase
     .from('categories')
-    .select('*', { count: 'exact' })
+    .select('id,name,type,created_at', { count: 'exact' })
     .eq('user_id', userId);
   if (filter.q) {
     query = query.ilike('name', `%${filter.q}%`);
@@ -199,13 +199,19 @@ async function fetchCategories(filter, userId) {
   const to = from + filter.pageSize - 1;
   const { data, error, count } = await query.range(from, to);
   if (error) throw error;
-  return { rows: data || [], total: count || 0 };
+  const rows = (data || []).map((row) => ({
+    ...row,
+    name: row.name ?? '',
+    type: row.type ?? null,
+    created_at: row.created_at ?? null,
+  }));
+  return { rows, total: count || 0 };
 }
 
 async function fetchDebts(filter, userId) {
   let query = supabase
     .from('debts')
-    .select('*', { count: 'exact' })
+    .select('id,title,amount,status,due_date,created_at,party_name', { count: 'exact' })
     .eq('user_id', userId);
   if (filter.q) {
     query = query.ilike('title', `%${filter.q}%`);
@@ -218,13 +224,23 @@ async function fetchDebts(filter, userId) {
   const to = from + filter.pageSize - 1;
   const { data, error, count } = await query.range(from, to);
   if (error) throw error;
-  return { rows: data || [], total: count || 0 };
+  const rows = (data || []).map((row) => ({
+    ...row,
+    title: row.title ?? row.party_name ?? '',
+    amount: Number(row.amount ?? 0),
+    status: row.status ?? 'ongoing',
+    due_date: row.due_date ?? null,
+  }));
+  return { rows, total: count || 0 };
 }
 
 async function fetchGoals(filter, userId) {
   let query = supabase
     .from('goals')
-    .select('*', { count: 'exact' })
+    .select(
+      'id,title,target_amount,saved_amount,due_date,status,created_at,description,name',
+      { count: 'exact' },
+    )
     .eq('user_id', userId);
   if (filter.q) {
     query = query.ilike('name', `%${filter.q}%`);
@@ -232,15 +248,25 @@ async function fetchGoals(filter, userId) {
   const [sortField, sortDir] = (filter.sort || 'deadline-asc').split('-');
   const ascending = sortDir !== 'desc';
   let orderField = 'created_at';
-  if (sortField === 'deadline') orderField = 'deadline';
-  if (sortField === 'target') orderField = 'target';
-  if (sortField === 'saved') orderField = 'saved';
+  if (sortField === 'deadline') orderField = 'due_date';
+  if (sortField === 'target') orderField = 'target_amount';
+  if (sortField === 'saved') orderField = 'saved_amount';
   query = query.order(orderField, { ascending });
   const from = (filter.page - 1) * filter.pageSize;
   const to = from + filter.pageSize - 1;
   const { data, error, count } = await query.range(from, to);
   if (error) throw error;
-  return { rows: data || [], total: count || 0 };
+  const rows = (data || []).map((row) => ({
+    ...row,
+    name: row.name ?? row.title ?? '',
+    title: row.title ?? row.name ?? '',
+    target: Number(row.target ?? row.target_amount ?? 0),
+    target_amount: Number(row.target_amount ?? row.target ?? 0),
+    saved: Number(row.saved ?? row.saved_amount ?? 0),
+    saved_amount: Number(row.saved_amount ?? row.saved ?? 0),
+    deadline: row.deadline ?? row.due_date ?? null,
+  }));
+  return { rows, total: count || 0 };
 }
 
 function toFilename(entity: string, extension: string) {
