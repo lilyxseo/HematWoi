@@ -148,6 +148,28 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
           )}
         </div>
 
+        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Pengeluaran kemarin</div>
+          <div className="mt-2 text-xl font-semibold text-danger">
+            -{formatCurrency(data!.yesterdayExpense)}
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            {data!.yesterdayCount} transaksi · {data!.yesterdayLabel}
+          </p>
+          {data!.topYesterdayExpenses.length ? (
+            <ul className="mt-3 space-y-2 text-sm text-text">
+              {data!.topYesterdayExpenses.map((item) => (
+                <li key={item.name} className="flex items-center justify-between">
+                  <span className="font-medium">{item.name}</span>
+                  <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-muted">Tidak ada pengeluaran yang tercatat kemarin.</p>
+          )}
+        </div>
+
         <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
             <span>Pengingat 7 hari</span>
