@@ -148,6 +148,18 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
           )}
         </div>
 
+        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Pengeluaran kemarin</div>
+          <div className="mt-2 text-2xl font-semibold text-danger">-{formatCurrency(data!.yesterdayExpense)}</div>
+          <p className="mt-1 text-xs text-muted">
+            {data!.yesterdayLabel} · {data!.yesterdayCount} transaksi
+          </p>
+          {data!.topYesterdayExpenses.length ? (
+          ) : (
+            <p className="mt-3 text-sm text-muted">Tidak ada pengeluaran yang tercatat kemarin.</p>
+          )}
+        </div>
+
         <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
             <span>Pengingat 7 hari</span>
