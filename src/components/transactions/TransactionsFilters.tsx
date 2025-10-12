@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { ChangeEvent, MutableRefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Calendar, ChevronDown, Search } from "lucide-react";
+import { Calendar, ChevronDown } from "lucide-react";
 import CategoryDot from "./CategoryDot";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -143,7 +143,6 @@ export default function TransactionsFilters({
     >
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex min-w-[240px] flex-1 items-center">
-          <Search className="pointer-events-none absolute left-4 h-4 w-4 text-slate-500" aria-hidden="true" />
           <input
             id={searchId}
             ref={internalSearchRef}
@@ -151,7 +150,7 @@ export default function TransactionsFilters({
             value={searchTerm}
             onChange={handleSearchInput}
             placeholder="Cari judul atau catatan"
-            className="h-11 w-full rounded-2xl bg-slate-900/60 pl-11 pr-4 text-sm text-slate-200 placeholder:text-slate-500 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)]"
+            className="h-11 w-full rounded-2xl bg-slate-900/60 px-4 text-sm text-slate-200 placeholder:text-slate-500 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)]"
             aria-label="Cari transaksi"
           />
         </div>
