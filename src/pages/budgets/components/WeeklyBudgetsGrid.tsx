@@ -7,6 +7,7 @@ interface WeeklyBudgetsGridProps {
   rows: WeeklyBudgetWithSpent[];
   loading?: boolean;
   highlightedIds?: Set<string>;
+  highlightedCategoryIds?: Set<string>;
   highlightLimitReached?: boolean;
   onEdit: (row: WeeklyBudgetWithSpent) => void;
   onDelete: (row: WeeklyBudgetWithSpent) => void;
@@ -75,6 +76,7 @@ export default function WeeklyBudgetsGrid({
   rows,
   loading,
   highlightedIds,
+  highlightedCategoryIds,
   highlightLimitReached,
   onEdit,
   onDelete,
@@ -91,6 +93,7 @@ export default function WeeklyBudgetsGrid({
   }
 
   const highlightSet = highlightedIds ?? new Set<string>();
+  const highlightCategorySet = highlightedCategoryIds ?? new Set<string>();
   const limitReached = Boolean(highlightLimitReached);
 
   return (
@@ -103,7 +106,9 @@ export default function WeeklyBudgetsGrid({
         const displayPercentage = Math.max(0, Math.min(100, Math.round(rawPercentage)));
         const progressColor = getProgressColor(rawPercentage);
         const carryoverEnabled = Boolean(row.carryover_enabled);
-        const isHighlighted = highlightSet.has(String(row.id));
+        const categoryKey = row.category_id ? String(row.category_id) : null;
+        const isHighlighted =
+          highlightSet.has(String(row.id)) || (categoryKey ? highlightCategorySet.has(categoryKey) : false);
         const disableHighlight = !isHighlighted && limitReached;
 
         const categoryType = row.category?.type === 'income' ? 'Pemasukan' : 'Pengeluaran';

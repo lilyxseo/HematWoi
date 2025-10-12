@@ -269,6 +269,18 @@ export default function BudgetsPage() {
     );
   }, [highlightSelections]);
 
+  const highlightedWeeklyCategoryIds = useMemo(() => {
+    const categoryIds = new Set<string>();
+    for (const selection of highlightSelections) {
+      if (selection.budget_type !== 'weekly') continue;
+      const match = weekly.rows.find((row) => String(row.id) === String(selection.budget_id));
+      if (match?.category_id) {
+        categoryIds.add(String(match.category_id));
+      }
+    }
+    return categoryIds;
+  }, [highlightSelections, weekly.rows]);
+
   const selectedWeek = useMemo(() => {
     if (!selectedWeekStart) return null;
     return weekly.weeks.find((week) => week.start === selectedWeekStart) ?? null;
@@ -535,9 +547,30 @@ export default function BudgetsPage() {
     navigate(`/transactions?${params.toString()}`);
   };
 
-  const handleToggleHighlight = async (type: 'monthly' | 'weekly', id: string) => {
+  const handleToggleHighlight = async (
+    type: 'monthly' | 'weekly',
+    id: string,
+    categoryId?: string | null
+  ) => {
     try {
       setHighlightLoading(true);
+      if (type === 'weekly' && categoryId) {
+        const normalizedCategoryId = String(categoryId);
+        const selectionForCategory = highlightSelections.find((selection) => {
+          if (selection.budget_type !== 'weekly') return false;
+          const match = weekly.rows.find((row) => String(row.id) === String(selection.budget_id));
+          if (!match?.category_id) return false;
+          return String(match.category_id) === normalizedCategoryId;
+        });
+
+        if (selectionForCategory && String(selectionForCategory.budget_id) !== String(id)) {
+          const result = await toggleHighlight({ type, id: String(selectionForCategory.budget_id) });
+          setHighlightSelections(result.highlights);
+          addToast(result.highlighted ? 'Highlight ditambahkan' : 'Highlight dihapus', 'success');
+          return;
+        }
+      }
+
       const result = await toggleHighlight({ type, id });
       setHighlightSelections(result.highlights);
       addToast(result.highlighted ? 'Highlight ditambahkan' : 'Highlight dihapus', 'success');
@@ -656,7 +689,7 @@ export default function BudgetsPage() {
                 month: row.period_month?.slice(0, 7) ?? period,
               })
             }
-            onToggleHighlight={(row) => handleToggleHighlight('monthly', row.id)}
+            onToggleHighlight={(row) => handleToggleHighlight('monthly', String(row.id), row.category_id)}
           />
         </Section>
       ) : (
@@ -665,6 +698,7 @@ export default function BudgetsPage() {
             rows={weeklyRowsForDisplay}
             loading={weeklyLoading}
             highlightedIds={highlightedWeeklyIds}
+            highlightedCategoryIds={highlightedWeeklyCategoryIds}
             highlightLimitReached={highlightLimitReached}
             onEdit={handleEditWeekly}
             onDelete={handleDeleteWeekly}
@@ -678,7 +712,7 @@ export default function BudgetsPage() {
               })
             }
             onToggleCarryover={handleToggleWeeklyCarryover}
-            onToggleHighlight={(row) => handleToggleHighlight('weekly', row.id)}
+            onToggleHighlight={(row) => handleToggleHighlight('weekly', String(row.id), row.category_id)}
           />
         </Section>
       )}
