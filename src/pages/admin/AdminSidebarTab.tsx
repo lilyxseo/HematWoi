@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { Icon, ICON_NAMES } from '../../components/icons';
+import { Icon } from '../../components/icons';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
   createSidebarItem,
@@ -11,6 +11,7 @@ import {
   SidebarItemRecord,
   updateSidebarItem,
 } from '../../lib/adminApi';
+import IconPicker from '../../components/icons/IconPicker';
 
 const ACCESS_LABEL: Record<SidebarAccessLevel, string> = {
   public: 'Public',
@@ -464,16 +465,17 @@ export default function AdminSidebarTab() {
           </label>
         </div>
         <div className="grid gap-3 md:grid-cols-4">
-          <label className="text-sm font-semibold text-muted-foreground md:col-span-2">
-            Icon Name
-            <input
+          <div className="md:col-span-2">
+            <IconPicker
+              label="Icon Sidebar"
               value={form.icon_name}
-              onChange={(event) => setForm((prev) => ({ ...prev, icon_name: event.target.value }))}
-              className={clsx(INPUT_CLASS, 'mt-1')}
-              placeholder="Contoh: home"
-              list="admin-icon-options"
+              onChange={(iconName) =>
+                setForm((prev) => ({ ...prev, icon_name: iconName }))
+              }
+              helperText="Klik ikon untuk memilih atau ketik nama ikon yang diinginkan."
+              disabled={submitting}
             />
-          </label>
+          </div>
           <label className="text-sm font-semibold text-muted-foreground">
             Akses
             <select
@@ -516,11 +518,6 @@ export default function AdminSidebarTab() {
             Tambah Item
           </button>
         </div>
-        <datalist id="admin-icon-options">
-          {ICON_NAMES.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
       </form>
 
       {error ? (
@@ -595,19 +592,17 @@ export default function AdminSidebarTab() {
             </label>
           </div>
           <div className="grid gap-3 md:grid-cols-4">
-            <label className="text-sm font-semibold text-muted-foreground md:col-span-2">
-              Icon Name
-              <input
+            <div className="md:col-span-2">
+              <IconPicker
+                label="Icon Sidebar"
                 value={editDraft.icon_name}
-                onChange={(event) =>
-                  setEditDraft((prev) =>
-                    prev ? { ...prev, icon_name: event.target.value } : prev
-                  )
+                onChange={(iconName) =>
+                  setEditDraft((prev) => (prev ? { ...prev, icon_name: iconName } : prev))
                 }
-                className={clsx(INPUT_CLASS, 'mt-1')}
-                list="admin-icon-options"
+                helperText="Klik ikon untuk memilih atau ketik nama ikon yang diinginkan."
+                disabled={submitting}
               />
-            </label>
+            </div>
             <label className="text-sm font-semibold text-muted-foreground">
               Akses
               <select
