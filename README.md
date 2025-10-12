@@ -79,11 +79,21 @@ src/
 | Title   | Path      | Protected | Section | Flag    |
 |---------|-----------|-----------|---------|---------|
 | Home    | `/`       | No        | Main    | -       |
-| Reports | `/reports`| Yes       | Main    | `reports` |
+| Reports | `/reports`| Yes       | Main    | -       |
 
 ![Reports page screenshot](docs/reports.png)
 
 Halaman **Reports** dapat diakses melalui tautan sidebar atau langsung ke `/reports`.
+
+## Reports Page
+
+The reports view collects historical transactions into monthly dashboards. You can:
+
+- Switch between recorded months and optionally compare them with the previous period.
+- Review KPI tiles with sparkline trends for income, expense, balance and savings rate.
+- Explore spending patterns via net balance trend lines, category distribution donut, daily heatmap and top spend table.
+- Read automatically generated insights (no-spend days, biggest category, etc.) and drill into highlighted transactions.
+- Export the filtered report as CSV or PDF, complete with KPI, category and day-by-day breakdowns plus budget usage.
 
 ## UI Guidelines
 
