@@ -58,7 +58,8 @@ export default function Dashboard({ stats, txs }) {
         data={digest.data}
         onClose={digest.close}
       />
-      <div className="space-y-6 sm:space-y-8 lg:space-y-10">
+      <div className="mx-auto w-full max-w-full px-3 sm:px-4 md:px-6">
+        <div className="space-y-6 overflow-hidden sm:space-y-8 lg:space-y-10">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
@@ -117,6 +118,7 @@ export default function Dashboard({ stats, txs }) {
             <RecentTransactions txs={txs} />
           </div>
         </section>
+        </div>
       </div>
     </>
   );
