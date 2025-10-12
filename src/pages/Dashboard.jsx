@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import AchievementBadges from "../components/AchievementBadges";
+import { useEffect, useState } from "react";
 import QuickActions from "../components/QuickActions";
 import SectionHeader from "../components/SectionHeader";
 import CategoryDonut from "../components/CategoryDonut";
@@ -15,6 +14,7 @@ import useDashboardBalances from "../hooks/useDashboardBalances";
 import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighlightedBudgets";
+import FinancialInsights from "../components/dashboard/FinancialInsights";
 
 const DEFAULT_PRESET = "month";
 
@@ -49,26 +49,7 @@ export default function Dashboard({ stats, txs }) {
     setPeriodPreset(preset);
   };
 
-  const streak = useMemo(() => {
-    const dates = new Set(txs.map((t) => new Date(t.date).toDateString()));
-    let count = 0;
-    const today = new Date();
-    while (
-      dates.has(
-        new Date(
-          today.getFullYear(),
-          today.getMonth(),
-          today.getDate() - count
-        ).toDateString()
-      )
-    ) {
-      count++;
-    }
-    return count;
-  }, [txs]);
-
   const insights = useInsights(txs);
-  const savingsTarget = stats?.savingsTarget || 1_000_000;
 
   return (
     <>
@@ -115,12 +96,7 @@ export default function Dashboard({ stats, txs }) {
           />
         </section>
 
-        <AchievementBadges
-          stats={stats}
-          streak={streak}
-          target={savingsTarget}
-          txs={txs}
-        />
+        <FinancialInsights periodEnd={periodRange.end} />
 
         <QuickActions />
 
