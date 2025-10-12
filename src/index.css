@@ -269,6 +269,45 @@
     @apply rounded-3xl border border-border-subtle bg-surface p-4 shadow-[0_20px_45px_-25px_rgb(15_23_42/0.25)] transition-colors duration-300 sm:p-5 lg:p-6 dark:shadow-[0_24px_50px_-30px_rgb(5_8_15/0.6)];
   }
 
+  .card.accent-card {
+    position: relative;
+    overflow: hidden;
+    z-index: 0;
+  }
+
+  .card.accent-card > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .card.accent-card::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    background: radial-gradient(
+      120% 95% at 100% 0%,
+      rgb(var(--card-accent) / 0.45) 0%,
+      rgb(var(--card-accent) / 0) 70%
+    );
+    pointer-events: none;
+    transition: opacity 200ms ease-out;
+    opacity: 0.85;
+    z-index: 0;
+  }
+
+  .dark .card.accent-card::after {
+    background: radial-gradient(
+      120% 95% at 100% 0%,
+      rgb(var(--card-accent-dark) / 0.55) 0%,
+      rgb(var(--card-accent-dark) / 0) 75%
+    );
+  }
+
+  .card.accent-card:hover::after {
+    opacity: 1;
+  }
+
   .form-section {
     @apply flex flex-col gap-5 rounded-3xl border border-border-subtle bg-surface-alt/70 p-5 shadow-sm;
   }
