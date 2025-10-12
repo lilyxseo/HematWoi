@@ -439,6 +439,49 @@ export default function Debts() {
     return { visibleDebts: result, tenorNavigation: navigation };
   }, [debts, multiTenorSeries, seriesCursor]);
 
+  const dateFilteredDebtInfo = useMemo(() => {
+    if (!filters.dateFrom && !filters.dateTo) {
+      return null;
+    }
+
+    const total = visibleDebts.reduce((sum, debt) => {
+      if (debt.type !== 'debt') return sum;
+      const remaining = Number.isFinite(debt.remaining) ? debt.remaining : 0;
+      return sum + Math.max(0, remaining);
+    }, 0);
+
+    const parseDate = (value: string | null) => {
+      if (!value) return null;
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? null : date;
+    };
+
+    const dateFormatter = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
+    const fromDate = parseDate(filters.dateFrom);
+    const toDate = parseDate(filters.dateTo);
+
+    let rangeDescription = '';
+    if (fromDate && toDate) {
+      if (filters.dateFrom === filters.dateTo) {
+        rangeDescription = `pada ${dateFormatter.format(fromDate)}`;
+      } else {
+        rangeDescription = `pada rentang ${dateFormatter.format(fromDate)} – ${dateFormatter.format(toDate)}`;
+      }
+    } else if (fromDate) {
+      rangeDescription = `mulai ${dateFormatter.format(fromDate)}`;
+    } else if (toDate) {
+      rangeDescription = `hingga ${dateFormatter.format(toDate)}`;
+    }
+
+    const fieldLabel = filters.dateField === 'created_at' ? 'tanggal dibuat' : 'jatuh tempo';
+
+    return {
+      total,
+      rangeDescription,
+      fieldLabel,
+    };
+  }, [filters.dateField, filters.dateFrom, filters.dateTo, visibleDebts]);
+
   const handleNavigateTenor = useCallback(
     (seriesKey: string, direction: 1 | -1) => {
       const series = multiTenorSeries.get(seriesKey);
@@ -782,6 +825,14 @@ export default function Debts() {
           ) : null}
 
           <SummaryCards summary={summary} />
+
+          {dateFilteredDebtInfo ? (
+            <div className="rounded-3xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm leading-relaxed text-muted">
+              Nominal hutang dengan {dateFilteredDebtInfo.fieldLabel}
+              {dateFilteredDebtInfo.rangeDescription ? ` ${dateFilteredDebtInfo.rangeDescription}` : ''} sebesar{' '}
+              <span className="font-semibold text-text">{formatCurrency(dateFilteredDebtInfo.total)}</span>.
+            </div>
+          ) : null}
 
       <section className="min-w-0">
         <DebtsTableResponsive
