@@ -62,6 +62,19 @@ function formatCurrency(value: number) {
   }).format(Math.max(0, value));
 }
 
+const FILTER_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
+function formatFilterDate(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return FILTER_DATE_FORMATTER.format(date);
+}
+
 function getSeriesStartDate(debt: DebtRecord): string {
   if (!debt.date) return 'unknown';
   const parsed = new Date(debt.date);
@@ -439,6 +452,39 @@ export default function Debts() {
     return { visibleDebts: result, tenorNavigation: navigation };
   }, [debts, multiTenorSeries, seriesCursor]);
 
+  const dateFilterSummary = useMemo(() => {
+    if (!filters.dateFrom && !filters.dateTo) {
+      return null;
+    }
+
+    const total = visibleDebts.reduce((sum, debt) => {
+      if (debt.type !== 'debt') return sum;
+      if (typeof debt.amount !== 'number' || !Number.isFinite(debt.amount)) {
+        return sum;
+      }
+      return sum + debt.amount;
+    }, 0);
+
+    const fromLabel = formatFilterDate(filters.dateFrom);
+    const toLabel = formatFilterDate(filters.dateTo);
+    const fieldLabel = filters.dateField === 'created_at' ? 'tanggal dibuat' : 'tanggal jatuh tempo';
+
+    let rangeDescription = '';
+    if (fromLabel && toLabel) {
+      rangeDescription =
+        filters.dateFrom === filters.dateTo ? `pada ${fromLabel}` : `pada rentang ${fromLabel} – ${toLabel}`;
+    } else if (fromLabel) {
+      rangeDescription = `sejak ${fromLabel}`;
+    } else if (toLabel) {
+      rangeDescription = `hingga ${toLabel}`;
+    }
+
+    return {
+      total,
+      description: `Nominal hutang berdasarkan ${fieldLabel}${rangeDescription ? ` ${rangeDescription}` : ''}`,
+    };
+  }, [filters.dateFrom, filters.dateTo, filters.dateField, visibleDebts]);
+
   const handleNavigateTenor = useCallback(
     (seriesKey: string, direction: 1 | -1) => {
       const series = multiTenorSeries.get(seriesKey);
@@ -774,6 +820,13 @@ export default function Debts() {
               />
             </div>
           </div>
+
+          {dateFilterSummary ? (
+            <div className="rounded-3xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm text-muted-foreground">
+              <span>{dateFilterSummary.description}:</span>{' '}
+              <span className="font-semibold text-foreground">{formatCurrency(dateFilterSummary.total)}</span>
+            </div>
+          ) : null}
 
           {!userLoading && !canUseCloud ? (
             <div className="rounded-3xl border border-dashed border-border bg-surface-2/70 px-4 py-3 text-sm text-muted">
