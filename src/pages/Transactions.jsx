@@ -886,7 +886,6 @@ export default function Transactions() {
           formatAmount={formatIDR}
           formatDate={formatTransactionDate}
           toDateValue={toDateInput}
-          parseTags={parseTags}
           typeLabels={TYPE_LABELS}
           sort={filter.sort}
           onSortChange={(value) => setFilter({ sort: value })}
@@ -915,7 +914,6 @@ export default function Transactions() {
           formatAmount={formatIDR}
           formatDate={formatTransactionDate}
           toDateValue={toDateInput}
-          parseTags={parseTags}
           typeLabels={TYPE_LABELS}
           page={page}
           pageSize={pageSize}
@@ -1130,19 +1128,6 @@ function EmptyTransactionsState({ onResetFilters, onOpenAdd }) {
       </div>
     </div>
   );
-}
-
-function parseTags(value) {
-  if (!value) return [];
-  if (Array.isArray(value)) {
-    return value
-      .map((tag) => String(tag).trim())
-      .filter(Boolean);
-  }
-  return String(value)
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
 }
 
 function BulkEditDialog({

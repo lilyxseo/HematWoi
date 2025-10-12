@@ -5,7 +5,6 @@ import {
   ArrowUpCircle,
   CalendarDays,
   Pencil,
-  Tag,
   Trash2,
   Wallet2,
 } from "lucide-react";
@@ -40,7 +39,6 @@ interface TransactionsCardListProps {
   formatAmount: (value: number) => string;
   formatDate: (value?: string | null) => string;
   toDateValue: (value?: string | null) => string;
-  parseTags: (value: TransactionRowData["tags"]) => string[];
   typeLabels: Record<string, string>;
   page: number;
   pageSize: number;
@@ -87,7 +85,6 @@ export default function TransactionsCardList({
   formatAmount,
   formatDate,
   toDateValue,
-  parseTags,
   typeLabels,
   page,
   pageSize,
@@ -135,7 +132,6 @@ export default function TransactionsCardList({
           ? Array.from({ length: 6 }).map((_, index) => <SkeletonCard key={index} />)
           : items.map((item) => {
               const selected = selectedIds.has(item.id);
-              const tags = parseTags(item.tags);
               const note = item.title || item.description || item.notes || item.note || "";
               const description = note.trim() || "(Tanpa judul)";
               const formattedDate = formatDate(item.date);
@@ -203,22 +199,6 @@ export default function TransactionsCardList({
                           </span>
                         )}
                       </div>
-                      {tags.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="inline-flex items-center gap-2 rounded-full bg-slate-800/70 px-3 py-1 font-medium text-slate-300 ring-1 ring-slate-700/70">
-                            <Tag className="h-3.5 w-3.5" aria-hidden="true" />
-                            Tags
-                          </span>
-                          {tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-slate-800/60 px-2 py-1 font-medium text-slate-200 ring-1 ring-slate-700/60"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
                   <footer className="mt-5 flex items-center justify-between gap-3">
