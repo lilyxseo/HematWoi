@@ -14,6 +14,7 @@ export type NavItem = {
 
 import {
   LayoutDashboard,
+  BarChart3,
   ListChecks,
   Wallet,
   Flag,
@@ -32,6 +33,14 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Dashboard',
     path: '/',
     icon: <LayoutDashboard className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Reports',
+    path: '/reports',
+    icon: <BarChart3 className="h-5 w-5" />,
     section: 'primary',
     inSidebar: true,
     protected: true,
