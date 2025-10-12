@@ -135,7 +135,7 @@ function PeriodPicker({ value, preset, onChange, className }: PeriodPickerProps)
 
   return (
     <div className={className}>
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/80 bg-card/60 p-1 text-sm shadow-sm backdrop-blur">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/80 bg-card/60 p-1.5 text-xs shadow-sm backdrop-blur max-[400px]:gap-1.5 max-[400px]:p-1 sm:text-sm">
         {SEGMENTS.map((segment) => {
           const isActive = preset === segment.value
           return (
@@ -143,11 +143,12 @@ function PeriodPicker({ value, preset, onChange, className }: PeriodPickerProps)
               key={segment.value}
               type="button"
               onClick={() => handlePresetClick(segment.value)}
-              className={`inline-flex items-center justify-center rounded-2xl px-4 py-2 font-medium transition ${
+              className={`inline-flex min-h-10 min-w-[40px] items-center justify-center gap-2 rounded-xl px-3 py-1.5 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                 isActive
                   ? "bg-primary text-primary-foreground shadow"
-                  : "text-muted-foreground hover:bg-primary/5"
+                  : "text-muted-foreground hover:bg-primary/10"
               }`}
+              aria-label={`Filter periode ${segment.label}`}
             >
               {segment.label}
             </button>
@@ -156,23 +157,23 @@ function PeriodPicker({ value, preset, onChange, className }: PeriodPickerProps)
       </div>
 
       {preset === "custom" ? (
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Start</span>
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-xs sm:text-sm">
+          <label className="flex min-w-[140px] flex-1 flex-col gap-1">
+            <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">Start</span>
             <input
               type="date"
               value={normalized.start}
               onChange={handleDateChange("start")}
-              className="h-11 min-w-[180px] rounded-2xl border border-transparent bg-muted/40 px-4 text-base shadow-inner ring-2 ring-transparent focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-primary/20"
-            />
+              className="h-11 w-full rounded-xl border border-transparent bg-muted/40 px-3 text-sm shadow-inner ring-2 ring-transparent focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-primary/20 sm:px-4 sm:text-base"
+              />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">End</span>
+          <label className="flex min-w-[140px] flex-1 flex-col gap-1">
+            <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">End</span>
             <input
               type="date"
               value={normalized.end}
               onChange={handleDateChange("end")}
-              className="h-11 min-w-[180px] rounded-2xl border border-transparent bg-muted/40 px-4 text-base shadow-inner ring-2 ring-transparent focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-primary/20"
+              className="h-11 w-full rounded-xl border border-transparent bg-muted/40 px-3 text-sm shadow-inner ring-2 ring-transparent focus:border-primary/40 focus:bg-background focus:outline-none focus:ring-primary/20 sm:px-4 sm:text-base"
             />
           </label>
         </div>
