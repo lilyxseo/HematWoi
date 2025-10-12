@@ -200,8 +200,8 @@ export default function BudgetCard({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-        <div className="grid flex-1 gap-3 sm:grid-cols-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+        <div className="grid flex-1 gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
           <StatItem label="Dialokasikan" value={formatCurrency(planned)} description="Anggaran" />
           <StatItem label="Terpakai" value={formatCurrency(spent)} description={percentageLabel} />
           <StatItem
@@ -211,7 +211,7 @@ export default function BudgetCard({
             valueClassName={remaining < 0 ? 'text-rose-500 dark:text-rose-300' : 'text-emerald-600 dark:text-emerald-300'}
           />
         </div>
-        <div className="flex w-full flex-col gap-2 rounded-xl border border-white/10 bg-surface/50 p-3 shadow-inner lg:w-[220px]">
+        <div className="flex w-full flex-col gap-2 rounded-xl border border-white/10 bg-surface/50 p-3 shadow-inner lg:min-w-[200px] lg:max-w-[260px]">
           <div className="flex items-center justify-between text-xs md:text-sm leading-snug text-muted-foreground">
             <span>Progres penggunaan</span>
             <span className="tabular-nums whitespace-nowrap">{progress}%</span>
