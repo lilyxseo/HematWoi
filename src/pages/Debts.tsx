@@ -62,6 +62,39 @@ function formatCurrency(value: number) {
   }).format(Math.max(0, value));
 }
 
+const dateFilterFormatter = new Intl.DateTimeFormat('id-ID', { dateStyle: 'long' });
+
+function parseFilterDate(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function describeFilterRange(from: string | null, to: string | null): string {
+  const fromDate = parseFilterDate(from);
+  const toDate = parseFilterDate(to);
+
+  if (fromDate && toDate) {
+    const start = fromDate.getTime() <= toDate.getTime() ? fromDate : toDate;
+    const end = fromDate.getTime() <= toDate.getTime() ? toDate : fromDate;
+    if (start.getTime() === end.getTime()) {
+      return `pada ${dateFilterFormatter.format(start)}`;
+    }
+    return `pada ${dateFilterFormatter.format(start)} - ${dateFilterFormatter.format(end)}`;
+  }
+
+  if (fromDate) {
+    return `mulai ${dateFilterFormatter.format(fromDate)}`;
+  }
+
+  if (toDate) {
+    return `hingga ${dateFilterFormatter.format(toDate)}`;
+  }
+
+  return '';
+}
+
 function getSeriesStartDate(debt: DebtRecord): string {
   if (!debt.date) return 'unknown';
   const parsed = new Date(debt.date);
@@ -439,6 +472,22 @@ export default function Debts() {
     return { visibleDebts: result, tenorNavigation: navigation };
   }, [debts, multiTenorSeries, seriesCursor]);
 
+  const filteredDebtSummary = useMemo(() => {
+    const total = visibleDebts.reduce((acc, item) => {
+      if (item.type !== 'debt') return acc;
+      return acc + Math.max(0, item.remaining);
+    }, 0);
+    const count = visibleDebts.reduce((acc, item) => (item.type === 'debt' ? acc + 1 : acc), 0);
+    return { total, count };
+  }, [visibleDebts]);
+
+  const dateFilterDescription = useMemo(
+    () => describeFilterRange(filters.dateFrom, filters.dateTo),
+    [filters.dateFrom, filters.dateTo],
+  );
+
+  const showFilteredDebtSummary = Boolean((filters.dateFrom || filters.dateTo) && filters.type !== 'receivable');
+
   const handleNavigateTenor = useCallback(
     (seriesKey: string, direction: 1 | -1) => {
       const series = multiTenorSeries.get(seriesKey);
@@ -783,17 +832,35 @@ export default function Debts() {
 
           <SummaryCards summary={summary} />
 
-      <section className="min-w-0">
-        <DebtsTableResponsive
-          debts={visibleDebts}
-          loading={loading}
-          onEdit={handleEditClick}
-          onDelete={handleDeleteRequest}
-          onAddPayment={handleOpenPayment}
-          tenorNavigation={tenorNavigation}
-          onNavigateTenor={handleNavigateTenor}
-        />
-      </section>
+          {showFilteredDebtSummary ? (
+            <div className="rounded-3xl border border-dashed border-border/60 bg-surface-2/70 px-4 py-3 text-sm text-muted">
+              <span>
+                Total nominal hutang {filters.dateField === 'due_date' ? 'yang jatuh tempo' : 'yang dibuat'}
+                {dateFilterDescription ? ` ${dateFilterDescription}` : ' pada filter ini'}:
+              </span>
+              <span className="ml-1 font-semibold text-text">
+                {formatCurrency(filteredDebtSummary.total)}
+              </span>
+              <span className="ml-2 text-muted">
+                ·{' '}
+                {filteredDebtSummary.count > 0
+                  ? `${filteredDebtSummary.count} catatan`
+                  : 'Tidak ada hutang pada rentang ini'}
+              </span>
+            </div>
+          ) : null}
+
+          <section className="min-w-0">
+            <DebtsTableResponsive
+              debts={visibleDebts}
+              loading={loading}
+              onEdit={handleEditClick}
+              onDelete={handleDeleteRequest}
+              onAddPayment={handleOpenPayment}
+              tenorNavigation={tenorNavigation}
+              onNavigateTenor={handleNavigateTenor}
+            />
+          </section>
         </div>
       </div>
 
