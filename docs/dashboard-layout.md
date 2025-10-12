@@ -7,7 +7,7 @@
   - `md:grid-cols-2` for tablet.
 - Use column spans for proportion `7/12` and `5/12` on desktop:
   - `lg:col-span-7` for Progress/Milestone card.
-  - `lg:col-span-5` for Achievements card.
+  - `lg:col-span-5` for Financial Insights card.
 - Cards should stretch equally (`h-full`) and internal lists may scroll.
 
 ## Action Tiles
