@@ -329,6 +329,7 @@ interface WeeklyCarryoverEntry {
   planned_amount: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
+  highlightSelectionId: string | null;
 }
 
 async function ensureWeeklyCarryover(
@@ -348,7 +349,7 @@ async function ensureWeeklyCarryover(
 
   const { data, error } = await supabase
     .from('budgets_weekly')
-    .select('category_id,planned_amount,carryover_enabled,notes,week_start')
+    .select('id,category_id,planned_amount,carryover_enabled,notes,week_start')
     .eq('user_id', userId)
     .gte('week_start', normalizedStart)
     .lt('week_start', rangeEnd)
@@ -356,9 +357,25 @@ async function ensureWeeklyCarryover(
 
   if (error) throw error;
 
+  const { data: highlightData, error: highlightError } = await supabase
+    .from('user_highlight_budgets')
+    .select('id,budget_id')
+    .eq('user_id', userId)
+    .eq('budget_type', 'weekly');
+
+  if (highlightError) throw highlightError;
+
+  const weeklyHighlightByBudget = new Map<string, string>();
+  for (const row of (highlightData ?? []) as { id: string | number; budget_id: string | number | null }[]) {
+    const budgetId = row?.budget_id;
+    if (!budgetId) continue;
+    weeklyHighlightByBudget.set(String(budgetId), String(row.id));
+  }
+
   const budgetsByWeek = new Map<string, Map<string, WeeklyCarryoverEntry>>();
 
   for (const row of (data ?? []) as {
+    id: UUID | null;
     category_id: UUID | null;
     planned_amount: number | null;
     carryover_enabled: boolean | null;
@@ -381,10 +398,13 @@ async function ensureWeeklyCarryover(
       ? row.carryover_enabled
       : Boolean(row.carryover_enabled);
 
+    const highlightSelectionId = row.id ? weeklyHighlightByBudget.get(String(row.id)) ?? null : null;
+
     currentWeekBudgets.set(categoryId, {
       planned_amount: Number.isFinite(plannedAmount) ? plannedAmount : 0,
       carryover_enabled: carryoverEnabled,
       notes: row.notes ?? null,
+      highlightSelectionId,
     });
   }
 
@@ -396,6 +416,8 @@ async function ensureWeeklyCarryover(
   for (let current = new Date(startDate); current < endDate; current.setUTCDate(current.getUTCDate() + 7)) {
     weekStartDates.push(formatIsoDateUTC(current));
   }
+
+  const highlightCarryoverMap = new Map<string, string>();
 
   const toInsert: {
     category_id: UUID;
@@ -433,6 +455,12 @@ async function ensureWeeklyCarryover(
         notes: budget.notes ?? null,
       });
 
+      const highlightSelectionId = budget.highlightSelectionId;
+
+      if (highlightSelectionId) {
+        highlightCarryoverMap.set(`${categoryId}:${nextWeekStart}`, highlightSelectionId);
+      }
+
       toInsert.push({
         category_id: categoryId,
         week_start: nextWeekStart,
@@ -456,12 +484,38 @@ async function ensureWeeklyCarryover(
     week_start: item.week_start,
   }));
 
-  const { error: upsertError } = await supabase
+  const upsertResponse = await supabase
     .from('budgets_weekly')
-    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' });
+    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' })
+    .select('id,category_id,week_start');
 
-  if (upsertError) {
-    throw upsertError;
+  if (upsertResponse.error) {
+    throw upsertResponse.error;
+  }
+
+  const highlightUpdates: { selectionId: string; budgetId: string }[] = [];
+
+  for (const row of (upsertResponse.data ?? []) as {
+    id: string | number;
+    category_id: UUID;
+    week_start: string;
+  }[]) {
+    const key = `${row.category_id}:${row.week_start}`;
+    const selectionId = highlightCarryoverMap.get(key);
+    if (!selectionId) continue;
+    highlightUpdates.push({ selectionId, budgetId: String(row.id) });
+  }
+
+  for (const update of highlightUpdates) {
+    const { error: updateError } = await supabase
+      .from('user_highlight_budgets')
+      .update({ budget_id: update.budgetId })
+      .eq('user_id', userId)
+      .eq('id', update.selectionId);
+
+    if (updateError) {
+      throw updateError;
+    }
   }
 }
 
