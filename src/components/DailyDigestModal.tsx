@@ -148,6 +148,31 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
           )}
         </div>
 
+        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Pengeluaran kemarin</div>
+          <div className="mt-2 flex items-baseline gap-2 text-xl font-semibold text-text">
+            <span className="text-danger">-{formatCurrency(data!.yesterdayExpense)}</span>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            {data!.yesterdayLabel} · {data!.yesterdayCount} transaksi
+          </p>
+          {data!.topYesterdayExpenses.length ? (
+            <>
+              <div className="mt-4 text-xs font-semibold uppercase tracking-wide text-muted">Top kategori</div>
+              <ul className="mt-2 space-y-2 text-sm text-text">
+                {data!.topYesterdayExpenses.map((item) => (
+                  <li key={item.name} className="flex items-center justify-between">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-muted">Belum ada pengeluaran yang tercatat kemarin.</p>
+          )}
+        </div>
+
         <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
             <span>Pengingat 7 hari</span>
