@@ -96,9 +96,11 @@ export default function Dashboard({ stats, txs }) {
           />
         </section>
 
-        <FinancialInsights periodEnd={periodRange.end} />
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr),minmax(0,1fr)] xl:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
+          <FinancialInsights periodEnd={periodRange.end} />
 
-        <QuickActions />
+          <QuickActions />
+        </div>
 
         <DashboardHighlightedBudgets period={periodRange} />
 
