@@ -58,8 +58,8 @@ export default function Dashboard({ stats, txs }) {
         data={digest.data}
         onClose={digest.close}
       />
-      <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto max-w-full space-y-6 overflow-hidden px-3 sm:space-y-8 sm:px-4 md:space-y-10 md:px-6 max-[400px]:space-y-5 max-[400px]:px-2">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
           <div className="space-y-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
               Dashboard
@@ -72,13 +72,13 @@ export default function Dashboard({ stats, txs }) {
             type="button"
             onClick={digest.openManual}
             aria-haspopup="dialog"
-            className="inline-flex h-10 items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-border-subtle bg-surface-alt px-3 py-2 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:rounded-2xl sm:px-4 max-[400px]:text-xs"
           >
             Lihat Ringkasan Hari Ini
           </button>
         </header>
 
-        <section className="space-y-4">
+        <section className="space-y-4 max-[400px]:space-y-3">
           <PeriodPicker
             value={periodRange}
             preset={periodPreset}
@@ -96,7 +96,7 @@ export default function Dashboard({ stats, txs }) {
           />
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:gap-8">
+        <section className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:gap-8">
           <FinancialInsights periodEnd={periodRange.end} />
 
           <QuickActions />
@@ -104,12 +104,12 @@ export default function Dashboard({ stats, txs }) {
 
         <DashboardHighlightedBudgets period={periodRange} />
 
-        <section className="space-y-6 sm:space-y-8 lg:space-y-10">
+        <section className="space-y-5 sm:space-y-7 lg:space-y-10 max-[400px]:space-y-4">
           <SectionHeader title="Analisis Bulanan" />
-          <div className="grid gap-6 sm:gap-7 lg:gap-8">
+          <div className="grid gap-4 sm:gap-6 lg:gap-8">
             <CategoryDonut data={insights.categories} />
           </div>
-          <div className="grid gap-6 sm:gap-7 lg:gap-8 lg:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 lg:gap-8 lg:grid-cols-2">
             <TopSpendsTable
               data={insights.topSpends}
               onSelect={(t) => EventBus.emit("tx:open", t)}
