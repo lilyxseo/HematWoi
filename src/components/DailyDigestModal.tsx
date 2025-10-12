@@ -155,14 +155,6 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
             {data!.yesterdayLabel} · {data!.yesterdayCount} transaksi
           </p>
           {data!.topYesterdayExpenses.length ? (
-            <ul className="mt-3 space-y-2 text-sm text-text">
-              {data!.topYesterdayExpenses.map((item) => (
-                <li key={`yesterday-${item.name}`} className="flex items-center justify-between">
-                  <span className="font-medium">{item.name}</span>
-                  <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
-                </li>
-              ))}
-            </ul>
           ) : (
             <p className="mt-3 text-sm text-muted">Tidak ada pengeluaran yang tercatat kemarin.</p>
           )}
