@@ -351,6 +351,10 @@
 }
 
 @layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
   .late-month-mode {
     filter: grayscale(0.3) brightness(0.95);
   }

@@ -557,7 +557,7 @@ export default function BudgetsPage() {
   const weeklyLoading = weekly.loading || submittingWeekly;
 
   return (
-    <Page>
+    <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 md:px-6">
       <PageHeader
         title="Anggaran"
         description="Atur dan pantau alokasi pengeluaranmu per bulan atau per minggu."
