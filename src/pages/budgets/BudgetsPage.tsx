@@ -557,7 +557,7 @@ export default function BudgetsPage() {
   const weeklyLoading = weekly.loading || submittingWeekly;
 
   return (
-    <Page>
+    <Page maxWidthClass="max-w-[1400px]" paddingClass="px-3 md:px-6">
       <PageHeader
         title="Anggaran"
         description="Atur dan pantau alokasi pengeluaranmu per bulan atau per minggu."
@@ -679,6 +679,7 @@ export default function BudgetsPage() {
             }
             onToggleCarryover={handleToggleWeeklyCarryover}
             onToggleHighlight={(row) => handleToggleHighlight('weekly', row.id)}
+            onCreate={handleOpenCreate}
           />
         </Section>
       )}
