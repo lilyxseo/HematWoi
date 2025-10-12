@@ -122,7 +122,9 @@ export default function TransactionsTable({
         </div>
       )}
       <div className="overflow-hidden rounded-3xl bg-slate-950/50 ring-1 ring-slate-800">
-        <div className="max-h-[min(70vh,640px)] overflow-y-auto">
+        <div
+          className="max-h-[min(70vh,640px)] overflow-y-auto lg:[scrollbar-width:thin] lg:[scrollbar-color:hsl(var(--color-primary)/0.35)_transparent] lg:[&::-webkit-scrollbar]:w-2 lg:[&::-webkit-scrollbar-thumb]:rounded-full lg:[&::-webkit-scrollbar-thumb]:bg-[hsl(var(--color-primary)/0.35)] lg:[&::-webkit-scrollbar-thumb:hover]:bg-[hsl(var(--color-primary)/0.55)] lg:[&::-webkit-scrollbar-track]:bg-transparent"
+        >
           <table className="min-w-full divide-y divide-slate-800">
             <thead className="bg-slate-900" style={tableStickyTop ? { top: tableStickyTop } : undefined}>
               <tr className="sticky top-0 z-10 bg-slate-900">
