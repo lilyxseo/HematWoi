@@ -38,6 +38,30 @@ function getBudgetPeriod(range: PeriodRange): string {
   return base.slice(0, 7);
 }
 
+function formatIsoDateUTC(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getUTCDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getWeekRangeForIsoDate(isoDate: string | null | undefined) {
+  let reference = new Date();
+  if (isoDate) {
+    const parsed = new Date(`${isoDate}T00:00:00.000Z`);
+    if (!Number.isNaN(parsed.getTime())) {
+      reference = parsed;
+    }
+  }
+  const start = new Date(Date.UTC(reference.getUTCFullYear(), reference.getUTCMonth(), reference.getUTCDate()));
+  const day = start.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  start.setUTCDate(start.getUTCDate() - diff);
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate() + 6);
+  return { start: formatIsoDateUTC(start), end: formatIsoDateUTC(end) };
+}
+
 function getProgressColor(progress: number): string {
   const value = progress * 100;
   if (value <= 74) return 'var(--accent)';
@@ -82,6 +106,11 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
   const [error, setError] = useState<string | null>(null);
 
   const budgetPeriod = useMemo(() => getBudgetPeriod(period), [period]);
+  const referenceDateIso = period?.end || period?.start || new Date().toISOString().slice(0, 10);
+  const activeWeekStart = useMemo(
+    () => getWeekRangeForIsoDate(referenceDateIso).start,
+    [referenceDateIso]
+  );
   const monthly = useBudgets(budgetPeriod);
   const weekly = useWeeklyBudgets(budgetPeriod);
 
@@ -136,8 +165,23 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
           } satisfies HighlightCardData;
         }
 
-        const row = weeklyMap.get(String(item.budget_id));
+        let row = weeklyMap.get(String(item.budget_id));
         if (!row) return null;
+
+        if (row.week_start !== activeWeekStart && row.category_id) {
+          const currentWeekRow = weekly.rows.find(
+            (candidate) =>
+              candidate.category_id === row.category_id && candidate.week_start === activeWeekStart
+          );
+          if (currentWeekRow) {
+            row = currentWeekRow;
+          }
+        }
+
+        if (row.week_start !== activeWeekStart) {
+          return null;
+        }
+
         const planned = Number(row.amount_planned ?? 0);
         const spent = Number(row.spent ?? 0);
         const remaining = planned - spent;
@@ -161,7 +205,16 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         } satisfies HighlightCardData;
       })
       .filter((card): card is HighlightCardData => Boolean(card));
-  }, [highlights, loading, monthly.loading, monthly.rows, weekly.loading, weekly.rows, weekly.weeks]);
+  }, [
+    activeWeekStart,
+    highlights,
+    loading,
+    monthly.loading,
+    monthly.rows,
+    weekly.loading,
+    weekly.rows,
+    weekly.weeks,
+  ]);
 
   const isLoading = loading || monthly.loading || weekly.loading;
   const displayError = error || monthly.error || weekly.error;
