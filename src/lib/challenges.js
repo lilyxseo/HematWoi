@@ -10,7 +10,7 @@ export const CHALLENGE_TEMPLATES = [
     title: "No GoFood 7 Hari",
     type: "avoid",
     durationDays: 7,
-    rules: { category: "Makan" },
+    rules: { category: "Makanan" },
     rewardXP: 50,
   },
   {
@@ -45,7 +45,7 @@ export const CHALLENGE_TEMPLATES = [
     title: "No Kopi Seminggu",
     type: "avoid",
     durationDays: 7,
-    rules: { category: "Makan" },
+    rules: { category: "Makanan" },
     rewardXP: 50,
   },
   {
