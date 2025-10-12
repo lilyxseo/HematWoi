@@ -151,14 +151,10 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
         <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
           <div className="text-xs font-semibold uppercase tracking-wide text-muted">Pengeluaran kemarin</div>
           <div className="mt-2 text-2xl font-semibold text-danger">-{formatCurrency(data!.yesterdayExpense)}</div>
-          </p>
           {data!.topYesterdayExpenses.length ? (
-            <ul className="mt-3 space-y-2 text-sm text-text">
-              {data!.topYesterdayExpenses.map((item) => (
-                <li key={`yesterday-${item.name}`} className="flex items-center justify-between">
-                </li>
-              ))}
-            </ul>
+            <p className="mt-3 text-sm text-muted">
+              Detail kategori pengeluaran tidak ditampilkan dalam ringkasan ini.
+            </p>
           ) : (
             <p className="mt-3 text-sm text-muted">Tidak ada pengeluaran yang tercatat kemarin.</p>
           )}
