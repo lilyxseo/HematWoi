@@ -168,16 +168,8 @@ export default function AuthLogin() {
 
   const skeleton = useMemo(
     () => (
-      <div className="grid w-full animate-pulse gap-4 md:grid-cols-5">
-        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm md:col-span-2">
-          <div className="space-y-4 text-center">
-            <div className="mx-auto h-12 w-12 rounded-full bg-surface-alt" />
-            <div className="mx-auto h-4 w-24 rounded-full bg-surface-alt" />
-            <div className="mx-auto h-3 w-3/4 rounded-full bg-surface-alt" />
-            <div className="mx-auto h-10 w-full rounded-2xl bg-surface-alt" />
-          </div>
-        </div>
-        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm md:col-span-3">
+      <div className="grid w-full animate-pulse gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-stretch">
+        <div className="rounded-3xl border border-border-subtle bg-surface p-6 shadow-sm">
           <div className="space-y-4">
             <div className="h-6 w-3/4 rounded-full bg-surface-alt" />
             <div className="h-4 w-1/2 rounded-full bg-surface-alt" />
@@ -186,6 +178,14 @@ export default function AuthLogin() {
               <div className="h-11 rounded-2xl bg-surface-alt" />
               <div className="h-11 rounded-2xl bg-surface-alt" />
             </div>
+          </div>
+        </div>
+        <div className="rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm">
+          <div className="space-y-4">
+            <div className="mx-auto h-12 w-12 rounded-full bg-surface-alt" />
+            <div className="mx-auto h-4 w-24 rounded-full bg-surface-alt" />
+            <div className="mx-auto h-3 w-3/4 rounded-full bg-surface-alt" />
+            <div className="mx-auto h-10 w-full rounded-2xl bg-surface-alt" />
           </div>
         </div>
       </div>
@@ -218,8 +218,8 @@ export default function AuthLogin() {
   return (
     <ErrorBoundary>
       <main className="min-h-screen bg-gradient-to-b from-surface-alt via-surface-alt to-surface px-6 py-12 text-text transition-colors sm:py-16">
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 lg:flex-row lg:items-start lg:justify-between">
-          <section className="flex flex-1 flex-col gap-6">
+        <div className="mx-auto grid w-full max-w-6xl gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+          <section className="flex flex-col gap-6">
             <div className="rounded-3xl border border-border-subtle/60 bg-gradient-to-br from-primary/10 via-surface to-surface-alt p-6 shadow-sm">
               <div className="inline-flex items-center rounded-full bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
                 Mode online yang aman
@@ -246,8 +246,8 @@ export default function AuthLogin() {
             </ul>
           </section>
 
-          <section className="flex flex-1 items-center justify-center">
-            <div className="w-full max-w-2xl space-y-6">
+          <section className="flex flex-col justify-center lg:justify-start">
+            <div className="w-full space-y-6 lg:max-w-none">
               {sessionError ? (
                 <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
                   {sessionError}
@@ -261,8 +261,8 @@ export default function AuthLogin() {
               {checking ? (
                 skeleton
               ) : (
-                <div className="grid gap-4 md:grid-cols-5">
-                  <div className="md:col-span-3">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-stretch">
+                  <div>
                     <LoginCard
                       defaultIdentifier={prefilledIdentifier}
                       onSuccess={handleSuccess}
@@ -270,7 +270,7 @@ export default function AuthLogin() {
                       onPasswordSignInError={clearEmailSignInMarker}
                     />
                   </div>
-                  <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm md:col-span-2">
+                  <div className="flex flex-col justify-between rounded-3xl border border-border-subtle bg-surface p-6 text-center shadow-sm lg:h-full">
                     <div className="space-y-4">
                       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                         <svg className="h-6 w-6" viewBox="0 0 24 24" aria-hidden="true">
