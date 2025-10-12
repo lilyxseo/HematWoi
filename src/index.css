@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
 @layer base {
   *,
   *::before,
