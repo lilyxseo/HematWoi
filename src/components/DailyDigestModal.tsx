@@ -149,6 +149,45 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
         </div>
 
         <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted">Pengeluaran kemarin</div>
+              <div className="mt-2 text-xl font-semibold text-danger">
+                -{formatCurrency(data!.yesterdayExpense)}
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                {data!.yesterdayCount} transaksi · {data!.yesterdayLabel}
+              </p>
+            </div>
+            <div className="text-right text-xs text-muted">
+              <p>Perbandingan dengan hari ini</p>
+              <p className="font-semibold text-text">
+                {data!.todayExpense >= data!.yesterdayExpense
+                  ? 'Lebih tinggi dari kemarin'
+                  : 'Lebih rendah dari kemarin'}
+              </p>
+            </div>
+          </div>
+          {data!.topYesterdayExpenses.length ? (
+            <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+              {data!.topYesterdayExpenses.map((item) => (
+                <li
+                  key={item.name}
+                  className="flex items-center justify-between rounded-xl bg-surface p-3 text-sm text-text"
+                >
+                  <span className="font-medium">{item.name}</span>
+                  <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 text-sm text-muted">
+              Tidak ada pengeluaran yang tercatat kemarin.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
           <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
             <span>Pengingat 7 hari</span>
             <span>{data!.upcoming.length} agenda</span>
