@@ -58,13 +58,13 @@ export default function Dashboard({ stats, txs }) {
         data={digest.data}
         onClose={digest.close}
       />
-      <div className="space-y-6 sm:space-y-8 lg:space-y-10">
+      <div className="mx-auto max-w-full space-y-6 px-3 sm:space-y-8 sm:px-4 md:space-y-10 md:px-6 max-[400px]:space-y-4 max-[400px]:px-2 overflow-hidden">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          <div className="space-y-1.5 sm:space-y-2">
+            <h1 className="text-xl font-bold tracking-tight sm:text-2xl md:text-3xl">
               Dashboard
             </h1>
-            <p className="text-sm text-muted sm:text-base">
+            <p className="text-xs text-muted sm:text-sm md:text-base">
               Ringkasan keuanganmu
             </p>
           </div>
@@ -72,13 +72,14 @@ export default function Dashboard({ stats, txs }) {
             type="button"
             onClick={digest.openManual}
             aria-haspopup="dialog"
-            className="inline-flex h-10 items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-border-subtle bg-surface-alt px-3 py-2 text-xs font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:min-h-[44px] sm:rounded-2xl sm:px-4 sm:py-2.5 sm:text-sm"
+            aria-label="Lihat ringkasan harian"
           >
             Lihat Ringkasan Hari Ini
           </button>
         </header>
 
-        <section className="space-y-4">
+        <section className="space-y-4 max-[400px]:space-y-3">
           <PeriodPicker
             value={periodRange}
             preset={periodPreset}
