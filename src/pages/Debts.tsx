@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Download, Plus } from 'lucide-react';
+import { CalendarRange, ChevronDown, Download, Plus } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';
@@ -35,6 +35,47 @@ const INITIAL_FILTERS: DebtsFilterState = {
   dateTo: null,
   sort: 'newest',
 };
+
+function getMonthRange(month: string) {
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    return null;
+  }
+
+  const [yearPart, monthPart] = month.split('-');
+  const year = Number(yearPart);
+  const monthIndex = Number(monthPart);
+
+  if (!Number.isFinite(year) || !Number.isFinite(monthIndex) || monthIndex < 1 || monthIndex > 12) {
+    return null;
+  }
+
+  const start = `${yearPart}-${monthPart}-01`;
+  const endDate = new Date(year, monthIndex, 0);
+  const lastDay = `${endDate.getDate()}`.padStart(2, '0');
+  const end = `${yearPart}-${monthPart}-${lastDay}`;
+
+  return { start, end };
+}
+
+const monthFormatter = new Intl.DateTimeFormat('id-ID', {
+  month: 'long',
+  year: 'numeric',
+});
+
+function formatMonthLabel(month: string) {
+  const range = getMonthRange(month);
+  if (!range) {
+    return 'Semua rentang';
+  }
+
+  const [yearPart, monthPart] = month.split('-');
+  const date = new Date(Number(yearPart), Number(monthPart) - 1, 1);
+  if (Number.isNaN(date.getTime())) {
+    return 'Semua rentang';
+  }
+
+  return monthFormatter.format(date);
+}
 
 function toISO(date: string | null | undefined) {
   if (!date) return null;
@@ -120,6 +161,7 @@ export default function Debts() {
   const { user, loading: userLoading } = useSupabaseUser();
   const canUseCloud = Boolean(user?.id);
   const [filters, setFilters] = useState<DebtsFilterState>(INITIAL_FILTERS);
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [summary, setSummary] = useState<DebtSummary | null>(null);
   const [loading, setLoading] = useState(false);
@@ -151,6 +193,23 @@ export default function Debts() {
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
   const [seriesCursor, setSeriesCursor] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    if (!filters.dateFrom || !filters.dateTo) {
+      setSelectedMonth((prev) => (prev ? '' : prev));
+      return;
+    }
+
+    const monthCandidate = filters.dateFrom.slice(0, 7);
+    const range = getMonthRange(monthCandidate);
+
+    if (range && range.start === filters.dateFrom && range.end === filters.dateTo) {
+      setSelectedMonth((prev) => (prev !== monthCandidate ? monthCandidate : prev));
+      return;
+    }
+
+    setSelectedMonth((prev) => (prev ? '' : prev));
+  }, [filters.dateFrom, filters.dateTo]);
 
   const logError = useCallback((error: unknown, context: string) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -748,6 +807,29 @@ export default function Debts() {
     setFilterPanelOpen((prev) => !prev);
   };
 
+  const handleMonthChange = (value: string) => {
+    setSelectedMonth(value);
+    setFilters((prev) => {
+      if (!value) {
+        if (prev.dateFrom === null && prev.dateTo === null) {
+          return prev;
+        }
+        return { ...prev, dateFrom: null, dateTo: null };
+      }
+
+      const range = getMonthRange(value);
+      if (!range) {
+        return prev;
+      }
+
+      if (prev.dateFrom === range.start && prev.dateTo === range.end) {
+        return prev;
+      }
+
+      return { ...prev, dateFrom: range.start, dateTo: range.end };
+    });
+  };
+
   return (
     <Page>
       <div className="space-y-6 min-w-0">
@@ -774,32 +856,48 @@ export default function Debts() {
 
         <div className="space-y-6">
           <div className="space-y-3">
-            <button
-              type="button"
-              onClick={toggleFilterPanel}
-              className={clsx(
-                'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]',
-              )}
-              aria-controls={filterPanelId}
-              aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
-            >
-              <span className="flex items-center gap-2">
-                Filter
-                {activeFilterCount > 0 ? (
-                  <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-brand-foreground">
-                    {activeFilterCount}
-                  </span>
-                ) : null}
-              </span>
-              <ChevronDown
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <button
+                type="button"
+                onClick={toggleFilterPanel}
                 className={clsx(
-                  'h-4 w-4 text-muted transition-transform duration-200',
-                  isFilterPanelVisible ? 'rotate-180' : 'rotate-0',
+                  'md:hidden flex w-full items-center justify-between gap-3 rounded-2xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm font-semibold text-text shadow-sm transition-colors',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]',
                 )}
-                aria-hidden="true"
-              />
-            </button>
+                aria-controls={filterPanelId}
+                aria-expanded={isDesktopFilterView ? true : filterPanelOpen}
+              >
+                <span className="flex items-center gap-2">
+                  Filter
+                  {activeFilterCount > 0 ? (
+                    <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-brand-foreground">
+                      {activeFilterCount}
+                    </span>
+                  ) : null}
+                </span>
+                <ChevronDown
+                  className={clsx(
+                    'h-4 w-4 text-muted transition-transform duration-200',
+                    isFilterPanelVisible ? 'rotate-180' : 'rotate-0',
+                  )}
+                  aria-hidden="true"
+                />
+              </button>
+
+              <label className="flex h-10 w-full items-center gap-2 rounded-xl border border-border/60 bg-surface-1/90 px-3 text-sm font-medium text-text shadow-sm transition focus-within:border-brand/40 focus-within:bg-surface-1 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-[color:var(--brand-ring)] md:w-auto">
+                <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(event) => handleMonthChange(event.target.value)}
+                  className="w-full appearance-none bg-transparent text-sm text-text outline-none"
+                  aria-label="Pilih bulan untuk filter tanggal"
+                />
+                <span className="hidden text-xs text-muted md:inline">
+                  {selectedMonth ? formatMonthLabel(selectedMonth) : 'Semua rentang'}
+                </span>
+              </label>
+            </div>
 
             <div
               id={filterPanelId}
