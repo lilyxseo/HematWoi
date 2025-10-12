@@ -451,7 +451,7 @@ async function fetchTransactionById(id: string, userId: string) {
     to_account:to_account_id (id, name, type),
     category:category_id (id, name, color),
     merchant:merchant_id (id, name),
-    receipts:receipts (id, public_url, mime_type, size, created_at)
+    receipts:receipts (id, url, content_type, size, uploaded_at)
   `;
   const { data, error } = await supabase
     .from('transactions')
