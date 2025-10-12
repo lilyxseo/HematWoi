@@ -126,8 +126,11 @@ export default function TransactionsTable({
       <div className="overflow-hidden rounded-3xl bg-slate-950/50 ring-1 ring-slate-800">
         <div className="max-h-[min(70vh,640px)] overflow-y-auto">
           <table className="min-w-full divide-y divide-slate-800">
-            <thead className="bg-slate-900" style={tableStickyTop ? { top: tableStickyTop } : undefined}>
-              <tr className="sticky top-0 z-10">
+            <thead
+              className="sticky top-0 z-10 bg-slate-900"
+              style={tableStickyTop ? { top: tableStickyTop } : undefined}
+            >
+              <tr>
                 <th scope="col" className="w-12 px-4 py-3 text-left text-xs uppercase tracking-wide text-slate-400">
                   <div className="flex justify-center">
                     <input
