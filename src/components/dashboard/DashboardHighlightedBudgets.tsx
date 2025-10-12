@@ -6,6 +6,7 @@ import { useWeeklyBudgets } from '../../hooks/useWeeklyBudgets';
 import {
   listHighlightBudgets,
   type HighlightBudgetSelection,
+  type WeeklyBudgetPeriod,
 } from '../../lib/budgetApi';
 import { formatCurrency } from '../../lib/format';
 import type { PeriodRange } from './PeriodPicker';
@@ -36,6 +37,53 @@ function getBudgetPeriod(range: PeriodRange): string {
     return `${now.getFullYear()}-${month}`;
   }
   return base.slice(0, 7);
+}
+
+function formatIsoDateUTC(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getUTCDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentPeriodKey(): string {
+  const now = new Date();
+  const month = `${now.getUTCMonth() + 1}`.padStart(2, '0');
+  return `${now.getUTCFullYear()}-${month}`;
+}
+
+function getActiveWeekStart(period: string, weeks: WeeklyBudgetPeriod[]): string | null {
+  if (!period || weeks.length === 0) return null;
+
+  const [yearStr, monthStr] = period.split('-');
+  const parsedYear = Number.parseInt(yearStr ?? '', 10);
+  const parsedMonth = Number.parseInt(monthStr ?? '', 10) - 1;
+  const currentPeriod = getCurrentPeriodKey();
+
+  let reference: Date;
+  if (Number.isFinite(parsedYear) && Number.isFinite(parsedMonth)) {
+    const periodKey = `${parsedYear}-${`${parsedMonth + 1}`.padStart(2, '0')}`;
+    reference = periodKey === currentPeriod
+      ? new Date()
+      : new Date(Date.UTC(parsedYear, parsedMonth, 1));
+  } else {
+    reference = new Date();
+  }
+
+  const referenceIso = formatIsoDateUTC(reference);
+  const match = weeks.find((week) => referenceIso >= week.start && referenceIso <= week.end);
+  if (match) return match.start;
+
+  if (referenceIso < weeks[0].start) {
+    return weeks[0].start;
+  }
+
+  const last = weeks[weeks.length - 1];
+  if (referenceIso > last.end) {
+    return last.start;
+  }
+
+  return weeks[0].start ?? null;
 }
 
 function getProgressColor(progress: number): string {
@@ -114,6 +162,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
 
     const monthlyMap = new Map(monthly.rows.map((row) => [String(row.id), row]));
     const weeklyMap = new Map(weekly.rows.map((row) => [String(row.id), row]));
+    const activeWeekStart = getActiveWeekStart(budgetPeriod, weekly.weeks);
 
     return highlights
       .map((item) => {
@@ -136,23 +185,36 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
           } satisfies HighlightCardData;
         }
 
-        const row = weeklyMap.get(String(item.budget_id));
+        let row = weeklyMap.get(String(item.budget_id));
         if (!row) return null;
-        const planned = Number(row.amount_planned ?? 0);
-        const spent = Number(row.spent ?? 0);
+
+        if (activeWeekStart) {
+          const candidate = weekly.rows.find((weeklyRow) => {
+            if (String(weeklyRow.category_id ?? '') !== String(row?.category_id ?? '')) return false;
+            return weeklyRow.week_start === activeWeekStart;
+          });
+          if (candidate) {
+            row = candidate;
+          }
+        }
+
+        const planned = Number(row?.amount_planned ?? 0);
+        const spent = Number(row?.spent ?? 0);
         const remaining = planned - spent;
         const progress = planned > 0 ? Math.min(spent / planned, 2) : 0;
-        const weekMeta = weekly.weeks.find((week) => week.start === row.week_start);
+        const weekMeta = weekly.weeks.find((week) => week.start === row?.week_start);
         const subtitleParts: string[] = [];
         if (weekMeta) {
           subtitleParts.push(weekMeta.label);
         }
-        subtitleParts.push(formatWeekRange(row.week_start, row.week_end));
+        if (row?.week_start && row?.week_end) {
+          subtitleParts.push(formatWeekRange(row.week_start, row.week_end));
+        }
         return {
           id: `${item.id}-weekly`,
           kind: 'weekly' as HighlightKind,
-          label: row.category?.name ?? 'Tanpa kategori',
-          categoryType: row.category?.type ?? null,
+          label: row?.category?.name ?? 'Tanpa kategori',
+          categoryType: row?.category?.type ?? null,
           planned,
           spent,
           remaining,
@@ -161,7 +223,16 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         } satisfies HighlightCardData;
       })
       .filter((card): card is HighlightCardData => Boolean(card));
-  }, [highlights, loading, monthly.loading, monthly.rows, weekly.loading, weekly.rows, weekly.weeks]);
+  }, [
+    budgetPeriod,
+    highlights,
+    loading,
+    monthly.loading,
+    monthly.rows,
+    weekly.loading,
+    weekly.rows,
+    weekly.weeks,
+  ]);
 
   const isLoading = loading || monthly.loading || weekly.loading;
   const displayError = error || monthly.error || weekly.error;
