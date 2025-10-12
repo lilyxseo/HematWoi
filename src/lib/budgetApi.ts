@@ -326,9 +326,11 @@ export function getWeeklyTransactionEndExclusive(period: string): string {
 }
 
 interface WeeklyCarryoverEntry {
+  id?: UUID;
   planned_amount: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
+  highlight_id?: UUID;
 }
 
 async function ensureWeeklyCarryover(
@@ -348,7 +350,7 @@ async function ensureWeeklyCarryover(
 
   const { data, error } = await supabase
     .from('budgets_weekly')
-    .select('category_id,planned_amount,carryover_enabled,notes,week_start')
+    .select('id,category_id,planned_amount,carryover_enabled,notes,week_start')
     .eq('user_id', userId)
     .gte('week_start', normalizedStart)
     .lt('week_start', rangeEnd)
@@ -356,9 +358,38 @@ async function ensureWeeklyCarryover(
 
   if (error) throw error;
 
+  const weeklyBudgetIds = new Set<string>();
+
+  for (const row of (data ?? []) as {
+    id: UUID | null;
+    category_id: UUID | null;
+  }[]) {
+    if (row?.id) {
+      weeklyBudgetIds.add(String(row.id));
+    }
+  }
+
+  const highlightByBudgetId = new Map<string, string>();
+
+  if (weeklyBudgetIds.size > 0) {
+    const { data: highlightRows, error: highlightError } = await supabase
+      .from('user_highlight_budgets')
+      .select('id,budget_id')
+      .eq('user_id', userId)
+      .eq('budget_type', 'weekly')
+      .in('budget_id', Array.from(weeklyBudgetIds));
+    if (highlightError) throw highlightError;
+
+    for (const row of (highlightRows ?? []) as { id: UUID | null; budget_id: UUID | null }[]) {
+      if (!row?.id || !row?.budget_id) continue;
+      highlightByBudgetId.set(String(row.budget_id), String(row.id));
+    }
+  }
+
   const budgetsByWeek = new Map<string, Map<string, WeeklyCarryoverEntry>>();
 
   for (const row of (data ?? []) as {
+    id: UUID | null;
     category_id: UUID | null;
     planned_amount: number | null;
     carryover_enabled: boolean | null;
@@ -382,9 +413,11 @@ async function ensureWeeklyCarryover(
       : Boolean(row.carryover_enabled);
 
     currentWeekBudgets.set(categoryId, {
+      id: row.id ?? undefined,
       planned_amount: Number.isFinite(plannedAmount) ? plannedAmount : 0,
       carryover_enabled: carryoverEnabled,
       notes: row.notes ?? null,
+      highlight_id: row.id ? highlightByBudgetId.get(String(row.id)) ?? undefined : undefined,
     });
   }
 
@@ -405,12 +438,21 @@ async function ensureWeeklyCarryover(
     notes: Nullable<string>;
   }[] = [];
 
+  const highlightCarryovers: {
+    highlightId: string;
+    targetCategoryId: string;
+    targetWeekStart: string;
+    targetBudgetId?: string;
+  }[] = [];
+
   for (const weekStart of weekStartDates) {
     const currentBudgets = budgetsByWeek.get(weekStart);
     if (!currentBudgets) continue;
 
     for (const [categoryId, budget] of currentBudgets.entries()) {
       if (!budget.carryover_enabled) continue;
+
+      const highlightId = budget.highlight_id ? String(budget.highlight_id) : undefined;
 
       const nextWeekDate = parseIsoDate(weekStart);
       nextWeekDate.setUTCDate(nextWeekDate.getUTCDate() + 7);
@@ -423,14 +465,27 @@ async function ensureWeeklyCarryover(
         budgetsByWeek.set(nextWeekStart, nextWeekBudgets);
       }
 
-      if (nextWeekBudgets.has(categoryId)) {
+      const existingNextWeekBudget = nextWeekBudgets.get(categoryId);
+
+      if (existingNextWeekBudget) {
+        if (highlightId && !existingNextWeekBudget.highlight_id) {
+          highlightCarryovers.push({
+            highlightId,
+            targetCategoryId: categoryId,
+            targetWeekStart: nextWeekStart,
+            targetBudgetId: existingNextWeekBudget.id ? String(existingNextWeekBudget.id) : undefined,
+          });
+          existingNextWeekBudget.highlight_id = highlightId;
+        }
         continue;
       }
 
       nextWeekBudgets.set(categoryId, {
+        id: undefined,
         planned_amount: budget.planned_amount,
         carryover_enabled: budget.carryover_enabled,
         notes: budget.notes ?? null,
+        highlight_id: highlightId,
       });
 
       toInsert.push({
@@ -440,10 +495,34 @@ async function ensureWeeklyCarryover(
         carryover_enabled: budget.carryover_enabled,
         notes: budget.notes ?? null,
       });
+
+      if (highlightId) {
+        highlightCarryovers.push({
+          highlightId,
+          targetCategoryId: categoryId,
+          targetWeekStart: nextWeekStart,
+        });
+      }
     }
   }
 
   if (!toInsert.length) {
+    if (!highlightCarryovers.length) {
+      return;
+    }
+
+    const highlightUpdates = highlightCarryovers.filter((item) => Boolean(item.targetBudgetId));
+
+    for (const item of highlightUpdates) {
+      if (!item.targetBudgetId) continue;
+      const { error: updateError } = await supabase
+        .from('user_highlight_budgets')
+        .update({ budget_id: item.targetBudgetId })
+        .eq('user_id', userId)
+        .eq('id', item.highlightId);
+      if (updateError) throw updateError;
+    }
+
     return;
   }
 
@@ -456,12 +535,38 @@ async function ensureWeeklyCarryover(
     week_start: item.week_start,
   }));
 
-  const { error: upsertError } = await supabase
+  const upsertResponse = await supabase
     .from('budgets_weekly')
-    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' });
+    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' })
+    .select('id,category_id,week_start');
 
-  if (upsertError) {
-    throw upsertError;
+  if (upsertResponse.error) {
+    throw upsertResponse.error;
+  }
+
+  const insertedRows = Array.isArray(upsertResponse.data)
+    ? (upsertResponse.data as { id: UUID; category_id: UUID; week_start: string }[])
+    : upsertResponse.data
+    ? [(upsertResponse.data as { id: UUID; category_id: UUID; week_start: string })]
+    : [];
+
+  const insertedMap = new Map<string, string>();
+  for (const row of insertedRows) {
+    if (!row?.id || !row?.category_id || !row?.week_start) continue;
+    insertedMap.set(`${row.category_id}|${row.week_start}`, String(row.id));
+  }
+
+  for (const item of highlightCarryovers) {
+    const targetBudgetId = item.targetBudgetId
+      ? String(item.targetBudgetId)
+      : insertedMap.get(`${item.targetCategoryId}|${item.targetWeekStart}`);
+    if (!targetBudgetId) continue;
+    const { error: updateError } = await supabase
+      .from('user_highlight_budgets')
+      .update({ budget_id: targetBudgetId })
+      .eq('user_id', userId)
+      .eq('id', item.highlightId);
+    if (updateError) throw updateError;
   }
 }
 
