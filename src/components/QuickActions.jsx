@@ -25,7 +25,7 @@ export default function QuickActions() {
   ];
 
   return (
-    <Card>
+    <Card className="h-full rounded-3xl border border-border/70 bg-card/70 p-5 shadow-sm">
       <CardHeader
         title="Quick Actions"
         subtext="Akses cepat ke aksi favoritmu"
