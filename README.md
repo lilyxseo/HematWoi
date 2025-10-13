@@ -10,6 +10,61 @@ pnpm install
 pnpm dev
 ```
 
+### Mobile (Capacitor) Setup
+
+1. Pastikan dependensi terinstal:
+
+   ```bash
+   pnpm install
+   ```
+
+2. Set variabel lingkungan berikut sebelum `pnpm run build:mobile`:
+
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_GOOGLE_WEB_CLIENT_ID` (**OAuth Web Client ID** dari Google Cloud)
+   - Opsional: ekspor `GOOGLE_WEB_CLIENT_ID` di shell agar `capacitor.config.ts` dapat membacanya saat `cap sync`.
+
+3. Build aset web dan sinkronkan ke proyek native:
+
+   ```bash
+   pnpm run build:mobile       # build Vite + cap sync
+   pnpm run cap:open:android   # buka Android Studio
+   pnpm run cap:open:ios       # buka Xcode
+   ```
+
+4. Untuk inisialisasi awal (setelah `pnpm install`) jalankan:
+
+   ```bash
+   pnpm exec cap sync
+   ```
+
+5. Jalankan `pnpm run cap:copy` jika hanya ingin menyalin ulang aset web tanpa melakukan `npm install` di platform native.
+
+#### OAuth Google & Supabase
+
+- Tambahkan redirect berikut di Supabase Project Settings → Authentication → URL Configuration:
+  - `hematwoi://auth/callback`
+  - `https://www.hemat-woi.me/auth/callback`
+- Pastikan `VITE_GOOGLE_WEB_CLIENT_ID` sesuai dengan **OAuth 2.0 Web Client** di Google Cloud.
+- Plugin `@codetrix-studio/capacitor-google-auth` membutuhkan konfigurasi berikut:
+  - Android: tambahkan ke OAuth Client tipe Android dengan **SHA-1** dan **SHA-256** dari keystore debug & release.
+  - iOS: pada Info.plist ganti `REVERSED_CLIENT_ID` dengan nilai dari file `GoogleService-Info.plist`.
+
+#### Cara Mengambil SHA-1 / SHA-256 (Android)
+
+1. Buka proyek `android/` di Android Studio.
+2. Buka panel **Gradle** → `app` → `Tasks` → `android` → jalankan `signingReport`.
+3. Salin nilai **SHA-1** dan **SHA-256** dari bagian `Variant: debug` dan `release` ke konsol Google Cloud.
+4. Setelah diperbarui, jalankan kembali `pnpm run build:mobile` agar konfigurasi terbaru tersinkron.
+
+#### Debugging Umum
+
+- `DEVELOPER_ERROR` dari Google Sign-In: cek ulang SHA fingerprint dan package name di OAuth Client.
+- `Token invalid` atau `invalid_grant`: refresh login Google, pastikan waktu perangkat benar, dan ulangi proses sign-in.
+- Jika perubahan warna tema tidak tersinkron di native, pastikan `Preferences` plugin aktif serta `GOOGLE_WEB_CLIENT_ID` tersedia saat `cap sync`.
+- Jalankan `pnpm exec cap doctor` untuk melihat status proyek Capacitor.
+
 Run unit tests with:
 
 ```bash

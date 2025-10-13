@@ -39,6 +39,7 @@ import AdminGuard from "./components/AdminGuard";
 import { DataProvider } from "./context/DataContext";
 
 import { supabase } from "./lib/supabase";
+import { addDeepLinkListener, saveLastUserId, saveThemePreference } from "./lib/native";
 import { syncGuestToCloud } from "./lib/sync";
 import { playChaChing } from "./lib/walletSound";
 import {
@@ -424,12 +425,51 @@ function AppShell({ prefs, setPrefs }) {
   }, [sessionChecked, sessionUser, mode, setMode]);
 
   useEffect(() => {
+    void saveLastUserId(sessionUser?.id ?? null);
+  }, [sessionUser]);
+
+  useEffect(() => {
     const root = document.documentElement;
     const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const mode = theme === 'system' ? (sysDark ? 'dark' : 'light') : theme;
     root.setAttribute('data-theme', mode);
     localStorage.setItem('hwTheme', JSON.stringify({ mode: theme, brand }));
-  }, [theme, brand]);
+    void saveThemePreference({ mode: theme, brand, accent: prefs.accent });
+  }, [theme, brand, prefs.accent]);
+
+  useEffect(() => {
+    const remove = addDeepLinkListener(async (url) => {
+      if (url.protocol !== 'hematwoi:' || url.host !== 'auth') return;
+      if (!url.pathname.startsWith('/callback')) return;
+      const params = url.searchParams;
+      const idToken = params.get('id_token');
+      const code = params.get('code');
+      const accessToken = params.get('access_token');
+      const refreshToken = params.get('refresh_token');
+      try {
+        if (idToken) {
+          const { error } = await supabase.auth.signInWithIdToken({
+            provider: 'google',
+            token: idToken,
+          });
+          if (error) throw error;
+        } else if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession({ authCode: code });
+          if (error) throw error;
+        } else if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (error) throw error;
+        }
+        navigate('/', { replace: true });
+      } catch (error) {
+        console.error('[App] Gagal memproses deeplink auth', error);
+      }
+    });
+    return remove;
+  }, [navigate]);
 
   useEffect(() => {
     const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
