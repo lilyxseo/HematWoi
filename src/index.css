@@ -30,9 +30,9 @@
     --color-border-subtle: 228 231 236;
     --color-border-strong: 102 112 133;
 
-    --brand-h: 228;
-    --brand-s: 88%;
-    --brand-l: 60%;
+    --brand-h: 262;
+    --brand-s: 83%;
+    --brand-l: 67%;
 
     --color-primary: var(--brand-h) var(--brand-s) var(--brand-l);
     --color-primary-hover: var(--brand-h) var(--brand-s) calc(var(--brand-l) - 7%);
