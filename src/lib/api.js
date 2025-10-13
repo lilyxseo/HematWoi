@@ -686,11 +686,40 @@ export async function deleteTransaction(id) {
 
 // -- CATEGORIES ----------------------------------------
 
-const CATEGORY_REST_SELECT = "id,user_id,type,name,inserted_at,group_name,order_index";
+const CATEGORY_REST_SELECT_BASE = "id,user_id,type,name,inserted_at,group_name,order_index";
 const CATEGORY_REST_ORDER = "order_index.asc.nullsfirst,name.asc";
 
 let categoryViewUnavailable = false;
 let categoryFallbackWarned = false;
+let categoryColorSupported = true;
+
+function getCategorySelect() {
+  return categoryColorSupported ? `${CATEGORY_REST_SELECT_BASE},color` : CATEGORY_REST_SELECT_BASE;
+}
+
+function handleMissingCategoryColor(error) {
+  if (!categoryColorSupported) return false;
+  const message = String(error?.message || "").toLowerCase();
+  if (!message.includes("color")) return false;
+  if (message.includes("does not exist") || message.includes("unknown column") || message.includes("could not find")) {
+    categoryColorSupported = false;
+    return true;
+  }
+  return false;
+}
+
+function normalizeCategoryColor(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`.toUpperCase();
+  }
+  return trimmed;
+}
 
 function mapCategoryRow(row = {}, userId) {
   const groupValue =
@@ -722,12 +751,15 @@ function mapCategoryRow(row = {}, userId) {
     group: groupValue ?? null,
     order_index: orderIndex,
     inserted_at: row.inserted_at ?? row.created_at ?? null,
+    color: normalizeCategoryColor(
+      row.color ?? row.category_color ?? row.color_hex ?? row.hex ?? null,
+    ),
   };
 }
 
 async function fetchCategoriesFromRest(userId, type) {
   const params = new URLSearchParams({
-    select: CATEGORY_REST_SELECT,
+    select: getCategorySelect(),
     user_id: `eq.${userId}`,
     order: CATEGORY_REST_ORDER,
   });
@@ -746,7 +778,11 @@ async function fetchCategoriesFromRest(userId, type) {
         categoryFallbackWarned = true;
       }
     } else if (!response.ok) {
-      throw await readPostgrestError(response, "Gagal memuat kategori");
+      const error = await readPostgrestError(response, "Gagal memuat kategori");
+      if (handleMissingCategoryColor(error)) {
+        return fetchCategoriesFromRest(userId, type);
+      }
+      throw error;
     } else {
       const data = await response.json();
       return Array.isArray(data) ? data : [];
@@ -759,7 +795,11 @@ async function fetchCategoriesFromRest(userId, type) {
     throw new Error("Endpoint kategori belum tersedia");
   }
   if (!fallbackResponse.ok) {
-    throw await readPostgrestError(fallbackResponse, "Gagal memuat kategori");
+    const error = await readPostgrestError(fallbackResponse, "Gagal memuat kategori");
+    if (handleMissingCategoryColor(error)) {
+      return fetchCategoriesFromRest(userId, type);
+    }
+    throw error;
   }
   const fallbackData = await fallbackResponse.json();
   return Array.isArray(fallbackData) ? fallbackData : [];
