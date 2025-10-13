@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import GoogleLoginButton from '../components/GoogleLoginButton';
+import GoogleNativeLoginButton from '../components/GoogleNativeLoginButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
 import { redirectToNativeGoogleLogin } from '../lib/native-google-login';
+import { getLastUserId } from '../lib/native';
+import type { NativeGoogleSessionResult } from '../lib/native-auth';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
 import { formatOAuthErrorMessage } from '../lib/oauth-error';
@@ -20,14 +22,8 @@ export default function AuthLogin() {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
   const [sessionError, setSessionError] = useState<string | null>(null);
-  const lastSignInMethodRef = useRef<'google' | 'email' | null>(null);
-  const [prefilledIdentifier] = useState(() => {
-    try {
-      return localStorage.getItem('hw:lastEmail') ?? '';
-    } catch {
-      return '';
-    }
-  });
+  const lastSignInMethodRef = useRef<'google-web' | 'google-native' | 'email' | null>(null);
+  const [prefilledIdentifier, setPrefilledIdentifier] = useState('');
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const googleRedirectTo = useMemo(() => {
@@ -58,6 +54,28 @@ export default function AuthLogin() {
     }
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      let fallbackIdentifier = '';
+      try {
+        fallbackIdentifier = localStorage.getItem('hw:lastEmail') ?? '';
+      } catch {
+        fallbackIdentifier = '';
+      }
+      if (active) {
+        setPrefilledIdentifier(fallbackIdentifier);
+      }
+      const lastUserId = await getLastUserId();
+      if (active && lastUserId && !fallbackIdentifier) {
+        setPrefilledIdentifier(lastUserId);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const markEmailSignIn = useCallback(() => {
     lastSignInMethodRef.current = 'email';
   }, []);
@@ -72,7 +90,7 @@ export default function AuthLogin() {
     if (googleLoading) return;
     setGoogleError(null);
     setGoogleLoading(true);
-    lastSignInMethodRef.current = 'google';
+    lastSignInMethodRef.current = 'google-web';
 
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -101,9 +119,15 @@ export default function AuthLogin() {
     (provider?: string | null) => {
       const method = lastSignInMethodRef.current ?? provider ?? null;
 
-      if (method === 'google') {
+      if (method === 'google-web') {
         lastSignInMethodRef.current = null;
         redirectToNativeGoogleLogin();
+        return;
+      }
+
+      if (method === 'google-native') {
+        lastSignInMethodRef.current = null;
+        navigate('/', { replace: true });
         return;
       }
 
@@ -213,6 +237,19 @@ export default function AuthLogin() {
     handlePostLoginNavigation('email');
   }, [handlePostLoginNavigation, syncGuestData]);
 
+  const handleGoogleNativeSuccess = useCallback(
+    async (result: NativeGoogleSessionResult) => {
+      lastSignInMethodRef.current = 'google-native';
+      setGoogleError(null);
+      setGoogleLoading(false);
+      if (result.user?.id) {
+        await syncGuestData(result.user.id);
+      }
+      handlePostLoginNavigation('google-native');
+    },
+    [handlePostLoginNavigation, syncGuestData]
+  );
+
   return (
     <ErrorBoundary>
       <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-surface via-surface-alt to-surface px-6 py-12 text-text transition-colors sm:py-16">
@@ -283,23 +320,39 @@ export default function AuthLogin() {
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <GoogleLoginButton
+                    <GoogleNativeLoginButton
+                      onNativeStart={() => setGoogleError(null)}
+                      onNativeSuccess={handleGoogleNativeSuccess}
+                      onNativeError={(error) => setGoogleError(error.message)}
                       onWebLogin={handleGoogleWebSignIn}
                       disabled={googleLoading}
+                      renderError={() => null}
                       className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {googleLoading ? (
-                        <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent" aria-hidden="true" />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
-                        >
-                          G
-                        </span>
+                      renderContent={({ loading, status }) => (
+                        <>
+                          {loading || googleLoading ? (
+                            <span
+                              className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <span
+                              aria-hidden="true"
+                              className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
+                            >
+                              G
+                            </span>
+                          )}
+                          <span>
+                            {loading || googleLoading
+                              ? 'Menghubungkan…'
+                              : status === 'ready'
+                                ? 'Login dengan Google (Native)'
+                                : 'Lanjutkan dengan Google'}
+                          </span>
+                        </>
                       )}
-                      <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
-                    </GoogleLoginButton>
+                    />
                     <p className="text-xs text-muted">
                       Jika pop-up tertutup, tekan tombol lagi atau lanjutkan dengan email yang kamu gunakan sehari-hari.
                     </p>
