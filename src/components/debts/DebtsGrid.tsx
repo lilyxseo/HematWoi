@@ -295,7 +295,7 @@ export default function DebtsGrid({
                   ) : null}
                 </div>
                 <div className="space-y-5">
-                  <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border/60 bg-surface/70 p-4 text-xs uppercase tracking-wide text-muted/70">
+                  <div className="grid gap-4 rounded-2xl border border-border/60 bg-surface/70 p-4 text-xs uppercase tracking-wide text-muted/70 sm:grid-cols-3 sm:gap-5 md:gap-6">
                     <div className="space-y-1">
                       <p>Jumlah</p>
                       <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(debt.amount)}</p>
