@@ -295,16 +295,16 @@ export default function DebtsGrid({
                   ) : null}
                 </div>
                 <div className="space-y-5">
-                  <div className="grid grid-cols-3 gap-3 rounded-2xl border border-border/60 bg-surface/70 p-4 text-xs uppercase tracking-wide text-muted/70">
-                    <div className="space-y-1">
+                  <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border/60 bg-surface/70 p-4 text-xs uppercase tracking-wide text-muted/70 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="min-w-0 space-y-1">
                       <p>Jumlah</p>
                       <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(debt.amount)}</p>
                     </div>
-                    <div className="space-y-1">
+                    <div className="min-w-0 space-y-1">
                       <p>Terbayar</p>
                       <p className="text-base font-medium text-muted tabular-nums">{formatCurrency(debt.paid_total)}</p>
                     </div>
-                    <div className="space-y-1">
+                    <div className="min-w-0 space-y-1">
                       <p>Sisa</p>
                       <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(remaining)}</p>
                     </div>
