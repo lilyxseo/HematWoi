@@ -1,13 +1,15 @@
+import type { MouseEvent } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import GoogleLoginButton from '../components/GoogleLoginButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
-import { redirectToNativeGoogleLogin } from '../lib/native-google-login';
+import { formatOAuthErrorMessage } from '../lib/oauth-error';
+import { isNativePlatform } from '../lib/native';
+import { NativeGoogleAuthError, signInWithGoogleNative } from '../lib/native-auth';
 import { supabase } from '../lib/supabase';
 import { syncGuestToCloud } from '../lib/sync';
-import { formatOAuthErrorMessage } from '../lib/oauth-error';
 
 const heroTips = [
   'Pantau cash flow harian tanpa ribet.',
@@ -30,6 +32,7 @@ export default function AuthLogin() {
   });
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [isNativeApp] = useState(() => isNativePlatform());
   const googleRedirectTo = useMemo(() => {
     const env = typeof import.meta !== 'undefined' ? import.meta.env ?? {} : {};
     const configuredBase =
@@ -100,29 +103,56 @@ export default function AuthLogin() {
   const handlePostLoginNavigation = useCallback(
     (provider?: string | null) => {
       const method = lastSignInMethodRef.current ?? provider ?? null;
+      lastSignInMethodRef.current = null;
 
-      if (method === 'google') {
-        lastSignInMethodRef.current = null;
-        redirectToNativeGoogleLogin();
-        return;
+      if (method === 'email' && typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          if (lastSignInMethodRef.current === 'email') {
+            lastSignInMethodRef.current = null;
+          }
+        }, 1000);
       }
 
-      if (method === 'email') {
-        if (typeof window !== 'undefined') {
-          window.setTimeout(() => {
-            if (lastSignInMethodRef.current === 'email') {
-              lastSignInMethodRef.current = null;
-            }
-          }, 1000);
-        } else {
-          lastSignInMethodRef.current = null;
-        }
-      } else {
-        lastSignInMethodRef.current = null;
-      }
       navigate('/', { replace: true });
     },
     [navigate]
+  );
+
+  const handleGoogleNativeSignIn = useCallback(async () => {
+    if (googleLoading) return;
+    setGoogleError(null);
+    setGoogleLoading(true);
+    lastSignInMethodRef.current = 'google';
+
+    try {
+      const result = await signInWithGoogleNative();
+      const userId = result.data.user?.id ?? null;
+      if (userId) {
+        await syncGuestData(userId);
+      }
+      setGoogleLoading(false);
+      handlePostLoginNavigation('google');
+    } catch (error) {
+      lastSignInMethodRef.current = null;
+      const message =
+        error instanceof NativeGoogleAuthError
+          ? error.message
+          : formatOAuthErrorMessage(error, 'Gagal memulai login Google di aplikasi.');
+      setGoogleError(message);
+      setGoogleLoading(false);
+    }
+  }, [googleLoading, handlePostLoginNavigation, syncGuestData]);
+
+  const handleNativeButtonClick = useCallback(
+    async (event: MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      if (!isNativeApp) {
+        await handleGoogleWebSignIn();
+        return;
+      }
+      await handleGoogleNativeSignIn();
+    },
+    [handleGoogleNativeSignIn, handleGoogleWebSignIn, isNativeApp]
   );
 
   useEffect(() => {
@@ -285,6 +315,7 @@ export default function AuthLogin() {
                   <div className="space-y-3">
                     <GoogleLoginButton
                       onWebLogin={handleGoogleWebSignIn}
+                      onNativeLogin={handleNativeButtonClick}
                       disabled={googleLoading}
                       className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
                     >

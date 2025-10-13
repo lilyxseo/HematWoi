@@ -61,6 +61,8 @@ import MoneyTalkProvider, {
 import { ModeProvider, useMode } from "./hooks/useMode";
 import AuthCallback from "./pages/AuthCallback";
 import MobileGoogleCallback from "./routes/MobileGoogleCallback";
+import { writeJsonPreference } from "./lib/native";
+import { registerNativeDeeplinkHandler } from "./lib/native-auth";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -330,6 +332,22 @@ function AppShell({ prefs, setPrefs }) {
 
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const remove = registerNativeDeeplinkHandler((result) => {
+      if (result.error) {
+        addToast(result.error, "error");
+        return;
+      }
+      if (result.redirectPath) {
+        navigate(result.redirectPath, { replace: true });
+      }
+    });
+
+    return () => {
+      remove();
+    };
+  }, [addToast, navigate]);
+
 
   const handleProfileSyncError = useCallback(
     (error, context) => {
@@ -429,6 +447,9 @@ function AppShell({ prefs, setPrefs }) {
     const mode = theme === 'system' ? (sysDark ? 'dark' : 'light') : theme;
     root.setAttribute('data-theme', mode);
     localStorage.setItem('hwTheme', JSON.stringify({ mode: theme, brand }));
+    void writeJsonPreference('hwTheme', { mode: theme, brand }).catch(() => {
+      /* ignore */
+    });
   }, [theme, brand]);
 
   useEffect(() => {
@@ -497,6 +518,9 @@ function AppShell({ prefs, setPrefs }) {
   useEffect(() => {
     localStorage.setItem("hematwoi:v3:prefs", JSON.stringify(prefs));
     window.__hw_prefs = prefs;
+    void writeJsonPreference("hw:prefs", prefs).catch(() => {
+      /* ignore */
+    });
   }, [prefs]);
 
   useEffect(() => {

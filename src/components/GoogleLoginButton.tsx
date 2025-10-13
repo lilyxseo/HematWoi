@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode } from 'react'
 
 import { getNativeGoogleLoginUrl } from '../lib/native-google-login'
+import { isNativePlatform } from '../lib/native'
 import { isHematWoiApp } from '../lib/ua'
 
 const DEFAULT_DOMAIN = 'https://www.hemat-woi.me'
@@ -16,6 +17,7 @@ type GoogleLoginButtonProps = {
   nativeTriggerUrl?: string
   webLoginUrl?: string
   onWebLogin?: (event: MouseEvent<HTMLButtonElement>) => void | Promise<void>
+  onNativeLogin?: (event: MouseEvent<HTMLButtonElement>) => void | Promise<void>
   children?: ReactNode
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'onClick'>
 
@@ -75,6 +77,7 @@ export default function GoogleLoginButton({
   nativeTriggerUrl,
   webLoginUrl,
   onWebLogin,
+  onNativeLogin,
   children,
   ...rest
 }: GoogleLoginButtonProps) {
@@ -88,7 +91,12 @@ export default function GoogleLoginButton({
   )
 
   const handleClick = async (event: MouseEvent<HTMLButtonElement>) => {
-    if (isHematWoiApp()) {
+    if (isNativePlatform() || isHematWoiApp()) {
+      if (onNativeLogin) {
+        await onNativeLogin(event)
+        return
+      }
+
       if (typeof window !== 'undefined') {
         window.location.href = computedNativeUrl
       }

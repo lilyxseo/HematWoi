@@ -10,6 +10,118 @@ pnpm install
 pnpm dev
 ```
 
+## Mobile (Capacitor) Setup
+
+HematWoi ships with Capacitor configuration so the same React + Vite codebase
+can be packaged as a native Android or iOS app. The key files are:
+
+- [`capacitor.config.ts`](./capacitor.config.ts) – global Capacitor options
+  (app id, name, splash + status bar defaults).
+- [`android/app/src/main/AndroidManifest.xml`](./android/app/src/main/AndroidManifest.xml)
+  – intent filter for the `hematwoi://auth/callback` deeplink and required
+  camera/notification permissions.
+- [`ios/App/App/Info.plist`](./ios/App/App/Info.plist) – URL schemes for
+  deeplinks and Google Sign-In (`hematwoi` + reversed client id).
+- [`src/lib/native.ts`](./src/lib/native.ts) & [`src/lib/native-auth.ts`](./src/lib/native-auth.ts)
+  – platform detection, Preferences/Notifications/Camera wrappers and native
+  Google Sign-In helpers.
+
+### Commands
+
+```bash
+# build the web bundle and copy it into android/ios, then run `npx cap sync`
+npm run build:mobile
+
+# resynchronise dependencies/platforms without rebuilding assets
+npm run cap:sync
+
+# open the Android or iOS project in Android Studio / Xcode
+npm run cap:open:android
+npm run cap:open:ios
+```
+
+After running `npm run build:mobile` you can use the standard Capacitor flow:
+
+```bash
+npx cap open android   # Android Studio (build APK/AAB)
+npx cap open ios       # Xcode (build IPA/TestFlight)
+```
+
+### Environment variables
+
+Create a `.env` (or configure your CI secrets) with the following keys:
+
+```
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+VITE_GOOGLE_WEB_CLIENT_ID=   # OAuth 2.0 Web client id
+VITE_SUPABASE_REDIRECT_URL=  # optional, defaults to current origin
+```
+
+On iOS you must also provide the reversed client id (from the Google iOS client)
+via `GOOGLE_REVERSED_CLIENT_ID` in Xcode ➜ Info ➜ URL Types. The generated
+`Info.plist` reads that value through the build setting.
+
+### Google Sign-In configuration
+
+1. Create three OAuth clients in Google Cloud Console: **Web**, **Android** and
+   **iOS** (same project).
+2. Android client requirements:
+   - Package id: `com.hematwoi.app`.
+   - Add SHA-1 and SHA-256 fingerprints for both debug and release keystores.
+     In Android Studio open **Gradle** ➜ `:app` ➜ *Tasks* ➜ *android*
+     ➜ **signingReport**. The report printed in the *Run* tool window lists the
+     fingerprints you need to copy into the Google OAuth client configuration.
+3. iOS client: use the bundle id `com.hematwoi.app` and note the
+   `REVERSED_CLIENT_ID` – paste it into Xcode’s URL Types (or set the
+   `GOOGLE_REVERSED_CLIENT_ID` build setting).
+4. Web client: copy the client id into `VITE_GOOGLE_WEB_CLIENT_ID`.
+5. In Supabase Dashboard ➜ Authentication ➜ URL Configuration add:
+   - `hematwoi://auth/callback`
+   - `https://hemat-woi.me/auth/callback` (or your production domain)
+
+The React side calls `supabase.auth.signInWithIdToken(...)` using the `id_token`
+returned by the Capacitor Google Auth plugin. Deeplinks are handled via
+`registerNativeDeeplinkHandler` so returning to the app from the system browser
+completes the Supabase session automatically.
+
+#### Debugging native sign-in
+
+- `DEVELOPER_ERROR` – incorrect SHA-1/SHA-256, bundle id or client id. Verify
+  the Android client configuration matches the keystore you are using.
+- `TOKEN_MISSING` – Google returned no `id_token`; ensure the web client id is
+  passed to the plugin (`VITE_GOOGLE_WEB_CLIENT_ID`) and the OAuth consent
+  screen is published.
+- `SIGN_IN_FAILED` – generic Google API error. Check device connectivity and
+  Google Play Services updates.
+
+### Native features
+
+- **Camera / Gallery / File picker**: `takePhotoOrPick()` uses the Capacitor
+  Camera plugin natively and falls back to `<input type="file">` on the web.
+  Use `captureReceipt()` + `uploadReceipt()` to save transaction proofs into the
+  Supabase Storage bucket `receipts/`.
+- **Preferences**: `writeJsonPreference` mirrors important UI settings
+  (`hwTheme`, `hw:lastUser`, `hw:prefs`) into Capacitor Preferences so they load
+  before React renders, avoiding theme flashes.
+- **Local notifications**: `scheduleDebtReminderNotification` registers a
+  reminder seven days before each debt’s due date. Permissions and Android
+  notification channels are handled automatically.
+- **Status bar & splash**: `bootstrapNativeApp()` applies the dark theme status
+  bar and hides the splash screen once the app is ready. Custom splash assets
+  can be generated with `npx cordova-res --skip-config --copy`.
+- **Deeplinks**: the scheme `hematwoi://auth/callback` re-enters the React router
+  at the correct page and replays the Supabase login (PKCE/id-token).
+
+### Troubleshooting
+
+- Reset Capacitor state: `npx cap sync` (or `npm run cap:sync`) after installing
+  new dependencies.
+- When adding new native plugins, re-run `npm run build:mobile` so the web assets
+  are copied into `android/` and `ios/`.
+- If Android release builds strip Google Auth classes, ensure ProGuard keeps the
+  plugin package (Android Studio ➜ `app/proguard-rules.pro`).
+
 Run unit tests with:
 
 ```bash
