@@ -686,8 +686,28 @@ export async function deleteTransaction(id) {
 
 // -- CATEGORIES ----------------------------------------
 
-const CATEGORY_REST_SELECT = "id,user_id,type,name,inserted_at,group_name,order_index";
+const CATEGORY_REST_SELECT = "id,user_id,type,name,color,inserted_at,group_name,order_index";
 const CATEGORY_REST_ORDER = "order_index.asc.nullsfirst,name.asc";
+
+const CATEGORY_DEFAULT_COLOR = "#64748B";
+
+function normalizeCategoryColor(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^#[0-9A-Fa-f]{3}$/.test(trimmed)) {
+    const hex = trimmed
+      .slice(1)
+      .split("")
+      .map((char) => char + char)
+      .join("");
+    return `#${hex.toUpperCase()}`;
+  }
+  if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  return trimmed;
+}
 
 let categoryViewUnavailable = false;
 let categoryFallbackWarned = false;
@@ -714,6 +734,7 @@ function mapCategoryRow(row = {}, userId) {
   }
   const rawOrder = row.order_index ?? row.sort_order;
   const orderIndex = parseOrderIndex(rawOrder);
+  const colorValue = row.color ?? row.category_color ?? null;
   return {
     id: row.id,
     user_id: row.user_id ?? userId ?? null,
@@ -722,6 +743,7 @@ function mapCategoryRow(row = {}, userId) {
     group: groupValue ?? null,
     order_index: orderIndex,
     inserted_at: row.inserted_at ?? row.created_at ?? null,
+    color: normalizeCategoryColor(colorValue) ?? CATEGORY_DEFAULT_COLOR,
   };
 }
 
