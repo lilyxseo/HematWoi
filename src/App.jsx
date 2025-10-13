@@ -259,9 +259,9 @@ function AppShell({ prefs, setPrefs }) {
   const storedBrand = () => {
     try {
       const t = JSON.parse(localStorage.getItem('hwTheme') || '{}');
-      return t.brand || BRAND_PRESETS.blue;
+      return t.brand || BRAND_PRESETS.violet;
     } catch {
-      return BRAND_PRESETS.blue;
+      return BRAND_PRESETS.violet;
     }
   };
   const [theme, setTheme] = useState(storedTheme);
@@ -1272,7 +1272,7 @@ function AppContent() {
       density: "comfortable",
       defaultMonth: "current",
       currency: "IDR",
-      accent: "blue",
+      accent: "violet",
       walletSound: false,
       walletSensitivity: "default",
       walletShowTips: true,
