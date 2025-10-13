@@ -57,6 +57,53 @@ type SidebarMenuEntry = {
   category: string | null;
 };
 
+const MENU_STORAGE_PREFIX = "hw:sidebar-menu:";
+
+function getMenuStorageKey(role: 'guest' | 'user' | 'admin') {
+  return `${MENU_STORAGE_PREFIX}${role}`;
+}
+
+function loadCachedMenu(role: 'guest' | 'user' | 'admin'): SidebarMenuEntry[] | null {
+  if (typeof window === "undefined" || !("localStorage" in window)) {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getMenuStorageKey(role));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return parsed.filter((item): item is SidebarMenuEntry => {
+      return (
+        item &&
+        typeof item === "object" &&
+        typeof item.id === "string" &&
+        typeof item.title === "string" &&
+        typeof item.route === "string" &&
+        (item.access_level === "public" || item.access_level === "user" || item.access_level === "admin") &&
+        (typeof item.icon_name === "string" || item.icon_name === null) &&
+        typeof item.position === "number" &&
+        (typeof item.category === "string" || item.category === null)
+      );
+    });
+  } catch (error) {
+    console.warn("Gagal membaca cache menu sidebar", error);
+    return null;
+  }
+}
+
+function saveCachedMenu(role: 'guest' | 'user' | 'admin', items: SidebarMenuEntry[]): void {
+  if (typeof window === "undefined" || !("localStorage" in window)) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(getMenuStorageKey(role), JSON.stringify(items));
+  } catch (error) {
+    console.warn("Gagal menyimpan cache menu sidebar", error);
+  }
+}
+
 function normalizeSidebarRoute(path: string): string {
   const trimmed = path.trim();
   if (!trimmed) return '/';
@@ -117,7 +164,6 @@ export default function Sidebar({
     let cancelled = false;
 
     const loadMenuItems = async () => {
-      setMenuLoading(true);
       try {
         let role: 'guest' | 'user' | 'admin' = 'guest';
         if (sessionUser) {
@@ -142,6 +188,14 @@ export default function Sidebar({
             : role === 'user'
               ? ['public', 'user']
               : ['public'];
+
+        const cached = loadCachedMenu(role);
+        const shouldShowLoader = !cached || cached.length === 0;
+
+        setMenuLoading(shouldShowLoader);
+        if (cached && !cancelled) {
+          setMenuItems(cached);
+        }
 
         let query = supabase
           .from('app_sidebar_items')
@@ -197,6 +251,7 @@ export default function Sidebar({
         }));
 
         setMenuItems(normalized);
+        saveCachedMenu(role, normalized);
       } catch (error) {
         if (!cancelled) {
           setMenuItems([]);
