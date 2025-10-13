@@ -686,8 +686,48 @@ export async function deleteTransaction(id) {
 
 // -- CATEGORIES ----------------------------------------
 
-const CATEGORY_REST_SELECT = "id,user_id,type,name,inserted_at,group_name,order_index";
+const CATEGORY_REST_BASE_SELECT = "id,user_id,type,name,inserted_at,group_name,order_index";
 const CATEGORY_REST_ORDER = "order_index.asc.nullsfirst,name.asc";
+
+let categoryColorColumnUnavailable = false;
+
+function getCategoryRestSelect() {
+  if (categoryColorColumnUnavailable) return CATEGORY_REST_BASE_SELECT;
+  return `${CATEGORY_REST_BASE_SELECT},color`;
+}
+
+function isMissingCategoryColorMessage(message) {
+  if (typeof message !== "string") return false;
+  const normalized = message.toLowerCase();
+  if (!normalized.includes("color")) return false;
+  return normalized.includes("does not exist") || normalized.includes("could not find");
+}
+
+async function shouldRetryWithoutCategoryColor(response) {
+  if (categoryColorColumnUnavailable) return false;
+  if (!response || response.ok) return false;
+  try {
+    const body = await response.clone().json();
+    if (isMissingCategoryColorMessage(body?.message)) {
+      categoryColorColumnUnavailable = true;
+      return true;
+    }
+  } catch (error) {
+    if (import.meta.env?.DEV) {
+      console.warn("[HW] Failed parsing category color error", error);
+    }
+  }
+  return false;
+}
+
+function normalizeCategoryColor(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) {
+    return trimmed.toUpperCase();
+  }
+  return null;
+}
 
 let categoryViewUnavailable = false;
 let categoryFallbackWarned = false;
@@ -722,12 +762,15 @@ function mapCategoryRow(row = {}, userId) {
     group: groupValue ?? null,
     order_index: orderIndex,
     inserted_at: row.inserted_at ?? row.created_at ?? null,
+    color: normalizeCategoryColor(
+      row.color ?? row.color_hex ?? row.hex ?? row.category_color ?? null,
+    ),
   };
 }
 
 async function fetchCategoriesFromRest(userId, type) {
   const params = new URLSearchParams({
-    select: CATEGORY_REST_SELECT,
+    select: getCategoryRestSelect(),
     user_id: `eq.${userId}`,
     order: CATEGORY_REST_ORDER,
   });
@@ -746,6 +789,9 @@ async function fetchCategoriesFromRest(userId, type) {
         categoryFallbackWarned = true;
       }
     } else if (!response.ok) {
+      if (await shouldRetryWithoutCategoryColor(response)) {
+        return fetchCategoriesFromRest(userId, type);
+      }
       throw await readPostgrestError(response, "Gagal memuat kategori");
     } else {
       const data = await response.json();
@@ -759,6 +805,9 @@ async function fetchCategoriesFromRest(userId, type) {
     throw new Error("Endpoint kategori belum tersedia");
   }
   if (!fallbackResponse.ok) {
+    if (await shouldRetryWithoutCategoryColor(fallbackResponse)) {
+      return fetchCategoriesFromRest(userId, type);
+    }
     throw await readPostgrestError(fallbackResponse, "Gagal memuat kategori");
   }
   const fallbackData = await fallbackResponse.json();
