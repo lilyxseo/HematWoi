@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { ChangeEvent, MutableRefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
-import { Calendar, ChevronDown } from "lucide-react";
+import { Calendar, ChevronDown, Search } from "lucide-react";
 import CategoryDot from "./CategoryDot";
 
 const TYPE_LABELS: Record<string, string> = {
