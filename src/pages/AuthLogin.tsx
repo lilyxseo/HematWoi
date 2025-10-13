@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import GoogleLoginButton from '../components/GoogleLoginButton';
+import NativeGoogleSignInButton from '../components/NativeGoogleSignInButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import { getSession, onAuthStateChange } from '../lib/auth';
@@ -283,9 +283,18 @@ export default function AuthLogin() {
                     </div>
                   </div>
                   <div className="space-y-3">
-                    <GoogleLoginButton
+                    <NativeGoogleSignInButton
                       onWebLogin={handleGoogleWebSignIn}
                       disabled={googleLoading}
+                      onNativeSuccess={(response) => {
+                        setGoogleError(null);
+                        setGoogleLoading(false);
+                        void syncGuestData(response?.user?.id ?? response?.session?.user?.id ?? null);
+                      }}
+                      onNativeError={(message) => {
+                        setGoogleLoading(false);
+                        setGoogleError(message);
+                      }}
                       className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       {googleLoading ? (
@@ -299,7 +308,7 @@ export default function AuthLogin() {
                         </span>
                       )}
                       <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
-                    </GoogleLoginButton>
+                    </NativeGoogleSignInButton>
                     <p className="text-xs text-muted">
                       Jika pop-up tertutup, tekan tombol lagi atau lanjutkan dengan email yang kamu gunakan sehari-hari.
                     </p>

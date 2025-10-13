@@ -159,6 +159,78 @@ neutral placeholder is shown.
 - Daily quote appears as a chat-style bubble with typographic quotes.
 - Avatar level and XP controls moved from the dashboard to the new Profile page.
 
+## Mobile (Capacitor) Setup
+
+HematWoi now ships with a Capacitor bridge so the same React application can run
+inside native Android and iOS containers.
+
+### Instalasi Dependencies
+
+```bash
+pnpm install
+pnpm run build:mobile
+```
+
+The `build:mobile` script bundles the web assets and triggers `cap sync`. Manual
+commands:
+
+- `pnpm run cap:sync` – copy the latest `dist/` build into Android/iOS projects.
+- `pnpm run cap:open:android` – open Android Studio.
+- `pnpm run cap:open:ios` – open the Xcode workspace.
+
+### Variabel Lingkungan
+
+Tambahkan kunci berikut (contoh menggunakan `.env`):
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_GOOGLE_WEB_CLIENT_ID=...
+VITE_GOOGLE_ANDROID_CLIENT_ID=...
+VITE_GOOGLE_IOS_CLIENT_ID=...
+GOOGLE_WEB_CLIENT_ID=...
+GOOGLE_ANDROID_CLIENT_ID=...
+GOOGLE_IOS_CLIENT_ID=...
+```
+
+`GOOGLE_*` digunakan saat menjalankan `npx cap sync` sehingga Capacitor dapat
+menulis nilai ke `capacitor.config.ts` dan berkas native.
+
+### Mendapatkan SHA-1/SHA-256
+
+1. Buka proyek Android di Android Studio (`pnpm run cap:open:android`).
+2. Pada panel Gradle, jalankan `:app > Tasks > android > signingReport`.
+3. Salin nilai `SHA1` dan `SHA-256` dari laporan debug dan release.
+4. Tambahkan fingerprint tersebut ke Google Cloud Console pada konfigurasi OAuth
+   Client (Android). Gunakan fingerprint release untuk Play Store build.
+
+### Konfigurasi Google Sign-In
+
+- Android: tempel `SHA-1/SHA-256` dan package `com.hematwoi.app` di Google Cloud.
+- iOS: ambil nilai **Reversed client ID** dari Google Cloud dan isi variabel
+  `GOOGLE_REVERSED_CLIENT_ID` di Xcode (tersimpan pada `Info.plist`).
+- Supabase: tambahkan redirect URL `hematwoi://auth/callback` dan
+  `https://hemat-woi.me/auth/callback`.
+
+### Kamera, Penyimpanan, dan Notifikasi
+
+- Kamera dan pemilih berkas menggunakan plugin Capacitor Camera/Filesystem dan
+  otomatis jatuh ke `<input type="file">` di web.
+- Preferensi tema, aksen warna, dan pengguna terakhir disimpan memakai
+  `@capacitor/preferences` sehingga UI terhydrate sebelum React dirender.
+- Pengingat hutang dijadwalkan lewat `@capacitor/local-notifications`. Android
+  membuat kanal bernama `hematwoi-debts` secara otomatis.
+
+### Debug Error Umum
+
+- **DEVELOPER_ERROR**: pastikan fingerprint SHA-1/SHA-256 cocok dan paket
+  Android benar.
+- **token invalid** atau sesi kosong: cek apakah `id_token` dikirim ke
+  `supabase.auth.signInWithIdToken` dan Supabase memiliki redirect URL yang sama.
+- **Sign-in cancelled**: pengguna menutup dialog Google. Coba lagi atau tampilkan
+  fallback login web.
+- Gunakan `adb logcat` atau `npx cap run android --target` untuk melihat log.
+
 ## Settings & Preferences
 
 The `/settings` page groups application preferences into:
