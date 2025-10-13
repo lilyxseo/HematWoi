@@ -121,7 +121,7 @@ export default function WeeklyBudgetsGrid({
         const notes = row.notes?.trim();
 
         const cardClassName = clsx(
-          'relative flex h-full flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60',
+          'relative flex h-full min-h-[280px] flex-col gap-5 overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-4 shadow-[0_24px_45px_-28px_rgba(15,23,42,0.5)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60 md:min-h-[300px] md:p-5 xl:p-6',
           isHighlighted
             ? 'border-brand/60 bg-gradient-to-br from-brand/15 via-surface/80 to-surface/80 ring-2 ring-brand/40 shadow-[0_32px_64px_-36px_rgba(59,130,246,0.55)] dark:from-brand/25'
             : null
