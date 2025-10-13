@@ -61,6 +61,13 @@ import MoneyTalkProvider, {
 import { ModeProvider, useMode } from "./hooks/useMode";
 import AuthCallback from "./pages/AuthCallback";
 import MobileGoogleCallback from "./routes/MobileGoogleCallback";
+import {
+  isNativePlatform,
+  setNativeBrandPreference,
+  setNativeLastUserPreference,
+  setNativeThemePreference,
+} from "./lib/native";
+import { registerNativeAuthDeeplinkHandler } from "./lib/native-auth";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
@@ -330,6 +337,21 @@ function AppShell({ prefs, setPrefs }) {
 
   const navigate = useNavigate();
 
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    const unregister = registerNativeAuthDeeplinkHandler((result) => {
+      if (result.redirectPath) {
+        navigate(result.redirectPath, { replace: true });
+      }
+      if (result.success) {
+        addToast('Berhasil login dengan Google.', 'success');
+      } else if (result.errorMessage) {
+        addToast(result.errorMessage, 'error');
+      }
+    });
+    return unregister;
+  }, [navigate, addToast]);
+
 
   const handleProfileSyncError = useCallback(
     (error, context) => {
@@ -424,12 +446,22 @@ function AppShell({ prefs, setPrefs }) {
   }, [sessionChecked, sessionUser, mode, setMode]);
 
   useEffect(() => {
+    if (!isNativePlatform()) return;
+    void setNativeLastUserPreference(sessionUser?.id ?? null);
+  }, [sessionUser]);
+
+  useEffect(() => {
     const root = document.documentElement;
     const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const mode = theme === 'system' ? (sysDark ? 'dark' : 'light') : theme;
     root.setAttribute('data-theme', mode);
     localStorage.setItem('hwTheme', JSON.stringify({ mode: theme, brand }));
   }, [theme, brand]);
+
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    void setNativeThemePreference(theme);
+  }, [theme]);
 
   useEffect(() => {
     const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -468,6 +500,11 @@ function AppShell({ prefs, setPrefs }) {
     const preset = BRAND_PRESETS[prefs.accent];
     if (preset) setBrand(preset);
   }, [prefs.accent]);
+
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    void setNativeBrandPreference(brand, prefs.accent);
+  }, [brand, prefs.accent]);
 
   const handleBrandChange = useCallback(
     (nextBrand) => {
