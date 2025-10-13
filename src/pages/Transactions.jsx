@@ -316,16 +316,6 @@ export default function Transactions() {
   });
 
   useEffect(() => {
-    setSelectedIds((prev) => {
-      const next = new Set();
-      items.forEach((item) => {
-        if (prev.has(item.id)) next.add(item.id);
-      });
-      return next;
-    });
-  }, [items]);
-
-  useEffect(() => {
     const trimmedTerm = searchTerm.trim();
     const trimmedFilter = filter.search.trim();
     if (trimmedTerm === trimmedFilter) return;
@@ -353,10 +343,41 @@ export default function Transactions() {
     return items.slice(start, start + pageSize);
   }, [items, page, pageSize]);
 
-  const selectedItems = useMemo(
-    () => items.filter((item) => selectedIds.has(item.id)),
-    [items, selectedIds],
-  );
+  const itemsById = useMemo(() => {
+    const map = new Map();
+    for (const item of items) {
+      map.set(item.id, item);
+    }
+    return map;
+  }, [items]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      let changed = false;
+      const next = new Set();
+      prev.forEach((id) => {
+        if (itemsById.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [itemsById]);
+
+  const selectedItems = useMemo(() => {
+    if (selectedIds.size === 0) return [];
+    const result = [];
+    selectedIds.forEach((id) => {
+      const item = itemsById.get(id);
+      if (item) {
+        result.push(item);
+      }
+    });
+    return result;
+  }, [itemsById, selectedIds]);
 
   const allSelected = visibleItems.length > 0 && visibleItems.every((item) => selectedIds.has(item.id));
 
