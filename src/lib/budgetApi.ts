@@ -518,6 +518,24 @@ async function fetchExpenseCategoriesRemote(
         console.warn('v_categories_budget missing — using fallback /categories');
         categoriesFallbackWarned = true;
       }
+    } else if (response.status === 400) {
+      const bodyText = await response.clone().text();
+      const missingColumn =
+        /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
+      if (missingColumn) {
+        categoriesViewUnavailable = true;
+        if (!categoriesFallbackWarned) {
+          console.warn(
+            'v_categories_budget missing expected columns — using fallback /categories'
+          );
+          categoriesFallbackWarned = true;
+        }
+      } else {
+        throw await parsePostgrestError(
+          response,
+          'Gagal memuat kategori pengeluaran'
+        );
+      }
     } else if (!response.ok) {
       throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
     } else {

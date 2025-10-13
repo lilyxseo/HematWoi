@@ -767,6 +767,21 @@ async function fetchCategoriesFromRest(userId, type) {
         console.warn("v_categories_budget missing — using fallback /categories");
         categoryFallbackWarned = true;
       }
+    } else if (response.status === 400) {
+      const bodyText = await response.clone().text();
+      const missingColumn =
+        /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
+      if (missingColumn) {
+        categoryViewUnavailable = true;
+        if (!categoryFallbackWarned) {
+          console.warn(
+            "v_categories_budget missing expected columns — using fallback /categories"
+          );
+          categoryFallbackWarned = true;
+        }
+      } else {
+        throw await readPostgrestError(response, "Gagal memuat kategori");
+      }
     } else if (!response.ok) {
       throw await readPostgrestError(response, "Gagal memuat kategori");
     } else {
