@@ -129,13 +129,23 @@ export default function BudgetCard({
   return (
     <article
       className={clsx(
-        'grid min-h-[280px] md:min-h-[300px] grid-rows-[auto,auto,1fr,auto] gap-3 rounded-2xl border border-white/10 bg-surface/60 p-4 shadow-sm transition-colors hover:border-brand/40 overflow-hidden backdrop-blur md:p-5 xl:p-6',
+        'relative grid min-h-[280px] md:min-h-[300px] grid-rows-[auto,auto,1fr,auto] gap-3 overflow-hidden rounded-2xl border border-border/60 bg-surface/70 p-4 shadow-sm transition duration-300 ease-out hover:-translate-y-1 hover:border-brand/40 hover:shadow-[0_30px_60px_-32px_rgba(15,23,42,0.55)] backdrop-blur supports-[backdrop-filter]:bg-surface/60 md:p-5 xl:p-6',
         isHighlighted
-          ? 'border-brand/50 bg-brand/5 ring-2 ring-[color:var(--brand-ring)]'
-          : 'hover:shadow-md',
+          ? 'border-brand/60 bg-gradient-to-br from-brand/15 via-surface/80 to-surface/80 ring-2 ring-brand/40 shadow-[0_32px_64px_-36px_rgba(59,130,246,0.55)] dark:from-brand/25'
+          : null,
       )}
     >
-      <header className="flex items-start gap-3">
+      {isHighlighted ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full blur-3xl"
+          style={{
+            background:
+              'radial-gradient(circle at center, rgba(59,130,246,0.45) 0%, rgba(59,130,246,0.2) 45%, rgba(255,255,255,0) 75%)',
+          }}
+        />
+      ) : null}
+      <header className="relative z-10 flex items-start gap-3">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-brand/15 text-lg font-semibold uppercase text-brand shadow-inner">
           {categoryInitial}
         </div>
@@ -170,7 +180,7 @@ export default function BudgetCard({
         </div>
       </header>
 
-      <div className="flex flex-wrap items-start justify-between gap-3 text-xs md:text-sm leading-snug text-muted-foreground">
+      <div className="relative z-10 flex flex-wrap items-start justify-between gap-3 text-xs md:text-sm leading-snug text-muted-foreground">
         <div className="min-w-0 flex-1 space-y-2">
           <p className="line-clamp-2 break-words">{status.message}</p>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/80 whitespace-nowrap">
@@ -200,7 +210,7 @@ export default function BudgetCard({
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+      <div className="relative z-10 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
         <div className="grid flex-1 gap-3 [grid-template-columns:repeat(auto-fit,minmax(160px,1fr))]">
           <StatItem label="Dialokasikan" value={formatCurrency(planned)} description="Anggaran" />
           <StatItem label="Terpakai" value={formatCurrency(spent)} description={percentageLabel} />
@@ -230,7 +240,7 @@ export default function BudgetCard({
         </div>
       </div>
 
-      <footer className="flex items-center justify-end gap-2">
+      <footer className="relative z-10 flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={onViewTransactions}
