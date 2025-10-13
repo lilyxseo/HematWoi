@@ -57,7 +57,7 @@ function parseOrderIndex(value) {
 }
 
 function sanitizeIlike(value = "") {
-  return String(value).replace(/[%_]/g, (m) => `\\${m}`);
+  return String(value).replace(/[%_,()]/g, (m) => `\\${m}`);
 }
 
 function arrayify(value) {

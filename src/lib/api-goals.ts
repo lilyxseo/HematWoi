@@ -113,7 +113,7 @@ function throwFormatted(scope: string, error: unknown, fallback: string): never 
 
 function sanitizeIlike(value?: string | null) {
   if (!value) return '';
-  return String(value).replace(/[%_]/g, (match) => `\\${match}`);
+  return String(value).replace(/[%_,()]/g, (match) => `\\${match}`);
 }
 
 function toNum(value: unknown): number | undefined {
