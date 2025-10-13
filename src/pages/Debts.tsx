@@ -25,6 +25,7 @@ import {
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
 import { listAccounts, type AccountRecord } from '../lib/api';
+import { isNativePlatform, scheduleDebtReminderNotification } from '../lib/native';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -151,6 +152,7 @@ export default function Debts() {
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
   const [seriesCursor, setSeriesCursor] = useState<Record<string, number>>({});
+  const scheduledRemindersRef = useRef(new Set<string>());
 
   const logError = useCallback((error: unknown, context: string) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -187,6 +189,27 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+
+    const reminders = debts.filter((debt) => debt.due_date && typeof debt.due_date === 'string');
+    reminders.forEach((debt) => {
+      if (!debt.due_date) return;
+      if (scheduledRemindersRef.current.has(debt.id)) return;
+      scheduledRemindersRef.current.add(debt.id);
+      const amount = Math.max(0, (debt.amount ?? 0) - (debt.paid ?? 0));
+      const amountLabel = formatCurrency(amount);
+      void scheduleDebtReminderNotification({
+        debtId: debt.id,
+        dueDate: debt.due_date,
+        debtorName: debt.party_name || debt.title,
+        amountLabel,
+      }).catch((error) => {
+        logError(error, 'schedule debt reminder');
+      });
+    });
+  }, [debts, logError]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {

@@ -14,6 +14,7 @@ import {
   resolveEmailByUsername,
   signInWithPassword,
 } from '../../lib/auth';
+import { writeJsonPreference } from '../../lib/native';
 
 type LoginCardProps = {
   defaultIdentifier?: string;
@@ -178,6 +179,11 @@ export default function LoginCard({
     } catch {
       /* ignore */
     }
+
+    const payload = shouldRemember ? { lastEmail: value } : null;
+    void writeJsonPreference('hw:lastUser', payload).catch(() => {
+      /* ignore */
+    });
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

@@ -4,14 +4,28 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
 import { initSyncEngine } from "./lib/sync/SyncEngine";
+import { hydrateMultiplePreferences } from "./lib/native";
+import { bootstrapNativeApp } from "./lib/native-auth";
 
 const queryClient = new QueryClient();
 
-initSyncEngine();
-createRoot(document.getElementById("root")).render(
-  <BrowserRouter>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </BrowserRouter>
-);
+async function bootstrap() {
+  await hydrateMultiplePreferences(["hw:prefs", "hw:lastUser", "hwTheme"]);
+  await bootstrapNativeApp();
+  initSyncEngine();
+
+  const container = document.getElementById("root");
+  if (!container) {
+    throw new Error("Root element not found");
+  }
+
+  createRoot(container).render(
+    <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </BrowserRouter>
+  );
+}
+
+void bootstrap();
