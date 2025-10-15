@@ -191,6 +191,7 @@ export default function Transactions() {
   const [searchTerm, setSearchTerm] = useState(filter.search);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
   const [confirmState, setConfirmState] = useState(null);
+  const [repeatLoadingIds, setRepeatLoadingIds] = useState(() => new Set());
   const undoTimerRef = useRef(null);
   const undoPayloadRef = useRef(null);
   const [snackbar, setSnackbar] = useState(null);
@@ -759,6 +760,49 @@ export default function Transactions() {
     setEditTarget(item);
   }, []);
 
+  const handleRepeatTransaction = useCallback(
+    async (target) => {
+      if (!target) return;
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (!targetId) return;
+
+      const source = itemsById.get(targetId) || target;
+      if (!source) return;
+
+      setRepeatLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.add(targetId);
+        return next;
+      });
+
+      try {
+        await addTransaction({
+          type: source.type,
+          amount: source.amount,
+          account_id: source.account_id,
+          to_account_id: source.to_account_id,
+          category_id: source.category_id,
+          merchant_id: source.merchant_id,
+          title: source.title,
+          notes: source.notes ?? source.note ?? null,
+          date: new Date().toISOString(),
+        });
+        addToast("Transaksi diulang", "success");
+        refresh({ keepPage: true });
+      } catch (err) {
+        console.error("Failed to repeat transaction", err);
+        addToast(err?.message || "Gagal mengulang transaksi", "error");
+      } finally {
+        setRepeatLoadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(targetId);
+          return next;
+        });
+      }
+    },
+    [addToast, itemsById, refresh],
+  );
+
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
       <PageHeader title="Transaksi" description={PAGE_DESCRIPTION}>
@@ -904,6 +948,7 @@ export default function Transactions() {
           allSelected={allSelected}
           onDelete={handleRequestDelete}
           onEdit={handleEditTransaction}
+          onRepeat={handleRepeatTransaction}
           formatAmount={formatIDR}
           formatDate={formatTransactionDate}
           toDateValue={toDateInput}
@@ -916,6 +961,7 @@ export default function Transactions() {
           total={total}
           onPageChange={goToPage}
           deleteDisabled={deleteInProgress}
+          repeatLoadingIds={repeatLoadingIds}
           emptyState={
             <EmptyTransactionsState
               onResetFilters={handleResetFilters}
@@ -932,6 +978,7 @@ export default function Transactions() {
           onToggleSelect={toggleSelect}
           onDelete={handleRequestDelete}
           onEdit={handleEditTransaction}
+          onRepeat={handleRepeatTransaction}
           formatAmount={formatIDR}
           formatDate={formatTransactionDate}
           toDateValue={toDateInput}
@@ -941,6 +988,7 @@ export default function Transactions() {
           total={total}
           onPageChange={goToPage}
           deleteDisabled={deleteInProgress}
+          repeatLoadingIds={repeatLoadingIds}
           emptyState={
             <EmptyTransactionsState
               onResetFilters={handleResetFilters}

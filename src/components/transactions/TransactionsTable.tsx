@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Pencil, Trash2 } from "lucide-react";
+import { Loader2, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { ChangeEvent, ReactNode } from "react";
 import CategoryDot from "./CategoryDot";
 
@@ -17,6 +17,10 @@ interface TransactionRowData {
   title?: string | null;
   description?: string | null;
   tags?: string[] | string | null;
+  account_id?: string | null;
+  to_account_id?: string | null;
+  category_id?: string | null;
+  merchant_id?: string | null;
 }
 
 interface TransactionsTableProps {
@@ -30,6 +34,7 @@ interface TransactionsTableProps {
   allSelected: boolean;
   onEdit: (item: TransactionRowData) => void;
   onDelete: (id: string) => void;
+  onRepeat: (item: TransactionRowData) => void;
   formatAmount: (value: number) => string;
   formatDate: (value?: string | null) => string;
   toDateValue: (value?: string | null) => string;
@@ -42,6 +47,7 @@ interface TransactionsTableProps {
   total: number;
   onPageChange: (page: number) => void;
   deleteDisabled?: boolean;
+  repeatLoadingIds?: Set<string>;
   emptyState: ReactNode;
 }
 
@@ -62,6 +68,7 @@ export default function TransactionsTable({
   allSelected,
   onEdit,
   onDelete,
+  onRepeat,
   formatAmount,
   formatDate,
   toDateValue,
@@ -74,6 +81,7 @@ export default function TransactionsTable({
   total,
   onPageChange,
   deleteDisabled = false,
+  repeatLoadingIds,
   emptyState,
 }: TransactionsTableProps) {
   const isInitialLoading = loading && items.length === 0;
@@ -179,6 +187,7 @@ export default function TransactionsTable({
                     const description = note.trim() || "(Tanpa judul)";
                     const formattedDate = formatDate(item.date);
                     const amountTone = AMOUNT_CLASS[item.type] || AMOUNT_CLASS.transfer;
+                    const repeating = repeatLoadingIds?.has(item.id) ?? false;
 
                     return (
                       <tr
@@ -236,6 +245,19 @@ export default function TransactionsTable({
                         </td>
                         <td className="px-4 py-4 align-middle">
                           <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onRepeat(item)}
+                              disabled={repeating}
+                              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-slate-300 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+                              aria-label="Ulangi transaksi"
+                            >
+                              {repeating ? (
+                                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                              )}
+                            </button>
                             <button
                               type="button"
                               onClick={() => onEdit(item)}
