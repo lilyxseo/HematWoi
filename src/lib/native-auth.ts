@@ -36,6 +36,12 @@ const AUTH_PATH = '/callback';
 let initialized = false;
 let initializing: Promise<void> | null = null;
 
+type NativeGoogleClientIds = {
+  web?: string;
+  ios?: string;
+  android?: string;
+};
+
 export type NativeAuthResult = {
   handled: boolean;
   success?: boolean;
@@ -54,16 +60,19 @@ export async function ensureNativeGoogleAuth(): Promise<void> {
 
   initializing = (async () => {
     const clientId = selectClientId();
-    if (!clientId) {
-      throw new Error('Google client ID belum dikonfigurasi untuk platform ini.');
-    }
-
     try {
-      GoogleAuth.initialize({
-        clientId,
+      const options: Parameters<typeof GoogleAuth.initialize>[0] = {
         scopes: ['profile', 'email', 'openid'],
         grantOfflineAccess: true,
-      });
+      };
+      if (clientId) {
+        options.clientId = clientId;
+      } else {
+        console.warn(
+          'Google client ID belum ditemukan di variabel lingkungan. Mengandalkan konfigurasi native Capacitor.'
+        );
+      }
+      GoogleAuth.initialize(options);
       initialized = true;
     } catch (error) {
       console.error('Gagal menginisialisasi GoogleAuth native', error);
@@ -79,13 +88,60 @@ export async function ensureNativeGoogleAuth(): Promise<void> {
 }
 
 function selectClientId(): string | undefined {
+  const globalIds = readGlobalGoogleClientIds();
   if (isIos()) {
-    return GOOGLE_IOS_CLIENT_ID ?? GOOGLE_WEB_CLIENT_ID;
+    return firstNonEmpty(
+      globalIds?.ios,
+      globalIds?.web,
+      GOOGLE_IOS_CLIENT_ID,
+      GOOGLE_WEB_CLIENT_ID
+    );
   }
   if (isAndroid()) {
-    return GOOGLE_ANDROID_CLIENT_ID ?? GOOGLE_WEB_CLIENT_ID;
+    return firstNonEmpty(
+      globalIds?.android,
+      globalIds?.web,
+      GOOGLE_ANDROID_CLIENT_ID,
+      GOOGLE_WEB_CLIENT_ID
+    );
   }
-  return GOOGLE_WEB_CLIENT_ID;
+  return firstNonEmpty(globalIds?.web, GOOGLE_WEB_CLIENT_ID);
+}
+
+function readGlobalGoogleClientIds(): NativeGoogleClientIds | undefined {
+  if (typeof globalThis === 'undefined') return undefined;
+  const candidates = [
+    (globalThis as Record<string, unknown>).__HW_GOOGLE_CLIENT_IDS__,
+    (globalThis as Record<string, unknown>).HW_GOOGLE_CLIENT_IDS,
+    (globalThis as Record<string, unknown>).hematwoiGoogleClientIds,
+  ];
+  for (const value of candidates) {
+    if (!value || typeof value !== 'object') continue;
+    const { web, ios, android } = value as NativeGoogleClientIds;
+    if (web || ios || android) {
+      return {
+        web: normalizeClientId(web),
+        ios: normalizeClientId(ios),
+        android: normalizeClientId(android),
+      };
+    }
+  }
+  return undefined;
+}
+
+function normalizeClientId(value?: string): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    if (value && value.length > 0) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 export async function signInWithGoogleNative(): Promise<AuthResponse> {
