@@ -687,7 +687,7 @@ export async function deleteTransaction(id) {
 // -- CATEGORIES ----------------------------------------
 
 const CATEGORY_REST_SELECT = "id,user_id,type,name,color,inserted_at,group_name,order_index";
-const CATEGORY_REST_ORDER = "order_index.asc.nullsfirst,name.asc";
+const CATEGORY_REST_ORDER = ["order_index.asc.nullsfirst", "name.asc"];
 
 const CATEGORY_DEFAULT_COLOR = "#64748B";
 
@@ -751,8 +751,10 @@ async function fetchCategoriesFromRest(userId, type) {
   const params = new URLSearchParams({
     select: CATEGORY_REST_SELECT,
     user_id: `eq.${userId}`,
-    order: CATEGORY_REST_ORDER,
   });
+  for (const order of CATEGORY_REST_ORDER) {
+    params.append("order", order);
+  }
   if (type === "income" || type === "expense") {
     params.set("type", `eq.${type}`);
   }
