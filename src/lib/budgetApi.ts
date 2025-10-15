@@ -22,7 +22,7 @@ export interface ExpenseCategory {
 const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
 const CATEGORY_SELECT_COLUMNS = 'id,user_id,type,name,inserted_at,group_name,order_index';
-const CATEGORY_ORDER = 'order_index.asc.nullsfirst,name.asc';
+const CATEGORY_ORDER = ['order_index.asc.nullsfirst', 'name.asc'] as const;
 
 let categoriesViewUnavailable = false;
 let categoriesFallbackWarned = false;
@@ -505,8 +505,10 @@ async function fetchExpenseCategoriesRemote(
     select: CATEGORY_SELECT_COLUMNS,
     user_id: `eq.${userId}`,
     type: 'eq.expense',
-    order: CATEGORY_ORDER,
   });
+  for (const order of CATEGORY_ORDER) {
+    params.append('order', order);
+  }
   const headers = buildSupabaseHeaders();
 
   if (!categoriesViewUnavailable) {
