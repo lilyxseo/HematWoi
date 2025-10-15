@@ -15,7 +15,8 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   bundledWebRuntime: false,
   server: {
-    androidScheme: 'https',
+    url: 'https://hemat-woi.me',
+    cleartext: true,
   },
   plugins: {
     SplashScreen: {
