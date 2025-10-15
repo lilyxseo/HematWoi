@@ -4,7 +4,9 @@ import {
   ArrowRightLeft,
   ArrowUpCircle,
   CalendarDays,
+  Loader2,
   Pencil,
+  RotateCcw,
   Trash2,
   Wallet2,
 } from "lucide-react";
@@ -20,6 +22,11 @@ interface TransactionRowData {
   date?: string;
   account?: string | null;
   to_account?: string | null;
+  account_id?: string | null;
+  to_account_id?: string | null;
+  category_id?: string | null;
+  merchant_id?: string | null;
+  receipt_url?: string | null;
   notes?: string | null;
   note?: string | null;
   title?: string | null;
@@ -35,6 +42,7 @@ interface TransactionsCardListProps {
   selectedIds: Set<string>;
   onToggleSelect: (id: string, event?: ChangeEvent<HTMLInputElement>) => void;
   onEdit: (item: TransactionRowData) => void;
+  onRepeat: (item: TransactionRowData) => void;
   onDelete: (id: string) => void;
   formatAmount: (value: number) => string;
   formatDate: (value?: string | null) => string;
@@ -45,6 +53,7 @@ interface TransactionsCardListProps {
   total: number;
   onPageChange: (page: number) => void;
   deleteDisabled?: boolean;
+  repeatLoadingIds?: Set<string>;
   emptyState: ReactNode;
 }
 
@@ -81,6 +90,7 @@ export default function TransactionsCardList({
   selectedIds,
   onToggleSelect,
   onEdit,
+  onRepeat,
   onDelete,
   formatAmount,
   formatDate,
@@ -91,6 +101,7 @@ export default function TransactionsCardList({
   total,
   onPageChange,
   deleteDisabled = false,
+  repeatLoadingIds,
   emptyState,
 }: TransactionsCardListProps) {
   const isInitialLoading = loading && items.length === 0;
@@ -206,6 +217,19 @@ export default function TransactionsCardList({
                       {formatAmount(item.amount)}
                     </span>
                     <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onRepeat(item)}
+                        disabled={repeatLoadingIds?.has(item.id)}
+                        className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Ulangi transaksi"
+                      >
+                        {repeatLoadingIds?.has(item.id) ? (
+                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                        )}
+                      </button>
                       <button
                         type="button"
                         onClick={() => onEdit(item)}
