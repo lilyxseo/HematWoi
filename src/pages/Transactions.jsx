@@ -195,6 +195,7 @@ export default function Transactions() {
   const undoPayloadRef = useRef(null);
   const [snackbar, setSnackbar] = useState(null);
   const [undoLoading, setUndoLoading] = useState(false);
+  const [repeatLoadingIds, setRepeatLoadingIds] = useState(() => new Set());
   const [isDesktopFilterView, setIsDesktopFilterView] = useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return false;
@@ -759,6 +760,45 @@ export default function Transactions() {
     setEditTarget(item);
   }, []);
 
+  const handleRepeatTransaction = useCallback(
+    async (item) => {
+      if (!item?.id) return;
+      setRepeatLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        return next;
+      });
+      try {
+        const isTransfer = item.type === "transfer";
+        const payload = {
+          type: item.type,
+          amount: item.amount,
+          date: new Date().toISOString(),
+          category_id: isTransfer ? null : item.category_id ?? null,
+          title: item.title ?? null,
+          notes: item.notes ?? item.note ?? null,
+          account_id: item.account_id ?? null,
+          to_account_id: isTransfer ? item.to_account_id ?? null : null,
+          merchant_id: item.merchant_id ?? null,
+          receipt_url: item.receipt_url ?? null,
+        };
+        await addTransaction(payload);
+        addToast("Transaksi diulang", "success");
+        refresh({ keepPage: true });
+      } catch (err) {
+        console.error(err);
+        addToast(err?.message || "Gagal mengulang transaksi", "error");
+      } finally {
+        setRepeatLoadingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+    },
+    [addToast, refresh],
+  );
+
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
       <PageHeader title="Transaksi" description={PAGE_DESCRIPTION}>
@@ -904,6 +944,8 @@ export default function Transactions() {
           allSelected={allSelected}
           onDelete={handleRequestDelete}
           onEdit={handleEditTransaction}
+          onRepeat={handleRepeatTransaction}
+          repeatLoadingIds={repeatLoadingIds}
           formatAmount={formatIDR}
           formatDate={formatTransactionDate}
           toDateValue={toDateInput}
@@ -932,6 +974,8 @@ export default function Transactions() {
           onToggleSelect={toggleSelect}
           onDelete={handleRequestDelete}
           onEdit={handleEditTransaction}
+          onRepeat={handleRepeatTransaction}
+          repeatLoadingIds={repeatLoadingIds}
           formatAmount={formatIDR}
           formatDate={formatTransactionDate}
           toDateValue={toDateInput}
