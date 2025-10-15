@@ -9,14 +9,23 @@ const iosClientId =
 const androidClientId =
   process.env.GOOGLE_ANDROID_CLIENT_ID ?? process.env.VITE_GOOGLE_ANDROID_CLIENT_ID;
 
+const shouldUseLocalAssets = process.env.CAPACITOR_USE_LOCAL === 'true';
+
+const serverConfig: CapacitorConfig['server'] = shouldUseLocalAssets
+  ? {
+      androidScheme: 'https',
+    }
+  : {
+      url: process.env.CAPACITOR_SERVER_URL ?? 'https://hematwoi.vercel.app',
+      cleartext: true,
+    };
+
 const config: CapacitorConfig = {
   appId: 'com.hematwoi.app',
   appName: 'HematWoi',
   webDir: 'dist',
   bundledWebRuntime: false,
-  server: {
-    androidScheme: 'https',
-  },
+  server: serverConfig,
   plugins: {
     SplashScreen: {
       launchShowDuration: 0,
