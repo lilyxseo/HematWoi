@@ -687,7 +687,10 @@ export async function deleteTransaction(id) {
 // -- CATEGORIES ----------------------------------------
 
 const CATEGORY_REST_SELECT = "id,user_id,type,name,color,inserted_at,group_name,order_index";
-const CATEGORY_REST_ORDER = "order_index.asc.nullsfirst,name.asc";
+const CATEGORY_REST_ORDER_PARAMS = [
+  "order_index.asc.nullsfirst",
+  "name.asc"
+];
 
 const CATEGORY_DEFAULT_COLOR = "#64748B";
 
@@ -751,7 +754,9 @@ async function fetchCategoriesFromRest(userId, type) {
   const params = new URLSearchParams({
     select: CATEGORY_REST_SELECT,
     user_id: `eq.${userId}`,
-    order: CATEGORY_REST_ORDER,
+  });
+  CATEGORY_REST_ORDER_PARAMS.forEach((order) => {
+    params.append("order", order);
   });
   if (type === "income" || type === "expense") {
     params.set("type", `eq.${type}`);
@@ -766,6 +771,21 @@ async function fetchCategoriesFromRest(userId, type) {
       if (!categoryFallbackWarned) {
         console.warn("v_categories_budget missing — using fallback /categories");
         categoryFallbackWarned = true;
+      }
+    } else if (response.status === 400) {
+      const bodyText = await response.clone().text();
+      const missingColumn =
+        /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
+      if (missingColumn) {
+        categoryViewUnavailable = true;
+        if (!categoryFallbackWarned) {
+          console.warn(
+            "v_categories_budget missing expected columns — using fallback /categories"
+          );
+          categoryFallbackWarned = true;
+        }
+      } else {
+        throw await readPostgrestError(response, "Gagal memuat kategori");
       }
     } else if (!response.ok) {
       throw await readPostgrestError(response, "Gagal memuat kategori");
