@@ -1,0 +1,38 @@
+{
+	"appId": "com.hematwoi.app",
+	"appName": "HematWoi",
+	"webDir": "dist",
+	"bundledWebRuntime": false,
+	"server": {
+		"androidScheme": "https"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 0
+		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#0e0f11"
+		},
+		"GoogleAuth": {
+			"scopes": [
+				"profile",
+				"email",
+				"openid"
+			],
+			"grantOfflineAccess": true,
+			"forceCodeForRefreshToken": true
+		}
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"CAPCameraPlugin",
+		"FilesystemPlugin",
+		"LocalNotificationsPlugin",
+		"PreferencesPlugin",
+		"PushNotificationsPlugin",
+		"SplashScreenPlugin",
+		"StatusBarPlugin",
+		"GoogleAuth"
+	]
+}
