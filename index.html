@@ -2,42 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/icon.png" />
-    <meta
-      name="description"
-      content="HematWoi helps you visualise spending, track savings goals, and stay on top of your personal finances."
-    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HematWoi – Personal Finance Dashboard</title>
-    <script>
-      (() => {
-        try {
-          const stored = JSON.parse(localStorage.getItem('hwTheme') || '{}');
-          const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const mode = stored.mode || 'system';
-          const theme = mode === 'system' ? (prefersDark ? 'dark' : 'light') : mode;
-          const root = document.documentElement;
-          root.setAttribute('data-theme', theme);
-          if (stored.brand) {
-            const b = stored.brand;
-            root.style.setProperty('--brand-h', b.h);
-            root.style.setProperty('--brand-s', b.s + '%');
-            root.style.setProperty('--brand-l', b.l + '%');
-            root.style.setProperty('--brand-foreground', b.l > 50 ? '#000000' : '#ffffff');
-            root.style.setProperty('--brand-soft', `hsl(${b.h} ${b.s}% ${Math.min(95, b.l + 40)}%)`);
-            root.style.setProperty('--brand-ring', `hsl(${b.h} ${b.s}% ${Math.max(0, b.l - 20)}%)`);
-          }
-          const collapsed = localStorage.getItem('hw:sidebar-collapsed') === '1';
-          root.dataset.sidebarCollapsed = collapsed ? '1' : '0';
-          root.style.setProperty('--sidebar-width', collapsed ? 'var(--sidebar-w-collapsed)' : 'var(--sidebar-w-expanded)');
-        } catch (e) {
-          console.error('theme init failed', e);
-        }
-      })();
-    </script>
+    <title>Warehouse Management System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
-  <body>
+  <body class="bg-slate-100 text-slate-900">
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

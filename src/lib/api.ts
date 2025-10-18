@@ -1,242 +1,231 @@
-import type { PostgrestError } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { isSupabaseConfigured, supabaseClient } from './supabase';
+import type {
+  InventoryQueryParams,
+  InventoryRow,
+  Item,
+  Location,
+  Movement,
+  MovementInput
+} from './types';
 
-export type AccountType = 'cash' | 'bank' | 'ewallet' | 'other';
+const MOCK_STORAGE_KEY = 'wms-mock-state';
 
-export interface AccountRecord {
-  id: string;
-  name: string;
-  type: AccountType;
-  currency: string;
-  created_at: string | null;
-  sort_order: number | null;
-  user_id?: string;
-}
-
-type CreateAccountPayload = {
-  name: string;
-  type: AccountType;
-  currency?: string;
-  sort_order?: number;
+type MockState = {
+  items: Item[];
+  locations: Location[];
+  movements: Movement[];
 };
 
-type UpdateAccountPayload = Partial<{
-  name: string;
-  type: AccountType;
-  currency: string;
-}>;
+const defaultMockState: MockState = {
+  items: [
+    {
+      id: 'itm-1',
+      sku: 'FG-1001',
+      name: 'Finished Goods 1001',
+      uom: 'PCS',
+      barcode: 'FG1001',
+      group: 'Finished Goods',
+      status: 'active'
+    },
+    {
+      id: 'itm-2',
+      sku: 'RM-2040',
+      name: 'Raw Material 2040',
+      uom: 'KG',
+      barcode: 'RM2040',
+      group: 'Raw Material',
+      status: 'active'
+    }
+  ],
+  locations: [
+    { id: 'loc-1', code: 'A01-1', zone: 'A01', capacity: 120 },
+    { id: 'loc-2', code: 'A02-2', zone: 'A02', capacity: 80 },
+    { id: 'loc-3', code: 'B01-1', zone: 'B01', capacity: 100 }
+  ],
+  movements: []
+};
 
-const ACCOUNT_TYPES: readonly AccountType[] = ['cash', 'bank', 'ewallet', 'other'] as const;
+let memoryState: MockState = { ...defaultMockState };
 
-function normalizeAccountType(value: unknown): AccountType {
-  if (typeof value === 'string') {
-    const lowered = value.trim().toLowerCase();
-    if (ACCOUNT_TYPES.includes(lowered as AccountType)) {
-      return lowered as AccountType;
+const readMockState = (): MockState => {
+  if (typeof window === 'undefined') {
+    return memoryState;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(MOCK_STORAGE_KEY);
+    if (!raw) {
+      window.localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(defaultMockState));
+      return defaultMockState;
+    }
+    const parsed = JSON.parse(raw) as MockState;
+    return {
+      items: parsed.items || defaultMockState.items,
+      locations: parsed.locations || defaultMockState.locations,
+      movements: parsed.movements || []
+    };
+  } catch (error) {
+    console.warn('Failed to load mock state', error);
+    return memoryState;
+  }
+};
+
+const writeMockState = (next: MockState) => {
+  memoryState = next;
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(MOCK_STORAGE_KEY, JSON.stringify(next));
+    } catch (error) {
+      console.warn('Failed to persist mock state', error);
     }
   }
-  return 'other';
-}
+};
 
-function normalizeCurrency(value: unknown): string {
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed) {
-      return trimmed.toUpperCase();
+const ensureMockState = () => {
+  const state = readMockState();
+  if (!state.items.length || !state.locations.length) {
+    writeMockState(defaultMockState);
+    return defaultMockState;
+  }
+  return state;
+};
+
+const hydrateMovement = (input: MovementInput): Movement => ({
+  id: input.id ?? crypto.randomUUID(),
+  ts: input.ts ?? new Date().toISOString(),
+  type: input.type,
+  sku: input.sku,
+  from_location: input.from_location ?? null,
+  to_location: input.to_location ?? null,
+  qty: input.qty,
+  ref: input.ref ?? null,
+  operator: input.operator,
+  notes: input.notes ?? null,
+  rev: input.rev ?? Date.now()
+});
+
+export const listItems = async (): Promise<Item[]> => {
+  if (isSupabaseConfigured && supabaseClient) {
+    const { data, error } = await supabaseClient.from('items').select('*').order('sku');
+    if (error) {
+      console.warn('Supabase listItems error, falling back to mock', error);
+    } else if (data) {
+      return data as Item[];
     }
   }
-  return 'IDR';
-}
 
-function normalizeAccount(row: Record<string, any>): AccountRecord {
-  return {
-    id: String(row.id),
-    name: typeof row.name === 'string' ? row.name : '',
-    type: normalizeAccountType(row.type),
-    currency: normalizeCurrency(row.currency),
-    created_at: row.created_at ?? null,
-    sort_order: (() => {
-      if (typeof row.sort_order === 'number' && Number.isFinite(row.sort_order)) {
-        return row.sort_order;
-      }
-      if (row.sort_order === null || typeof row.sort_order === 'undefined') {
-        return null;
-      }
-      if (typeof row.sort_order === 'string') {
-        const parsed = Number.parseInt(row.sort_order, 10);
-        return Number.isFinite(parsed) ? parsed : null;
-      }
-      return null;
-    })(),
-    user_id: row.user_id ? String(row.user_id) : undefined,
-  };
-}
+  const state = ensureMockState();
+  return Promise.resolve(state.items);
+};
 
-type KnownError = Partial<Pick<PostgrestError, 'code' | 'message' | 'details'>>;
-
-function toUserMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object') {
-    const typed = error as KnownError;
-    if (typed.code === '23505') {
-      return 'Nama akun sudah digunakan. Silakan gunakan nama lain.';
-    }
-    if (typed.code === '23502') {
-      return 'Nama akun wajib diisi.';
-    }
-    if (typeof typed.message === 'string' && typed.message.trim()) {
-      return `${fallback.replace(/[:.]?$/, '')}: ${typed.message}`;
-    }
-    if (typeof typed.details === 'string' && typed.details.trim()) {
-      return `${fallback.replace(/[:.]?$/, '')}: ${typed.details}`;
+export const listLocations = async (): Promise<Location[]> => {
+  if (isSupabaseConfigured && supabaseClient) {
+    const { data, error } = await supabaseClient.from('locations').select('*').order('code');
+    if (error) {
+      console.warn('Supabase listLocations error, falling back to mock', error);
+    } else if (data) {
+      return data as Location[];
     }
   }
-  if (typeof error === 'string' && error.trim()) {
-    return error;
-  }
-  return fallback;
-}
 
-export async function listAccounts(userId: string): Promise<AccountRecord[]> {
-  const { data, error } = await supabase
-    .from('accounts')
-    .select('id,name,type,currency,created_at,user_id,sort_order')
-    .eq('user_id', userId)
-    .order('sort_order', { ascending: true, nullsFirst: true })
-    .order('created_at', { ascending: true })
-    .order('name', { ascending: true });
+  const state = ensureMockState();
+  return Promise.resolve(state.locations);
+};
 
-  if (error) {
-    throw new Error(toUserMessage(error, 'Gagal memuat akun.'));
-  }
-
-  return (data ?? []).map((row) => normalizeAccount(row));
-}
-
-export async function createAccount(
-  userId: string,
-  payload: CreateAccountPayload,
-): Promise<AccountRecord> {
-  const name = typeof payload.name === 'string' ? payload.name.trim() : '';
-  if (!name) {
-    throw new Error('Nama akun wajib diisi.');
-  }
-
-  const record = {
-    user_id: userId,
-    name,
-    type: normalizeAccountType(payload.type),
-    currency: normalizeCurrency(payload.currency),
-    sort_order:
-      typeof payload.sort_order === 'number' && Number.isFinite(payload.sort_order)
-        ? payload.sort_order
-        : undefined,
-  };
-
-  const { data, error } = await supabase
-    .from('accounts')
-    .insert([record])
-    .select('id,name,type,currency,created_at,user_id,sort_order')
-    .single();
-
-  if (error) {
-    throw new Error(toUserMessage(error, 'Gagal menambah akun.'));
-  }
-
-  if (!data) {
-    throw new Error('Gagal menambah akun. Silakan coba lagi.');
-  }
-
-  return normalizeAccount(data);
-}
-
-export async function updateAccount(
-  id: string,
-  patch: UpdateAccountPayload,
-): Promise<AccountRecord> {
-  if (!id) {
-    throw new Error('ID akun tidak valid.');
-  }
-
-  const updates: Record<string, any> = {};
-
-  if (patch.name !== undefined) {
-    const trimmed = typeof patch.name === 'string' ? patch.name.trim() : '';
-    if (!trimmed) {
-      throw new Error('Nama akun wajib diisi.');
+export const createMovement = async (payload: MovementInput): Promise<Movement> => {
+  if (isSupabaseConfigured && supabaseClient) {
+    const { data, error } = await supabaseClient.from('movements').insert(payload).select().single();
+    if (error) {
+      throw error;
     }
-    updates.name = trimmed;
+    return data as Movement;
   }
 
-  if (patch.type !== undefined) {
-    updates.type = normalizeAccountType(patch.type);
+  const state = ensureMockState();
+  const movement = hydrateMovement(payload);
+  const movements = [movement, ...state.movements].slice(0, 200);
+  writeMockState({ ...state, movements });
+  return movement;
+};
+
+export const listRecentMovements = async (limit = 10): Promise<Movement[]> => {
+  if (isSupabaseConfigured && supabaseClient) {
+    const { data, error } = await supabaseClient
+      .from('movements')
+      .select('*')
+      .order('ts', { ascending: false })
+      .limit(limit);
+    if (error) {
+      console.warn('Supabase listRecentMovements error, falling back to mock', error);
+    } else if (data) {
+      return data as Movement[];
+    }
   }
 
-  if (patch.currency !== undefined) {
-    updates.currency = normalizeCurrency(patch.currency);
+  const state = ensureMockState();
+  return state.movements
+    .slice()
+    .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
+    .slice(0, limit);
+};
+
+export const getInventory = async (params: InventoryQueryParams = {}): Promise<InventoryRow[]> => {
+  if (isSupabaseConfigured && supabaseClient) {
+    const query = supabaseClient.from('inventory_view').select('*');
+    if (params.sku) query.eq('sku', params.sku);
+    if (params.location) query.eq('location', params.location);
+    if (params.zone) query.eq('zone', params.zone);
+
+    const { data, error } = await query.limit(500);
+    if (!error && data) {
+      return data as InventoryRow[];
+    }
+    console.warn('Supabase getInventory error, falling back to mock', error);
   }
 
-  if (Object.keys(updates).length === 0) {
-    throw new Error('Tidak ada perubahan untuk disimpan.');
-  }
+  const state = ensureMockState();
+  const itemsIndex = new Map(state.items.map((item) => [item.sku, item.name] as const));
 
-  const { data, error } = await supabase
-    .from('accounts')
-    .update(updates)
-    .eq('id', id)
-    .select('id,name,type,currency,created_at,user_id,sort_order')
-    .single();
+  const aggregated = state.movements.reduce<Record<string, InventoryRow>>((acc, movement) => {
+    const applyDelta = (locationCode: string, delta: number) => {
+      const key = `${movement.sku}-${locationCode}`;
+      const row =
+        acc[key] ||
+        ({
+          sku: movement.sku,
+          location: locationCode,
+          qty_on_hand: 0,
+          updated_at: movement.ts,
+          item_name: itemsIndex.get(movement.sku)
+        } as InventoryRow);
+      row.qty_on_hand += delta;
+      row.updated_at = movement.ts;
+      acc[key] = row;
+    };
 
-  if (error) {
-    throw new Error(toUserMessage(error, 'Gagal memperbarui akun.'));
-  }
+    if (movement.from_location) {
+      applyDelta(movement.from_location, -movement.qty);
+    }
 
-  if (!data) {
-    throw new Error('Gagal memperbarui akun. Silakan coba lagi.');
-  }
+    if (movement.to_location) {
+      applyDelta(movement.to_location, movement.qty);
+    }
 
-  return normalizeAccount(data);
-}
+    if (!movement.from_location && !movement.to_location) {
+      applyDelta('STAGING', movement.qty);
+    }
 
-type ReorderAccountInput = Pick<AccountRecord, 'id' | 'name' | 'type' | 'currency'>;
+    return acc;
+  }, {});
 
-export async function reorderAccounts(
-  userId: string,
-  orderedAccounts: ReorderAccountInput[],
-): Promise<void> {
-  if (!userId) {
-    throw new Error('ID pengguna tidak valid.');
-  }
+  const rows = Object.values(aggregated);
 
-  if (!Array.isArray(orderedAccounts) || orderedAccounts.length === 0) {
-    return;
-  }
-
-  const payload = orderedAccounts.map((account, index) => ({
-    id: account.id,
-    user_id: userId,
-    sort_order: index,
-    name: account.name,
-    type: normalizeAccountType(account.type),
-    currency: normalizeCurrency(account.currency),
-  }));
-
-  const { error } = await supabase
-    .from('accounts')
-    .upsert(payload, { onConflict: 'id' });
-
-  if (error) {
-    throw new Error(toUserMessage(error, 'Gagal mengurutkan akun.'));
-  }
-}
-
-export async function deleteAccount(id: string): Promise<void> {
-  if (!id) {
-    throw new Error('ID akun tidak valid.');
-  }
-
-  const { error } = await supabase.from('accounts').delete().eq('id', id);
-
-  if (error) {
-    throw new Error(toUserMessage(error, 'Gagal menghapus akun.'));
-  }
-}
+  return rows
+    .filter((row) => {
+      if (params.sku && row.sku !== params.sku) return false;
+      if (params.location && row.location !== params.location) return false;
+      if (params.zone && !row.location.startsWith(params.zone)) return false;
+      return true;
+    })
+    .sort((a, b) => a.sku.localeCompare(b.sku));
+};
