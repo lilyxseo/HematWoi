@@ -380,7 +380,7 @@ export default function Goals() {
   };
 
   return (
-    <Page>
+    <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 sm:px-4 md:px-6">
       <PageHeader
         title="Goals"
         description="Atur dan pantau progres tabungan tujuan finansial kamu secara menyeluruh."

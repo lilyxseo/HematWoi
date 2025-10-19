@@ -531,7 +531,7 @@ export default function WishlistPage() {
   const hasError = isError && !isLoading;
 
   return (
-    <Page>
+    <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 sm:px-4 md:px-6">
       <PageHeader title="Wishlist" description="Kelola daftar keinginan dan siap jadikan goal atau transaksi kapan pun.">
         <div className="flex flex-wrap items-center gap-2">
           <button

@@ -300,7 +300,7 @@ export default function AccountsPage() {
   const canManage = Boolean(user?.id);
 
   return (
-    <Page>
+    <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 sm:px-4 md:px-6">
       <PageHeader
         title="Akun"
         description="Kelola daftar akun sumber transaksi Anda."
