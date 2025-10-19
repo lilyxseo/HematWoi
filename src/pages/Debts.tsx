@@ -115,6 +115,26 @@ function getTenorSeriesKey(debt: DebtRecord): string {
   ].join('|');
 }
 
+type TenorSeriesInfo = {
+  items: DebtRecord[];
+  defaultIndex: number;
+  totals: {
+    amount: number;
+    paid: number;
+    remaining: number;
+    overpaid: number;
+  };
+};
+
+type TenorNavigationEntry = {
+  key: string;
+  hasPrev: boolean;
+  hasNext: boolean;
+  currentIndex: number;
+  total: number;
+  totals?: TenorSeriesInfo['totals'];
+};
+
 export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
@@ -333,7 +353,7 @@ export default function Debts() {
   };
 
   const multiTenorSeries = useMemo(() => {
-    if (!debts.length) return new Map<string, { items: DebtRecord[]; defaultIndex: number }>();
+    if (!debts.length) return new Map<string, TenorSeriesInfo>();
 
     const groups = new Map<string, DebtRecord[]>();
     debts.forEach((item) => {
@@ -347,7 +367,7 @@ export default function Debts() {
       }
     });
 
-    const series = new Map<string, { items: DebtRecord[]; defaultIndex: number }>();
+    const series = new Map<string, TenorSeriesInfo>();
     groups.forEach((list, key) => {
       if (!list.length) return;
       const sorted = list.slice().sort((a, b) => {
@@ -365,7 +385,29 @@ export default function Debts() {
       if (defaultIndex === -1) {
         defaultIndex = sorted.length - 1;
       }
-      series.set(key, { items: sorted, defaultIndex });
+      const totals = sorted.reduce(
+        (acc, entry) => {
+          const amount = Number.isFinite(entry.amount) ? entry.amount : 0;
+          const paid = Number.isFinite(entry.paid_total) ? entry.paid_total : 0;
+          return {
+            amount: acc.amount + amount,
+            paid: acc.paid + paid,
+          };
+        },
+        { amount: 0, paid: 0 },
+      );
+      const remaining = Math.max(totals.amount - totals.paid, 0);
+      const overpaid = Math.max(totals.paid - totals.amount, 0);
+      series.set(key, {
+        items: sorted,
+        defaultIndex,
+        totals: {
+          amount: totals.amount,
+          paid: totals.paid,
+          remaining,
+          overpaid,
+        },
+      });
     });
 
     return series;
@@ -402,19 +444,13 @@ export default function Debts() {
     if (!debts.length) {
       return {
         visibleDebts: [] as DebtRecord[],
-        tenorNavigation: {} as Record<
-          string,
-          { key: string; hasPrev: boolean; hasNext: boolean; currentIndex: number; total: number }
-        >,
+        tenorNavigation: {} as Record<string, TenorNavigationEntry>,
       };
     }
 
     const processed = new Set<string>();
     const result: DebtRecord[] = [];
-    const navigation: Record<
-      string,
-      { key: string; hasPrev: boolean; hasNext: boolean; currentIndex: number; total: number }
-    > = {};
+    const navigation: Record<string, TenorNavigationEntry> = {};
 
     debts.forEach((item) => {
       if (item.tenor_months <= 1) {
@@ -434,7 +470,7 @@ export default function Debts() {
         return;
       }
 
-      const { items, defaultIndex } = series;
+      const { items, defaultIndex, totals } = series;
       const maxIndex = Math.max(0, items.length - 1);
       const cursor = seriesCursor[key];
       const selectedIndex = Math.max(0, Math.min(typeof cursor === 'number' ? cursor : defaultIndex, maxIndex));
@@ -446,6 +482,7 @@ export default function Debts() {
         hasNext: selectedIndex < maxIndex,
         currentIndex: selectedIndex,
         total: items.length,
+        totals: totals ? { ...totals } : undefined,
       };
     });
 
@@ -459,10 +496,9 @@ export default function Debts() {
 
     const total = visibleDebts.reduce((sum, debt) => {
       if (debt.type !== 'debt') return sum;
-      if (typeof debt.amount !== 'number' || !Number.isFinite(debt.amount)) {
-        return sum;
-      }
-      return sum + debt.amount;
+      const navigationEntry = tenorNavigation?.[debt.id];
+      const amount = navigationEntry?.totals?.amount ?? (Number.isFinite(debt.amount) ? debt.amount : 0);
+      return Number.isFinite(amount) ? sum + amount : sum;
     }, 0);
 
     const fromLabel = formatFilterDate(filters.dateFrom);
@@ -483,7 +519,7 @@ export default function Debts() {
       total,
       description: `Nominal hutang berdasarkan ${fieldLabel}${rangeDescription ? ` ${rangeDescription}` : ''}`,
     };
-  }, [filters.dateFrom, filters.dateTo, filters.dateField, visibleDebts]);
+  }, [filters.dateFrom, filters.dateTo, filters.dateField, visibleDebts, tenorNavigation]);
 
   const handleNavigateTenor = useCallback(
     (seriesKey: string, direction: 1 | -1) => {
