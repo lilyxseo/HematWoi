@@ -643,13 +643,13 @@ export default function BudgetsPage() {
             })}
           </div>
 
-          <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-surface/80 px-3 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/40">
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-border/60 bg-surface/80 text-sm font-medium text-text shadow-inner transition focus-within:border-brand/40 focus-within:bg-brand/5 focus-within:text-text focus-within:outline-none focus-within:ring-2 focus-within:ring-brand/40">
             <CalendarRange className="h-4 w-4 text-muted" aria-hidden="true" />
             <input
               type="month"
               value={period}
               onChange={(event) => handlePeriodChange(event.target.value)}
-              className="w-full appearance-none bg-transparent text-sm font-medium text-text outline-none"
+              className="month-input-no-indicator w-full appearance-none bg-transparent px-0 text-sm font-medium text-text outline-none"
               aria-label="Pilih periode bulan"
             />
             <span className="hidden text-xs text-muted md:inline">{toHumanReadable(period)}</span>
