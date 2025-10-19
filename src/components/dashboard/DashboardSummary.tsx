@@ -1,14 +1,6 @@
 import { useMemo } from "react"
 import type { ReactNode } from "react"
-import {
-  ArrowDownRight,
-  ArrowUpRight,
-  Banknote,
-  CreditCard,
-  TrendingDown,
-  TrendingUp,
-  Wallet,
-} from "lucide-react"
+import { Banknote, CreditCard, TrendingDown, TrendingUp, Wallet } from "lucide-react"
 import { formatCurrency } from "../../lib/format.js"
 import type { PeriodRange } from "./PeriodPicker"
 import { formatPeriodLabel } from "./PeriodPicker"
@@ -87,9 +79,6 @@ function DashboardSummary({
   error,
 }: DashboardSummaryProps) {
   const periodLabel = useMemo(() => formatPeriodLabel(period) || "—", [period])
-  const net = income - expense
-  const netPositive = net >= 0
-  const totalBadgeTone = "bg-sky-500/10 text-sky-600 dark:text-sky-400"
 
   const incomeSparklinePath = useMemo(() => createSparkline(incomeTrend), [incomeTrend])
   const expenseSparklinePath = useMemo(() => createSparkline(expenseTrend), [expenseTrend])
@@ -101,12 +90,14 @@ function DashboardSummary({
     }
 
     if (value === null) {
-      return <span className="text-[11px] font-medium text-muted-foreground sm:text-xs">—</span>
+      return (
+        <span className="mb-1 text-[11px] font-medium text-muted-foreground sm:text-xs">—</span>
+      )
     }
 
     if (value === 0) {
       return (
-        <span className="inline-flex items-center rounded-full bg-muted/60 px-2 py-1 text-[11px] font-semibold text-muted-foreground sm:px-2.5 sm:text-xs">
+        <span className="mb-1 inline-flex items-center rounded-full bg-muted/60 px-2 py-1 text-[11px] font-semibold text-muted-foreground sm:px-2.5 sm:text-xs">
           0.0%
         </span>
       )
@@ -120,7 +111,7 @@ function DashboardSummary({
 
     return (
       <span
-        className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold sm:px-2.5 sm:text-xs ${tone}`}
+        className={`mb-1 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold sm:px-2.5 sm:text-xs ${tone}`}
       >
         <span aria-hidden="true">{arrow}</span>
         <span>{Math.abs(value).toFixed(1)}%</span>
@@ -155,144 +146,130 @@ function DashboardSummary({
     <section className="space-y-3 md:space-y-4 max-[400px]:space-y-2">
       <div className="grid gap-3 sm:gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
         <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
-          <div className="flex items-start justify-between gap-2.5 sm:gap-3">
-            <div className="space-y-2">
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Pemasukan</p>
-              {loading ? (
-                <SkeletonBar />
-              ) : (
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400 sm:text-xl md:text-2xl max-[400px]:text-base">
-                    {formatValue(income)}
-                  </p>
-                  {renderMoM(incomeMoM)}
-                </div>
-              )}
-              <div className="mt-1 h-16">{renderSparkline(incomeSparklinePath, "text-emerald-500/80 dark:text-emerald-400/90")}</div>
-              <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
-                Periode {periodLabel}
-              </p>
+              <IconBadge title="Total pemasukan">
+                <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
+              </IconBadge>
             </div>
-            <IconBadge title="Total pemasukan">
-              <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
-            </IconBadge>
+            {loading ? (
+              <SkeletonBar />
+            ) : (
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                  {formatValue(income)}
+                </p>
+                {renderMoM(incomeMoM)}
+              </div>
+            )}
+            <div className="mt-1 h-16">{renderSparkline(incomeSparklinePath, "text-emerald-500/80 dark:text-emerald-400/90")}</div>
+            <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
+              Periode {periodLabel}
+            </p>
           </div>
         </article>
 
         <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
-          <div className="flex items-start justify-between gap-2.5 sm:gap-3">
-            <div className="space-y-2">
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Pengeluaran</p>
-              {loading ? (
-                <SkeletonBar />
-              ) : (
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-rose-600 tabular-nums dark:text-rose-400 sm:text-xl md:text-2xl max-[400px]:text-base">
-                    {formatValue(expense)}
-                  </p>
-                  {renderMoM(expenseMoM)}
-                </div>
-              )}
-              <div className="mt-1 h-16">{renderSparkline(expenseSparklinePath, "text-rose-500/80 dark:text-rose-400/90")}</div>
-              <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
-                Periode {periodLabel}
-              </p>
+              <IconBadge title="Total pengeluaran">
+                <TrendingDown className="h-4 w-4 sm:h-5 sm:w-5" />
+              </IconBadge>
             </div>
-            <IconBadge title="Total pengeluaran">
-              <TrendingDown className="h-4 w-4 sm:h-5 sm:w-5" />
-            </IconBadge>
+            {loading ? (
+              <SkeletonBar />
+            ) : (
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-rose-600 tabular-nums dark:text-rose-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                  {formatValue(expense)}
+                </p>
+                {renderMoM(expenseMoM)}
+              </div>
+            )}
+            <div className="mt-1 h-16">{renderSparkline(expenseSparklinePath, "text-rose-500/80 dark:text-rose-400/90")}</div>
+            <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
+              Periode {periodLabel}
+            </p>
           </div>
         </article>
 
         <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
-          <div className="flex items-start justify-between gap-2.5 sm:gap-3">
-            <div className="w-full">
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Saldo</p>
-              <div className="mt-3 flex flex-col gap-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400"
-                      title="Saldo cash"
-                    >
-                      <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
+              <IconBadge title="Ringkasan saldo">
+                <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
+              </IconBadge>
+            </div>
+            <div className="mt-3 flex flex-col gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    title="Saldo cash"
+                  >
+                    <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </span>
+                  <div className="flex min-w-0 flex-col">
+                    <span className="text-[11px] font-medium text-muted-foreground sm:text-xs md:text-sm">
+                      Cash
                     </span>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="text-[11px] font-medium text-muted-foreground sm:text-xs md:text-sm">
-                        Cash
+                    {loading ? (
+                      <SkeletonBar />
+                    ) : (
+                      <span className="break-words whitespace-normal text-lg font-semibold text-amber-600 tabular-nums dark:text-amber-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                        {formatValue(cashBalance)}
                       </span>
-                      {loading ? (
-                        <SkeletonBar />
-                      ) : (
-                        <span className="break-words whitespace-normal text-lg font-semibold text-amber-600 tabular-nums dark:text-amber-400 sm:text-xl md:text-2xl max-[400px]:text-base">
-                          {formatValue(cashBalance)}
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 border-t border-border/60 pt-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400"
-                      title="Saldo non-cash"
-                    >
-                      <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" />
+              </div>
+              <div className="flex flex-col gap-2 border-t border-border/60 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                    title="Saldo non-cash"
+                  >
+                    <CreditCard className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </span>
+                  <div className="flex min-w-0 flex-col">
+                    <span className="text-[11px] font-medium text-muted-foreground sm:text-xs md:text-sm">
+                      Non-Cash
                     </span>
-                    <div className="flex min-w-0 flex-col">
-                      <span className="text-[11px] font-medium text-muted-foreground sm:text-xs md:text-sm">
-                        Non-Cash
+                    {loading ? (
+                      <SkeletonBar />
+                    ) : (
+                      <span className="break-words whitespace-normal text-lg font-semibold text-sky-600 tabular-nums dark:text-sky-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                        {formatValue(nonCashBalance)}
                       </span>
-                      {loading ? (
-                        <SkeletonBar />
-                      ) : (
-                        <span className="break-words whitespace-normal text-lg font-semibold text-sky-600 tabular-nums dark:text-sky-400 sm:text-xl md:text-2xl max-[400px]:text-base">
-                          {formatValue(nonCashBalance)}
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
-            <IconBadge title="Ringkasan saldo">
-              <Wallet className="h-4 w-4 sm:h-5 sm:w-5" />
-            </IconBadge>
           </div>
         </article>
 
         <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
-          <div className="flex items-start justify-between gap-2.5 sm:gap-3">
-            <div className="space-y-2">
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Total Saldo</p>
-              {loading ? (
-                <SkeletonBar />
-              ) : (
-                <div className="flex items-baseline justify-between gap-2">
-                  <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-foreground tabular-nums sm:text-xl md:text-2xl max-[400px]:text-base">
-                    {formatValue(totalBalance)}
-                  </p>
-                  {renderMoM(balanceMoM)}
-                </div>
-              )}
-              <span
-                className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:px-3 sm:text-xs md:text-sm ${totalBadgeTone}`}
-              >
-                {netPositive ? (
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                ) : (
-                  <ArrowDownRight className="h-3.5 w-3.5" />
-                )}
-                <span className="uppercase">Total Saldo</span>
-                <span className="font-semibold tracking-tight">
-                  {netPositive ? "+" : "-"}
-                  {formatValue(Math.abs(net))}
-                </span>
-              </span>
+              <IconBadge title="Total saldo">
+                <Banknote className="h-4 w-4 sm:h-5 sm:w-5" />
+              </IconBadge>
             </div>
-            <IconBadge title="Total saldo">
-              <Banknote className="h-4 w-4 sm:h-5 sm:w-5" />
-            </IconBadge>
+            {loading ? (
+              <SkeletonBar />
+            ) : (
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-foreground tabular-nums sm:text-xl md:text-2xl max-[400px]:text-base">
+                  {formatValue(totalBalance)}
+                </p>
+                {renderMoM(balanceMoM)}
+              </div>
+            )}
           </div>
           <div className="mt-5 h-20 rounded-xl bg-gradient-to-t from-primary/5 to-transparent sm:mt-6">
             {renderSparkline(balanceSparklinePath, "text-primary/80")}
