@@ -457,7 +457,7 @@ export default function Debts() {
       return null;
     }
 
-    const total = visibleDebts.reduce((sum, debt) => {
+    const total = debts.reduce((sum, debt) => {
       if (debt.type !== 'debt') return sum;
       if (typeof debt.amount !== 'number' || !Number.isFinite(debt.amount)) {
         return sum;
@@ -483,7 +483,7 @@ export default function Debts() {
       total,
       description: `Nominal hutang berdasarkan ${fieldLabel}${rangeDescription ? ` ${rangeDescription}` : ''}`,
     };
-  }, [filters.dateFrom, filters.dateTo, filters.dateField, visibleDebts]);
+  }, [filters.dateFrom, filters.dateTo, filters.dateField, debts]);
 
   const handleNavigateTenor = useCallback(
     (seriesKey: string, direction: 1 | -1) => {
