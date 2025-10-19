@@ -143,16 +143,15 @@ export default function useTransactionsQuery() {
     const request = toRequestFilter(filter, page);
     setLoading(true);
     setError(null);
-    if (page === 1) {
-      setItems([]);
-    }
 
     listTransactions(request)
       .then(({ rows, total }) => {
         if (cancelled) return;
         setTotal(total || 0);
         setItems((prev) => {
-          if (page === 1) return rows;
+          if (page === 1) {
+            return rows;
+          }
           const existing = prev.slice(0, (page - 1) * PAGE_SIZE);
           return [...existing, ...(rows || [])];
         });
