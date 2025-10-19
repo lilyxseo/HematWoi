@@ -29,6 +29,12 @@ export default function Dashboard({ stats, txs }) {
     cashBalance,
     nonCashBalance,
     totalBalance,
+    previousIncome: previousPeriodIncome,
+    previousExpense: previousPeriodExpense,
+    previousTotalBalance: previousPeriodTotal,
+    dailyIncome,
+    dailyExpense,
+    dailyTotalBalance,
     loading,
     error,
     refresh,
@@ -90,6 +96,12 @@ export default function Dashboard({ stats, txs }) {
             cashBalance={cashBalance}
             nonCashBalance={nonCashBalance}
             totalBalance={totalBalance}
+            previousIncome={previousPeriodIncome}
+            previousExpense={previousPeriodExpense}
+            previousTotalBalance={previousPeriodTotal}
+            dailyIncome={dailyIncome}
+            dailyExpense={dailyExpense}
+            dailyTotalBalance={dailyTotalBalance}
             loading={loading}
             error={error}
             period={periodRange}

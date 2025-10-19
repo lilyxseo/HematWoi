@@ -29,6 +29,13 @@ type MetricsState = {
   cashBalance: number
   nonCashBalance: number
   totalBalance: number
+  previousIncome: number
+  previousExpense: number
+  previousTotalBalance: number
+  dailyLabels: string[]
+  dailyIncome: number[]
+  dailyExpense: number[]
+  dailyTotalBalance: number[]
 }
 
 const INITIAL_STATE: MetricsState = {
@@ -37,6 +44,13 @@ const INITIAL_STATE: MetricsState = {
   cashBalance: 0,
   nonCashBalance: 0,
   totalBalance: 0,
+  previousIncome: 0,
+  previousExpense: 0,
+  previousTotalBalance: 0,
+  dailyLabels: [],
+  dailyIncome: [],
+  dailyExpense: [],
+  dailyTotalBalance: [],
 }
 
 function isAuthMissingError(error: unknown): boolean {
@@ -60,6 +74,90 @@ type GuestStorage = {
   txs?: Array<Record<string, any>>
 }
 
+type TimelineRecord = {
+  date: string
+  income: number
+  expense: number
+  cash: number
+  nonCash: number
+  total: number
+}
+
+function parseISODate(value: string | null | undefined): Date | null {
+  if (!value || typeof value !== "string") return null
+  const parts = value.split("-")
+  if (parts.length !== 3) return null
+  const [year, month, day] = parts.map((part) => Number.parseInt(part, 10))
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+function formatISODate(date: Date): string {
+  const year = date.getUTCFullYear()
+  const month = `${date.getUTCMonth() + 1}`.padStart(2, "0")
+  const day = `${date.getUTCDate()}`.padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function addDays(date: Date, amount: number): Date {
+  const result = new Date(date)
+  result.setUTCDate(result.getUTCDate() + amount)
+  return result
+}
+
+function addMonths(date: Date, amount: number): Date {
+  const year = date.getUTCFullYear()
+  const month = date.getUTCMonth()
+  const day = date.getUTCDate()
+  const totalMonths = month + amount
+  const targetYear = year + Math.floor(totalMonths / 12)
+  const targetMonth = ((totalMonths % 12) + 12) % 12
+  const result = new Date(Date.UTC(targetYear, targetMonth, 1))
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate()
+  result.setUTCDate(Math.min(day, lastDay))
+  return result
+}
+
+function enumerateDates(range: DashboardRange): string[] {
+  const startDate = parseISODate(range.start)
+  const endDate = parseISODate(range.end)
+  if (!startDate || !endDate || startDate > endDate) return []
+  const labels: string[] = []
+  let current = startDate
+  while (current <= endDate) {
+    labels.push(formatISODate(current))
+    current = addDays(current, 1)
+  }
+  return labels
+}
+
+function shiftRangeByMonths(range: DashboardRange, amount: number): DashboardRange {
+  const startDate = parseISODate(range.start)
+  const endDate = parseISODate(range.end)
+  if (!startDate || !endDate) return range
+  const shiftedStart = addMonths(startDate, amount)
+  const shiftedEnd = addMonths(endDate, amount)
+  return sanitizeRange({ start: formatISODate(shiftedStart), end: formatISODate(shiftedEnd) })
+}
+
+function findRecordBefore(records: TimelineRecord[], target: string): TimelineRecord | null {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    if (records[index].date < target) {
+      return records[index]
+    }
+  }
+  return null
+}
+
+function findRecordOnOrBefore(records: TimelineRecord[], target: string): TimelineRecord | null {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    if (records[index].date <= target) {
+      return records[index]
+    }
+  }
+  return null
+}
+
 function loadGuestStorage(): GuestStorage | null {
   if (typeof window === "undefined") return null
   try {
@@ -79,38 +177,73 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
     ? (storage?.txs as Array<Record<string, any>>)
     : []
 
-  const inRange = txs.filter((row) => {
-    const rawDate =
-      typeof row?.date === "string"
-        ? row.date
-        : typeof row?.created_at === "string"
-          ? row.created_at
-          : null
-    if (!rawDate) return false
-    const value = rawDate.slice(0, 10)
-    return value >= range.start && value <= range.end
+  const normalized = txs
+    .map((row) => {
+      const rawDate =
+        typeof row?.date === "string"
+          ? row.date
+          : typeof row?.created_at === "string"
+            ? row.created_at
+            : null
+      const date = rawDate ? rawDate.slice(0, 10) : null
+      const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
+      if (!date || (type !== "income" && type !== "expense")) return null
+      const amount = asNumber(row?.amount)
+      if (!amount) return null
+      return { date, type, amount }
+    })
+    .filter((item): item is { date: string; type: "income" | "expense"; amount: number } => item !== null)
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  const grouped = new Map<string, { income: number; expense: number }>()
+  for (const tx of normalized) {
+    const entry = grouped.get(tx.date) ?? { income: 0, expense: 0 }
+    if (tx.type === "income") entry.income += tx.amount
+    else entry.expense += tx.amount
+    grouped.set(tx.date, entry)
+  }
+
+  const sortedDates = Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b))
+  let runningTotal = 0
+  const timeline: TimelineRecord[] = []
+  for (const date of sortedDates) {
+    const entry = grouped.get(date) ?? { income: 0, expense: 0 }
+    runningTotal += entry.income - entry.expense
+    timeline.push({ date, income: entry.income, expense: entry.expense, cash: runningTotal, nonCash: 0, total: runningTotal })
+  }
+
+  const labels = enumerateDates(range)
+  const recordMap = new Map(timeline.map((record) => [record.date, record]))
+  const baseline = findRecordBefore(timeline, range.start)
+  let lastTotal = baseline?.total ?? 0
+
+  const dailyIncome = labels.map((label) => recordMap.get(label)?.income ?? 0)
+  const dailyExpense = labels.map((label) => recordMap.get(label)?.expense ?? 0)
+  const dailyTotalBalance = labels.map((label) => {
+    const record = recordMap.get(label)
+    if (record) {
+      lastTotal = record.total
+    }
+    return lastTotal
   })
 
-  let income = 0
-  let expense = 0
-  for (const row of inRange) {
-    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
-    if (type !== "income" && type !== "expense") continue
-    const amount = asNumber(row?.amount)
-    if (!amount) continue
-    if (type === "income") income += amount
-    else expense += amount
-  }
+  const income = timeline
+    .filter((record) => record.date >= range.start && record.date <= range.end)
+    .reduce((sumIncome, record) => sumIncome + record.income, 0)
+  const expense = timeline
+    .filter((record) => record.date >= range.start && record.date <= range.end)
+    .reduce((sumExpense, record) => sumExpense + record.expense, 0)
 
-  let totalBalance = 0
-  for (const row of txs) {
-    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
-    if (type !== "income" && type !== "expense") continue
-    const amount = asNumber(row?.amount)
-    if (!amount) continue
-    totalBalance += type === "income" ? amount : -amount
-  }
+  const previousRange = shiftRangeByMonths(range, -1)
+  const previousIncome = timeline
+    .filter((record) => record.date >= previousRange.start && record.date <= previousRange.end)
+    .reduce((sumIncome, record) => sumIncome + record.income, 0)
+  const previousExpense = timeline
+    .filter((record) => record.date >= previousRange.start && record.date <= previousRange.end)
+    .reduce((sumExpense, record) => sumExpense + record.expense, 0)
+  const previousTotalBalance = findRecordOnOrBefore(timeline, previousRange.end)?.total ?? 0
 
+  const totalBalance = timeline.at(-1)?.total ?? 0
   const cashBalance = totalBalance
   const nonCashBalance = 0
 
@@ -120,6 +253,13 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
     cashBalance,
     nonCashBalance,
     totalBalance,
+    previousIncome,
+    previousExpense,
+    previousTotalBalance,
+    dailyLabels: labels,
+    dailyIncome,
+    dailyExpense,
+    dailyTotalBalance,
   }
 }
 
@@ -274,8 +414,111 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         )
         const totalBalance = cashBalance + nonCashBalance
 
+        const accountType = new Map(accounts.map((account) => [account.id, account.type]))
+        const groupedByDate = new Map<string, TransactionRow[]>()
+        for (const tx of transactions) {
+          const dateKey = (tx.date ?? "").slice(0, 10)
+          if (!dateKey) continue
+          const existing = groupedByDate.get(dateKey)
+          if (existing) existing.push(tx)
+          else groupedByDate.set(dateKey, [tx])
+        }
+
+        const sortedDates = Array.from(groupedByDate.keys()).sort((a, b) => a.localeCompare(b))
+        const runningPerAccount = new Map<string, number>()
+        const timeline: TimelineRecord[] = []
+        for (const date of sortedDates) {
+          const txsForDate = groupedByDate.get(date) ?? []
+          let dayIncome = 0
+          let dayExpense = 0
+          for (const tx of txsForDate) {
+            const amount = asNumber(tx.amount)
+            if (!amount) continue
+            if (isTransfer(tx)) {
+              const fromAccount = tx.account_id ?? undefined
+              const toAccount = tx.to_account_id ?? undefined
+              if (fromAccount) {
+                runningPerAccount.set(fromAccount, (runningPerAccount.get(fromAccount) ?? 0) - amount)
+              }
+              if (toAccount) {
+                runningPerAccount.set(toAccount, (runningPerAccount.get(toAccount) ?? 0) + amount)
+              }
+              continue
+            }
+
+            const accountId = tx.account_id ?? undefined
+            if (accountId) {
+              const delta = tx.type === "income" ? amount : -amount
+              runningPerAccount.set(accountId, (runningPerAccount.get(accountId) ?? 0) + delta)
+            }
+
+            if (tx.type === "income") dayIncome += amount
+            else if (tx.type === "expense") dayExpense += amount
+          }
+
+          let dayCash = 0
+          let dayNonCash = 0
+          for (const [accountId, balance] of runningPerAccount) {
+            if (!Number.isFinite(balance)) continue
+            const type = accountType.get(accountId) ?? "other"
+            if (type === "cash") dayCash += balance
+            else dayNonCash += balance
+          }
+
+          timeline.push({
+            date,
+            income: dayIncome,
+            expense: dayExpense,
+            cash: dayCash,
+            nonCash: dayNonCash,
+            total: dayCash + dayNonCash,
+          })
+        }
+
+        const labels = enumerateDates(currentRange)
+        const recordMap = new Map(timeline.map((record) => [record.date, record]))
+        const baseline = findRecordBefore(timeline, currentRange.start)
+        const firstRecord = labels.length > 0 ? recordMap.get(labels[0]) ?? null : null
+        let lastCash = baseline?.cash ?? firstRecord?.cash ?? cashBalance
+        let lastNonCash = baseline?.nonCash ?? firstRecord?.nonCash ?? nonCashBalance
+        let lastTotal = baseline?.total ?? firstRecord?.total ?? totalBalance
+
+        const dailyIncome = labels.map((label) => recordMap.get(label)?.income ?? 0)
+        const dailyExpense = labels.map((label) => recordMap.get(label)?.expense ?? 0)
+        const dailyTotalBalance = labels.map((label) => {
+          const record = recordMap.get(label)
+          if (record) {
+            lastCash = record.cash
+            lastNonCash = record.nonCash
+            lastTotal = record.total
+          }
+          return lastTotal
+        })
+
+        const previousRange = shiftRangeByMonths(currentRange, -1)
+        const previousIncome = timeline
+          .filter((record) => record.date >= previousRange.start && record.date <= previousRange.end)
+          .reduce((sumIncome, record) => sumIncome + record.income, 0)
+        const previousExpense = timeline
+          .filter((record) => record.date >= previousRange.start && record.date <= previousRange.end)
+          .reduce((sumExpense, record) => sumExpense + record.expense, 0)
+        const previousTotalBalance = findRecordOnOrBefore(timeline, previousRange.end)?.total ?? 0
+
         if (!mountedRef.current || requestId !== requestIdRef.current) return
-        setMetrics({ income, expense, cashBalance, nonCashBalance, totalBalance })
+        setMetrics({
+          income,
+          expense,
+          cashBalance,
+          nonCashBalance,
+          totalBalance,
+          previousIncome,
+          previousExpense,
+          previousTotalBalance,
+          dailyLabels: labels,
+          dailyIncome,
+          dailyExpense,
+          dailyTotalBalance,
+        })
       } catch (err) {
         if (isAuthMissingError(err)) {
           applyGuestMetrics()
