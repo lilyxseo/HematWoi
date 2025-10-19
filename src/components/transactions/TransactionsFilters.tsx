@@ -184,7 +184,7 @@ export default function TransactionsFilters({
               id={rangeId}
               value={presetValue}
               onChange={handlePresetChange}
-              className="h-11 w-full appearance-none rounded-2xl bg-slate-900/60 px-4 text-sm font-medium text-slate-200 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)]"
+              className="select-no-arrow h-11 w-full appearance-none rounded-2xl bg-slate-900/60 px-4 text-sm font-medium text-slate-200 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)]"
             >
               {Object.entries(PRESET_OPTIONS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -196,25 +196,25 @@ export default function TransactionsFilters({
           </div>
         </label>
         <div className="flex flex-1 flex-wrap gap-3 md:flex-nowrap">
-          <label className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 px-3 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
-            <Calendar className="h-4 w-4 text-slate-500" aria-hidden="true" />
+          <label className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 pl-0 pr-0 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
+            <Calendar className="ml-3 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
             <input
               id={startId}
               type="date"
               value={toDateInput(filter.period?.start)}
               onChange={handleStartChange}
-              className="h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
+              className="date-input-no-indicator h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
               aria-label="Tanggal mulai"
             />
           </label>
-          <label className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 px-3 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
-            <Calendar className="h-4 w-4 text-slate-500" aria-hidden="true" />
+          <label className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 pl-0 pr-0 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
+            <Calendar className="ml-3 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
             <input
               id={endId}
               type="date"
               value={toDateInput(filter.period?.end)}
               onChange={handleEndChange}
-              className="h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
+              className="date-input-no-indicator h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
               aria-label="Tanggal akhir"
             />
           </label>
