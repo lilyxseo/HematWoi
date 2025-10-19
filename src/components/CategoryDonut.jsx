@@ -26,6 +26,12 @@ function resolveColor(item, index) {
 }
 
 export default function CategoryDonut({ data = [] }) {
+  const total = data.reduce((sum, item) => {
+    const value = Number(item?.value);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
+  const totalLabel = toRupiah(total);
+
   const renderTooltip = ({ payload }) => {
     if (!payload?.length) return null;
     const p = payload[0];
@@ -67,7 +73,7 @@ export default function CategoryDonut({ data = [] }) {
               data={data}
               dataKey="value"
               nameKey="name"
-              innerRadius="55%"
+              innerRadius="70%"
               outerRadius="80%"
               paddingAngle={4}
             >
@@ -76,6 +82,26 @@ export default function CategoryDonut({ data = [] }) {
               ))}
             </Pie>
             <Tooltip content={renderTooltip} />
+            <text
+              x="50%"
+              y="47%"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="currentColor"
+              className="text-base font-semibold sm:text-lg"
+            >
+              {totalLabel}
+            </text>
+            <text
+              x="50%"
+              y="60%"
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="currentColor"
+              className="text-[10px] text-muted sm:text-xs"
+            >
+              Total Bulan Ini
+            </text>
           </PieChart>
         </ResponsiveContainer>
       )}
