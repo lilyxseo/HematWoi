@@ -187,6 +187,8 @@ export default function TransactionsTable({
                     const description = note.trim() || "(Tanpa judul)";
                     const formattedDate = formatDate(item.date);
                     const amountTone = AMOUNT_CLASS[item.type] || AMOUNT_CLASS.transfer;
+                    const categoryLabel =
+                      item.category || (item.type === "transfer" ? "Transfer" : "(Tanpa kategori)");
                     const repeating = repeatLoadingIds?.has(item.id) ?? false;
 
                     return (
@@ -212,8 +214,8 @@ export default function TransactionsTable({
                           <div className="flex items-start gap-3">
                             <CategoryDot color={item.category_color} className="mt-1" />
                             <div className="min-w-0 space-y-1">
-                              <p className="truncate text-sm font-semibold text-slate-200" title={item.category || "(Tanpa kategori)"}>
-                                {item.category || "(Tanpa kategori)"}
+                              <p className="truncate text-sm font-semibold text-slate-200" title={categoryLabel}>
+                                {categoryLabel}
                               </p>
                               <p className="truncate text-xs uppercase tracking-wide text-slate-400">
                                 {typeLabels[item.type] || item.type}

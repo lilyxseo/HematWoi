@@ -148,6 +148,8 @@ export default function TransactionsCardList({
               const meta = TYPE_META[item.type] || TYPE_META.transfer;
               const TypeIcon = meta.icon;
               const repeating = repeatLoadingIds?.has(item.id) ?? false;
+              const categoryLabel =
+                item.category || (item.type === "transfer" ? "Transfer" : "(Tanpa kategori)");
 
               return (
                 <article
@@ -172,7 +174,7 @@ export default function TransactionsCardList({
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
                           <CategoryDot color={item.category_color} />
-                          <span>{item.category || "(Tanpa kategori)"}</span>
+                          <span>{categoryLabel}</span>
                         </div>
                       </div>
                     </div>
