@@ -51,16 +51,27 @@ const STATUS_CONFIG: Record<
   },
 };
 
+type TenorNavigationInfo = {
+  key: string;
+  hasPrev: boolean;
+  hasNext: boolean;
+  currentIndex: number;
+  total: number;
+  totals?: {
+    amount: number;
+    paid: number;
+    remaining: number;
+    overpaid: number;
+  };
+};
+
 interface DebtsGridProps {
   debts: DebtRecord[];
   loading?: boolean;
   onEdit: (debt: DebtRecord) => void;
   onDelete: (debt: DebtRecord) => void;
   onAddPayment: (debt: DebtRecord) => void;
-  tenorNavigation?: Record<
-    string,
-    { key: string; hasPrev: boolean; hasNext: boolean; currentIndex: number; total: number }
-  >;
+  tenorNavigation?: Record<string, TenorNavigationInfo>;
   onNavigateTenor?: (seriesKey: string, direction: 1 | -1) => void;
 }
 
@@ -181,11 +192,15 @@ export default function DebtsGrid({
         {debts.map((debt) => {
           const statusConfig = STATUS_CONFIG[debt.status];
           const overdue = isOverdue(debt);
-          const progress = debt.amount > 0 ? Math.min(Math.max(debt.paid_total / debt.amount, 0), 2) : 0;
+          const navigation = tenorNavigation?.[debt.id];
+          const totals = navigation?.totals;
+          const amountValue = totals?.amount ?? (Number.isFinite(debt.amount) ? debt.amount : 0);
+          const paidValue = totals?.paid ?? (Number.isFinite(debt.paid_total) ? debt.paid_total : 0);
+          const remainingValue = totals?.remaining ?? Math.max(amountValue - paidValue, 0);
+          const overpaidAmount = totals?.overpaid ?? Math.max(paidValue - amountValue, 0);
+          const progress = amountValue > 0 ? Math.min(Math.max(paidValue / amountValue, 0), 2) : 0;
           const cappedProgress = Math.min(progress, 1);
           const progressPercent = Math.round(cappedProgress * 100);
-          const remaining = Number.isFinite(debt.remaining) ? debt.remaining : 0;
-          const navigation = tenorNavigation?.[debt.id];
           const progressColor = getProgressColor(progress);
           const notes = debt.notes?.trim();
 
@@ -298,15 +313,15 @@ export default function DebtsGrid({
                   <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border/60 bg-surface/70 p-4 text-xs uppercase tracking-wide text-muted/70 sm:grid-cols-2 lg:grid-cols-3">
                     <div className="min-w-0 space-y-1">
                       <p>Jumlah</p>
-                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(debt.amount)}</p>
+                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(amountValue)}</p>
                     </div>
                     <div className="min-w-0 space-y-1">
                       <p>Terbayar</p>
-                      <p className="text-base font-medium text-muted tabular-nums">{formatCurrency(debt.paid_total)}</p>
+                      <p className="text-base font-medium text-muted tabular-nums">{formatCurrency(paidValue)}</p>
                     </div>
                     <div className="min-w-0 space-y-1">
                       <p>Sisa</p>
-                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(remaining)}</p>
+                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(remainingValue)}</p>
                     </div>
                   </div>
                   <div className="space-y-3">
@@ -323,9 +338,9 @@ export default function DebtsGrid({
                         }}
                       />
                     </div>
-                    {progress > 1 ? (
+                    {overpaidAmount > 0.005 ? (
                       <p className="text-xs font-medium text-emerald-300">
-                        Pembayaran melebihi jumlah hutang sebesar {formatCurrency(debt.paid_total - debt.amount)}
+                        Pembayaran melebihi jumlah hutang sebesar {formatCurrency(overpaidAmount)}
                       </p>
                     ) : null}
                   </div>
