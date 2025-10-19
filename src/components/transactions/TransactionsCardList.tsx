@@ -153,102 +153,104 @@ export default function TransactionsCardList({
                 <article
                   key={item.id}
                   className={clsx(
-                    "relative overflow-hidden rounded-3xl border border-white/5 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 ring-1 ring-slate-800 transition hover:border-white/10",
+                    "group relative overflow-hidden rounded-3xl border border-slate-800/60 bg-slate-950/70 p-5 shadow-2xl shadow-slate-950/50 ring-1 ring-slate-900/80 transition duration-300",
+                    "before:pointer-events-none before:absolute before:-left-1/2 before:top-0 before:h-full before:w-full before:rounded-full before:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.16),_rgba(255,255,255,0))] before:opacity-0 before:transition before:duration-500 before:content-[''] group-hover:border-slate-700 group-hover:before:opacity-100",
                     selected && "ring-2 ring-[var(--accent)]/60",
                   )}
                 >
-                  <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-gradient-to-br from-white/10 via-white/0 to-transparent blur-2xl" />
-                  <header className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
-                      <span
-                        className={clsx(
-                          "flex h-10 w-10 items-center justify-center rounded-2xl ring-1 backdrop-blur",
-                          meta.iconWrapper,
-                        )}
-                      >
-                        <TypeIcon className="h-5 w-5" aria-hidden="true" />
-                        <span className="sr-only">{typeLabels[item.type] || item.type}</span>
-                      </span>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-                          <CategoryDot color={item.category_color} />
-                          <span>{item.category || "(Tanpa kategori)"}</span>
+                  <div className="relative flex flex-col gap-5">
+                    <header className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex flex-1 items-start gap-3">
+                        <span
+                          className={clsx(
+                            "flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-black/20 ring-1 backdrop-blur-lg",
+                            meta.iconWrapper,
+                          )}
+                        >
+                          <TypeIcon className="h-5 w-5" aria-hidden="true" />
+                          <span className="sr-only">{typeLabels[item.type] || item.type}</span>
+                        </span>
+                        <div className="flex flex-col gap-2">
+                          <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                            <CategoryDot color={item.category_color} />
+                            <span>{item.category || "(Tanpa kategori)"}</span>
+                          </div>
+                          <p className="text-sm text-slate-400 line-clamp-2" title={description}>
+                            {description}
+                          </p>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-start gap-3">
-                      <time
-                        dateTime={toDateValue(item.date)}
-                        className="inline-flex items-center gap-2 rounded-full bg-slate-800/60 px-3 py-1 text-xs font-medium text-slate-300 ring-1 ring-slate-700"
-                      >
-                        <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                        {formattedDate}
-                      </time>
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        onChange={(event) => onToggleSelect(item.id, event)}
-                        className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-900 text-[var(--accent)] shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                        aria-label="Pilih transaksi"
-                      />
-                    </div>
-                  </header>
-                  <div className="mt-4 space-y-3">
-                    <p className="text-base font-semibold text-slate-100 line-clamp-2" title={description}>
-                      {description}
-                    </p>
-                    <div className="grid gap-2 text-sm text-slate-300">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-2 rounded-full bg-slate-800/70 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-slate-700/70">
+                      <div className="flex flex-col items-end gap-3">
+                        <span className={clsx("rounded-2xl bg-black/30 px-4 py-2 text-xl font-semibold shadow-inner", meta.amountClass)}>
+                          {formatAmount(item.amount)}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <time
+                            dateTime={toDateValue(item.date)}
+                            className="inline-flex items-center gap-2 rounded-full border border-slate-700/60 bg-slate-900/80 px-3 py-1 text-xs font-medium text-slate-300 shadow"
+                          >
+                            <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                            {formattedDate}
+                          </time>
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(event) => onToggleSelect(item.id, event)}
+                            className="h-4 w-4 rounded border-slate-600 bg-slate-950 text-[var(--accent)] shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                            aria-label="Pilih transaksi"
+                          />
+                        </div>
+                      </div>
+                    </header>
+                    <div className="rounded-2xl border border-slate-800/60 bg-slate-900/60 p-4 shadow-inner">
+                      <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-200">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/80 px-3 py-1 shadow-sm">
                           <Wallet2 className="h-3.5 w-3.5" aria-hidden="true" />
                           {item.account || "—"}
                         </span>
                         {item.type === "transfer" && (
-                          <span className="inline-flex items-center gap-2 rounded-full bg-slate-800/70 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-slate-700/70">
+                          <span className="inline-flex items-center gap-2 rounded-full border border-slate-700/70 bg-slate-900/80 px-3 py-1 shadow-sm">
                             <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
                             {item.to_account || "—"}
                           </span>
                         )}
                       </div>
                     </div>
+                    <footer className="flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-800/70 bg-slate-950/60 p-3 shadow-lg shadow-slate-950/40">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onRepeat(item)}
+                          disabled={repeating}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-900/70 text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Ulangi transaksi"
+                        >
+                          {repeating ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onEdit(item)}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-900/70 text-slate-200 transition hover:border-slate-500 hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                          aria-label="Edit transaksi"
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(item.id)}
+                          disabled={deleteDisabled}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-400/30 bg-rose-500/10 text-rose-300 transition hover:border-rose-300/60 hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Hapus transaksi"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
+                    </footer>
                   </div>
-                  <footer className="mt-5 flex items-center justify-between gap-3">
-                    <span className={clsx("text-2xl font-semibold", meta.amountClass)}>
-                      {formatAmount(item.amount)}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onRepeat(item)}
-                        disabled={repeating}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Ulangi transaksi"
-                      >
-                        {repeating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : (
-                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onEdit(item)}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                        aria-label="Edit transaksi"
-                      >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDelete(item.id)}
-                        disabled={deleteDisabled}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/10 text-rose-300 ring-1 ring-rose-400/40 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Hapus transaksi"
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </footer>
                 </article>
               );
             })}
@@ -282,29 +284,30 @@ export default function TransactionsCardList({
 
 function SkeletonCard() {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-slate-900/70 p-4 ring-1 ring-slate-800/60 animate-pulse">
-      <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/5 blur-2xl" />
-      <div className="flex items-start gap-3">
-        <span className="h-10 w-10 rounded-2xl bg-slate-800/80" />
-        <div className="flex-1 space-y-3">
-          <div className="h-4 w-24 rounded-full bg-slate-800" />
-          <div className="h-3 w-32 rounded-full bg-slate-800/80" />
+    <div className="relative overflow-hidden rounded-3xl border border-slate-800/60 bg-slate-950/70 p-5 ring-1 ring-slate-900/80 animate-pulse">
+      <div className="pointer-events-none absolute -left-1/2 top-0 h-full w-full rounded-full bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),_rgba(255,255,255,0))]" />
+      <div className="relative space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-1 items-start gap-3">
+            <span className="h-12 w-12 rounded-2xl bg-slate-800/80" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-32 rounded-full bg-slate-800/70" />
+              <div className="h-3 w-48 rounded-full bg-slate-800/50" />
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-3">
+            <span className="h-8 w-28 rounded-2xl bg-slate-800/70" />
+            <div className="flex items-center gap-3">
+              <span className="h-6 w-24 rounded-full bg-slate-800/60" />
+              <span className="h-4 w-4 rounded bg-slate-800/60" />
+            </div>
+          </div>
         </div>
-        <span className="h-4 w-20 rounded-full bg-slate-800/60" />
-      </div>
-      <div className="mt-5 space-y-3">
-        <div className="h-4 w-full rounded-full bg-slate-800" />
-        <div className="h-4 w-2/3 rounded-full bg-slate-800/70" />
-        <div className="flex gap-2">
-          <span className="h-6 w-20 rounded-full bg-slate-800/80" />
-          <span className="h-6 w-24 rounded-full bg-slate-800/70" />
-        </div>
-      </div>
-      <div className="mt-6 flex items-center justify-between">
-        <span className="h-6 w-28 rounded-full bg-slate-800" />
-        <div className="flex gap-2">
-          <span className="h-10 w-10 rounded-full bg-slate-800" />
-          <span className="h-10 w-10 rounded-full bg-slate-800/80" />
+        <div className="h-16 rounded-2xl bg-slate-800/40" />
+        <div className="flex justify-end gap-2 rounded-2xl bg-slate-900/60 p-3">
+          <span className="h-10 w-10 rounded-xl bg-slate-800/70" />
+          <span className="h-10 w-10 rounded-xl bg-slate-800/60" />
+          <span className="h-10 w-10 rounded-xl bg-slate-800/50" />
         </div>
       </div>
     </div>
