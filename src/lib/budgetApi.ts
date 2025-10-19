@@ -22,10 +22,14 @@ export interface ExpenseCategory {
 const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
 const CATEGORY_SELECT_COLUMNS = 'id,user_id,type,name,inserted_at,group_name,order_index';
+const CATEGORY_SELECT_COLUMNS_LEGACY =
+  'id,user_id,type,name,inserted_at,group_name';
 const CATEGORY_ORDER_PARAMS = ['order_index.asc.nullsfirst', 'name.asc'] as const;
+const CATEGORY_ORDER_PARAMS_LEGACY = ['name.asc'] as const;
 
 let categoriesViewUnavailable = false;
 let categoriesFallbackWarned = false;
+let categoriesViewOrderIndexUnavailable = false;
 
 const isDevelopment = Boolean(
   (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.DEV) ||
@@ -501,14 +505,19 @@ async function fetchExpenseCategoriesRemote(
   userId: string,
   signal?: AbortSignal
 ): Promise<ExpenseCategory[]> {
+  const useLegacyOrdering = categoriesViewOrderIndexUnavailable;
   const params = new URLSearchParams({
-    select: CATEGORY_SELECT_COLUMNS,
+    select: useLegacyOrdering
+      ? CATEGORY_SELECT_COLUMNS_LEGACY
+      : CATEGORY_SELECT_COLUMNS,
     user_id: `eq.${userId}`,
     type: 'eq.expense',
   });
-  CATEGORY_ORDER_PARAMS.forEach((order) => {
-    params.append('order', order);
-  });
+  (useLegacyOrdering ? CATEGORY_ORDER_PARAMS_LEGACY : CATEGORY_ORDER_PARAMS).forEach(
+    (order) => {
+      params.append('order', order);
+    }
+  );
   const headers = buildSupabaseHeaders();
 
   if (!categoriesViewUnavailable) {
@@ -525,6 +534,10 @@ async function fetchExpenseCategoriesRemote(
       const missingColumn =
         /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
       if (missingColumn) {
+        if (!categoriesViewOrderIndexUnavailable && /order_index/iu.test(bodyText)) {
+          categoriesViewOrderIndexUnavailable = true;
+          return fetchExpenseCategoriesRemote(userId, signal);
+        }
         categoriesViewUnavailable = true;
         if (!categoriesFallbackWarned) {
           console.warn(

@@ -687,10 +687,13 @@ export async function deleteTransaction(id) {
 // -- CATEGORIES ----------------------------------------
 
 const CATEGORY_REST_SELECT = "id,user_id,type,name,color,inserted_at,group_name,order_index";
+const CATEGORY_REST_SELECT_LEGACY =
+  "id,user_id,type,name,color,inserted_at,group_name";
 const CATEGORY_REST_ORDER_PARAMS = [
   "order_index.asc.nullsfirst",
   "name.asc"
 ];
+const CATEGORY_REST_ORDER_PARAMS_LEGACY = ["name.asc"];
 
 const CATEGORY_DEFAULT_COLOR = "#64748B";
 
@@ -714,6 +717,7 @@ function normalizeCategoryColor(value) {
 
 let categoryViewUnavailable = false;
 let categoryFallbackWarned = false;
+let categoryViewOrderIndexUnavailable = false;
 
 function mapCategoryRow(row = {}, userId) {
   const groupValue =
@@ -751,11 +755,17 @@ function mapCategoryRow(row = {}, userId) {
 }
 
 async function fetchCategoriesFromRest(userId, type) {
+  const useLegacyOrdering = categoryViewOrderIndexUnavailable;
   const params = new URLSearchParams({
-    select: CATEGORY_REST_SELECT,
+    select: useLegacyOrdering
+      ? CATEGORY_REST_SELECT_LEGACY
+      : CATEGORY_REST_SELECT,
     user_id: `eq.${userId}`,
   });
-  CATEGORY_REST_ORDER_PARAMS.forEach((order) => {
+  (useLegacyOrdering
+    ? CATEGORY_REST_ORDER_PARAMS_LEGACY
+    : CATEGORY_REST_ORDER_PARAMS
+  ).forEach((order) => {
     params.append("order", order);
   });
   if (type === "income" || type === "expense") {
@@ -777,6 +787,10 @@ async function fetchCategoriesFromRest(userId, type) {
       const missingColumn =
         /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
       if (missingColumn) {
+        if (!categoryViewOrderIndexUnavailable && /order_index/iu.test(bodyText)) {
+          categoryViewOrderIndexUnavailable = true;
+          return fetchCategoriesFromRest(userId, type);
+        }
         categoryViewUnavailable = true;
         if (!categoryFallbackWarned) {
           console.warn(
