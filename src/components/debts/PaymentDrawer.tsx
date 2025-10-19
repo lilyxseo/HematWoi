@@ -36,6 +36,20 @@ const todayIso = () => {
   return now.toISOString().slice(0, 10);
 };
 
+function toSafeNumber(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  return 0;
+}
+
 interface PaymentDrawerProps {
   open: boolean;
   debt: DebtRecord | null;
@@ -143,14 +157,18 @@ export default function PaymentDrawer({
     }
   }, [open]);
 
-  const remainingLabel = useMemo(() => {
-    if (!debt) return currencyFormatter.format(0);
-    return currencyFormatter.format(Math.max(0, debt.remaining));
-  }, [debt]);
-
-  const totalPaidLabel = useMemo(() => {
-    if (!debt) return currencyFormatter.format(0);
-    return currencyFormatter.format(Math.max(0, debt.paid_total));
+  const { remainingLabel, totalPaidLabel } = useMemo(() => {
+    if (!debt) {
+      const zero = currencyFormatter.format(0);
+      return { remainingLabel: zero, totalPaidLabel: zero };
+    }
+    const amountValue = toSafeNumber(debt.amount);
+    const paidValue = Math.max(0, toSafeNumber(debt.paid_total));
+    const remainingValue = Math.max(amountValue - paidValue, 0);
+    return {
+      remainingLabel: currencyFormatter.format(remainingValue),
+      totalPaidLabel: currencyFormatter.format(paidValue),
+    };
   }, [debt]);
 
   const tenorLabel = useMemo(() => {
