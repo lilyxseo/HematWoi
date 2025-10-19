@@ -1,7 +1,10 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
-import { listTransactions as legacyListTransactions } from './api';
+import {
+  listTransactions as legacyListTransactions,
+  getCachedTransactions as legacyGetCachedTransactions,
+} from './api';
 
 type TransactionRow = Record<string, any>;
 
@@ -62,6 +65,16 @@ function createFriendlyError(error: unknown, fallback: string): Error {
 
 export async function listTransactions(params: ListTransactionsParams = {}): Promise<ListTransactionsResult> {
   const result = await legacyListTransactions(params);
+  const rows = Array.isArray(result?.rows)
+    ? (result.rows as TransactionRow[]).filter((row) => !row?.deleted_at)
+    : [];
+  return { ...result, rows };
+}
+
+export async function getCachedTransactions(
+  params: ListTransactionsParams = {},
+): Promise<ListTransactionsResult> {
+  const result = await legacyGetCachedTransactions(params);
   const rows = Array.isArray(result?.rows)
     ? (result.rows as TransactionRow[]).filter((row) => !row?.deleted_at)
     : [];
