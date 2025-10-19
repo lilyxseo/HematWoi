@@ -1113,34 +1113,50 @@ function SummaryCards({ summary, loading }) {
       title: "Pemasukan",
       value: summary?.income ?? 0,
       accent: "text-success",
+      glow: "bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.28),transparent_65%)]",
     },
     {
       key: "expense",
       title: "Pengeluaran",
       value: summary?.expense ?? 0,
       accent: "text-danger",
+      glow: "bg-[radial-gradient(circle_at_top_right,rgba(248,113,113,0.3),transparent_65%)]",
     },
     {
       key: "net",
       title: "Net",
       value: summary?.net ?? 0,
       accent: "text-info",
+      glow: "bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.28),transparent_65%)]",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       {cards.map((card) => (
         <div
           key={card.key}
-          className="rounded-2xl border border-border bg-surface-1/90 p-5 shadow-sm"
+          className="group relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-slate-950/70 p-6 shadow-lg ring-1 ring-white/5 transition-all duration-300 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-xl"
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{card.title}</p>
-          {loading ? (
-            <div className="mt-3 h-6 w-32 animate-pulse rounded-full bg-border/60" />
-          ) : (
-            <p className={clsx("mt-2 text-2xl font-semibold", card.accent)}>{formatIDR(card.value)}</p>
-          )}
+          <span
+            aria-hidden="true"
+            className={clsx(
+              "pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full opacity-60 blur-3xl transition-all duration-500 group-hover:scale-110 group-hover:opacity-100",
+              card.glow,
+            )}
+          />
+          <div className="relative flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted">{card.title}</p>
+              <span className="h-2 w-2 rounded-full bg-white/40" aria-hidden="true" />
+            </div>
+            {loading ? (
+              <div className="h-7 w-32 animate-pulse rounded-full bg-white/10" />
+            ) : (
+              <p className={clsx("text-3xl font-semibold tracking-tight", card.accent)}>{formatIDR(card.value)}</p>
+            )}
+            <div className="h-px w-full rounded-full bg-gradient-to-r from-white/0 via-white/20 to-white/0" aria-hidden="true" />
+          </div>
         </div>
       ))}
     </div>
