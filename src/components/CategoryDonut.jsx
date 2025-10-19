@@ -74,7 +74,8 @@ export default function CategoryDonut({ data = [] }) {
               nameKey="name"
               innerRadius="75%"
               outerRadius="85%"
-              paddingAngle={4}
+              paddingAngle={1.5}
+              stroke="none"
             >
               {data.map((entry, i) => (
                 <Cell key={entry.name || i} fill={resolveColor(entry, i)} />
