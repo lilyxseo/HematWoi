@@ -29,6 +29,12 @@ type MetricsState = {
   cashBalance: number
   nonCashBalance: number
   totalBalance: number
+  incomeTrend: number[]
+  expenseTrend: number[]
+  balanceTrend: number[]
+  incomeMoM: number | null
+  expenseMoM: number | null
+  balanceMoM: number | null
 }
 
 const INITIAL_STATE: MetricsState = {
@@ -37,6 +43,12 @@ const INITIAL_STATE: MetricsState = {
   cashBalance: 0,
   nonCashBalance: 0,
   totalBalance: 0,
+  incomeTrend: [],
+  expenseTrend: [],
+  balanceTrend: [],
+  incomeMoM: null,
+  expenseMoM: null,
+  balanceMoM: null,
 }
 
 function isAuthMissingError(error: unknown): boolean {
@@ -79,6 +91,10 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
     ? (storage?.txs as Array<Record<string, any>>)
     : []
 
+  const startDate = parseISODate(range.start) ?? new Date()
+  const endDate = parseISODate(range.end) ?? startDate
+  const dayKeys = enumerateDates(startDate, endDate)
+
   const inRange = txs.filter((row) => {
     const rawDate =
       typeof row?.date === "string"
@@ -91,6 +107,7 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
     return value >= range.start && value <= range.end
   })
 
+  const dailyTotals = new Map<string, { income: number; expense: number }>()
   let income = 0
   let expense = 0
   for (const row of inRange) {
@@ -98,6 +115,21 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
     if (type !== "income" && type !== "expense") continue
     const amount = asNumber(row?.amount)
     if (!amount) continue
+    const key =
+      typeof row?.date === "string"
+        ? row.date.slice(0, 10)
+        : typeof row?.created_at === "string"
+          ? row.created_at.slice(0, 10)
+          : ""
+    if (key) {
+      const entry = dailyTotals.get(key) ?? { income: 0, expense: 0 }
+      if (type === "income") {
+        entry.income += amount
+      } else {
+        entry.expense += amount
+      }
+      dailyTotals.set(key, entry)
+    }
     if (type === "income") income += amount
     else expense += amount
   }
@@ -114,12 +146,59 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
   const cashBalance = totalBalance
   const nonCashBalance = 0
 
+  const baseBalance = totalBalance - (income - expense)
+  let runningBalance = baseBalance
+  const incomeTrend = dayKeys.map((key) => dailyTotals.get(key)?.income ?? 0)
+  const expenseTrend = dayKeys.map((key) => dailyTotals.get(key)?.expense ?? 0)
+  const balanceTrend = dayKeys.map((key) => {
+    const totals = dailyTotals.get(key)
+    const delta = (totals?.income ?? 0) - (totals?.expense ?? 0)
+    runningBalance += delta
+    return runningBalance
+  })
+
+  const periodLength = Math.max(dayKeys.length, 1)
+  const previousEndDate = addDays(startDate, -1)
+  const previousStartDate = addDays(previousEndDate, -(periodLength - 1))
+  const previousStart = formatISODate(previousStartDate)
+  const previousEnd = formatISODate(previousEndDate)
+
+  let previousIncome = 0
+  let previousExpense = 0
+  for (const row of txs) {
+    const rawDate =
+      typeof row?.date === "string"
+        ? row.date
+        : typeof row?.created_at === "string"
+          ? row.created_at
+          : null
+    if (!rawDate) continue
+    const value = rawDate.slice(0, 10)
+    if (value < previousStart || value > previousEnd) continue
+    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
+    if (type !== "income" && type !== "expense") continue
+    const amount = asNumber(row?.amount)
+    if (!amount) continue
+    if (type === "income") previousIncome += amount
+    else previousExpense += amount
+  }
+
+  const incomeMoM = previousIncome ? (income - previousIncome) / previousIncome : null
+  const expenseMoM = previousExpense ? (expense - previousExpense) / previousExpense : null
+  const balanceMoM = baseBalance ? (totalBalance - baseBalance) / Math.abs(baseBalance) : null
+
   return {
     income,
     expense,
     cashBalance,
     nonCashBalance,
     totalBalance,
+    incomeTrend,
+    expenseTrend,
+    balanceTrend,
+    incomeMoM,
+    expenseMoM,
+    balanceMoM,
   }
 }
 
@@ -138,6 +217,33 @@ function sanitizeRange(range: DashboardRange): DashboardRange {
     return { start: end, end: start }
   }
   return range
+}
+
+const MS_IN_DAY = 24 * 60 * 60 * 1000
+
+function parseISODate(value: string): Date | null {
+  if (!value) return null
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10))
+  if (!year || !month || !day) return null
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+function formatISODate(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function addDays(date: Date, amount: number): Date {
+  return new Date(date.getTime() + amount * MS_IN_DAY)
+}
+
+function enumerateDates(start: Date, end: Date): string[] {
+  const results: string[] = []
+  let cursor = new Date(start.getTime())
+  while (cursor <= end) {
+    results.push(formatISODate(cursor))
+    cursor = addDays(cursor, 1)
+  }
+  return results
 }
 
 function isTransfer(tx: TransactionRow): boolean {
@@ -230,12 +336,27 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
 
         const rangeTransactions = transactions.filter((tx) => withinRange(tx, currentRange))
 
+        const startDate = parseISODate(currentRange.start) ?? new Date()
+        const endDate = parseISODate(currentRange.end) ?? startDate
+        const dayKeys = enumerateDates(startDate, endDate)
+        const dailyTotals = new Map<string, { income: number; expense: number }>()
+
         let income = 0
         let expense = 0
         for (const tx of rangeTransactions) {
           if (isTransfer(tx)) continue
           const amount = asNumber(tx.amount)
           if (!amount) continue
+          const key = (tx.date ?? "").slice(0, 10)
+          if (key) {
+            const entry = dailyTotals.get(key) ?? { income: 0, expense: 0 }
+            if (tx.type === "income") {
+              entry.income += amount
+            } else if (tx.type === "expense") {
+              entry.expense += amount
+            }
+            dailyTotals.set(key, entry)
+          }
           if (tx.type === "income") {
             income += amount
           } else if (tx.type === "expense") {
@@ -274,8 +395,58 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         )
         const totalBalance = cashBalance + nonCashBalance
 
+        const baseBalance = totalBalance - (income - expense)
+        let runningBalance = baseBalance
+        const incomeTrend = dayKeys.map((key) => (dailyTotals.get(key)?.income ?? 0))
+        const expenseTrend = dayKeys.map((key) => (dailyTotals.get(key)?.expense ?? 0))
+        const balanceTrend = dayKeys.map((key) => {
+          const totals = dailyTotals.get(key)
+          const delta = (totals?.income ?? 0) - (totals?.expense ?? 0)
+          runningBalance += delta
+          return runningBalance
+        })
+
+        const periodLength = Math.max(dayKeys.length, 1)
+        const previousEndDate = addDays(startDate, -1)
+        const previousStartDate = addDays(previousEndDate, -(periodLength - 1))
+        const previousRange = {
+          start: formatISODate(previousStartDate),
+          end: formatISODate(previousEndDate),
+        }
+        const previousTransactions = transactions.filter((tx) => withinRange(tx, previousRange))
+        let previousIncome = 0
+        let previousExpense = 0
+        for (const tx of previousTransactions) {
+          if (isTransfer(tx)) continue
+          const amount = asNumber(tx.amount)
+          if (!amount) continue
+          if (tx.type === "income") {
+            previousIncome += amount
+          } else if (tx.type === "expense") {
+            previousExpense += amount
+          }
+        }
+
+        const incomeMoM = previousIncome ? (income - previousIncome) / previousIncome : null
+        const expenseMoM = previousExpense ? (expense - previousExpense) / previousExpense : null
+        const balanceMoM = baseBalance
+          ? (totalBalance - baseBalance) / Math.abs(baseBalance)
+          : null
+
         if (!mountedRef.current || requestId !== requestIdRef.current) return
-        setMetrics({ income, expense, cashBalance, nonCashBalance, totalBalance })
+        setMetrics({
+          income,
+          expense,
+          cashBalance,
+          nonCashBalance,
+          totalBalance,
+          incomeTrend,
+          expenseTrend,
+          balanceTrend,
+          incomeMoM,
+          expenseMoM,
+          balanceMoM,
+        })
       } catch (err) {
         if (isAuthMissingError(err)) {
           applyGuestMetrics()

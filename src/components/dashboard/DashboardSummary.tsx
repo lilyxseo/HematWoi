@@ -1,4 +1,4 @@
-import { useMemo } from "react"
+import { useMemo, useId } from "react"
 import type { ReactNode } from "react"
 import {
   ArrowDownRight,
@@ -20,6 +20,12 @@ interface DashboardSummaryProps {
   nonCashBalance: number
   totalBalance: number
   period: PeriodRange
+  incomeTrend: number[]
+  expenseTrend: number[]
+  balanceTrend: number[]
+  incomeMoM: number | null
+  expenseMoM: number | null
+  balanceMoM: number | null
   loading?: boolean
   error?: Error | null
 }
@@ -64,12 +70,108 @@ function createSparkline(values: number[]): string {
     .join(" ")
 }
 
+function Sparkline({ values, color, loading }: { values: number[]; color: string; loading: boolean }) {
+  const gradientId = useId()
+  const path = useMemo(() => createSparkline(values), [values])
+
+  if (loading) {
+    return <div className="h-12 w-full animate-pulse rounded-lg bg-muted/60" />
+  }
+
+  if (!path) {
+    return (
+      <div className="flex h-12 items-center justify-center text-[11px] text-muted-foreground sm:text-xs">
+        Tidak ada data
+      </div>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 120 48" className="h-12 w-full">
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.45} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <polyline
+        points={`${path} 120,48 0,48`}
+        fill={`url(#${gradientId})`}
+        stroke="none"
+      />
+      <polyline
+        points={path}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function formatPercentChange(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "—"
+  const formatter = new Intl.NumberFormat("id-ID", {
+    style: "percent",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  return formatter.format(value)
+}
+
+function MoMIndicator({
+  value,
+  loading,
+  positiveTone = "text-emerald-500 dark:text-emerald-400",
+  negativeTone = "text-rose-500 dark:text-rose-400",
+}: {
+  value: number | null
+  loading: boolean
+  positiveTone?: string
+  negativeTone?: string
+}) {
+  if (loading) {
+    return <div className="h-3 w-12 animate-pulse rounded-full bg-muted/60 sm:h-4 sm:w-16" />
+  }
+
+  if (value === null || !Number.isFinite(value)) {
+    return <span className="text-[11px] text-muted-foreground sm:text-xs">—</span>
+  }
+
+  if (Math.abs(value) < 1e-6) {
+    return (
+      <span className="text-[11px] font-semibold text-muted-foreground sm:text-xs">
+        {formatPercentChange(0)}
+      </span>
+    )
+  }
+
+  const positive = value >= 0
+  const tone = positive ? positiveTone : negativeTone
+  const symbol = positive ? "▲" : "▼"
+
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold sm:text-xs ${tone}`}>
+      <span className="text-xs leading-none sm:text-sm">{symbol}</span>
+      {formatPercentChange(Math.abs(value))}
+    </span>
+  )
+}
+
 function DashboardSummary({
   income,
   expense,
   cashBalance,
   nonCashBalance,
   totalBalance,
+  incomeTrend,
+  expenseTrend,
+  balanceTrend,
+  incomeMoM,
+  expenseMoM,
+  balanceMoM,
   period,
   loading = false,
   error,
@@ -77,21 +179,7 @@ function DashboardSummary({
   const periodLabel = useMemo(() => formatPeriodLabel(period) || "—", [period])
   const net = income - expense
   const netPositive = net >= 0
-  const netTone = netPositive
-    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-    : "bg-rose-500/10 text-rose-600 dark:text-rose-400"
-
-  const sparklineValues = useMemo(() => {
-    const base = Math.max(income, expense, Math.abs(net), 1)
-    const steps = Array.from({ length: 8 }, (_, index) => index / 7)
-    return steps.map((step) => {
-      const wave = Math.sin(step * Math.PI)
-      const trend = netPositive ? step : 1 - step
-      return base * (0.4 + wave * 0.35) + Math.abs(net) * 0.2 * trend
-    })
-  }, [income, expense, net, netPositive])
-
-  const sparklinePath = useMemo(() => createSparkline(sparklineValues), [sparklineValues])
+  const totalBadgeTone = "bg-sky-500/15 text-sky-600 dark:text-sky-400"
 
   return (
     <section className="space-y-3 md:space-y-4 max-[400px]:space-y-2">
@@ -103,13 +191,17 @@ function DashboardSummary({
               {loading ? (
                 <SkeletonBar />
               ) : (
-                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400 sm:text-xl md:text-2xl max-[400px]:text-base">
-                  {formatValue(income)}
-                </p>
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                    {formatValue(income)}
+                  </p>
+                  <MoMIndicator value={incomeMoM} loading={loading} />
+                </div>
               )}
               <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
                 Periode {periodLabel}
               </p>
+              <Sparkline values={incomeTrend} color="#22c55e" loading={loading} />
             </div>
             <IconBadge title="Total pemasukan">
               <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -124,13 +216,17 @@ function DashboardSummary({
               {loading ? (
                 <SkeletonBar />
               ) : (
-                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-rose-600 tabular-nums dark:text-rose-400 sm:text-xl md:text-2xl max-[400px]:text-base">
-                  {formatValue(expense)}
-                </p>
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-rose-600 tabular-nums dark:text-rose-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                    {formatValue(expense)}
+                  </p>
+                  <MoMIndicator value={expenseMoM} loading={loading} />
+                </div>
               )}
               <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
                 Periode {periodLabel}
               </p>
+              <Sparkline values={expenseTrend} color="#ef4444" loading={loading} />
             </div>
             <IconBadge title="Total pengeluaran">
               <TrendingDown className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -202,43 +298,34 @@ function DashboardSummary({
               {loading ? (
                 <SkeletonBar />
               ) : (
-                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-foreground tabular-nums sm:text-xl md:text-2xl max-[400px]:text-base">
-                  {formatValue(totalBalance)}
-                </p>
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-foreground tabular-nums sm:text-xl md:text-2xl max-[400px]:text-base">
+                    {formatValue(totalBalance)}
+                  </p>
+                  <MoMIndicator value={balanceMoM} loading={loading} />
+                </div>
               )}
               <span
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:px-3 sm:text-xs md:text-sm ${netTone}`}
+                className={`inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-semibold sm:px-3 sm:text-xs md:text-sm ${totalBadgeTone}`}
               >
-                {netPositive ? (
-                  <ArrowUpRight className="h-3.5 w-3.5" />
-                ) : (
-                  <ArrowDownRight className="h-3.5 w-3.5" />
-                )}
-                <span>
-                  Net {netPositive ? "+" : "-"}
+                <span className={`inline-flex items-center gap-1 rounded-full bg-white/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-sky-700 dark:bg-white/10 dark:text-sky-300 sm:text-[11px]`}>
+                  TOTAL SALDO
+                </span>
+                <span className={`inline-flex items-center gap-1 ${netPositive ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                  {netPositive ? (
+                    <ArrowUpRight className="h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowDownRight className="h-3.5 w-3.5" />
+                  )}
+                  {netPositive ? "+" : "-"}
                   {formatValue(Math.abs(net))}
                 </span>
               </span>
+              <Sparkline values={balanceTrend} color="#38bdf8" loading={loading} />
             </div>
             <IconBadge title="Total saldo">
               <Banknote className="h-4 w-4 sm:h-5 sm:w-5" />
             </IconBadge>
-          </div>
-          <div className="mt-5 h-20 rounded-xl bg-gradient-to-t from-primary/5 to-transparent sm:mt-6">
-            {loading ? (
-              <div className="h-full w-full animate-pulse rounded-xl bg-primary/10" />
-            ) : (
-              <svg viewBox="0 0 120 48" className="h-full w-full text-primary/70">
-                <polyline
-                  points={sparklinePath}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
           </div>
         </article>
       </div>
