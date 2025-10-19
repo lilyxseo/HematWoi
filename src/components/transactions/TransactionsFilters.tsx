@@ -184,7 +184,7 @@ export default function TransactionsFilters({
               id={rangeId}
               value={presetValue}
               onChange={handlePresetChange}
-              className="h-11 w-full appearance-none rounded-2xl bg-slate-900/60 px-4 text-sm font-medium text-slate-200 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)]"
+              className="custom-select h-11 w-full appearance-none rounded-2xl bg-slate-900/60 px-4 text-sm font-medium text-slate-200 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)]"
             >
               {Object.entries(PRESET_OPTIONS).map(([value, label]) => (
                 <option key={value} value={value}>
@@ -203,7 +203,7 @@ export default function TransactionsFilters({
               type="date"
               value={toDateInput(filter.period?.start)}
               onChange={handleStartChange}
-              className="h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
+              className="date-input h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
               aria-label="Tanggal mulai"
             />
           </label>
@@ -214,7 +214,7 @@ export default function TransactionsFilters({
               type="date"
               value={toDateInput(filter.period?.end)}
               onChange={handleEndChange}
-              className="h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
+              className="date-input h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
               aria-label="Tanggal akhir"
             />
           </label>
