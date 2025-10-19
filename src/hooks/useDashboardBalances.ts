@@ -23,13 +23,22 @@ type TransactionRow = {
   deleted_at: string | null
 }
 
+type TrendMetrics = {
+  incomeTrend: number[]
+  expenseTrend: number[]
+  balanceTrend: number[]
+  incomeMoM: number | null
+  expenseMoM: number | null
+  balanceMoM: number | null
+}
+
 type MetricsState = {
   income: number
   expense: number
   cashBalance: number
   nonCashBalance: number
   totalBalance: number
-}
+} & TrendMetrics
 
 const INITIAL_STATE: MetricsState = {
   income: 0,
@@ -37,7 +46,15 @@ const INITIAL_STATE: MetricsState = {
   cashBalance: 0,
   nonCashBalance: 0,
   totalBalance: 0,
+  incomeTrend: [],
+  expenseTrend: [],
+  balanceTrend: [],
+  incomeMoM: null,
+  expenseMoM: null,
+  balanceMoM: null,
 }
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000
 
 function isAuthMissingError(error: unknown): boolean {
   if (!error) return false
@@ -78,49 +95,59 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
   const txs = Array.isArray(storage?.txs)
     ? (storage?.txs as Array<Record<string, any>>)
     : []
+  const normalized: TransactionRow[] = []
+  const accountIds = new Set<string>()
 
-  const inRange = txs.filter((row) => {
+  const ensureAccount = (id: string | null) => {
+    if (!id) return null
+    accountIds.add(id)
+    return id
+  }
+
+  txs.forEach((row, index) => {
+    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
+    if (type !== "income" && type !== "expense") return
+    const amount = asNumber(row?.amount)
+    if (!amount) return
     const rawDate =
       typeof row?.date === "string"
         ? row.date
         : typeof row?.created_at === "string"
           ? row.created_at
           : null
-    if (!rawDate) return false
-    const value = rawDate.slice(0, 10)
-    return value >= range.start && value <= range.end
+    if (!rawDate) return
+    const date = rawDate.slice(0, 10)
+    const accountId = ensureAccount(
+      typeof row?.account_id === "string" && row.account_id ? row.account_id : null,
+    ) ?? "guest-cash"
+    accountIds.add(accountId)
+    const toAccountId = ensureAccount(
+      typeof row?.to_account_id === "string" && row.to_account_id ? row.to_account_id : null,
+    )
+
+    normalized.push({
+      id: String(row?.id ?? index),
+      user_id: "guest",
+      account_id: accountId,
+      to_account_id: toAccountId,
+      type: type === "income" ? "income" : "expense",
+      amount,
+      date,
+      deleted_at: null,
+    })
   })
 
-  let income = 0
-  let expense = 0
-  for (const row of inRange) {
-    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
-    if (type !== "income" && type !== "expense") continue
-    const amount = asNumber(row?.amount)
-    if (!amount) continue
-    if (type === "income") income += amount
-    else expense += amount
+  if (!normalized.length) {
+    return { ...INITIAL_STATE }
   }
 
-  let totalBalance = 0
-  for (const row of txs) {
-    const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
-    if (type !== "income" && type !== "expense") continue
-    const amount = asNumber(row?.amount)
-    if (!amount) continue
-    totalBalance += type === "income" ? amount : -amount
+  if (!accountIds.size) {
+    accountIds.add("guest-cash")
   }
 
-  const cashBalance = totalBalance
-  const nonCashBalance = 0
+  const accounts: AccountRow[] = Array.from(accountIds).map((id) => ({ id, type: "cash" as const }))
 
-  return {
-    income,
-    expense,
-    cashBalance,
-    nonCashBalance,
-    totalBalance,
-  }
+  return buildMetrics({ transactions: normalized, accounts, range })
 }
 
 function sum(values: Iterable<number>): number {
@@ -148,6 +175,213 @@ function withinRange(tx: TransactionRow, range: DashboardRange): boolean {
   const txDate = (tx.date ?? "").slice(0, 10)
   if (!txDate) return false
   return txDate >= range.start && txDate <= range.end
+}
+
+function toDate(value: string | undefined | null): Date | null {
+  if (!value) return null
+  const [year, month, day] = value.split("-").map((part) => Number.parseInt(part, 10))
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null
+  return new Date(Date.UTC(year, month - 1, day))
+}
+
+function formatDate(date: Date): string {
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const day = String(date.getUTCDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function clampRangeToToday(range: DashboardRange): DashboardRange {
+  const today = formatDate(new Date())
+  const end = range.end > today ? today : range.end
+  if (range.start > end) {
+    return { start: end, end }
+  }
+  return { start: range.start, end }
+}
+
+function getMonthRange(anchor: string | undefined): DashboardRange {
+  const base = toDate(anchor) ?? new Date()
+  const start = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), 1))
+  const end = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, 0))
+  return { start: formatDate(start), end: formatDate(end) }
+}
+
+function getPreviousMonthRange(current: DashboardRange): DashboardRange {
+  const startDate = toDate(current.start) ?? new Date()
+  const prevStart = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() - 1, 1))
+  const prevEnd = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 0))
+  return { start: formatDate(prevStart), end: formatDate(prevEnd) }
+}
+
+function listDays(range: DashboardRange): string[] {
+  const start = toDate(range.start)
+  const end = toDate(range.end)
+  if (!start || !end) return []
+  const days: string[] = []
+  for (let time = start.getTime(); time <= end.getTime(); time += MS_PER_DAY) {
+    days.push(formatDate(new Date(time)))
+  }
+  return days
+}
+
+function percentageChange(current: number, previous: number): number | null {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) return null
+  if (previous === 0) {
+    return current === 0 ? 0 : null
+  }
+  return ((current - previous) / Math.abs(previous)) * 100
+}
+
+type BalanceSnapshot = {
+  cashBalance: number
+  nonCashBalance: number
+  totalBalance: number
+}
+
+function computeAccountBalances(
+  transactions: TransactionRow[],
+  accounts: AccountRow[],
+  upToDate?: string,
+): BalanceSnapshot {
+  const perAccount = new Map<string, number>()
+  for (const tx of transactions) {
+    const txDate = (tx.date ?? "").slice(0, 10)
+    if (!txDate) continue
+    if (upToDate && txDate > upToDate) continue
+    const amount = asNumber(tx.amount)
+    if (!amount) continue
+    const accountId = tx.account_id ?? undefined
+    const toAccountId = tx.to_account_id ?? undefined
+
+    if (isTransfer(tx)) {
+      if (accountId) {
+        perAccount.set(accountId, (perAccount.get(accountId) ?? 0) - amount)
+      }
+      if (toAccountId) {
+        perAccount.set(toAccountId, (perAccount.get(toAccountId) ?? 0) + amount)
+      }
+      continue
+    }
+
+    if (accountId) {
+      const delta = tx.type === "income" ? amount : -amount
+      perAccount.set(accountId, (perAccount.get(accountId) ?? 0) + delta)
+    }
+  }
+
+  if (!accounts.length) {
+    const total = sum(perAccount.values())
+    return { cashBalance: total, nonCashBalance: 0, totalBalance: total }
+  }
+
+  const cashBalance = sum(
+    accounts.filter((account) => account.type === "cash").map((account) => perAccount.get(account.id) ?? 0),
+  )
+  const nonCashBalance = sum(
+    accounts.filter((account) => account.type !== "cash").map((account) => perAccount.get(account.id) ?? 0),
+  )
+  const totalBalance = cashBalance + nonCashBalance
+
+  return { cashBalance, nonCashBalance, totalBalance }
+}
+
+type BuildMetricsArgs = {
+  transactions: TransactionRow[]
+  accounts: AccountRow[]
+  range: DashboardRange
+}
+
+function buildMetrics({ transactions, accounts, range }: BuildMetricsArgs): MetricsState {
+  const safeTransactions = Array.isArray(transactions) ? transactions : []
+  const safeAccounts = Array.isArray(accounts) ? accounts : []
+
+  const rangeTransactions = safeTransactions.filter((tx) => withinRange(tx, range))
+  let income = 0
+  let expense = 0
+  for (const tx of rangeTransactions) {
+    if (isTransfer(tx)) continue
+    const amount = asNumber(tx.amount)
+    if (!amount) continue
+    if (tx.type === "income") income += amount
+    else if (tx.type === "expense") expense += amount
+  }
+
+  const monthAnchor = range.end || range.start
+  const rawMonthRange = getMonthRange(monthAnchor)
+  const monthRange = clampRangeToToday(rawMonthRange)
+  const previousMonthRange = getPreviousMonthRange(rawMonthRange)
+
+  const monthTransactions = safeTransactions.filter((tx) => withinRange(tx, monthRange))
+  const previousMonthTransactions = safeTransactions.filter((tx) => withinRange(tx, previousMonthRange))
+
+  let monthIncome = 0
+  let monthExpense = 0
+  for (const tx of monthTransactions) {
+    if (isTransfer(tx)) continue
+    const amount = asNumber(tx.amount)
+    if (!amount) continue
+    if (tx.type === "income") monthIncome += amount
+    else if (tx.type === "expense") monthExpense += amount
+  }
+
+  let previousMonthIncome = 0
+  let previousMonthExpense = 0
+  for (const tx of previousMonthTransactions) {
+    if (isTransfer(tx)) continue
+    const amount = asNumber(tx.amount)
+    if (!amount) continue
+    if (tx.type === "income") previousMonthIncome += amount
+    else if (tx.type === "expense") previousMonthExpense += amount
+  }
+
+  const dailyIncome = new Map<string, number>()
+  const dailyExpense = new Map<string, number>()
+  for (const tx of monthTransactions) {
+    if (isTransfer(tx)) continue
+    const txDate = (tx.date ?? "").slice(0, 10)
+    if (!txDate) continue
+    const amount = asNumber(tx.amount)
+    if (!amount) continue
+    if (tx.type === "income") {
+      dailyIncome.set(txDate, (dailyIncome.get(txDate) ?? 0) + amount)
+    } else if (tx.type === "expense") {
+      dailyExpense.set(txDate, (dailyExpense.get(txDate) ?? 0) + amount)
+    }
+  }
+
+  const daysInMonth = listDays(monthRange)
+  const activeDays = daysInMonth.length ? daysInMonth : [monthRange.end]
+  const incomeTrend = activeDays.map((day) => dailyIncome.get(day) ?? 0)
+  const expenseTrend = activeDays.map((day) => dailyExpense.get(day) ?? 0)
+
+  const previousBalanceSnapshot = computeAccountBalances(safeTransactions, safeAccounts, previousMonthRange.end)
+  const { cashBalance, nonCashBalance, totalBalance } = computeAccountBalances(safeTransactions, safeAccounts)
+
+  let runningBalance = previousBalanceSnapshot.totalBalance
+  const balanceTrend = activeDays.map((day) => {
+    const delta = (dailyIncome.get(day) ?? 0) - (dailyExpense.get(day) ?? 0)
+    runningBalance += delta
+    return runningBalance
+  })
+
+  const incomeMoM = percentageChange(monthIncome, previousMonthIncome)
+  const expenseMoM = percentageChange(monthExpense, previousMonthExpense)
+  const balanceMoM = percentageChange(totalBalance, previousBalanceSnapshot.totalBalance)
+
+  return {
+    income,
+    expense,
+    cashBalance,
+    nonCashBalance,
+    totalBalance,
+    incomeTrend,
+    expenseTrend,
+    balanceTrend,
+    incomeMoM,
+    expenseMoM,
+    balanceMoM,
+  }
 }
 
 function asNumber(value: number | string | null | undefined): number {
@@ -228,54 +462,10 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         const accounts = (accountsData ?? []) as AccountRow[]
         const transactions = (transactionsData ?? []) as TransactionRow[]
 
-        const rangeTransactions = transactions.filter((tx) => withinRange(tx, currentRange))
-
-        let income = 0
-        let expense = 0
-        for (const tx of rangeTransactions) {
-          if (isTransfer(tx)) continue
-          const amount = asNumber(tx.amount)
-          if (!amount) continue
-          if (tx.type === "income") {
-            income += amount
-          } else if (tx.type === "expense") {
-            expense += amount
-          }
-        }
-
-        const perAccount = new Map<string, number>()
-        for (const tx of transactions) {
-          const amount = asNumber(tx.amount)
-          if (!amount) continue
-          const accountId = tx.account_id ?? undefined
-          const toAccountId = tx.to_account_id ?? undefined
-
-          if (isTransfer(tx)) {
-            if (accountId) {
-              perAccount.set(accountId, (perAccount.get(accountId) ?? 0) - amount)
-            }
-            if (toAccountId) {
-              perAccount.set(toAccountId, (perAccount.get(toAccountId) ?? 0) + amount)
-            }
-            continue
-          }
-
-          if (accountId) {
-            const delta = tx.type === "income" ? amount : -amount
-            perAccount.set(accountId, (perAccount.get(accountId) ?? 0) + delta)
-          }
-        }
-
-        const cashBalance = sum(
-          accounts.filter((account) => account.type === "cash").map((account) => perAccount.get(account.id) ?? 0),
-        )
-        const nonCashBalance = sum(
-          accounts.filter((account) => account.type !== "cash").map((account) => perAccount.get(account.id) ?? 0),
-        )
-        const totalBalance = cashBalance + nonCashBalance
+        const computed = buildMetrics({ transactions, accounts, range: currentRange })
 
         if (!mountedRef.current || requestId !== requestIdRef.current) return
-        setMetrics({ income, expense, cashBalance, nonCashBalance, totalBalance })
+        setMetrics(computed)
       } catch (err) {
         if (isAuthMissingError(err)) {
           applyGuestMetrics()

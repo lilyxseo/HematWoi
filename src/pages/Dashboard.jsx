@@ -29,6 +29,12 @@ export default function Dashboard({ stats, txs }) {
     cashBalance,
     nonCashBalance,
     totalBalance,
+    incomeTrend,
+    expenseTrend,
+    balanceTrend,
+    incomeMoM,
+    expenseMoM,
+    balanceMoM,
     loading,
     error,
     refresh,
@@ -90,6 +96,12 @@ export default function Dashboard({ stats, txs }) {
             cashBalance={cashBalance}
             nonCashBalance={nonCashBalance}
             totalBalance={totalBalance}
+            incomeTrend={incomeTrend}
+            expenseTrend={expenseTrend}
+            balanceTrend={balanceTrend}
+            incomeMoM={incomeMoM}
+            expenseMoM={expenseMoM}
+            balanceMoM={balanceMoM}
             loading={loading}
             error={error}
             period={periodRange}
