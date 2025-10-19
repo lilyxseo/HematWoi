@@ -1,4 +1,4 @@
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Label } from "recharts";
 import ChartCard from "./dashboard/ChartCard";
 
 function toRupiah(n = 0) {
@@ -26,6 +26,11 @@ function resolveColor(item, index) {
 }
 
 export default function CategoryDonut({ data = [] }) {
+  const total = data.reduce(
+    (sum, item) => sum + (Number(item?.value) || 0),
+    0,
+  );
+
   const renderTooltip = ({ payload }) => {
     if (!payload?.length) return null;
     const p = payload[0];
@@ -67,13 +72,39 @@ export default function CategoryDonut({ data = [] }) {
               data={data}
               dataKey="value"
               nameKey="name"
-              innerRadius="55%"
-              outerRadius="80%"
+              innerRadius="75%"
+              outerRadius="85%"
               paddingAngle={4}
             >
               {data.map((entry, i) => (
                 <Cell key={entry.name || i} fill={resolveColor(entry, i)} />
               ))}
+              <Label
+                content={({ viewBox }) => {
+                  if (!viewBox?.cx || !viewBox?.cy) return null;
+                  const { cx, cy } = viewBox;
+                  return (
+                    <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
+                      <tspan
+                        x={cx}
+                        y={cy - 4}
+                        style={{ fontSize: "1.5rem", fontWeight: 600 }}
+                        className="fill-slate-900 dark:fill-slate-100"
+                      >
+                        {toRupiah(total)}
+                      </tspan>
+                      <tspan
+                        x={cx}
+                        y={cy + 16}
+                        style={{ fontSize: "0.75rem", fontWeight: 500 }}
+                        className="fill-slate-500 dark:fill-slate-400"
+                      >
+                        Total bulan ini
+                      </tspan>
+                    </text>
+                  );
+                }}
+              />
             </Pie>
             <Tooltip content={renderTooltip} />
           </PieChart>
