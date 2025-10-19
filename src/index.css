@@ -384,6 +384,30 @@
     @apply flex-1 overflow-y-auto px-4 py-5 sm:px-6;
   }
 
+  .custom-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: none;
+  }
+
+  .custom-select::-ms-expand {
+    display: none;
+  }
+
+  .date-input,
+  .month-input {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-inline: 0;
+  }
+
+  .date-input::-webkit-calendar-picker-indicator,
+  .month-input::-webkit-calendar-picker-indicator {
+    display: none;
+  }
+
   .chip {
     @apply inline-flex items-center gap-1 rounded-full border border-border-subtle bg-primary/10 px-3 py-1 text-xs font-medium text-primary ring-1 ring-primary/20;
   }
