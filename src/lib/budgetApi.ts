@@ -21,16 +21,22 @@ export interface ExpenseCategory {
 
 const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
-const CATEGORY_SELECT_COLUMNS = 'id,user_id,type,name,inserted_at,group_name,order_index';
-const CATEGORY_ORDER_PARAMS = ['order_index.asc.nullsfirst', 'name.asc'] as const;
+const CATEGORY_VIEW_REQUIRED_COLUMNS = ['id', 'user_id', 'type', 'name'] as const;
+const CATEGORY_VIEW_OPTIONAL_COLUMNS = ['inserted_at', 'group_name', 'order_index'] as const;
+const CATEGORY_VIEW_OPTIONAL_COLUMN_SET = new Set<string>([...CATEGORY_VIEW_OPTIONAL_COLUMNS]);
+const CATEGORY_VIEW_COLUMNS = [
+  ...CATEGORY_VIEW_REQUIRED_COLUMNS,
+  ...CATEGORY_VIEW_OPTIONAL_COLUMNS,
+] as const;
+const CATEGORY_ORDER_DEFINITIONS: ReadonlyArray<{ value: string; column?: string }> = [
+  { value: 'order_index.asc.nullsfirst', column: 'order_index' },
+  { value: 'name.asc' },
+];
+const CATEGORY_SELECT_COLUMNS = CATEGORY_VIEW_COLUMNS.join(',');
+const CATEGORY_ORDER_PARAMS = CATEGORY_ORDER_DEFINITIONS.map((definition) => definition.value);
+const missingCategoryViewColumns = new Set<string>();
 
 let categoriesViewUnavailable = false;
-let categoriesFallbackWarned = false;
-
-const isDevelopment = Boolean(
-  (typeof import.meta !== 'undefined' && (import.meta as any)?.env?.DEV) ||
-    (typeof process !== 'undefined' && (process as any)?.env?.NODE_ENV === 'development')
-);
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -43,10 +49,8 @@ async function parsePostgrestError(response: Response, fallback: string): Promis
     if ((body as any)?.message) {
       message = (body as any).message as string;
     }
-  } catch (error) {
-    if (isDevelopment) {
-      console.warn('[HW] Failed to parse PostgREST error response', error);
-    }
+  } catch (_error) {
+    // ignore JSON parse errors from PostgREST error responses
   }
   const err = new Error(message);
   (err as { status?: number }).status = response.status;
@@ -219,10 +223,7 @@ function getPreviousPeriod(period: string): string | null {
     const prevYear = current.getUTCFullYear();
     const prevMonth = (current.getUTCMonth() + 1).toString().padStart(2, '0');
     return `${prevYear}-${prevMonth}`;
-  } catch (error) {
-    if (isDevelopment) {
-      console.warn('[HW] Failed to resolve previous period', error);
-    }
+  } catch (_error) {
     return null;
   }
 }
@@ -475,11 +476,8 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   try {
     const rows = await fetchFromCloud();
     return rows;
-  } catch (error) {
+  } catch (_error) {
     // Fallback handled below when cloud fetch fails (e.g. offline or guest mode)
-    if (isDevelopment && error instanceof Error) {
-      console.warn('[HW] listCategoriesExpense fallback', error);
-    }
   }
 
   const localCategories = await listAllCategories();
@@ -497,50 +495,86 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
     );
 }
 
-async function fetchExpenseCategoriesRemote(
-  userId: string,
-  signal?: AbortSignal
-): Promise<ExpenseCategory[]> {
+function buildCategoryViewSelect(): string {
+  const optionalColumns = CATEGORY_VIEW_OPTIONAL_COLUMNS.filter(
+    (column) => !missingCategoryViewColumns.has(column)
+  );
+  return [...CATEGORY_VIEW_REQUIRED_COLUMNS, ...optionalColumns].join(',');
+}
+
+function buildCategoryViewOrderParams(): ReadonlyArray<string> {
+  return CATEGORY_ORDER_DEFINITIONS.filter(
+    (definition) =>
+      !definition.column || !missingCategoryViewColumns.has(definition.column)
+  ).map((definition) => definition.value);
+}
+
+function createCategoryViewParams(userId: string, type: 'income' | 'expense'): URLSearchParams {
+  const params = new URLSearchParams({
+    select: buildCategoryViewSelect(),
+    user_id: `eq.${userId}`,
+    type: `eq.${type}`,
+  });
+  buildCategoryViewOrderParams().forEach((order) => {
+    params.append('order', order);
+  });
+  return params;
+}
+
+function createCategoryFallbackParams(userId: string, type: 'income' | 'expense'): URLSearchParams {
   const params = new URLSearchParams({
     select: CATEGORY_SELECT_COLUMNS,
     user_id: `eq.${userId}`,
-    type: 'eq.expense',
+    type: `eq.${type}`,
   });
   CATEGORY_ORDER_PARAMS.forEach((order) => {
     params.append('order', order);
   });
+  return params;
+}
+
+function extractMissingColumnName(bodyText: string): string | null {
+  const match = bodyText.match(/column\s+"?([A-Za-z0-9_]+)"?\s+does not exist/i);
+  return match ? match[1] ?? null : null;
+}
+
+async function fetchExpenseCategoriesRemote(
+  userId: string,
+  signal?: AbortSignal
+): Promise<ExpenseCategory[]> {
   const headers = buildSupabaseHeaders();
 
   if (!categoriesViewUnavailable) {
-    const viewUrl = createRestUrl('/rest/v1/v_categories_budget', params);
-    const response = await fetch(viewUrl, { headers, signal });
-    if (response.status === 404) {
-      categoriesViewUnavailable = true;
-      if (!categoriesFallbackWarned) {
-        console.warn('v_categories_budget missing — using fallback /categories');
-        categoriesFallbackWarned = true;
-      }
-    } else if (response.status === 400) {
-      const bodyText = await response.clone().text();
-      const missingColumn =
-        /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
-      if (missingColumn) {
+    while (!categoriesViewUnavailable) {
+      const params = createCategoryViewParams(userId, 'expense');
+      const viewUrl = createRestUrl('/rest/v1/v_categories_budget', params);
+      const response = await fetch(viewUrl, { headers, signal });
+      if (response.status === 404) {
         categoriesViewUnavailable = true;
-        if (!categoriesFallbackWarned) {
-          console.warn(
-            'v_categories_budget missing expected columns — using fallback /categories'
-          );
-          categoriesFallbackWarned = true;
-        }
-      } else {
-        throw await parsePostgrestError(
-          response,
-          'Gagal memuat kategori pengeluaran'
-        );
+        break;
       }
-    } else if (!response.ok) {
-      throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
-    } else {
+      if (response.status === 400) {
+        const bodyText = await response.clone().text();
+        const missingColumnName = extractMissingColumnName(bodyText);
+        const shouldRetry =
+          missingColumnName !== null &&
+          CATEGORY_VIEW_OPTIONAL_COLUMN_SET.has(missingColumnName) &&
+          !missingCategoryViewColumns.has(missingColumnName);
+        if (shouldRetry) {
+          missingCategoryViewColumns.add(missingColumnName);
+          continue;
+        }
+        const missingColumn =
+          /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
+        if (missingColumn) {
+          categoriesViewUnavailable = true;
+          break;
+        }
+        throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
+      }
+      if (!response.ok) {
+        throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
+      }
       const data = ((await response.json()) ?? []) as Record<string, unknown>[];
       return data.map((row) =>
         mapCategoryRecordToExpense({
@@ -556,7 +590,8 @@ async function fetchExpenseCategoriesRemote(
     }
   }
 
-  const fallbackUrl = createRestUrl('/rest/v1/categories', params);
+  const fallbackParams = createCategoryFallbackParams(userId, 'expense');
+  const fallbackUrl = createRestUrl('/rest/v1/categories', fallbackParams);
   const fallbackResponse = await fetch(fallbackUrl, { headers, signal });
   if (fallbackResponse.status === 404) {
     throw new Error('Endpoint kategori belum tersedia');
