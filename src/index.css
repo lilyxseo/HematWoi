@@ -253,6 +253,35 @@
     @apply form-control;
   }
 
+  .select-no-arrow {
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    background-image: none !important;
+  }
+
+  .select-no-arrow::-ms-expand {
+    display: none;
+  }
+
+  .date-input-no-indicator {
+    padding-right: 0;
+  }
+
+  .date-input-no-indicator::-webkit-calendar-picker-indicator {
+    opacity: 0;
+  }
+
+  .date-input-no-indicator::-webkit-clear-button,
+  .date-input-no-indicator::-webkit-inner-spin-button {
+    display: none;
+  }
+
+  .date-input-no-indicator::-ms-clear,
+  .date-input-no-indicator::-ms-expand {
+    display: none;
+  }
+
   .form-label {
     @apply text-sm font-medium text-text;
   }
