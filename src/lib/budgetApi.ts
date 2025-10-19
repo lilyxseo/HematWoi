@@ -22,6 +22,8 @@ export interface ExpenseCategory {
 const FALLBACK_CATEGORY_INSERTED_AT = '1970-01-01T00:00:00.000Z';
 
 const CATEGORY_SELECT_COLUMNS = 'id,user_id,type,name,inserted_at,group_name,order_index';
+const CATEGORY_FALLBACK_SELECT_COLUMNS =
+  'id,user_id,type,name,group_name,inserted_at:created_at,sort_order';
 const CATEGORY_ORDER_PARAMS = ['order_index.asc.nullsfirst', 'name.asc'] as const;
 
 let categoriesViewUnavailable = false;
@@ -556,7 +558,15 @@ async function fetchExpenseCategoriesRemote(
     }
   }
 
-  const fallbackUrl = createRestUrl('/rest/v1/categories', params);
+  const fallbackParams = new URLSearchParams({
+    select: CATEGORY_FALLBACK_SELECT_COLUMNS,
+    user_id: `eq.${userId}`,
+    type: 'eq.expense',
+  });
+  fallbackParams.append('order', 'sort_order.asc.nullsfirst');
+  fallbackParams.append('order', 'name.asc');
+
+  const fallbackUrl = createRestUrl('/rest/v1/categories', fallbackParams);
   const fallbackResponse = await fetch(fallbackUrl, { headers, signal });
   if (fallbackResponse.status === 404) {
     throw new Error('Endpoint kategori belum tersedia');
@@ -574,6 +584,7 @@ async function fetchExpenseCategoriesRemote(
       inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
       group_name: (row.group_name as string | null | undefined) ?? null,
       order_index: parseOrderIndex((row as any).order_index),
+      sort_order: parseOrderIndex((row as any).sort_order),
     })
   );
 }
