@@ -372,7 +372,7 @@ export default function Categories() {
   }, [confirming, handleDeleteCategory]);
 
   return (
-    <Page>
+    <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 sm:px-4 md:px-6">
       <div className="space-y-[var(--section-y)]">
         <PageHeader
           title="Manajemen Kategori"

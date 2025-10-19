@@ -749,7 +749,7 @@ export default function Debts() {
   };
 
   return (
-    <Page>
+    <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 sm:px-4 md:px-6">
       <div className="space-y-6 min-w-0">
         <PageHeader title="Hutang" description={pageDescription}>
           <button
