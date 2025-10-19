@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PostgrestError } from "@supabase/supabase-js"
+import type { PeriodPreset } from "../components/dashboard/PeriodPicker"
 import { supabase } from "../lib/supabase.js"
 
 export type DashboardRange = {
@@ -90,7 +91,7 @@ function loadGuestStorage(): GuestStorage | null {
   }
 }
 
-function computeGuestMetrics(range: DashboardRange): MetricsState {
+function computeGuestMetrics(range: DashboardRange, preset?: PeriodPreset): MetricsState {
   const storage = loadGuestStorage()
   const txs = Array.isArray(storage?.txs)
     ? (storage?.txs as Array<Record<string, any>>)
@@ -147,7 +148,7 @@ function computeGuestMetrics(range: DashboardRange): MetricsState {
 
   const accounts: AccountRow[] = Array.from(accountIds).map((id) => ({ id, type: "cash" as const }))
 
-  return buildMetrics({ transactions: normalized, accounts, range })
+  return buildMetrics({ transactions: normalized, accounts, range, preset })
 }
 
 function sum(values: Iterable<number>): number {
@@ -290,13 +291,56 @@ type BuildMetricsArgs = {
   transactions: TransactionRow[]
   accounts: AccountRow[]
   range: DashboardRange
+  preset?: PeriodPreset
 }
 
-function buildMetrics({ transactions, accounts, range }: BuildMetricsArgs): MetricsState {
+function shiftRange(range: DashboardRange, days: number): DashboardRange {
+  const startDate = toDate(range.start)
+  const endDate = toDate(range.end)
+  if (!startDate || !endDate || !Number.isFinite(days)) {
+    return range
+  }
+  const delta = Math.trunc(days) * MS_PER_DAY
+  const prevStart = new Date(startDate.getTime() - delta)
+  const prevEnd = new Date(endDate.getTime() - delta)
+  return { start: formatDate(prevStart), end: formatDate(prevEnd) }
+}
+
+function getComparisonRange(range: DashboardRange, preset?: PeriodPreset): DashboardRange {
+  const safeRange = clampRangeToToday(range)
+  const startDate = toDate(safeRange.start)
+  const endDate = toDate(safeRange.end)
+  if (!startDate || !endDate) {
+    return safeRange
+  }
+
+  if (preset === "today") {
+    return shiftRange(safeRange, 1)
+  }
+
+  if (preset === "week") {
+    return shiftRange(safeRange, 7)
+  }
+
+  if (preset === "month") {
+    const monthAnchor = safeRange.end || safeRange.start
+    const rawMonthRange = getMonthRange(monthAnchor)
+    return getPreviousMonthRange(rawMonthRange)
+  }
+
+  const span = Math.max(
+    1,
+    Math.round((endDate.getTime() - startDate.getTime()) / MS_PER_DAY) + 1,
+  )
+  return shiftRange(safeRange, span)
+}
+
+function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArgs): MetricsState {
   const safeTransactions = Array.isArray(transactions) ? transactions : []
   const safeAccounts = Array.isArray(accounts) ? accounts : []
 
-  const rangeTransactions = safeTransactions.filter((tx) => withinRange(tx, range))
+  const normalizedRange = clampRangeToToday(range)
+  const rangeTransactions = safeTransactions.filter((tx) => withinRange(tx, normalizedRange))
   let income = 0
   let expense = 0
   for (const tx of rangeTransactions) {
@@ -307,37 +351,22 @@ function buildMetrics({ transactions, accounts, range }: BuildMetricsArgs): Metr
     else if (tx.type === "expense") expense += amount
   }
 
-  const monthAnchor = range.end || range.start
-  const rawMonthRange = getMonthRange(monthAnchor)
-  const monthRange = clampRangeToToday(rawMonthRange)
-  const previousMonthRange = getPreviousMonthRange(rawMonthRange)
+  const comparisonRange = getComparisonRange(normalizedRange, preset)
+  const comparisonTransactions = safeTransactions.filter((tx) => withinRange(tx, comparisonRange))
 
-  const monthTransactions = safeTransactions.filter((tx) => withinRange(tx, monthRange))
-  const previousMonthTransactions = safeTransactions.filter((tx) => withinRange(tx, previousMonthRange))
-
-  let monthIncome = 0
-  let monthExpense = 0
-  for (const tx of monthTransactions) {
+  let comparisonIncome = 0
+  let comparisonExpense = 0
+  for (const tx of comparisonTransactions) {
     if (isTransfer(tx)) continue
     const amount = asNumber(tx.amount)
     if (!amount) continue
-    if (tx.type === "income") monthIncome += amount
-    else if (tx.type === "expense") monthExpense += amount
-  }
-
-  let previousMonthIncome = 0
-  let previousMonthExpense = 0
-  for (const tx of previousMonthTransactions) {
-    if (isTransfer(tx)) continue
-    const amount = asNumber(tx.amount)
-    if (!amount) continue
-    if (tx.type === "income") previousMonthIncome += amount
-    else if (tx.type === "expense") previousMonthExpense += amount
+    if (tx.type === "income") comparisonIncome += amount
+    else if (tx.type === "expense") comparisonExpense += amount
   }
 
   const dailyIncome = new Map<string, number>()
   const dailyExpense = new Map<string, number>()
-  for (const tx of monthTransactions) {
+  for (const tx of rangeTransactions) {
     if (isTransfer(tx)) continue
     const txDate = (tx.date ?? "").slice(0, 10)
     if (!txDate) continue
@@ -350,24 +379,42 @@ function buildMetrics({ transactions, accounts, range }: BuildMetricsArgs): Metr
     }
   }
 
-  const daysInMonth = listDays(monthRange)
-  const activeDays = daysInMonth.length ? daysInMonth : [monthRange.end]
+  const daysInRange = listDays(normalizedRange)
+  const activeDays = daysInRange.length
+    ? daysInRange
+    : [normalizedRange.end || normalizedRange.start].filter(Boolean)
   const incomeTrend = activeDays.map((day) => dailyIncome.get(day) ?? 0)
   const expenseTrend = activeDays.map((day) => dailyExpense.get(day) ?? 0)
 
-  const previousBalanceSnapshot = computeAccountBalances(safeTransactions, safeAccounts, previousMonthRange.end)
-  const { cashBalance, nonCashBalance, totalBalance } = computeAccountBalances(safeTransactions, safeAccounts)
+  const startDate = toDate(normalizedRange.start)
+  const baselineDate = startDate ? new Date(startDate.getTime() - MS_PER_DAY) : null
+  const baselineSnapshot = computeAccountBalances(
+    safeTransactions,
+    safeAccounts,
+    baselineDate ? formatDate(baselineDate) : undefined,
+  )
+  const currentSnapshot = computeAccountBalances(
+    safeTransactions,
+    safeAccounts,
+    normalizedRange.end || undefined,
+  )
+  const comparisonSnapshot = computeAccountBalances(
+    safeTransactions,
+    safeAccounts,
+    comparisonRange.end || undefined,
+  )
+  const { cashBalance, nonCashBalance, totalBalance } = currentSnapshot
 
-  let runningBalance = previousBalanceSnapshot.totalBalance
+  let runningBalance = baselineSnapshot.totalBalance
   const balanceTrend = activeDays.map((day) => {
     const delta = (dailyIncome.get(day) ?? 0) - (dailyExpense.get(day) ?? 0)
     runningBalance += delta
     return runningBalance
   })
 
-  const incomeMoM = percentageChange(monthIncome, previousMonthIncome)
-  const expenseMoM = percentageChange(monthExpense, previousMonthExpense)
-  const balanceMoM = percentageChange(totalBalance, previousBalanceSnapshot.totalBalance)
+  const incomeMoM = percentageChange(income, comparisonIncome)
+  const expenseMoM = percentageChange(expense, comparisonExpense)
+  const balanceMoM = percentageChange(totalBalance, comparisonSnapshot.totalBalance)
 
   return {
     income,
@@ -398,7 +445,7 @@ function mapError(error: PostgrestError | Error): Error {
   return new Error(error.message)
 }
 
-export function useDashboardBalances({ start, end }: DashboardRange) {
+export function useDashboardBalances({ start, end }: DashboardRange, preset?: PeriodPreset) {
   const [metrics, setMetrics] = useState<MetricsState>(INITIAL_STATE)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
@@ -408,14 +455,15 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
   const range = useMemo(() => sanitizeRange({ start, end }), [start, end])
 
   const refresh = useCallback(
-    async (override?: DashboardRange) => {
-      const currentRange = sanitizeRange(override ?? range)
+    async (overrideRange?: DashboardRange, overridePreset?: PeriodPreset) => {
+      const currentRange = sanitizeRange(overrideRange ?? range)
+      const currentPreset = overridePreset ?? preset
       const requestId = ++requestIdRef.current
       setLoading(true)
       setError(null)
 
       const applyGuestMetrics = () => {
-        const fallback = computeGuestMetrics(currentRange)
+        const fallback = computeGuestMetrics(currentRange, currentPreset)
         if (!mountedRef.current || requestId !== requestIdRef.current) return false
         setMetrics(fallback)
         setError(null)
@@ -462,7 +510,12 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         const accounts = (accountsData ?? []) as AccountRow[]
         const transactions = (transactionsData ?? []) as TransactionRow[]
 
-        const computed = buildMetrics({ transactions, accounts, range: currentRange })
+        const computed = buildMetrics({
+          transactions,
+          accounts,
+          range: currentRange,
+          preset: currentPreset,
+        })
 
         if (!mountedRef.current || requestId !== requestIdRef.current) return
         setMetrics(computed)
@@ -479,7 +532,7 @@ export function useDashboardBalances({ start, end }: DashboardRange) {
         setLoading(false)
       }
     },
-    [range],
+    [preset, range],
   )
 
   useEffect(() => {
