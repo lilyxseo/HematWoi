@@ -184,7 +184,7 @@ export default function TransactionsFilters({
               id={rangeId}
               value={presetValue}
               onChange={handlePresetChange}
-              className="h-11 w-full appearance-none rounded-2xl bg-slate-900/60 px-4 text-sm font-medium text-slate-200 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)]"
+              className="h-11 w-full appearance-none rounded-2xl bg-slate-900/60 pl-4 pr-10 text-sm font-medium text-slate-200 ring-2 ring-slate-800 focus:outline-none focus:ring-[var(--accent)] select-no-indicator"
             >
               {Object.entries(PRESET_OPTIONS).map(([value, label]) => (
                 <option key={value} value={value}>
