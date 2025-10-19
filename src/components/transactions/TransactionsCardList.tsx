@@ -66,18 +66,18 @@ const TYPE_META: Record<
 > = {
   income: {
     icon: ArrowUpCircle,
-    amountClass: "text-emerald-400",
-    iconWrapper: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/40",
+    amountClass: "text-emerald-300",
+    iconWrapper: "bg-gradient-to-br from-emerald-500/20 via-emerald-500/10 to-transparent text-emerald-200 ring-emerald-400/40",
   },
   expense: {
     icon: ArrowDownCircle,
-    amountClass: "text-rose-400",
-    iconWrapper: "bg-rose-500/10 text-rose-300 ring-rose-500/40",
+    amountClass: "text-rose-300",
+    iconWrapper: "bg-gradient-to-br from-rose-500/20 via-rose-500/10 to-transparent text-rose-200 ring-rose-400/40",
   },
   transfer: {
     icon: ArrowRightLeft,
     amountClass: "text-slate-200",
-    iconWrapper: "bg-slate-500/10 text-slate-200 ring-slate-500/30",
+    iconWrapper: "bg-gradient-to-br from-slate-500/20 via-slate-500/10 to-transparent text-slate-200 ring-slate-400/40",
   },
 };
 
@@ -153,58 +153,59 @@ export default function TransactionsCardList({
                 <article
                   key={item.id}
                   className={clsx(
-                    "relative overflow-hidden rounded-3xl border border-white/5 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 ring-1 ring-slate-800 transition hover:border-white/10",
+                    "group relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/70 p-5 shadow-lg shadow-black/50 ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)]/40 hover:shadow-black/60",
                     selected && "ring-2 ring-[var(--accent)]/60",
                   )}
                 >
-                  <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-gradient-to-br from-white/10 via-white/0 to-transparent blur-2xl" />
-                  <header className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3">
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                  <div className="pointer-events-none absolute -right-16 -top-20 h-44 w-44 rounded-full bg-[var(--accent)]/10 blur-3xl" />
+                  <header className="relative z-10 flex items-start justify-between gap-4">
+                    <div className="flex flex-1 items-start gap-3">
                       <span
                         className={clsx(
-                          "flex h-10 w-10 items-center justify-center rounded-2xl ring-1 backdrop-blur",
+                          "flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 ring-2 ring-white/10 backdrop-blur",
                           meta.iconWrapper,
                         )}
                       >
                         <TypeIcon className="h-5 w-5" aria-hidden="true" />
                         <span className="sr-only">{typeLabels[item.type] || item.type}</span>
                       </span>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-100">
                           <CategoryDot color={item.category_color} />
                           <span>{item.category || "(Tanpa kategori)"}</span>
                         </div>
+                        <time
+                          dateTime={toDateValue(item.date)}
+                          className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/60 px-3 py-1 text-xs font-medium text-slate-300 shadow-sm shadow-black/40"
+                        >
+                          <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+                          {formattedDate}
+                        </time>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
-                      <time
-                        dateTime={toDateValue(item.date)}
-                        className="inline-flex items-center gap-2 rounded-full bg-slate-800/60 px-3 py-1 text-xs font-medium text-slate-300 ring-1 ring-slate-700"
-                      >
-                        <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-                        {formattedDate}
-                      </time>
                       <input
                         type="checkbox"
                         checked={selected}
                         onChange={(event) => onToggleSelect(item.id, event)}
-                        className="mt-0.5 h-4 w-4 rounded border-slate-600 bg-slate-900 text-[var(--accent)] shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        className="mt-1 h-5 w-5 rounded-lg border border-white/20 bg-slate-900 text-[var(--accent)] shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         aria-label="Pilih transaksi"
                       />
                     </div>
                   </header>
-                  <div className="mt-4 space-y-3">
+                  <div className="relative z-10 mt-5 space-y-4">
                     <p className="text-base font-semibold text-slate-100 line-clamp-2" title={description}>
                       {description}
                     </p>
-                    <div className="grid gap-2 text-sm text-slate-300">
+                    <div className="grid gap-3 text-sm text-slate-300">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center gap-2 rounded-full bg-slate-800/70 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-slate-700/70">
+                        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/70 px-3 py-1 text-xs font-medium text-slate-200 shadow-sm">
                           <Wallet2 className="h-3.5 w-3.5" aria-hidden="true" />
                           {item.account || "—"}
                         </span>
                         {item.type === "transfer" && (
-                          <span className="inline-flex items-center gap-2 rounded-full bg-slate-800/70 px-3 py-1 text-xs font-medium text-slate-200 ring-1 ring-slate-700/70">
+                          <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-900/70 px-3 py-1 text-xs font-medium text-slate-200 shadow-sm">
                             <ArrowRightLeft className="h-3.5 w-3.5" aria-hidden="true" />
                             {item.to_account || "—"}
                           </span>
@@ -212,41 +213,43 @@ export default function TransactionsCardList({
                       </div>
                     </div>
                   </div>
-                  <footer className="mt-5 flex items-center justify-between gap-3">
-                    <span className={clsx("text-2xl font-semibold", meta.amountClass)}>
-                      {formatAmount(item.amount)}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onRepeat(item)}
-                        disabled={repeating}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Ulangi transaksi"
-                      >
-                        {repeating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                        ) : (
-                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onEdit(item)}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-900/80 text-slate-200 ring-1 ring-slate-700 transition hover:bg-slate-800 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                        aria-label="Edit transaksi"
-                      >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onDelete(item.id)}
-                        disabled={deleteDisabled}
-                        className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-500/10 text-rose-300 ring-1 ring-rose-400/40 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Hapus transaksi"
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden="true" />
-                      </button>
+                  <footer className="relative z-10 mt-6 space-y-3">
+                    <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 shadow-inner shadow-black/60">
+                      <span className={clsx("text-2xl font-semibold", meta.amountClass)}>
+                        {formatAmount(item.amount)}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onRepeat(item)}
+                          disabled={repeating}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-slate-200 transition hover:border-[var(--accent)]/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Ulangi transaksi"
+                        >
+                          {repeating ? (
+                            <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                          ) : (
+                            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onEdit(item)}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-slate-900/70 text-slate-200 transition hover:border-[var(--accent)]/40 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                          aria-label="Edit transaksi"
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(item.id)}
+                          disabled={deleteDisabled}
+                          className="flex h-10 w-10 items-center justify-center rounded-xl border border-rose-400/30 bg-rose-500/10 text-rose-200 transition hover:border-rose-300/60 hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Hapus transaksi"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
                     </div>
                   </footer>
                 </article>
@@ -282,29 +285,30 @@ export default function TransactionsCardList({
 
 function SkeletonCard() {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-slate-900/70 p-4 ring-1 ring-slate-800/60 animate-pulse">
-      <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/5 blur-2xl" />
-      <div className="flex items-start gap-3">
-        <span className="h-10 w-10 rounded-2xl bg-slate-800/80" />
+    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/70 p-5 ring-1 ring-white/10 animate-pulse">
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-white/10" />
+      <div className="relative flex items-start gap-3">
+        <span className="h-12 w-12 rounded-2xl bg-slate-900/80" />
         <div className="flex-1 space-y-3">
-          <div className="h-4 w-24 rounded-full bg-slate-800" />
-          <div className="h-3 w-32 rounded-full bg-slate-800/80" />
+          <div className="h-4 w-28 rounded-full bg-slate-800/80" />
+          <div className="h-3 w-36 rounded-full bg-slate-800/60" />
+          <div className="h-3 w-24 rounded-full bg-slate-800/60" />
         </div>
-        <span className="h-4 w-20 rounded-full bg-slate-800/60" />
+        <span className="h-6 w-6 rounded-lg bg-slate-800/70" />
       </div>
-      <div className="mt-5 space-y-3">
-        <div className="h-4 w-full rounded-full bg-slate-800" />
-        <div className="h-4 w-2/3 rounded-full bg-slate-800/70" />
+      <div className="relative mt-6 space-y-4">
+        <div className="h-4 w-full rounded-full bg-slate-800/70" />
         <div className="flex gap-2">
-          <span className="h-6 w-20 rounded-full bg-slate-800/80" />
-          <span className="h-6 w-24 rounded-full bg-slate-800/70" />
+          <span className="h-6 w-24 rounded-full bg-slate-800/60" />
+          <span className="h-6 w-20 rounded-full bg-slate-800/50" />
         </div>
       </div>
-      <div className="mt-6 flex items-center justify-between">
-        <span className="h-6 w-28 rounded-full bg-slate-800" />
+      <div className="relative mt-8 flex items-center justify-between rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3">
+        <span className="h-6 w-28 rounded-full bg-slate-800/70" />
         <div className="flex gap-2">
-          <span className="h-10 w-10 rounded-full bg-slate-800" />
-          <span className="h-10 w-10 rounded-full bg-slate-800/80" />
+          <span className="h-10 w-10 rounded-xl bg-slate-800/70" />
+          <span className="h-10 w-10 rounded-xl bg-slate-800/60" />
+          <span className="h-10 w-10 rounded-xl bg-slate-800/60" />
         </div>
       </div>
     </div>
