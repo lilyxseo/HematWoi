@@ -22,7 +22,7 @@ const DEFAULT_PRESET = "month";
 export default function Dashboard({ stats, txs }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
-  const balances = useDashboardBalances(periodRange);
+  const balances = useDashboardBalances(periodRange, periodPreset);
   const {
     income: periodIncome,
     expense: periodExpense,
@@ -47,8 +47,8 @@ export default function Dashboard({ stats, txs }) {
   });
 
   useEffect(() => {
-    refresh({ start: periodStart, end: periodEnd });
-  }, [periodStart, periodEnd, refresh]);
+    refresh({ start: periodStart, end: periodEnd }, periodPreset);
+  }, [periodStart, periodEnd, periodPreset, refresh]);
 
   const handlePeriodChange = (range, preset) => {
     setPeriodRange(range);
