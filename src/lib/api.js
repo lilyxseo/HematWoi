@@ -512,6 +512,21 @@ export async function listTransactions(options = {}) {
   }
 }
 
+export async function getCachedTransactions(options = {}) {
+  const normalized = normalizeTransactionFilters(options);
+  const { sort, page, pageSize } = normalized;
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    return { rows: [], total: 0, page, pageSize };
+  }
+
+  const cached = await dbCache.list("transactions");
+  const filtered = filterTransactionsOffline(cached, normalized, userId);
+  const sorted = sortTransactions(filtered, sort);
+  const paged = paginate(sorted, page, pageSize);
+  return { rows: paged, total: sorted.length, page, pageSize };
+}
+
 export async function getTransactionsSummary(options = {}) {
   const normalized = normalizeTransactionFilters(options);
   const userId = await getCurrentUserId();
