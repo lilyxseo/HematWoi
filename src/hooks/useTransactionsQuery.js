@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getTransactionsSummary, listCategories } from "../lib/api";
-import { listTransactions } from "../lib/api-transactions";
+import { getCachedTransactions, listTransactions } from "../lib/api-transactions";
 
 const PAGE_SIZE = 50;
 
@@ -146,6 +146,30 @@ export default function useTransactionsQuery() {
     if (page === 1) {
       setItems([]);
     }
+
+    (async () => {
+      try {
+        const cached = await getCachedTransactions(request);
+        if (cancelled) return;
+        const cachedRows = Array.isArray(cached?.rows) ? cached.rows : [];
+        if (typeof cached?.total === "number") {
+          setTotal(cached.total);
+        }
+        if (cachedRows.length || page === 1) {
+          setItems((prev) => {
+            if (page === 1) {
+              return cachedRows;
+            }
+            const existing = prev.slice(0, (page - 1) * PAGE_SIZE);
+            return [...existing, ...cachedRows];
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load cached transactions", err);
+        }
+      }
+    })();
 
     listTransactions(request)
       .then(({ rows, total }) => {
