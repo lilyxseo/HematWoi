@@ -1,5 +1,14 @@
 import { createPortal } from "react-dom";
-import { ChangeEvent, MutableRefObject, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  MutableRefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import clsx from "clsx";
 import { Calendar, ChevronDown, Search } from "lucide-react";
 import CategoryDot from "./CategoryDot";
@@ -28,6 +37,10 @@ function currentMonthValue() {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
+
+type DateInputElement = HTMLInputElement & {
+  showPicker?: () => void;
+};
 
 function toDateInput(value?: string | null) {
   if (!value) return "";
@@ -64,6 +77,41 @@ export default function TransactionsFilters({
   const startId = useId();
   const endId = useId();
   const internalSearchRef = useRef<HTMLInputElement | null>(null);
+  const startInputRef = useRef<HTMLInputElement | null>(null);
+  const endInputRef = useRef<HTMLInputElement | null>(null);
+  const [supportsDesktopPicker, setSupportsDesktopPicker] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      setSupportsDesktopPicker(false);
+      return;
+    }
+    const media = window.matchMedia("(pointer: fine)");
+    setSupportsDesktopPicker(media.matches);
+    const handleChange = (event: MediaQueryListEvent) => {
+      setSupportsDesktopPicker(event.matches);
+    };
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", handleChange);
+      return () => media.removeEventListener("change", handleChange);
+    }
+    media.addListener(handleChange);
+    return () => media.removeListener(handleChange);
+  }, []);
+
+  const openNativePicker = useCallback((input: HTMLInputElement | null) => {
+    if (!supportsDesktopPicker) return;
+    if (!input) return;
+    if (typeof window === "undefined") return;
+    input.focus();
+    window.requestAnimationFrame(() => {
+      try {
+        (input as DateInputElement).showPicker?.();
+      } catch {
+        /* native picker not available */
+      }
+    });
+  }, [supportsDesktopPicker]);
 
   useEffect(() => {
     if (!searchInputRef) return;
@@ -196,24 +244,46 @@ export default function TransactionsFilters({
           </div>
         </label>
         <div className="flex flex-1 flex-wrap gap-3 md:flex-nowrap">
-          <label className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 pl-0 pr-0 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
+          <label
+            className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 pl-0 pr-0 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]"
+            onClick={() => openNativePicker(startInputRef.current)}
+          >
             <Calendar className="ml-3 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
             <input
               id={startId}
+              ref={startInputRef}
               type="date"
               value={toDateInput(filter.period?.start)}
               onChange={handleStartChange}
+              onKeyDown={(event) => {
+                if (!supportsDesktopPicker) return;
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openNativePicker(event.currentTarget);
+                }
+              }}
               className="date-input-no-indicator h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
               aria-label="Tanggal mulai"
             />
           </label>
-          <label className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 pl-0 pr-0 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]">
+          <label
+            className="flex min-w-[160px] flex-1 items-center gap-2 rounded-2xl bg-slate-900/60 pl-0 pr-0 ring-2 ring-slate-800 focus-within:ring-[var(--accent)]"
+            onClick={() => openNativePicker(endInputRef.current)}
+          >
             <Calendar className="ml-3 h-4 w-4 flex-shrink-0 text-slate-500" aria-hidden="true" />
             <input
               id={endId}
+              ref={endInputRef}
               type="date"
               value={toDateInput(filter.period?.end)}
               onChange={handleEndChange}
+              onKeyDown={(event) => {
+                if (!supportsDesktopPicker) return;
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openNativePicker(event.currentTarget);
+                }
+              }}
               className="date-input-no-indicator h-10 flex-1 bg-transparent text-sm text-slate-200 focus:outline-none"
               aria-label="Tanggal akhir"
             />
