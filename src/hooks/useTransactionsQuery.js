@@ -205,6 +205,20 @@ export default function useTransactionsQuery() {
     };
   }, [filter, filterKey, refreshToken]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const handleRefresh = (event) => {
+      const keepPage = Boolean(event?.detail?.keepPage);
+      refresh({ keepPage });
+    };
+    window.addEventListener("transactions:refresh", handleRefresh);
+    return () => {
+      window.removeEventListener("transactions:refresh", handleRefresh);
+    };
+  }, [refresh]);
+
   const updateParams = useCallback(
     (nextFilter, nextPage = 1) => {
       const merged = {
