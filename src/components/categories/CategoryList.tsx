@@ -1,4 +1,10 @@
-import { ArrowDown, ArrowUp, Loader2, Pencil, Trash2 } from "lucide-react";
+import {
+  IconArrowDown as ArrowDown,
+  IconArrowUp as ArrowUp,
+  IconLoader2 as Loader2,
+  IconPencil as Pencil,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import CategoryForm from "./CategoryForm";
 import type { CategoryRecord, CategoryType } from "../../lib/api-categories";
 

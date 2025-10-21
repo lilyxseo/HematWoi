@@ -1,5 +1,7 @@
 import clsx from "clsx";
-import { TrendingUp } from "lucide-react";
+import {
+  IconTrendingUp as TrendingUp
+} from '@tabler/icons-react';
 import Card, { CardHeader } from "../Card";
 
 function EmptyListState({ message }) {

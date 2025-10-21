@@ -1,6 +1,11 @@
 // @ts-nocheck
 import { useMemo, useState } from 'react';
-import { DownloadCloud, Loader2, RefreshCw, UploadCloud } from 'lucide-react';
+import {
+  IconCloudDownload as DownloadCloud,
+  IconLoader2 as Loader2,
+  IconRefresh as RefreshCw,
+  IconCloudUpload as UploadCloud
+} from '@tabler/icons-react';
 import { supabase } from '../../lib/supabase';
 import { getCurrentUserId } from '../../lib/session';
 

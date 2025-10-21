@@ -1,6 +1,8 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import {
+  IconX as X
+} from '@tabler/icons-react';
 import type { DebtInput, DebtRecord, DebtType } from '../../lib/api-debts';
 
 const todayIso = () => {

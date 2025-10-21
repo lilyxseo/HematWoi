@@ -1,16 +1,16 @@
 import clsx from 'clsx';
 import {
-  AlertTriangle,
-  CheckCircle2,
-  Eye,
-  Flame,
-  NotebookPen,
-  Pencil,
-  RefreshCcw,
-  Sparkles,
-  Star,
-  Trash2,
-} from 'lucide-react';
+  IconAlertTriangle as AlertTriangle,
+  IconCircleCheck as CheckCircle2,
+  IconEye as Eye,
+  IconFlame as Flame,
+  IconNotebook as NotebookPen,
+  IconPencil as Pencil,
+  IconRefresh as RefreshCcw,
+  IconSparkles as Sparkles,
+  IconStar as Star,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import type { BudgetWithSpent } from '../../../lib/budgetApi';
 
 const currencyFormatter = new Intl.NumberFormat('id-ID', {

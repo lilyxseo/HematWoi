@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import Logo from "./Logo";
 import SignIn from "./SignIn";
 import { supabase } from "../lib/supabase";
-import { Sun, Moon } from "lucide-react";
+import {
+  IconSun as Sun,
+  IconMoon as Moon
+} from '@tabler/icons-react';
 
 function formatCurrency(n = 0) {
   const pref = window.__hw_prefs?.currency === "USD" ? "USD" : "IDR";

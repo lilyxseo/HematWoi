@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { CheckCircle } from "lucide-react";
+import {
+  IconCircleCheck as CheckCircle
+} from '@tabler/icons-react';
 import "./Animations.css";
 
 const STORAGE_KEY = "savings-milestone-achieved";

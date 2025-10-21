@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { AlertCircle, Archive, FileJson, FileSpreadsheet, Loader2, ShieldOff, Trash2 } from 'lucide-react';
+import {
+  IconAlertCircle as AlertCircle,
+  IconArchive as Archive,
+  IconFileCode as FileJson,
+  IconFileSpreadsheet as FileSpreadsheet,
+  IconLoader2 as Loader2,
+  IconShieldOff as ShieldOff,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 
 interface PrivacyDataCardProps {
   offline: boolean;

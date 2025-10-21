@@ -1,7 +1,15 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CalendarClock, Flame, Info, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import {
+  IconAlertTriangle as AlertTriangle,
+  IconCalendarClock as CalendarClock,
+  IconFlame as Flame,
+  IconInfoCircle as Info,
+  IconTrendingDown as TrendingDown,
+  IconTrendingUp as TrendingUp,
+  IconWallet as Wallet
+} from '@tabler/icons-react';
 import Card, { CardBody, CardHeader } from '../Card'
 import FinancialInsightItem, { FinancialInsightItemSkeleton } from './FinancialInsightItem'
 import {

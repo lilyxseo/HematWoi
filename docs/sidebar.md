@@ -1,7 +1,7 @@
 # Sidebar Navigation
 
 The global navigation is driven by a single configuration file: [`src/router/nav.config.tsx`](../src/router/nav.config.tsx).
-Each item in the array defines the route `path`, human readable `title` and the icon from `lucide-react`.
+Each item in the array defines the route `path`, human readable `title` and the icon from `@tabler/icons-react`.
 
 ```ts
 export type NavItem = {
@@ -16,7 +16,7 @@ export type NavItem = {
 
 ## Adding a menu item
 
-1. Import a suitable icon from `lucide-react`.
+1. Import a suitable icon from `@tabler/icons-react`.
 2. Append a new object to `NAV_ITEMS` with `title`, `path` and `icon`.
 3. Set `section` to `"primary"` for main items or `"secondary"` for footer links.
 4. If the page requires authentication set `protected: true`.

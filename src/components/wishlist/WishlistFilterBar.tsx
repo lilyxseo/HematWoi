@@ -1,5 +1,8 @@
 import { ChangeEvent, FormEvent } from 'react';
-import { RotateCcw, Search } from 'lucide-react';
+import {
+  IconRotate2 as RotateCcw,
+  IconSearch as Search
+} from '@tabler/icons-react';
 import type { WishlistStatus } from '../../lib/wishlistApi';
 import { WISHLIST_PRIORITY_LABELS } from '../../lib/wishlistPriority';
 import type { WishlistFilters } from '../../hooks/useWishlist';

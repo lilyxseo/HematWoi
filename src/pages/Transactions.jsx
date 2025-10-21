@@ -2,18 +2,18 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
-  AlertTriangle,
-  ArrowRightLeft,
-  Check,
-  ChevronDown,
-  Download,
-  Inbox,
-  Loader2,
-  Pencil,
-  Plus,
-  Trash2,
-  X,
-} from "lucide-react";
+  IconAlertTriangle as AlertTriangle,
+  IconArrowsRightLeft as ArrowRightLeft,
+  IconCheck as Check,
+  IconChevronDown as ChevronDown,
+  IconDownload as Download,
+  IconInbox as Inbox,
+  IconLoader2 as Loader2,
+  IconPencil as Pencil,
+  IconPlus as Plus,
+  IconTrash as Trash2,
+  IconX as X
+} from '@tabler/icons-react';
 import TransactionsFilters from "../components/transactions/TransactionsFilters";
 import TransactionsTable from "../components/transactions/TransactionsTable";
 import TransactionsCardList from "../components/transactions/TransactionsCardList";

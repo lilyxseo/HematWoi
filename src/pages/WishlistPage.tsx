@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
-  ArrowDownToLine,
-  CheckCircle2,
-  CircleDollarSign,
-  ChevronDown,
-  Layers3,
-  Plus,
-  Sparkles,
-} from 'lucide-react';
+  IconArrowBarToDown as ArrowDownToLine,
+  IconCircleCheck as CheckCircle2,
+  IconCurrencyDollar as CircleDollarSign,
+  IconChevronDown as ChevronDown,
+  IconLayersIntersect as Layers3,
+  IconPlus as Plus,
+  IconSparkles as Sparkles
+} from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';

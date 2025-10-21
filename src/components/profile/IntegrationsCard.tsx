@@ -1,5 +1,10 @@
 import { useCallback, useState } from 'react';
-import { Github, Globe, Loader2, ShieldAlert } from 'lucide-react';
+import {
+  IconBrandGithub as Github,
+  IconGlobe as Globe,
+  IconLoader2 as Loader2,
+  IconShieldAlert as ShieldAlert
+} from '@tabler/icons-react';
 
 interface ProviderInfo {
   id: string | null;

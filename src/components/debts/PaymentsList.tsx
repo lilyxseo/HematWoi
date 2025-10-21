@@ -1,4 +1,6 @@
-import { Trash2 } from 'lucide-react';
+import {
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import type { DebtPaymentRecord } from '../../lib/api-debts';
 
 const currencyFormatter = new Intl.NumberFormat('id-ID', {

@@ -13,20 +13,20 @@ export type NavItem = {
 };
 
 import {
-  LayoutDashboard,
-  BarChart3,
-  ListChecks,
-  Wallet,
-  Flag,
-  HandCoins,
-  Heart,
-  Tags,
-  Database,
-  Repeat,
-  Settings as SettingsIcon,
-  User as UserIcon,
-  CreditCard,
-} from 'lucide-react';
+  IconLayoutDashboard as LayoutDashboard,
+  IconChartBar as BarChart3,
+  IconListCheck as ListChecks,
+  IconWallet as Wallet,
+  IconFlag as Flag,
+  IconCoins as HandCoins,
+  IconHeart as Heart,
+  IconTags as Tags,
+  IconDatabase as Database,
+  IconRepeat as Repeat,
+  IconSettings as SettingsIcon,
+  IconUser as UserIcon,
+  IconCreditCard as CreditCard
+} from '@tabler/icons-react';
 
 export const NAV_ITEMS: NavItem[] = [
   {

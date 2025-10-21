@@ -1,5 +1,7 @@
 import { formatCurrency } from "../../lib/format";
-import { X } from "lucide-react";
+import {
+  IconX as X
+} from '@tabler/icons-react';
 
 export default function BudgetDetailPanel({ item, onClose }) {
   if (!item) return null;

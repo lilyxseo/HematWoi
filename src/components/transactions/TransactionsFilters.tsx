@@ -10,7 +10,11 @@ import {
   useState,
 } from "react";
 import clsx from "clsx";
-import { Calendar, ChevronDown, Search } from "lucide-react";
+import {
+  IconCalendar as Calendar,
+  IconChevronDown as ChevronDown,
+  IconSearch as Search
+} from '@tabler/icons-react';
 import CategoryDot from "./CategoryDot";
 
 const TYPE_LABELS: Record<string, string> = {

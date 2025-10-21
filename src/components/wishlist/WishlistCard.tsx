@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CheckCircle2,
-  CircleDollarSign,
-  EllipsisVertical,
-  ExternalLink,
-  Folder,
-  Goal,
-  NotebookPen,
-  ShoppingBag,
-  Trash2,
-} from 'lucide-react';
+  IconCircleCheck as CheckCircle2,
+  IconCurrencyDollar as CircleDollarSign,
+  IconDotsVertical as EllipsisVertical,
+  IconExternalLink as ExternalLink,
+  IconFolder as Folder,
+  IconTarget as Goal,
+  IconNotebook as NotebookPen,
+  IconShoppingBag as ShoppingBag,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import type { WishlistItem, WishlistStatus } from '../../lib/wishlistApi';
 import { getWishlistPriorityLabel } from '../../lib/wishlistPriority';
 

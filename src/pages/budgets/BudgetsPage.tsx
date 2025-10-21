@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import {
-  CalendarDays,
-  CalendarRange,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  RefreshCw,
-} from 'lucide-react';
+  IconCalendarDue as CalendarDays,
+  IconCalendarRange as CalendarRange,
+  IconChevronDown as ChevronDown,
+  IconChevronLeft as ChevronLeft,
+  IconChevronRight as ChevronRight,
+  IconPlus as Plus,
+  IconRefresh as RefreshCw
+} from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import Page from '../../layout/Page';
 import Section from '../../layout/Section';

@@ -1,5 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
-import { AlertCircle, Laptop, Loader2, LogOut, RefreshCcw, ShieldCheck } from 'lucide-react';
+import {
+  IconAlertCircle as AlertCircle,
+  IconDeviceLaptop as Laptop,
+  IconLoader2 as Loader2,
+  IconLogout as LogOut,
+  IconRefresh as RefreshCcw,
+  IconShieldCheck as ShieldCheck
+} from '@tabler/icons-react';
 import type { PasswordChangePayload, PasswordCreatePayload, SessionInfo } from '../../lib/api-profile';
 
 interface SecurityCardProps {

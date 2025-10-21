@@ -2,13 +2,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
-  Check,
-  ChevronDown,
-  CircleAlert,
-  Loader2,
-  Tag,
-  X,
-} from 'lucide-react';
+  IconCheck as Check,
+  IconChevronDown as ChevronDown,
+  IconAlertCircle as CircleAlert,
+  IconLoader2 as Loader2,
+  IconTag as Tag,
+  IconX as X
+} from '@tabler/icons-react';
 
 const TYPE_OPTIONS = [
   { value: 'income', label: 'Pemasukan' },

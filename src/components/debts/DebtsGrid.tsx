@@ -1,5 +1,14 @@
 import clsx from 'clsx';
-import { CalendarClock, ChevronLeft, ChevronRight, Loader2, NotebookPen, Pencil, Trash2, Wallet } from 'lucide-react';
+import {
+  IconCalendarClock as CalendarClock,
+  IconChevronLeft as ChevronLeft,
+  IconChevronRight as ChevronRight,
+  IconLoader2 as Loader2,
+  IconNotebook as NotebookPen,
+  IconPencil as Pencil,
+  IconTrash as Trash2,
+  IconWallet as Wallet
+} from '@tabler/icons-react';
 import type { DebtRecord } from '../../lib/api-debts';
 
 const currencyFormatter = new Intl.NumberFormat('id-ID', {

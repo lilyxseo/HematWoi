@@ -1,6 +1,9 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Trash2 } from 'lucide-react';
+import {
+  IconX as X,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import type { GoalEntryRecord, GoalRecord } from '../../lib/api-goals';
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll';
 

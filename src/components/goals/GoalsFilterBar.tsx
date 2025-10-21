@@ -1,5 +1,8 @@
 import { ChangeEvent, FormEvent } from 'react';
-import { RotateCcw, Search } from 'lucide-react';
+import {
+  IconRotate2 as RotateCcw,
+  IconSearch as Search
+} from '@tabler/icons-react';
 import type { GoalPriority, GoalStatus } from '../../lib/api-goals';
 
 export interface GoalsFilterState {

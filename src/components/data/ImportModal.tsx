@@ -1,6 +1,13 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, CheckCircle2, FileUp, Loader2, TriangleAlert, Upload } from 'lucide-react';
+import {
+  IconArrowLeft as ArrowLeft,
+  IconCircleCheck as CheckCircle2,
+  IconFileUpload as FileUp,
+  IconLoader2 as Loader2,
+  IconAlertTriangle as TriangleAlert,
+  IconUpload as Upload
+} from '@tabler/icons-react';
 import {
   parseCsv,
   mapRowsToTransactions,

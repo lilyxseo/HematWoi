@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import {
-  Cloud,
-  CloudOff,
-  Monitor,
-  Moon,
-  Sun,
-  X,
-} from "lucide-react";
+  IconCloud as Cloud,
+  IconCloudOff as CloudOff,
+  IconDeviceDesktop as Monitor,
+  IconMoon as Moon,
+  IconSun as Sun,
+  IconX as X
+} from '@tabler/icons-react';
 import SidebarSection from "./SidebarSection";
 import SidebarItem from "./SidebarItem";
 import Logo from "../Logo";

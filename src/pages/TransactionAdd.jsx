@@ -1,23 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowRight,
-  ArrowLeftRight,
-  Banknote,
-  BookmarkPlus,
-  Calendar,
-  FileText,
-  Loader2,
-  Receipt,
-  RotateCcw,
-  Save,
-  Tag as TagIcon,
-  Trash2,
-  TrendingDown,
-  TrendingUp,
-  Wallet,
-  Wand2,
-} from 'lucide-react';
+  IconArrowRight as ArrowRight,
+  IconArrowsLeftRight as ArrowLeftRight,
+  IconCash as Banknote,
+  IconBookmarkPlus as BookmarkPlus,
+  IconCalendar as Calendar,
+  IconFileText as FileText,
+  IconLoader2 as Loader2,
+  IconReceipt as Receipt,
+  IconRotate2 as RotateCcw,
+  IconDeviceFloppy as Save,
+  IconTag as TagIcon,
+  IconTrash as Trash2,
+  IconTrendingDown as TrendingDown,
+  IconTrendingUp as TrendingUp,
+  IconWallet as Wallet,
+  IconMagicWand as Wand2
+} from '@tabler/icons-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';

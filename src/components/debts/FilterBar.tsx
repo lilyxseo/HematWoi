@@ -1,5 +1,8 @@
 import { ChangeEvent, FormEvent } from 'react';
-import { Search, RotateCcw } from 'lucide-react';
+import {
+  IconSearch as Search,
+  IconRotate2 as RotateCcw
+} from '@tabler/icons-react';
 import type { DebtStatus, DebtType } from '../../lib/api-debts';
 
 export type DebtsFilterState = {

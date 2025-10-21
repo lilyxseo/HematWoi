@@ -1,15 +1,15 @@
 import clsx from "clsx";
 import {
-  ArrowDownCircle,
-  ArrowRightLeft,
-  ArrowUpCircle,
-  CalendarDays,
-  Loader2,
-  Pencil,
-  RotateCcw,
-  Trash2,
-  Wallet2,
-} from "lucide-react";
+  IconArrowDownCircle as ArrowDownCircle,
+  IconArrowsRightLeft as ArrowRightLeft,
+  IconArrowUpCircle as ArrowUpCircle,
+  IconCalendarDue as CalendarDays,
+  IconLoader2 as Loader2,
+  IconPencil as Pencil,
+  IconRotate2 as RotateCcw,
+  IconTrash as Trash2,
+  IconWallet as Wallet2
+} from '@tabler/icons-react';
 import { ChangeEvent, ReactNode } from "react";
 import CategoryDot from "./CategoryDot";
 

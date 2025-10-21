@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Loader2 } from 'lucide-react';
+import {
+  IconLoader2 as Loader2
+} from '@tabler/icons-react';
 import Modal from '../Modal.jsx';
 import Input from '../ui/Input.jsx';
 import Select from '../ui/Select.jsx';
