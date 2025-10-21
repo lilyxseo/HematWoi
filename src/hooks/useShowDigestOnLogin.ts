@@ -24,6 +24,12 @@ const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat('id-ID', {
 const DIGEST_TRIGGER_KEY = 'hw:digest:trigger';
 const UPCOMING_LOOKAHEAD_DAYS = 7;
 const UPCOMING_LIMIT = 4;
+const TOP_CATEGORY_LIMIT = 3;
+const UPCOMING_DEBTS_CACHE_PREFIX = 'hw:digest:debts';
+const UPCOMING_DEBTS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ISO_DATE_KEY_PATTERN = /^(\d{4}-\d{2}-\d{2})/;
+const NON_NUMERIC_PATTERN = /[^0-9.,-]/g;
+const COMMA_PATTERN = /,/g;
 
 export interface DigestTransactionLike {
   amount?: number | string | null;
@@ -76,6 +82,10 @@ function getTodayKey(): string {
 
 function getDateKey(value: string | null | undefined): string | null {
   if (!value) return null;
+  const isoMatch = typeof value === 'string' ? ISO_DATE_KEY_PATTERN.exec(value) : null;
+  if (isoMatch) {
+    return isoMatch[1];
+  }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return DATE_FORMATTER.format(parsed);
@@ -86,7 +96,7 @@ function toNumber(value: unknown): number {
     return Number.isFinite(value) ? value : 0;
   }
   if (typeof value === 'string') {
-    const normalized = value.replace(/[^0-9.,-]/g, '').replace(/,/g, '.');
+    const normalized = value.replace(NON_NUMERIC_PATTERN, '').replace(COMMA_PATTERN, '.');
     const numeric = Number.parseFloat(normalized);
     return Number.isFinite(numeric) ? numeric : 0;
   }
@@ -113,6 +123,39 @@ function loadUpcomingSubscriptions(): DigestUpcomingItem[] {
   }
 }
 
+function buildTopCategories(
+  totals: Map<string, number>,
+  limit: number,
+): Array<{ name: string; amount: number }> {
+  if (!totals.size || limit <= 0) {
+    return [];
+  }
+
+  const top: Array<{ name: string; amount: number }> = [];
+
+  totals.forEach((amount, name) => {
+    if (amount <= 0) return;
+    const entry = { name, amount };
+    let inserted = false;
+    for (let index = 0; index < top.length; index += 1) {
+      if (amount > top[index]!.amount) {
+        top.splice(index, 0, entry);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted && top.length < limit) {
+      top.push(entry);
+      inserted = true;
+    }
+    if (inserted && top.length > limit) {
+      top.length = limit;
+    }
+  });
+
+  return top;
+}
+
 function buildDigestData(
   transactions: DigestTransactionLike[] | null | undefined,
   balanceHint: number | null | undefined,
@@ -129,6 +172,9 @@ function buildDigestData(
   const monthLabel = MONTH_LABEL_FORMATTER.format(new Date(`${todayKey}T00:00:00+07:00`));
 
   let computedBalance = 0;
+  const needsComputedBalance = !(
+    typeof balanceHint === 'number' && Number.isFinite(balanceHint)
+  );
   let todayIncome = 0;
   let todayExpense = 0;
   let todayCount = 0;
@@ -138,19 +184,34 @@ function buildDigestData(
   const yesterdayCategoryTotals = new Map<string, number>();
 
   for (const tx of transactions ?? []) {
-    const type = typeof tx?.type === 'string' ? tx.type.toLowerCase() : '';
-    const amount = toNumber(tx?.amount);
     const dateKey = getDateKey(tx?.date ?? null);
     if (!dateKey) continue;
 
+    const rawType = typeof tx?.type === 'string' ? tx.type : '';
+    const type = rawType ? rawType.toLowerCase() : '';
+    const isToday = dateKey === todayKey;
+    const isYesterday = dateKey === yesterdayKey;
+
     if (type === 'income') {
-      computedBalance += amount;
-      if (dateKey === todayKey) {
+      if (!needsComputedBalance && !isToday) {
+        continue;
+      }
+      const amount = toNumber(tx?.amount);
+      if (needsComputedBalance) {
+        computedBalance += amount;
+      }
+      if (isToday) {
         todayIncome += amount;
       }
     } else if (type === 'expense') {
-      computedBalance -= amount;
-      if (dateKey === todayKey) {
+      if (!needsComputedBalance && !isToday && !isYesterday) {
+        continue;
+      }
+      const amount = toNumber(tx?.amount);
+      if (needsComputedBalance) {
+        computedBalance -= amount;
+      }
+      if (isToday) {
         todayExpense += amount;
         if (amount > 0) {
           todayCount += 1;
@@ -158,7 +219,7 @@ function buildDigestData(
         const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
         const label = category || 'Tanpa kategori';
         todayCategoryTotals.set(label, (todayCategoryTotals.get(label) || 0) + amount);
-      } else if (dateKey === yesterdayKey) {
+      } else if (isYesterday) {
         yesterdayExpense += amount;
         if (amount > 0) {
           yesterdayCount += 1;
@@ -170,20 +231,16 @@ function buildDigestData(
     }
   }
 
-  const resolvedBalance =
-    typeof balanceHint === 'number' && Number.isFinite(balanceHint)
-      ? balanceHint
-      : computedBalance;
+  const resolvedBalance = needsComputedBalance
+    ? computedBalance
+    : balanceHint ?? computedBalance;
 
-  const topTodayExpenses = Array.from(todayCategoryTotals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([name, amount]) => ({ name, amount }));
+  const topTodayExpenses = buildTopCategories(todayCategoryTotals, TOP_CATEGORY_LIMIT);
 
-  const topYesterdayExpenses = Array.from(yesterdayCategoryTotals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([name, amount]) => ({ name, amount }));
+  const topYesterdayExpenses = buildTopCategories(
+    yesterdayCategoryTotals,
+    TOP_CATEGORY_LIMIT,
+  );
 
   const todayNet = todayIncome - todayExpense;
 
@@ -224,8 +281,61 @@ function computeDaysUntil(date: Date): number {
   return Math.round(diff / (1000 * 60 * 60 * 24));
 }
 
+function buildUpcomingDebtsCacheKey(userId: string, todayKey: string): string {
+  return `${UPCOMING_DEBTS_CACHE_PREFIX}_${todayKey}_${userId}`;
+}
+
+function loadCachedUpcomingDebts(
+  userId: string,
+  todayKey: string,
+): DigestUpcomingItem[] | null {
+  if (typeof window === 'undefined') return null;
+  const cacheKey = buildUpcomingDebtsCacheKey(userId, todayKey);
+  const raw = safeGet(cacheKey);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      items?: DigestUpcomingItem[];
+      expiresAt?: number;
+    } | null;
+    if (!parsed?.items) {
+      safeRemove(cacheKey);
+      return null;
+    }
+    if (typeof parsed.expiresAt === 'number' && parsed.expiresAt < Date.now()) {
+      safeRemove(cacheKey);
+      return null;
+    }
+    return Array.isArray(parsed.items) ? parsed.items : null;
+  } catch {
+    safeRemove(cacheKey);
+    return null;
+  }
+}
+
+function storeCachedUpcomingDebts(
+  userId: string,
+  todayKey: string,
+  items: DigestUpcomingItem[],
+): void {
+  if (typeof window === 'undefined') return;
+  const cacheKey = buildUpcomingDebtsCacheKey(userId, todayKey);
+  const payload = {
+    items,
+    expiresAt: Date.now() + UPCOMING_DEBTS_CACHE_TTL_MS,
+  };
+  safeSet(cacheKey, JSON.stringify(payload));
+}
+
 async function fetchUpcomingDebts(userId: string | null): Promise<DigestUpcomingItem[]> {
   if (!userId) return [];
+
+  const todayKey = getTodayKey();
+  const cached = loadCachedUpcomingDebts(userId, todayKey);
+  if (cached) {
+    return cached;
+  }
 
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -245,7 +355,7 @@ async function fetchUpcomingDebts(userId: string | null): Promise<DigestUpcoming
 
     if (error) throw error;
 
-    return (data ?? [])
+    const items = (data ?? [])
       .map((row) => {
         const dueRaw = typeof row?.due_date === 'string' ? row.due_date : null;
         if (!dueRaw) return null;
@@ -273,6 +383,10 @@ async function fetchUpcomingDebts(userId: string | null): Promise<DigestUpcoming
       })
       .filter((item): item is DigestUpcomingItem => Boolean(item))
       .slice(0, UPCOMING_LIMIT);
+
+    storeCachedUpcomingDebts(userId, todayKey, items);
+
+    return items;
   } catch {
     return [];
   }
