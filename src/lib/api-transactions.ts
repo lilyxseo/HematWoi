@@ -1,6 +1,7 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { dbCache } from './sync/localdb';
 import {
   listTransactions as legacyListTransactions,
   getCachedTransactions as legacyGetCachedTransactions,
@@ -92,7 +93,15 @@ export async function removeTransaction(id: string): Promise<boolean> {
   try {
     const { data, error } = await supabase.rpc('delete_transaction', { p_id: id });
     if (error) throw error;
-    return Boolean(data);
+    const success = Boolean(data);
+    if (success) {
+      try {
+        await dbCache.remove('transactions', id);
+      } catch (cacheError) {
+        console.warn('Failed to evict transaction from cache', cacheError);
+      }
+    }
+    return success;
   } catch (error) {
     throw createFriendlyError(error, 'Gagal menghapus. Cek koneksi lalu coba lagi.');
   }
@@ -109,11 +118,54 @@ export async function removeTransactionsBulk(ids: string[]): Promise<number> {
   try {
     const { data, error } = await supabase.rpc('delete_transactions_bulk', { p_ids: ids });
     if (error) throw error;
+    let removedIds: string[] = [];
     if (typeof data === 'number') {
-      return data;
+      const count = data;
+      if (count >= ids.length) {
+        removedIds = ids;
+      }
+      if (removedIds.length) {
+        try {
+          await Promise.all(removedIds.map((id) => dbCache.remove('transactions', id)));
+        } catch (cacheError) {
+          console.warn('Failed to evict transactions from cache', cacheError);
+        }
+      }
+      return count;
     }
     if (Array.isArray(data)) {
+      const candidates = data
+        .map((row) => {
+          if (typeof row === 'string') return row;
+          if (row && typeof row === 'object') {
+            if (typeof (row as { id?: unknown }).id === 'string') {
+              return (row as { id: string }).id;
+            }
+            if (typeof (row as { transaction_id?: unknown }).transaction_id === 'string') {
+              return (row as { transaction_id: string }).transaction_id;
+            }
+          }
+          return null;
+        })
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
+      if (candidates.length) {
+        removedIds = candidates;
+      } else if (data.length >= ids.length) {
+        removedIds = ids;
+      }
+      if (removedIds.length) {
+        try {
+          await Promise.all(removedIds.map((id) => dbCache.remove('transactions', id)));
+        } catch (cacheError) {
+          console.warn('Failed to evict transactions from cache', cacheError);
+        }
+      }
       return data.length;
+    }
+    try {
+      await Promise.all(ids.map((id) => dbCache.remove('transactions', id)));
+    } catch (cacheError) {
+      console.warn('Failed to evict transactions from cache', cacheError);
     }
     return ids.length;
   } catch (error) {
