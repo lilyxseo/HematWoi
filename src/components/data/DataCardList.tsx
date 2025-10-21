@@ -1,6 +1,10 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from 'react';
-import { MoreHorizontal, Trash2, X as CloseIcon } from 'lucide-react';
+import {
+  IconDots as MoreHorizontal,
+  IconTrash as Trash2,
+  IconX as CloseIcon
+} from '@tabler/icons-react';
 import clsx from 'clsx';
 import {
   TransactionAccountEditor,

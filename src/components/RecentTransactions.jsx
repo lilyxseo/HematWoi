@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Clock } from "lucide-react";
+import {
+  IconArrowDownLeft as ArrowDownLeft,
+  IconArrowsRightLeft as ArrowRightLeft,
+  IconArrowUpRight as ArrowUpRight,
+  IconClock as Clock
+} from '@tabler/icons-react';
 import clsx from "clsx";
 import Segmented from "./ui/Segmented";
 import Card, { CardBody, CardHeader } from "./Card";

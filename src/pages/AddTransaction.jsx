@@ -1,5 +1,11 @@
 import { useState, useEffect } from 'react';
-import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Scissors, CalendarClock } from 'lucide-react';
+import {
+  IconArrowDownCircle as ArrowDownCircle,
+  IconArrowUpCircle as ArrowUpCircle,
+  IconArrowsLeftRight as ArrowLeftRight,
+  IconScissors as Scissors,
+  IconCalendarClock as CalendarClock
+} from '@tabler/icons-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';

@@ -1,4 +1,8 @@
-import { PlusCircle, Wallet, CreditCard } from "lucide-react";
+import {
+  IconCirclePlus as PlusCircle,
+  IconWallet as Wallet,
+  IconCreditCard as CreditCard
+} from '@tabler/icons-react';
 import Card, { CardHeader } from "./Card";
 import QuickActionCard from "./dashboard/QuickActionCard";
 

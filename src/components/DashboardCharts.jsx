@@ -1,5 +1,7 @@
 import { useMemo } from "react";
-import { BarChart3 } from "lucide-react";
+import {
+  IconChartBar as BarChart3
+} from '@tabler/icons-react';
 import {
   ResponsiveContainer,
   PieChart,

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Download, Plus } from 'lucide-react';
+import {
+  IconChevronDown as ChevronDown,
+  IconDownload as Download,
+  IconPlus as Plus
+} from '@tabler/icons-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';

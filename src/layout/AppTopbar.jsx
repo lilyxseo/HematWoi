@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogIn, LogOut, Menu, Settings, UserRound } from "lucide-react";
+import {
+  IconBell as Bell,
+  IconLogin as LogIn,
+  IconLogout as LogOut,
+  IconMenu2 as Menu,
+  IconSettings as Settings,
+  IconUserCircle as UserRound
+} from '@tabler/icons-react';
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 

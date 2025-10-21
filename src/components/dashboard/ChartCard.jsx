@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { LineChart as LineChartIcon } from "lucide-react";
+import {
+  IconChartLine as LineChartIcon
+} from '@tabler/icons-react';
 import clsx from "clsx";
 import Card, { CardHeader } from "../Card";
 

@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertCircle, Globe2, Languages, Loader2, MoonStar, SunMedium } from 'lucide-react';
+import {
+  IconAlertCircle as AlertCircle,
+  IconWorld as Globe2,
+  IconLanguage as Languages,
+  IconLoader2 as Loader2,
+  IconMoonStars as MoonStar,
+  IconSun as SunMedium
+} from '@tabler/icons-react';
 import type { ThemeMode, UserProfile } from '../../lib/api-profile';
 
 interface PreferencesCardProps {

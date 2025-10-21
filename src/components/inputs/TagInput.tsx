@@ -1,5 +1,7 @@
 import { useId, useState, type KeyboardEvent } from 'react';
-import { X } from 'lucide-react';
+import {
+  IconX as X
+} from '@tabler/icons-react';
 
 type TagInputProps = {
   label: string;

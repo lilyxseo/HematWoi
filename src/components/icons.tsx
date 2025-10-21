@@ -1,139 +1,119 @@
-import type { LucideIcon } from "lucide-react";
-import {
-  ArrowDown,
-  ArrowUp,
-  Bell,
-  Calendar,
-  ChartLine,
-  Circle,
-  Pencil,
-  FolderKanban,
-  Home,
-  List,
-  PieChart,
-  PiggyBank,
-  Receipt,
-  Trash2,
-  Repeat,
-  Settings,
-  Shield,
-  Tag,
-  Target,
-  TrendingUp,
-  User,
-  Wallet,
-} from "lucide-react";
+import * as TablerIcons from "@tabler/icons-react";
 
-export const ICONS: Record<string, LucideIcon> = {
-  home: Home,
-  dashboard: Home,
-  wallet: Wallet,
-  wallets: Wallet,
-  saving: PiggyBank,
-  savings: PiggyBank,
-  piggybank: PiggyBank,
-  "piggy-bank": PiggyBank,
-  piggy_bank: PiggyBank,
-  budget: PiggyBank,
-  budgets: PiggyBank,
-  target: Target,
-  goal: Target,
-  goals: Target,
-  tag: Tag,
-  tags: Tag,
-  label: Tag,
-  labels: Tag,
-  repeat: Repeat,
-  recurring: Repeat,
-  list: List,
-  lists: List,
-  tasks: List,
-  checklist: List,
-  chartline: ChartLine,
-  chart: ChartLine,
-  charts: ChartLine,
-  analytics: ChartLine,
-  analysis: ChartLine,
-  graph: ChartLine,
-  graphs: ChartLine,
-  data: ChartLine,
-  debt: ChartLine,
-  debts: ChartLine,
-  shield: Shield,
-  security: Shield,
-  protect: Shield,
-  protection: Shield,
-  settings: Settings,
-  preference: Settings,
-  preferences: Settings,
-  config: Settings,
-  configuration: Settings,
-  user: User,
-  users: User,
-  profile: User,
-  account: User,
-  person: User,
-  people: User,
-  bell: Bell,
-  notification: Bell,
-  notifications: Bell,
-  alert: Bell,
-  alerts: Bell,
-  reminder: Bell,
-  reminders: Bell,
-  subscription: Bell,
-  subscriptions: Bell,
-  piechart: PieChart,
-  "pie-chart": PieChart,
-  pie_chart: PieChart,
-  calendar: Calendar,
-  schedule: Calendar,
-  date: Calendar,
-  dates: Calendar,
-  folderkanban: FolderKanban,
-  "folder-kanban": FolderKanban,
-  folder: FolderKanban,
-  folders: FolderKanban,
-  kanban: FolderKanban,
-  board: FolderKanban,
-  category: FolderKanban,
-  categories: FolderKanban,
-  project: FolderKanban,
-  projects: FolderKanban,
-  trendingup: TrendingUp,
-  trending: TrendingUp,
-  trend: TrendingUp,
-  growth: TrendingUp,
-  progress: TrendingUp,
-  performance: TrendingUp,
-  insight: TrendingUp,
-  insights: TrendingUp,
-  receipt: Receipt,
-  receipts: Receipt,
-  transaction: Receipt,
-  transactions: Receipt,
-  report: Receipt,
-  reports: Receipt,
-  invoice: Receipt,
-  invoices: Receipt,
-  statement: Receipt,
-  'arrow-up': ArrowUp,
-  arrowup: ArrowUp,
-  arrow_up: ArrowUp,
-  up: ArrowUp,
-  'arrow-down': ArrowDown,
-  arrowdown: ArrowDown,
-  arrow_down: ArrowDown,
-  down: ArrowDown,
-  pencil: Pencil,
-  edit: Pencil,
-  pen: Pencil,
-  trash: Trash2,
-  delete: Trash2,
-  remove: Trash2,
+type TablerIconComponent = typeof TablerIcons.IconCircle;
+
+const TABLER_ICON_REGISTRY = TablerIcons as Record<string, TablerIconComponent>;
+
+const ICON_ALIASES: Record<string, string> = {
+  home: "IconHome",
+  dashboard: "IconHome",
+  wallet: "IconWallet",
+  wallets: "IconWallet",
+  saving: "IconPigMoney",
+  savings: "IconPigMoney",
+  piggybank: "IconPigMoney",
+  "piggy-bank": "IconPigMoney",
+  piggy_bank: "IconPigMoney",
+  budget: "IconPigMoney",
+  budgets: "IconPigMoney",
+  target: "IconTarget",
+  goal: "IconTarget",
+  goals: "IconTarget",
+  tag: "IconTag",
+  tags: "IconTag",
+  label: "IconTag",
+  labels: "IconTag",
+  repeat: "IconRepeat",
+  recurring: "IconRepeat",
+  list: "IconList",
+  lists: "IconList",
+  tasks: "IconList",
+  checklist: "IconList",
+  chartline: "IconChartLine",
+  chart: "IconChartLine",
+  charts: "IconChartLine",
+  analytics: "IconChartLine",
+  analysis: "IconChartLine",
+  graph: "IconChartLine",
+  graphs: "IconChartLine",
+  data: "IconChartLine",
+  debt: "IconChartLine",
+  debts: "IconChartLine",
+  shield: "IconShield",
+  security: "IconShield",
+  protect: "IconShield",
+  protection: "IconShield",
+  settings: "IconSettings",
+  preference: "IconSettings",
+  preferences: "IconSettings",
+  config: "IconSettings",
+  configuration: "IconSettings",
+  user: "IconUser",
+  users: "IconUser",
+  profile: "IconUser",
+  account: "IconUser",
+  person: "IconUser",
+  people: "IconUser",
+  bell: "IconBell",
+  notification: "IconBell",
+  notifications: "IconBell",
+  alert: "IconBell",
+  alerts: "IconBell",
+  reminder: "IconBell",
+  reminders: "IconBell",
+  subscription: "IconBell",
+  subscriptions: "IconBell",
+  piechart: "IconChartPie",
+  "pie-chart": "IconChartPie",
+  pie_chart: "IconChartPie",
+  calendar: "IconCalendar",
+  schedule: "IconCalendar",
+  date: "IconCalendar",
+  dates: "IconCalendar",
+  folderkanban: "IconLayoutKanban",
+  "folder-kanban": "IconLayoutKanban",
+  folder: "IconLayoutKanban",
+  folders: "IconLayoutKanban",
+  kanban: "IconLayoutKanban",
+  board: "IconLayoutKanban",
+  category: "IconLayoutKanban",
+  categories: "IconLayoutKanban",
+  project: "IconLayoutKanban",
+  projects: "IconLayoutKanban",
+  trendingup: "IconTrendingUp",
+  trending: "IconTrendingUp",
+  trend: "IconTrendingUp",
+  growth: "IconTrendingUp",
+  progress: "IconTrendingUp",
+  performance: "IconTrendingUp",
+  insight: "IconTrendingUp",
+  insights: "IconTrendingUp",
+  receipt: "IconReceipt",
+  receipts: "IconReceipt",
+  transaction: "IconReceipt",
+  transactions: "IconReceipt",
+  report: "IconReceipt",
+  reports: "IconReceipt",
+  invoice: "IconReceipt",
+  invoices: "IconReceipt",
+  statement: "IconReceipt",
+  "arrow-up": "IconArrowUp",
+  arrowup: "IconArrowUp",
+  arrow_up: "IconArrowUp",
+  up: "IconArrowUp",
+  "arrow-down": "IconArrowDown",
+  arrowdown: "IconArrowDown",
+  arrow_down: "IconArrowDown",
+  down: "IconArrowDown",
+  pencil: "IconPencil",
+  edit: "IconPencil",
+  pen: "IconPencil",
+  trash: "IconTrash",
+  delete: "IconTrash",
+  remove: "IconTrash",
 };
 
-export const ICON_NAMES = Object.keys(ICONS).sort((a, b) => a.localeCompare(b));
+export const ICON_NAMES = Object.keys(ICON_ALIASES).sort((a, b) => a.localeCompare(b));
 
 interface IconProps {
   name?: string | null;
@@ -141,14 +121,62 @@ interface IconProps {
   label?: string;
 }
 
+function toPascalCase(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase())
+    .join("");
+}
+
+function resolveIconComponent(input: string | null | undefined): TablerIconComponent {
+  const normalized = typeof input === "string" ? input.trim() : "";
+  if (!normalized) {
+    return TABLER_ICON_REGISTRY.IconCircle;
+  }
+
+  const key = normalized.toLowerCase();
+  const aliases: string[] = [];
+  const aliasHit = ICON_ALIASES[key];
+  if (aliasHit) {
+    aliases.push(aliasHit);
+  }
+
+  const pascal = toPascalCase(normalized);
+  if (pascal) {
+    if (pascal.startsWith("Icon")) {
+      aliases.push(pascal);
+    } else {
+      aliases.push(`Icon${pascal}`);
+      aliases.push(pascal);
+    }
+  }
+
+  aliases.push(normalized);
+  aliases.push(normalized.startsWith("Icon") ? normalized : `Icon${normalized}`);
+
+  for (const candidate of aliases) {
+    const icon = TABLER_ICON_REGISTRY[candidate];
+    if (icon) {
+      return icon;
+    }
+  }
+
+  return TABLER_ICON_REGISTRY.IconCircle;
+}
+
 export function Icon({ name, className, label }: IconProps) {
+  const IconComponent = resolveIconComponent(name ?? null);
   const normalized = typeof name === "string" ? name.trim().toLowerCase() : "";
-  const IconComponent = normalized ? ICONS[normalized] ?? Circle : Circle;
 
   return (
     <IconComponent
       aria-label={label ?? (normalized || "icon")}
       className={className ?? "w-5 h-5"}
+      stroke={1.5}
     />
   );
 }

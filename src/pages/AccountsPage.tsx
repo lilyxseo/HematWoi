@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  IconArrowDown as ArrowDown,
+  IconArrowUp as ArrowUp,
+  IconLoader2 as Loader2,
+  IconPencil as Pencil,
+  IconPlus as Plus,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';

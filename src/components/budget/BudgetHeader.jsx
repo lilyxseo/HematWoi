@@ -1,5 +1,9 @@
 import PageHeader from "../../layout/PageHeader";
-import { Plus, List, LayoutGrid } from "lucide-react";
+import {
+  IconPlus as Plus,
+  IconList as List,
+  IconLayoutGrid as LayoutGrid
+} from '@tabler/icons-react';
 import { formatCurrency } from "../../lib/format";
 
 export default function BudgetHeader({ totals, view, setView }) {

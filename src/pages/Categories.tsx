@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import {
+  IconLoader2 as Loader2
+} from '@tabler/icons-react';
 import { createPortal } from "react-dom";
 import CategoryForm from "../components/categories/CategoryForm";
 import CategoryList from "../components/categories/CategoryList";

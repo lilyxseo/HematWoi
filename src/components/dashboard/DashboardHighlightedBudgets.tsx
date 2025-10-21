@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, Sparkles } from 'lucide-react';
+import {
+  IconAlertTriangle as AlertTriangle,
+  IconArrowRight as ArrowRight,
+  IconSparkles as Sparkles
+} from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { useBudgets } from '../../hooks/useBudgets';
 import { useWeeklyBudgets } from '../../hooks/useWeeklyBudgets';

@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import {
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import type { WishlistStatus } from '../../lib/wishlistApi';
 import { WISHLIST_PRIORITY_LABELS } from '../../lib/wishlistPriority';
 

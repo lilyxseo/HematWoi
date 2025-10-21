@@ -1,4 +1,6 @@
-import { Sparkles } from 'lucide-react';
+import {
+  IconSparkles as Sparkles
+} from '@tabler/icons-react';
 import type { BudgetWithSpent } from '../../../lib/budgetApi';
 import BudgetCard from './BudgetCard';
 

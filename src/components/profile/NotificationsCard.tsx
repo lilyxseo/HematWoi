@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { BellRing, CalendarClock, Check, Loader2, MailCheck, RefreshCw } from 'lucide-react';
+import {
+  IconBellRinging as BellRing,
+  IconCalendarClock as CalendarClock,
+  IconCheck as Check,
+  IconLoader2 as Loader2,
+  IconMailCheck as MailCheck,
+  IconRefresh as RefreshCw
+} from '@tabler/icons-react';
 import type { ProfileNotifications } from '../../lib/api-profile';
 
 interface NotificationsCardProps {

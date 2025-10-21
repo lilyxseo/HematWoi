@@ -1,4 +1,12 @@
-import { CalendarDays, Flag, Pencil, PiggyBank, Archive, Trash2, ListPlus } from 'lucide-react';
+import {
+  IconCalendarDue as CalendarDays,
+  IconFlag as Flag,
+  IconPencil as Pencil,
+  IconPigMoney as PiggyBank,
+  IconArchive as Archive,
+  IconTrash as Trash2,
+  IconList as ListPlus
+} from '@tabler/icons-react';
 import type { CSSProperties } from 'react';
 import type { GoalRecord } from '../../lib/api-goals';
 

@@ -1,5 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Home, Plus, BarChart3, Settings, Flag } from "lucide-react";
+import {
+  IconHome as Home,
+  IconPlus as Plus,
+  IconChartBar as BarChart3,
+  IconSettings as Settings,
+  IconFlag as Flag
+} from '@tabler/icons-react';
 
 export default function BottomNav() {
   const base =

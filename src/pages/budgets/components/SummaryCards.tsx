@@ -1,5 +1,10 @@
 import clsx from 'clsx';
-import { PiggyBank, Target, TrendingDown, Wallet } from 'lucide-react';
+import {
+  IconPigMoney as PiggyBank,
+  IconTarget as Target,
+  IconTrendingDown as TrendingDown,
+  IconWallet as Wallet
+} from '@tabler/icons-react';
 import { formatCurrency } from '../../../lib/format';
 import type { BudgetSummary } from '../../../lib/budgetApi';
 

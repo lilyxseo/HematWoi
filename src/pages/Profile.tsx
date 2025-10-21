@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
-import { Loader2, LogIn, WifiOff } from 'lucide-react';
+import {
+  IconLoader2 as Loader2,
+  IconLogin as LogIn,
+  IconWifiOff as WifiOff
+} from '@tabler/icons-react';
 import AccountCard from '../components/profile/AccountCard';
 import SecurityCard from '../components/profile/SecurityCard';
 import PreferencesCard from '../components/profile/PreferencesCard';

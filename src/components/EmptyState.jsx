@@ -1,4 +1,6 @@
-import { Plus } from "lucide-react";
+import {
+  IconPlus as Plus
+} from '@tabler/icons-react';
 
 export default function EmptyState({ onAdd }) {
   return (

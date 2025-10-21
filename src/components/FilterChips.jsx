@@ -1,4 +1,6 @@
-import { X } from "lucide-react";
+import {
+  IconX as X
+} from '@tabler/icons-react';
 import formatMonth from "../lib/formatMonth";
 
 export default function FilterChips({ filter, categories = [], onRemove }) {

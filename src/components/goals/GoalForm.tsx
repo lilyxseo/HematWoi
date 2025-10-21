@@ -1,6 +1,10 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Plus, Trash2 } from 'lucide-react';
+import {
+  IconX as X,
+  IconPlus as Plus,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import type { GoalPayload, GoalPriority, GoalRecord, GoalStatus } from '../../lib/api-goals';
 
 const todayIso = () => {

@@ -1,6 +1,12 @@
 import { useMemo } from "react"
 import type { ReactNode } from "react"
-import { Banknote, CreditCard, TrendingDown, TrendingUp, Wallet } from "lucide-react"
+import {
+  IconCash as Banknote,
+  IconCreditCard as CreditCard,
+  IconTrendingDown as TrendingDown,
+  IconTrendingUp as TrendingUp,
+  IconWallet as Wallet
+} from '@tabler/icons-react';
 import { formatCurrency } from "../../lib/format.js"
 import type { PeriodRange } from "./PeriodPicker"
 import { formatPeriodLabel } from "./PeriodPicker"

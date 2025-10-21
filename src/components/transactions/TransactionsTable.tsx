@@ -1,5 +1,10 @@
 import clsx from "clsx";
-import { Loader2, Pencil, RotateCcw, Trash2 } from "lucide-react";
+import {
+  IconLoader2 as Loader2,
+  IconPencil as Pencil,
+  IconRotate2 as RotateCcw,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import { ChangeEvent, ReactNode } from "react";
 import CategoryDot from "./CategoryDot";
 

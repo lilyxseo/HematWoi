@@ -1,6 +1,9 @@
 // @ts-nocheck
 import { useState } from 'react';
-import { EyeOff, SlidersHorizontal } from 'lucide-react';
+import {
+  IconEyeOff as EyeOff,
+  IconAdjustmentsHorizontal as SlidersHorizontal
+} from '@tabler/icons-react';
 
 export default function ColumnVisibility({ columns, hidden, onChange }) {
   const [open, setOpen] = useState(false);

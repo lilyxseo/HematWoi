@@ -1,4 +1,6 @@
-import { Plus } from "lucide-react";
+import {
+  IconPlus as Plus
+} from '@tabler/icons-react';
 import { useNavigate } from "react-router-dom";
 
 export default function FAB() {

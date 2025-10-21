@@ -1,5 +1,9 @@
 import clsx from "clsx";
-import { Loader2, Trash2, Wand2 } from "lucide-react";
+import {
+  IconLoader2 as Loader2,
+  IconTrash as Trash2,
+  IconMagicWand as Wand2
+} from '@tabler/icons-react';
 import { ReactNode } from "react";
 
 interface BatchToolbarProps {

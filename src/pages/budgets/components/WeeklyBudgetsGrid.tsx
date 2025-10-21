@@ -1,5 +1,13 @@
 import clsx from 'clsx';
-import { Eye, NotebookPen, Pencil, RefreshCcw, Sparkles, Star, Trash2 } from 'lucide-react';
+import {
+  IconEye as Eye,
+  IconNotebook as NotebookPen,
+  IconPencil as Pencil,
+  IconRefresh as RefreshCcw,
+  IconSparkles as Sparkles,
+  IconStar as Star,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import { formatCurrency } from '../../../lib/format';
 import type { WeeklyBudgetWithSpent } from '../../../lib/budgetApi';
 

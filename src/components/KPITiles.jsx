@@ -1,4 +1,7 @@
-import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import {
+  IconArrowUpRight as ArrowUpRight,
+  IconArrowDownRight as ArrowDownRight
+} from '@tabler/icons-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from "recharts";
 
 function toRupiah(n = 0) {

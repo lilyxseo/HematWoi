@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, ImageDown, Loader2, UploadCloud } from 'lucide-react';
+import {
+  IconAlertCircle as AlertCircle,
+  IconCircleCheck as CheckCircle2,
+  IconPhotoDown as ImageDown,
+  IconLoader2 as Loader2,
+  IconCloudUpload as UploadCloud
+} from '@tabler/icons-react';
 import type { UserProfile } from '../../lib/api-profile';
 
 interface AccountCardProps {

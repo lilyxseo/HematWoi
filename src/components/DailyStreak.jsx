@@ -1,4 +1,6 @@
-import { Flame } from "lucide-react";
+import {
+  IconFlame as Flame
+} from '@tabler/icons-react';
 import "./Animations.css";
 
 export default function DailyStreak({ streak = 0 }) {

@@ -1,6 +1,11 @@
 // @ts-nocheck
 import { useEffect, useState } from 'react';
-import { ArrowRight, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import {
+  IconArrowRight as ArrowRight,
+  IconLoader2 as Loader2,
+  IconSparkles as Sparkles,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 import { supabase } from '../../lib/supabase';
 import { getCurrentUserId } from '../../lib/session';
 

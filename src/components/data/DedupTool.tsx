@@ -1,6 +1,9 @@
 // @ts-nocheck
 import { useState } from 'react';
-import { Loader2, Trash2 } from 'lucide-react';
+import {
+  IconLoader2 as Loader2,
+  IconTrash as Trash2
+} from '@tabler/icons-react';
 
 export default function DedupTool({ duplicates = [], onDelete, loading, onRefresh }) {
   const [selectedIds, setSelectedIds] = useState(new Set());

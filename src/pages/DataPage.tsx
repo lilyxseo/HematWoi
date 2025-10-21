@@ -1,14 +1,14 @@
 // @ts-nocheck
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Database,
-  Download,
-  RefreshCw,
-  Search,
-  Upload,
-} from 'lucide-react';
+  IconArrowBarToDown as ArrowDownToLine,
+  IconArrowBarToUp as ArrowUpFromLine,
+  IconDatabase as Database,
+  IconDownload as Download,
+  IconRefresh as RefreshCw,
+  IconSearch as Search,
+  IconUpload as Upload
+} from '@tabler/icons-react';
 import DataTable from '../components/data/DataTable';
 import DataCardList from '../components/data/DataCardList';
 import ColumnVisibility from '../components/data/ColumnVisibility';
