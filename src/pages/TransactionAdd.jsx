@@ -443,6 +443,7 @@ export default function TransactionAdd({ onAdd }) {
         notes: trimmedTemplateNotes ? trimmedTemplateNotes : null,
       });
 
+      const timestamp = new Date().toISOString();
       const payload = {
         ...saved,
         amount: saved.amount ?? template.amount,
@@ -458,12 +459,14 @@ export default function TransactionAdd({ onAdd }) {
         notes: saved.notes ?? (trimmedTemplateNotes || null),
         note: saved.notes ?? (trimmedTemplateNotes || null),
         receipt_url: saved.receipt_url || null,
+        inserted_at: saved.inserted_at ?? timestamp,
+        updated_at: saved.updated_at ?? timestamp,
         __persisted: true,
       };
 
       onAdd?.(payload);
       addToast('Transaksi dibuat dari template.', 'success');
-      navigate('/transactions');
+      navigate('/transactions', { state: { recentTransaction: payload } });
     } catch (err) {
       addToast(err?.message || 'Gagal membuat transaksi dari template.', 'error');
     } finally {
@@ -558,6 +561,7 @@ export default function TransactionAdd({ onAdd }) {
         }
       }
 
+      const timestamp = new Date().toISOString();
       const payload = {
         ...saved,
         amount: saved.amount ?? amountValue,
@@ -571,6 +575,8 @@ export default function TransactionAdd({ onAdd }) {
         notes: saved.notes ?? (trimmedNotes || null),
         note: saved.notes ?? (trimmedNotes || null),
         receipt_url: receiptUrl,
+        inserted_at: saved.inserted_at ?? timestamp,
+        updated_at: saved.updated_at ?? timestamp,
         __persisted: true,
       };
 
@@ -598,7 +604,7 @@ export default function TransactionAdd({ onAdd }) {
           });
         }
       }
-      navigate('/transactions');
+      navigate('/transactions', { state: { recentTransaction: payload } });
     } catch (err) {
       addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
     } finally {
