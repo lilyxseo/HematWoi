@@ -8,6 +8,23 @@ const currencyFormatter = new Intl.NumberFormat('id-ID', {
   maximumFractionDigits: 0,
 });
 
+function normalizeAmount(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'bigint') {
+    return Number(value);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return 0;
+    const sanitized = trimmed.replace(/[^0-9.,-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(/,/g, '.');
+    const parsed = Number.parseFloat(sanitized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
 const percentFormatter = new Intl.NumberFormat('id-ID', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
@@ -181,10 +198,15 @@ export default function DebtsGrid({
         {debts.map((debt) => {
           const statusConfig = STATUS_CONFIG[debt.status];
           const overdue = isOverdue(debt);
-          const progress = debt.amount > 0 ? Math.min(Math.max(debt.paid_total / debt.amount, 0), 2) : 0;
+          const amount = normalizeAmount(debt.amount);
+          const paidTotal = normalizeAmount(debt.paid_total);
+          const progress = amount > 0 ? Math.min(Math.max(paidTotal / amount, 0), 2) : 0;
           const cappedProgress = Math.min(progress, 1);
           const progressPercent = Math.round(cappedProgress * 100);
-          const remaining = Number.isFinite(debt.remaining) ? debt.remaining : 0;
+          const reportedRemaining = normalizeAmount(debt.remaining);
+          const fallbackRemaining = Math.max(amount - paidTotal, 0);
+          const remaining =
+            reportedRemaining > 0 || fallbackRemaining === 0 ? reportedRemaining : fallbackRemaining;
           const navigation = tenorNavigation?.[debt.id];
           const progressColor = getProgressColor(progress);
           const notes = debt.notes?.trim();
@@ -298,11 +320,11 @@ export default function DebtsGrid({
                   <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border/60 bg-surface/70 p-4 text-xs uppercase tracking-wide text-muted/70 sm:grid-cols-2 lg:grid-cols-3">
                     <div className="min-w-0 space-y-1">
                       <p>Jumlah</p>
-                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(debt.amount)}</p>
+                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(amount)}</p>
                     </div>
                     <div className="min-w-0 space-y-1">
                       <p>Terbayar</p>
-                      <p className="text-base font-medium text-muted tabular-nums">{formatCurrency(debt.paid_total)}</p>
+                      <p className="text-base font-medium text-muted tabular-nums">{formatCurrency(paidTotal)}</p>
                     </div>
                     <div className="min-w-0 space-y-1">
                       <p>Sisa</p>
@@ -325,7 +347,7 @@ export default function DebtsGrid({
                     </div>
                     {progress > 1 ? (
                       <p className="text-xs font-medium text-emerald-300">
-                        Pembayaran melebihi jumlah hutang sebesar {formatCurrency(debt.paid_total - debt.amount)}
+                        Pembayaran melebihi jumlah hutang sebesar {formatCurrency(paidTotal - amount)}
                       </p>
                     ) : null}
                   </div>
