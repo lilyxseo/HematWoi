@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -177,8 +177,10 @@ export default function Transactions() {
   const { addToast } = useToast();
   const online = useNetworkStatus();
   const navigate = useNavigate();
+  const location = useLocation();
   const [items, setItems] = useState(queryItems);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [optimisticItems, setOptimisticItems] = useState([]);
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [bulkEditMode, setBulkEditMode] = useState(null);
@@ -214,8 +216,57 @@ export default function Transactions() {
   });
 
   useEffect(() => {
-    setItems(queryItems);
-  }, [queryItems]);
+    const state = location.state;
+    const newTransaction = state?.newTransaction;
+    if (!newTransaction || typeof newTransaction !== "object") {
+      return;
+    }
+
+    setOptimisticItems((prev) => {
+      const identifier = newTransaction?.id;
+      if (!identifier) return prev;
+      if (prev.some((item) => item?.id === identifier)) {
+        return prev;
+      }
+      return [newTransaction, ...prev];
+    });
+
+    const { newTransaction: _ignored, ...rest } = state;
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: Object.keys(rest).length ? rest : null },
+    );
+  }, [location.pathname, location.search, location.state, navigate]);
+
+  useEffect(() => {
+    if (!optimisticItems.length) {
+      setItems(queryItems);
+      return;
+    }
+
+    const queryIds = new Set(queryItems.map((item) => item?.id).filter(Boolean));
+    const filteredOptimistic = optimisticItems.filter((item) => {
+      const identifier = item?.id;
+      if (!identifier) return false;
+      return !queryIds.has(identifier);
+    });
+
+    if (filteredOptimistic.length !== optimisticItems.length) {
+      setOptimisticItems(filteredOptimistic);
+    }
+
+    const optimisticIds = new Set(filteredOptimistic.map((item) => item.id));
+    const merged = [
+      ...filteredOptimistic,
+      ...queryItems.filter((item) => {
+        const identifier = item?.id;
+        if (!identifier) return false;
+        return !optimisticIds.has(identifier);
+      }),
+    ];
+
+    setItems(merged);
+  }, [optimisticItems, queryItems]);
 
   useEffect(() => {
     setSearchTerm(filter.search);
