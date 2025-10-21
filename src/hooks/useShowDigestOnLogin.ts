@@ -74,11 +74,50 @@ function getTodayKey(): string {
   return DATE_FORMATTER.format(new Date());
 }
 
-function getDateKey(value: string | null | undefined): string | null {
+function looksLikeDateOnly(value: string): boolean {
+  return (
+    value.length === 10 &&
+    value.charCodeAt(4) === 45 &&
+    value.charCodeAt(7) === 45 &&
+    value.charCodeAt(0) >= 48 &&
+    value.charCodeAt(0) <= 57 &&
+    value.charCodeAt(1) >= 48 &&
+    value.charCodeAt(1) <= 57 &&
+    value.charCodeAt(2) >= 48 &&
+    value.charCodeAt(2) <= 57 &&
+    value.charCodeAt(3) >= 48 &&
+    value.charCodeAt(3) <= 57 &&
+    value.charCodeAt(5) >= 48 &&
+    value.charCodeAt(5) <= 57 &&
+    value.charCodeAt(6) >= 48 &&
+    value.charCodeAt(6) <= 57 &&
+    value.charCodeAt(8) >= 48 &&
+    value.charCodeAt(8) <= 57 &&
+    value.charCodeAt(9) >= 48 &&
+    value.charCodeAt(9) <= 57
+  );
+}
+
+function getDateKey(value: string | Date | null | undefined): string | null {
   if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return DATE_FORMATTER.format(parsed);
+
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return DATE_FORMATTER.format(value);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (looksLikeDateOnly(trimmed) && !trimmed.includes('T')) {
+      return trimmed;
+    }
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return DATE_FORMATTER.format(parsed);
+  }
+
+  return null;
 }
 
 function toNumber(value: unknown): number {
@@ -137,20 +176,64 @@ function buildDigestData(
   let yesterdayCount = 0;
   const yesterdayCategoryTotals = new Map<string, number>();
 
+  const shouldComputeBalance = !(
+    typeof balanceHint === 'number' && Number.isFinite(balanceHint)
+  );
+
+  const dateCache = new Map<string, string | null>();
+
   for (const tx of transactions ?? []) {
-    const type = typeof tx?.type === 'string' ? tx.type.toLowerCase() : '';
-    const amount = toNumber(tx?.amount);
-    const dateKey = getDateKey(tx?.date ?? null);
+    const rawDate = tx?.date ?? null;
+    let dateKey: string | null = null;
+
+    if (typeof rawDate === 'string') {
+      const normalized = rawDate.trim();
+      if (dateCache.has(normalized)) {
+        dateKey = dateCache.get(normalized) ?? null;
+      } else {
+        dateKey = getDateKey(normalized);
+        dateCache.set(normalized, dateKey);
+      }
+    } else if (rawDate instanceof Date) {
+      dateKey = getDateKey(rawDate);
+    } else {
+      dateKey = getDateKey(rawDate as string | null | undefined);
+    }
+
     if (!dateKey) continue;
 
-    if (type === 'income') {
-      computedBalance += amount;
-      if (dateKey === todayKey) {
-        todayIncome += amount;
+    const isToday = dateKey === todayKey;
+    const isYesterday = dateKey === yesterdayKey;
+
+    if (!shouldComputeBalance && !isToday && !isYesterday) {
+      continue;
+    }
+
+    const type = typeof tx?.type === 'string' ? tx.type.toLowerCase() : '';
+    const isIncome = type === 'income';
+    const isExpense = type === 'expense';
+
+    const needsAmountForBalance = shouldComputeBalance && (isIncome || isExpense);
+    const needsAmountForDay = isToday || isYesterday;
+
+    if (!needsAmountForBalance && !needsAmountForDay) {
+      continue;
+    }
+
+    const amount = toNumber(tx?.amount);
+
+    if (needsAmountForBalance) {
+      if (isIncome) {
+        computedBalance += amount;
+      } else if (isExpense) {
+        computedBalance -= amount;
       }
-    } else if (type === 'expense') {
-      computedBalance -= amount;
-      if (dateKey === todayKey) {
+    }
+
+    if (isIncome && isToday) {
+      todayIncome += amount;
+    } else if (isExpense && (isToday || isYesterday)) {
+      if (isToday) {
         todayExpense += amount;
         if (amount > 0) {
           todayCount += 1;
@@ -158,7 +241,7 @@ function buildDigestData(
         const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
         const label = category || 'Tanpa kategori';
         todayCategoryTotals.set(label, (todayCategoryTotals.get(label) || 0) + amount);
-      } else if (dateKey === yesterdayKey) {
+      } else {
         yesterdayExpense += amount;
         if (amount > 0) {
           yesterdayCount += 1;
