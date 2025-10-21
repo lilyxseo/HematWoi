@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -177,7 +177,9 @@ export default function Transactions() {
   const { addToast } = useToast();
   const online = useNetworkStatus();
   const navigate = useNavigate();
+  const location = useLocation();
   const [items, setItems] = useState(queryItems);
+  const [optimisticItems, setOptimisticItems] = useState(() => []);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [importOpen, setImportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -214,8 +216,48 @@ export default function Transactions() {
   });
 
   useEffect(() => {
-    setItems(queryItems);
-  }, [queryItems]);
+    if (!optimisticItems.length) {
+      setItems(queryItems);
+      return;
+    }
+    const optimisticIds = new Set(optimisticItems.map((item) => item.id));
+    const filtered = queryItems.filter((item) => !optimisticIds.has(item.id));
+    setItems([...optimisticItems, ...filtered]);
+  }, [optimisticItems, queryItems]);
+
+  useEffect(() => {
+    if (!optimisticItems.length) return;
+    setOptimisticItems((current) =>
+      current.filter((candidate) => !queryItems.some((row) => row.id === candidate.id)),
+    );
+  }, [optimisticItems.length, queryItems]);
+
+  useEffect(() => {
+    const pending = location.state?.recentTransaction;
+    if (!pending || !pending.id) {
+      return;
+    }
+    if (page !== 1) {
+      const { recentTransaction: _ignoredRecent, ...rest } = location.state || {};
+      const nextState = Object.keys(rest).length ? rest : null;
+      navigate(
+        { pathname: location.pathname, search: location.search },
+        { replace: true, state: nextState },
+      );
+      return;
+    }
+    setOptimisticItems((current) => {
+      const exists = current.some((item) => item.id === pending.id);
+      if (exists) return current;
+      return [pending, ...current].slice(0, pageSize);
+    });
+    const { recentTransaction: _ignoredRecent, ...rest } = location.state || {};
+    const nextState = Object.keys(rest).length ? rest : null;
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: nextState },
+    );
+  }, [location, navigate, page, pageSize]);
 
   useEffect(() => {
     setSearchTerm(filter.search);
