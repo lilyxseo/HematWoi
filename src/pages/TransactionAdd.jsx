@@ -463,7 +463,11 @@ export default function TransactionAdd({ onAdd }) {
 
       onAdd?.(payload);
       addToast('Transaksi dibuat dari template.', 'success');
-      navigate('/transactions');
+      navigate('/transactions', {
+        state: {
+          recentTransaction: payload,
+        },
+      });
     } catch (err) {
       addToast(err?.message || 'Gagal membuat transaksi dari template.', 'error');
     } finally {
@@ -598,7 +602,11 @@ export default function TransactionAdd({ onAdd }) {
           });
         }
       }
-      navigate('/transactions');
+      navigate('/transactions', {
+        state: {
+          recentTransaction: payload,
+        },
+      });
     } catch (err) {
       addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
     } finally {
