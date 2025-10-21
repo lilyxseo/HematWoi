@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -177,6 +177,7 @@ export default function Transactions() {
   const { addToast } = useToast();
   const online = useNetworkStatus();
   const navigate = useNavigate();
+  const location = useLocation();
   const [items, setItems] = useState(queryItems);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [importOpen, setImportOpen] = useState(false);
@@ -216,6 +217,28 @@ export default function Transactions() {
   useEffect(() => {
     setItems(queryItems);
   }, [queryItems]);
+
+  useEffect(() => {
+    const state = location.state;
+    const recent = state?.recentTransaction;
+    if (!recent || !recent.id) {
+      return;
+    }
+
+    setItems((prev) => {
+      if (prev.some((item) => item?.id === recent.id)) {
+        return prev;
+      }
+      return [recent, ...prev];
+    });
+
+    const { recentTransaction: _ignored, ...rest } = state ?? {};
+    const nextState = Object.keys(rest).length > 0 ? rest : null;
+    navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: nextState,
+    });
+  }, [location, navigate]);
 
   useEffect(() => {
     setSearchTerm(filter.search);
