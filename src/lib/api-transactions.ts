@@ -1,6 +1,7 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { dbCache } from './sync/localdb';
 import {
   listTransactions as legacyListTransactions,
   getCachedTransactions as legacyGetCachedTransactions,
@@ -92,10 +93,40 @@ export async function removeTransaction(id: string): Promise<boolean> {
   try {
     const { data, error } = await supabase.rpc('delete_transaction', { p_id: id });
     if (error) throw error;
-    return Boolean(data);
+    const success = Boolean(data);
+    if (success) {
+      await removeTransactionsFromCache([id]);
+    }
+    return success;
   } catch (error) {
     throw createFriendlyError(error, 'Gagal menghapus. Cek koneksi lalu coba lagi.');
   }
+}
+
+function extractId(value: unknown): string | null {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (value && typeof value === 'object' && 'id' in value && typeof (value as any).id === 'string') {
+    return (value as { id: string }).id;
+  }
+  return null;
+}
+
+async function removeTransactionsFromCache(ids: string[]): Promise<void> {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return;
+  }
+  await Promise.allSettled(
+    ids.map(async (txId) => {
+      if (!txId) return;
+      try {
+        await dbCache.remove('transactions', txId);
+      } catch (cacheError) {
+        console.warn('Failed to remove cached transaction', cacheError);
+      }
+    }),
+  );
 }
 
 export async function removeTransactionsBulk(ids: string[]): Promise<number> {
@@ -110,11 +141,24 @@ export async function removeTransactionsBulk(ids: string[]): Promise<number> {
     const { data, error } = await supabase.rpc('delete_transactions_bulk', { p_ids: ids });
     if (error) throw error;
     if (typeof data === 'number') {
+      if (data > 0) {
+        await removeTransactionsFromCache(ids);
+      }
       return data;
     }
     if (Array.isArray(data)) {
+      const removedIds = data
+        .map((value) => extractId(value))
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
+      if (removedIds.length) {
+        await removeTransactionsFromCache(removedIds);
+      } else {
+        await removeTransactionsFromCache(ids);
+      }
       return data.length;
     }
+
+    await removeTransactionsFromCache(ids);
     return ids.length;
   } catch (error) {
     throw createFriendlyError(error, 'Gagal menghapus. Cek koneksi lalu coba lagi.');
