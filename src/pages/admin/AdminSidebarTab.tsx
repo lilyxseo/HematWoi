@@ -473,6 +473,10 @@ export default function AdminSidebarTab() {
               placeholder="Contoh: home"
               list="admin-icon-options"
             />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Gunakan nama ikon Tabler (contoh: <code className="rounded bg-muted px-1">IconWallet</code> atau
+              <code className="rounded bg-muted px-1">wallet-2</code>). Preview akan berubah otomatis.
+            </p>
           </label>
           <label className="text-sm font-semibold text-muted-foreground">
             Akses
@@ -607,6 +611,10 @@ export default function AdminSidebarTab() {
                 className={clsx(INPUT_CLASS, 'mt-1')}
                 list="admin-icon-options"
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ketik nama ikon Tabler seperti <code className="rounded bg-muted px-1">IconWallet</code> atau
+                <code className="rounded bg-muted px-1">wallet-2</code> untuk memperbarui preview.
+              </p>
             </label>
             <label className="text-sm font-semibold text-muted-foreground">
               Akses
