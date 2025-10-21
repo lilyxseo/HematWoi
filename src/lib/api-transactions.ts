@@ -5,6 +5,7 @@ import {
   listTransactions as legacyListTransactions,
   getCachedTransactions as legacyGetCachedTransactions,
 } from './api';
+import { dbCache } from './sync/localdb';
 
 type TransactionRow = Record<string, any>;
 
@@ -92,6 +93,7 @@ export async function removeTransaction(id: string): Promise<boolean> {
   try {
     const { data, error } = await supabase.rpc('delete_transaction', { p_id: id });
     if (error) throw error;
+    await dbCache.remove('transactions', id);
     return Boolean(data);
   } catch (error) {
     throw createFriendlyError(error, 'Gagal menghapus. Cek koneksi lalu coba lagi.');
@@ -109,6 +111,7 @@ export async function removeTransactionsBulk(ids: string[]): Promise<number> {
   try {
     const { data, error } = await supabase.rpc('delete_transactions_bulk', { p_ids: ids });
     if (error) throw error;
+    await Promise.all(ids.map((id) => dbCache.remove('transactions', id)));
     if (typeof data === 'number') {
       return data;
     }
