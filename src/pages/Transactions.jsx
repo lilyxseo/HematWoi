@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -177,6 +177,7 @@ export default function Transactions() {
   const { addToast } = useToast();
   const online = useNetworkStatus();
   const navigate = useNavigate();
+  const location = useLocation();
   const [items, setItems] = useState(queryItems);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [importOpen, setImportOpen] = useState(false);
@@ -213,9 +214,70 @@ export default function Transactions() {
     }
   });
 
+  const optimisticIdsRef = useRef(new Set());
+
   useEffect(() => {
-    setItems(queryItems);
+    setItems((prev) => {
+      if (!Array.isArray(queryItems)) {
+        optimisticIdsRef.current.clear();
+        return queryItems;
+      }
+      if (optimisticIdsRef.current.size === 0) {
+        return queryItems;
+      }
+      const prevOptimistic = prev.filter((item) => optimisticIdsRef.current.has(item.id));
+      if (prevOptimistic.length === 0) {
+        optimisticIdsRef.current.clear();
+        return queryItems;
+      }
+      const incomingIds = new Set(queryItems.map((item) => item.id));
+      const stillOptimistic = prevOptimistic.filter((item) => !incomingIds.has(item.id));
+      if (stillOptimistic.length === 0) {
+        optimisticIdsRef.current.clear();
+        return queryItems;
+      }
+      optimisticIdsRef.current.clear();
+      stillOptimistic.forEach((item) => {
+        if (item?.id) {
+          optimisticIdsRef.current.add(item.id);
+        }
+      });
+      return [...stillOptimistic, ...queryItems];
+    });
   }, [queryItems]);
+
+  useEffect(() => {
+    const navState = location.state;
+    if (!navState || navState.__optimisticHandled) return;
+    const candidates = Array.isArray(navState.optimisticTransactions)
+      ? navState.optimisticTransactions
+      : [];
+    if (candidates.length) {
+      setItems((prev) => {
+        const existingIds = new Set(prev.map((item) => item.id));
+        const additions = [];
+        for (const candidate of candidates) {
+          if (!candidate || typeof candidate !== "object") continue;
+          const id = typeof candidate.id === "string" ? candidate.id : null;
+          if (!id || existingIds.has(id)) continue;
+          additions.push({ ...candidate });
+          existingIds.add(id);
+          optimisticIdsRef.current.add(id);
+        }
+        if (!additions.length) return prev;
+        return [...additions, ...prev];
+      });
+    }
+
+    const { optimisticTransactions: _ignored, ...restState } = navState;
+    navigate(`${location.pathname}${location.search}${location.hash}`, {
+      replace: true,
+      state: {
+        ...restState,
+        __optimisticHandled: true,
+      },
+    });
+  }, [location, navigate]);
 
   useEffect(() => {
     setSearchTerm(filter.search);
