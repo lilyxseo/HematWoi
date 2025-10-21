@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { mapTransactionRow } from './api';
+import { dbCache } from './sync/localdb';
 
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
@@ -118,14 +120,16 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
   const { data, error } = await supabase
     .from('transactions')
     .insert(insertPayload)
-    .select('id, user_id, type, date, amount, account_id, to_account_id, category_id, merchant_id, title, notes, tags, receipt_url')
+    .select(
+      'id, user_id, type, date, amount, account_id, to_account_id, category_id, merchant_id, title, notes, tags, receipt_url, inserted_at, updated_at',
+    )
     .single();
 
   if (error) {
     throw new Error(error.message || 'Gagal menyimpan transaksi.');
   }
 
-  return {
+  const record: TransactionRecord = {
     id: data.id,
     user_id: data.user_id,
     type: data.type as TransactionType,
@@ -140,4 +144,24 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
     tags: Array.isArray(data.tags) ? data.tags : null,
     receipt_url: data.receipt_url ?? null,
   };
+
+  // Update local cache optimistically so other views pick up the new transaction immediately.
+  try {
+    await dbCache.set(
+      'transactions',
+      mapTransactionRow({
+        ...data,
+        amount: record.amount,
+        receipt_url: record.receipt_url,
+      }),
+    );
+  } catch (cacheError) {
+    console.error('Failed to update transaction cache', cacheError);
+  }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('transactions:refresh', { detail: { keepPage: false } }));
+  }
+
+  return record;
 }
