@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { dbCache } from './sync/localdb';
+import { mapTransactionRow } from './api';
 
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
@@ -125,18 +127,38 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
     throw new Error(error.message || 'Gagal menyimpan transaksi.');
   }
 
+  const record = {
+    ...data,
+    amount: Number(data.amount ?? amount),
+    account_id: data.account_id ?? account_id ?? null,
+    to_account_id: data.to_account_id ?? (type === 'transfer' ? to_account_id ?? null : null),
+    category_id: data.category_id ?? (type === 'transfer' ? null : category_id ?? null),
+    merchant_id: data.merchant_id ?? merchant_id ?? null,
+    title: data.title ?? title?.trim() ?? null,
+    notes: data.notes ?? notes?.trim() ?? null,
+  };
+
+  try {
+    const normalized = mapTransactionRow(record);
+    if (normalized?.id) {
+      await dbCache.set('transactions', normalized);
+    }
+  } catch (cacheError) {
+    console.warn('Failed to update transaction cache', cacheError);
+  }
+
   return {
     id: data.id,
     user_id: data.user_id,
     type: data.type as TransactionType,
     date: data.date,
-    amount: Number(data.amount ?? amount),
-    account_id: data.account_id ?? null,
-    to_account_id: data.to_account_id ?? null,
-    category_id: data.category_id ?? null,
-    merchant_id: data.merchant_id ?? null,
-    title: data.title ?? null,
-    notes: data.notes ?? null,
+    amount: record.amount,
+    account_id: record.account_id,
+    to_account_id: record.to_account_id,
+    category_id: record.category_id,
+    merchant_id: record.merchant_id,
+    title: record.title,
+    notes: record.notes,
     tags: Array.isArray(data.tags) ? data.tags : null,
     receipt_url: data.receipt_url ?? null,
   };
