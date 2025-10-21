@@ -470,9 +470,12 @@ export default function AdminSidebarTab() {
               value={form.icon_name}
               onChange={(event) => setForm((prev) => ({ ...prev, icon_name: event.target.value }))}
               className={clsx(INPUT_CLASS, 'mt-1')}
-              placeholder="Contoh: home"
+              placeholder="Contoh: home atau icon-wallet"
               list="admin-icon-options"
             />
+            <span className="mt-1 block text-xs text-muted-foreground">
+              Gunakan nama ikon Tabler (mis. <code>home</code>, <code>icon-wallet</code>, atau <code>cash-banknote</code>).
+            </span>
           </label>
           <label className="text-sm font-semibold text-muted-foreground">
             Akses
@@ -607,6 +610,9 @@ export default function AdminSidebarTab() {
                 className={clsx(INPUT_CLASS, 'mt-1')}
                 list="admin-icon-options"
               />
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Gunakan nama ikon Tabler (mis. <code>home</code>, <code>icon-wallet</code>, atau <code>cash-banknote</code>).
+              </span>
             </label>
             <label className="text-sm font-semibold text-muted-foreground">
               Akses
