@@ -151,6 +151,21 @@ export default function TransactionAdd({ onAdd }) {
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
 
+  const goToTransactions = useCallback(
+    (newTransaction) => {
+      if (newTransaction && typeof newTransaction === 'object' && newTransaction.id) {
+        const statePayload = { ...newTransaction };
+        delete statePayload.__persisted;
+        navigate('/transactions', {
+          state: { optimisticTransactions: [statePayload] },
+        });
+      } else {
+        navigate('/transactions');
+      }
+    },
+    [navigate],
+  );
+
   useEffect(() => {
     let active = true;
     async function loadMasterData() {
@@ -463,7 +478,7 @@ export default function TransactionAdd({ onAdd }) {
 
       onAdd?.(payload);
       addToast('Transaksi dibuat dari template.', 'success');
-      navigate('/transactions');
+      goToTransactions(payload);
     } catch (err) {
       addToast(err?.message || 'Gagal membuat transaksi dari template.', 'error');
     } finally {
@@ -598,7 +613,7 @@ export default function TransactionAdd({ onAdd }) {
           });
         }
       }
-      navigate('/transactions');
+      goToTransactions(payload);
     } catch (err) {
       addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
     } finally {
