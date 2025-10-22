@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import heroLogo from '../assets/logo-placeholder.svg';
 import NativeGoogleSignInButton from '../components/NativeGoogleSignInButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
@@ -168,23 +169,19 @@ export default function AuthLogin() {
 
   const skeleton = useMemo(
     () => (
-      <div className="grid w-full animate-pulse gap-6 lg:grid-cols-[1.2fr_1fr]">
-        <div className="rounded-[32px] border border-border-subtle/60 bg-surface/80 p-8 shadow-lg backdrop-blur">
-          <div className="space-y-5 text-center lg:text-left">
-            <div className="mx-auto h-12 w-12 rounded-full bg-surface-alt lg:mx-0" />
-            <div className="mx-auto h-6 w-40 rounded-full bg-surface-alt/80 lg:mx-0" />
-            <div className="mx-auto h-4 w-3/4 rounded-full bg-surface-alt/80 lg:mx-0" />
-            <div className="mx-auto h-10 w-full rounded-2xl bg-surface-alt/70 lg:mx-0" />
-          </div>
+      <div className="space-y-6 rounded-[32px] border border-border-subtle/60 bg-surface/80 p-8 shadow-lg">
+        <div className="space-y-2">
+          <div className="h-4 w-24 rounded-full bg-surface-alt" />
+          <div className="h-7 w-3/4 rounded-full bg-surface-alt/80" />
         </div>
-        <div className="space-y-4 rounded-[32px] border border-border-subtle/60 bg-surface p-8 shadow-lg">
-          <div className="h-5 w-1/2 rounded-full bg-surface-alt" />
-          <div className="h-4 w-2/3 rounded-full bg-surface-alt" />
-          <div className="space-y-3 pt-4">
-            <div className="h-12 rounded-2xl bg-surface-alt" />
-            <div className="h-12 rounded-2xl bg-surface-alt" />
-            <div className="h-12 rounded-2xl bg-surface-alt" />
-          </div>
+        <div className="space-y-3 pt-2">
+          <div className="h-12 rounded-2xl bg-surface-alt" />
+          <div className="h-12 rounded-2xl bg-surface-alt" />
+          <div className="h-12 rounded-2xl bg-surface-alt" />
+        </div>
+        <div className="space-y-3 pt-2">
+          <div className="h-3 w-1/2 rounded-full bg-surface-alt/80" />
+          <div className="h-3 w-2/3 rounded-full bg-surface-alt/80" />
         </div>
       </div>
     ),
@@ -215,108 +212,132 @@ export default function AuthLogin() {
 
   return (
     <ErrorBoundary>
-      <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-surface via-surface-alt to-surface px-6 py-12 text-text transition-colors sm:py-16">
-        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -left-1/3 top-10 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute bottom-0 right-[-10%] h-96 w-96 rounded-full bg-info/10 blur-3xl" />
-          <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-surface" />
+      <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-surface px-4 py-12 text-text sm:px-8">
+        <div className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute -left-32 top-32 h-80 w-80 rounded-full bg-primary/15 blur-3xl" />
+          <div className="absolute right-10 top-10 h-72 w-72 rounded-full bg-info/10 blur-3xl" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-surface" />
         </div>
-        <div className="relative mx-auto flex min-h-[70vh] w-full max-w-6xl flex-col gap-14 lg:flex-row lg:items-center lg:justify-between">
-          <section className="max-w-2xl space-y-8 text-center lg:text-left">
-            <div className="inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-              Selangkah menuju finansial sehat
-            </div>
-            <div className="space-y-4">
-              <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
-                Semua catatan finansialmu, aman dalam satu tempat.
-              </h1>
-              <p className="text-base text-muted">
-                Mulai kembali memantau cash flow, membangun kebiasaan menabung, dan dapatkan insight yang relevan setiap kali kamu login.
-              </p>
-            </div>
-            <dl className="grid gap-4 sm:grid-cols-3">
-              {heroTips.map((tip) => (
-                <div
-                  key={tip}
-                  className="rounded-3xl border border-border-subtle/50 bg-surface/80 p-4 text-left shadow-sm backdrop-blur"
-                >
-                  <dt className="flex items-center gap-2 text-sm font-semibold text-text">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">✓</span>
-                    HematWoi
-                  </dt>
-                  <dd className="mt-2 text-sm text-muted">{tip}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
 
-          <section className="w-full max-w-xl">
-            <div className="space-y-4">
-              {sessionError ? (
-                <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
-                  {sessionError}
-                </div>
-              ) : null}
-              {googleError ? (
-                <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="assertive">
-                  {googleError}
-                </div>
-              ) : null}
-              {checking ? (
-                skeleton
-              ) : (
-                <div className="space-y-6 rounded-[32px] border border-border-subtle/60 bg-surface/90 p-6 shadow-xl backdrop-blur-sm sm:p-8">
-                  <header className="space-y-2 text-center sm:text-left">
-                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted">Masuk ke akunmu</p>
-                    <h2 className="text-2xl font-semibold text-text">Akses dashboard dan lanjutkan perjalanan hematmu</h2>
-                  </header>
-                  <LoginCard
-                    defaultIdentifier={prefilledIdentifier}
-                    onSuccess={handleSuccess}
-                    onPasswordSignInStart={markEmailSignIn}
-                    onPasswordSignInError={clearEmailSignInMarker}
-                  />
-                  <div className="relative">
-                    <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 border-t border-border-subtle/60" aria-hidden="true" />
-                    <div className="relative mx-auto w-max bg-surface px-4 text-xs font-semibold uppercase tracking-[0.3em] text-muted">
-                      atau
-                    </div>
-                  </div>
-                  <div className="space-y-3">
-                    <NativeGoogleSignInButton
-                      onWebLogin={handleGoogleWebSignIn}
-                      disabled={googleLoading}
-                      onNativeSuccess={(response) => {
-                        setGoogleError(null);
-                        setGoogleLoading(false);
-                        void syncGuestData(response?.user?.id ?? response?.session?.user?.id ?? null);
-                      }}
-                      onNativeError={(message) => {
-                        setGoogleLoading(false);
-                        setGoogleError(message);
-                      }}
-                      className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      {googleLoading ? (
-                        <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent" aria-hidden="true" />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
-                        >
-                          G
-                        </span>
-                      )}
-                      <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
-                    </NativeGoogleSignInButton>
-                    <p className="text-xs text-muted">
-                      Jika pop-up tertutup, tekan tombol lagi atau lanjutkan dengan email yang kamu gunakan sehari-hari.
+        <div className="relative w-full max-w-6xl rounded-[40px] border border-border-subtle/60 bg-surface/80 shadow-[0_40px_120px_-40px_rgba(15,23,42,0.35)] backdrop-blur-sm">
+          <div className="grid gap-6 p-6 sm:p-10 lg:grid-cols-[1.05fr_0.95fr] lg:p-12">
+            <section className="relative hidden overflow-hidden rounded-[32px] border border-white/20 bg-gradient-to-br from-primary/90 via-primary/80 to-primary/70 p-10 text-white shadow-inner lg:flex lg:flex-col">
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute -left-24 top-10 h-64 w-64 rounded-full bg-white/20 blur-3xl" />
+                <div className="absolute right-0 bottom-0 h-56 w-56 rounded-full bg-info/40 blur-3xl" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18)_0,_transparent_65%)]" />
+                <div className="absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0.08)_10%,transparent_40%,rgba(255,255,255,0.12)_75%)]" />
+              </div>
+
+              <div className="relative flex flex-1 flex-col justify-between gap-12">
+                <div className="space-y-8">
+                  <span className="inline-flex w-max items-center gap-2 rounded-full bg-white/15 px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-white/80">
+                    HematWoi • Dashboard
+                  </span>
+                  <div className="space-y-4">
+                    <h1 className="text-3xl font-semibold leading-tight text-white sm:text-4xl">
+                      Automasi finansialmu dimulai dari sini.
+                    </h1>
+                    <p className="max-w-lg text-sm text-white/80">
+                      Kelola cash flow, catat transaksi harian, dan raih tujuan menabung dengan insight yang selalu relevan setiap kali kamu login.
                     </p>
                   </div>
+                  <ul className="space-y-3">
+                    {heroTips.map((tip, index) => (
+                      <li
+                        key={tip}
+                        className="flex items-start gap-4 rounded-2xl bg-white/12 p-4 shadow-[0_18px_40px_-25px_rgba(15,23,42,0.75)] backdrop-blur"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/90 text-sm font-semibold text-primary">
+                          {index + 1}
+                        </span>
+                        <p className="text-sm text-white/90">{tip}</p>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              )}
-            </div>
-          </section>
+
+                <div className="relative flex items-end justify-between gap-6">
+                  <div className="rounded-[28px] bg-white/12 p-5 text-left shadow-lg backdrop-blur">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-white/70">Rekap cepat</p>
+                    <p className="mt-2 text-3xl font-semibold text-white">98%</p>
+                    <p className="text-xs text-white/70">Pengguna merasa lebih teratur setelah 2 minggu</p>
+                  </div>
+                  <div className="relative h-24 w-24 shrink-0 rounded-3xl bg-white/10 p-4 shadow-[0_20px_50px_-20px_rgba(15,23,42,0.65)]">
+                    <img src={heroLogo} alt="Logo HematWoi" className="h-full w-full object-contain drop-shadow-[0_12px_35px_rgba(8,47,73,0.25)]" />
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="flex w-full flex-col justify-center">
+              <div className="space-y-5">
+                {sessionError ? (
+                  <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
+                    {sessionError}
+                  </div>
+                ) : null}
+                {googleError ? (
+                  <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="assertive">
+                    {googleError}
+                  </div>
+                ) : null}
+                {checking ? (
+                  skeleton
+                ) : (
+                  <div className="space-y-8 rounded-[32px] border border-border-subtle/60 bg-surface/95 p-6 shadow-xl backdrop-blur-sm sm:p-8">
+                    <header className="space-y-3 text-center sm:text-left">
+                      <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted">Selamat datang kembali</p>
+                      <h2 className="text-2xl font-semibold text-text">Masuk untuk melanjutkan perjalanan finansialmu</h2>
+                    </header>
+                    <LoginCard
+                      defaultIdentifier={prefilledIdentifier}
+                      onSuccess={handleSuccess}
+                      onPasswordSignInStart={markEmailSignIn}
+                      onPasswordSignInError={clearEmailSignInMarker}
+                    />
+                    <div className="relative">
+                      <div className="absolute inset-x-6 top-1/2 -translate-y-1/2 border-t border-border-subtle/60" aria-hidden="true" />
+                      <div className="relative mx-auto w-max bg-surface px-4 text-xs font-semibold uppercase tracking-[0.3em] text-muted">
+                        atau
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <NativeGoogleSignInButton
+                        onWebLogin={handleGoogleWebSignIn}
+                        disabled={googleLoading}
+                        onNativeSuccess={(response) => {
+                          setGoogleError(null);
+                          setGoogleLoading(false);
+                          void syncGuestData(response?.user?.id ?? response?.session?.user?.id ?? null);
+                        }}
+                        onNativeError={(message) => {
+                          setGoogleLoading(false);
+                          setGoogleError(message);
+                        }}
+                        className="inline-flex h-12 w-full items-center justify-center gap-3 rounded-2xl border border-border-subtle bg-white px-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                      >
+                        {googleLoading ? (
+                          <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-transparent" aria-hidden="true" />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-base font-semibold text-[#4285F4]"
+                          >
+                            G
+                          </span>
+                        )}
+                        <span>{googleLoading ? 'Menghubungkan…' : 'Lanjutkan dengan Google'}</span>
+                      </NativeGoogleSignInButton>
+                      <p className="text-xs text-muted">
+                        Jika pop-up tertutup, tekan tombol lagi atau lanjutkan dengan email yang kamu gunakan sehari-hari.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
         </div>
       </main>
     </ErrorBoundary>
