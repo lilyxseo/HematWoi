@@ -437,3 +437,20 @@
     opacity: 0.2;
   }
 }
+
+@layer utilities {
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.6s ease-out both;
+  }
+}
