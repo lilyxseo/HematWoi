@@ -273,9 +273,15 @@ export default function TransactionAdd({ onAdd }) {
     }
   }, [categoriesByType, categoryId, type]);
 
-  const selectedAccount = accounts.find((item) => item.id === accountId);
-  const selectedToAccount = accounts.find((item) => item.id === toAccountId);
-  const selectedCategory = categories.find((item) => item.id === categoryId);
+  const matchById = (list, id) => {
+    if (!id) return undefined;
+    const key = String(id);
+    return list.find((item) => String(item?.id) === key);
+  };
+
+  const selectedAccount = matchById(accounts, accountId);
+  const selectedToAccount = matchById(accounts, toAccountId);
+  const selectedCategory = matchById(categories, categoryId);
   const selectedCategoryName = selectedCategory?.name || '';
   const typeMeta = useMemo(
     () => TYPE_OPTIONS.find((option) => option.value === type),
@@ -418,7 +424,7 @@ export default function TransactionAdd({ onAdd }) {
         return;
       }
       if (template.category_id) {
-        category = categories.find((item) => item.id === template.category_id);
+        category = matchById(categories, template.category_id);
         if (!category) {
           addToast('Kategori pada template tidak ditemukan.', 'error');
           return;
@@ -444,6 +450,8 @@ export default function TransactionAdd({ onAdd }) {
       });
 
       const timestamp = new Date().toISOString();
+      const categoryName = template.type !== 'transfer' ? category?.name || null : null;
+      const categoryColor = template.type !== 'transfer' ? category?.color || null : null;
       const payload = {
         ...saved,
         amount: saved.amount ?? template.amount,
@@ -452,9 +460,10 @@ export default function TransactionAdd({ onAdd }) {
         to_account: template.type === 'transfer' ? targetAccount?.name || null : null,
         to_account_id:
           saved.to_account_id ?? (template.type === 'transfer' ? template.to_account_id : null),
-        category: template.type !== 'transfer' ? category?.name || null : null,
+        category: categoryName,
         category_id:
           saved.category_id ?? (template.type !== 'transfer' ? template.category_id || null : null),
+        category_color: categoryColor,
         title: saved.title ?? (trimmedTemplateTitle || null),
         notes: saved.notes ?? (trimmedTemplateNotes || null),
         note: saved.notes ?? (trimmedTemplateNotes || null),
@@ -562,6 +571,8 @@ export default function TransactionAdd({ onAdd }) {
       }
 
       const timestamp = new Date().toISOString();
+      const categoryName = !isTransfer ? selectedCategory?.name || null : null;
+      const categoryColor = !isTransfer ? selectedCategory?.color || null : null;
       const payload = {
         ...saved,
         amount: saved.amount ?? amountValue,
@@ -569,8 +580,10 @@ export default function TransactionAdd({ onAdd }) {
         account_id: saved.account_id ?? accountId,
         to_account: isTransfer ? selectedToAccount?.name || null : null,
         to_account_id: saved.to_account_id ?? (isTransfer ? toAccountId : null),
-        category: !isTransfer ? selectedCategory?.name || null : null,
-        category_id: saved.category_id ?? (!isTransfer ? categoryId || null : null),
+        category: categoryName,
+        category_id:
+          saved.category_id ?? (!isTransfer ? selectedCategory?.id ?? categoryId ?? null : null),
+        category_color: categoryColor,
         title: saved.title ?? (trimmedTitle || null),
         notes: saved.notes ?? (trimmedNotes || null),
         note: saved.notes ?? (trimmedNotes || null),
