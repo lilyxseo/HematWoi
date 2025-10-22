@@ -215,6 +215,82 @@ export default function Transactions() {
     }
   });
 
+  const categoriesById = useMemo(() => {
+    const map = new Map();
+    (categories || []).forEach((cat) => {
+      if (!cat?.id) return;
+      map.set(cat.id, cat);
+      if (cat.name) {
+        map.set(cat.name.toLowerCase(), cat);
+      }
+    });
+    return map;
+  }, [categories]);
+
+  const sortCombinedItems = useCallback(
+    (list) => {
+      if (!Array.isArray(list)) return [];
+      if (list.length <= 1) return list.slice();
+
+      const getDateValue = (item) => {
+        if (!item) return 0;
+        const { date, inserted_at, updated_at, created_at } = item;
+        const sources = [date, inserted_at, updated_at, created_at];
+        for (const source of sources) {
+          if (!source) continue;
+          const value = Date.parse(source);
+          if (Number.isFinite(value)) return value;
+        }
+        return 0;
+      };
+
+      const getAmountValue = (item) => {
+        if (!item) return 0;
+        const value = Number(item.amount ?? 0);
+        return Number.isFinite(value) ? value : 0;
+      };
+
+      return list
+        .map((item, index) => ({ item, index }))
+        .sort((left, right) => {
+          const { item: a, index: indexA } = left;
+          const { item: b, index: indexB } = right;
+
+          let result = 0;
+          switch (filter.sort) {
+            case "date-asc":
+              result = getDateValue(a) - getDateValue(b);
+              break;
+            case "amount-desc":
+              result = getAmountValue(b) - getAmountValue(a);
+              break;
+            case "amount-asc":
+              result = getAmountValue(a) - getAmountValue(b);
+              break;
+            case "date-desc":
+            default:
+              result = getDateValue(b) - getDateValue(a);
+              break;
+          }
+
+          if (result === 0) {
+            const dateFallback = getDateValue(b) - getDateValue(a);
+            if (dateFallback !== 0) {
+              result = dateFallback;
+            }
+          }
+
+          if (result === 0) {
+            result = indexA - indexB;
+          }
+
+          return result;
+        })
+        .map(({ item }) => item);
+    },
+    [filter.sort],
+  );
+
   useEffect(() => {
     if (!optimisticItems.length) {
       setItems((current) => {
@@ -226,9 +302,10 @@ export default function Transactions() {
       return;
     }
     const optimisticIds = new Set(optimisticItems.map((item) => item.id));
-    const filtered = queryItems.filter((item) => !optimisticIds.has(item.id));
-    setItems([...optimisticItems, ...filtered]);
-  }, [loading, optimisticItems, queryItems]);
+    const baseItems = Array.isArray(queryItems) ? queryItems : [];
+    const filtered = baseItems.filter((item) => !optimisticIds.has(item.id));
+    setItems(sortCombinedItems([...optimisticItems, ...filtered]));
+  }, [loading, optimisticItems, queryItems, sortCombinedItems]);
 
   useEffect(() => {
     if (!optimisticItems.length) return;
@@ -251,10 +328,19 @@ export default function Transactions() {
       );
       return;
     }
+    const categoryId = pending.category_id;
+    const category = categoryId ? categoriesById.get(categoryId) : null;
+    const enhancedPending = category
+      ? {
+          ...pending,
+          category: pending.category ?? category?.name ?? null,
+          category_color: pending.category_color ?? category?.color ?? null,
+        }
+      : pending;
     setOptimisticItems((current) => {
-      const exists = current.some((item) => item.id === pending.id);
+      const exists = current.some((item) => item.id === enhancedPending.id);
       if (exists) return current;
-      return [pending, ...current].slice(0, pageSize);
+      return [enhancedPending, ...current].slice(0, pageSize);
     });
     const { recentTransaction: _ignoredRecent, ...rest } = location.state || {};
     const nextState = Object.keys(rest).length ? rest : null;
@@ -262,7 +348,7 @@ export default function Transactions() {
       { pathname: location.pathname, search: location.search },
       { replace: true, state: nextState },
     );
-  }, [location, navigate, page, pageSize]);
+  }, [categoriesById, location, navigate, page, pageSize]);
 
   useEffect(() => {
     setSearchTerm(filter.search);
@@ -372,18 +458,6 @@ export default function Transactions() {
     }, 250);
     return () => clearTimeout(timer);
   }, [searchTerm, filter.search, setFilter]);
-
-  const categoriesById = useMemo(() => {
-    const map = new Map();
-    (categories || []).forEach((cat) => {
-      if (!cat?.id) return;
-      map.set(cat.id, cat);
-      if (cat.name) {
-        map.set(cat.name.toLowerCase(), cat);
-      }
-    });
-    return map;
-  }, [categories]);
 
   const visibleItems = useMemo(() => {
     if (!Array.isArray(items) || items.length === 0) return [];
