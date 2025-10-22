@@ -472,11 +472,7 @@ function applyThemeToDocument(themeMode: unknown, brandValue?: unknown): void {
     resolvedTheme === 'dark' ? 15 : 6,
     resolvedTheme === 'dark' ? 98 : 88
   );
-  const softLightness = clamp(
-    resolvedTheme === 'dark' ? brand.l / 2 : brand.l + 32,
-    resolvedTheme === 'dark' ? 18 : 70,
-    resolvedTheme === 'dark' ? 42 : 96
-  );
+  const softLightness = clamp(brand.l + 32, 70, 96);
   const ringLightness = clamp(brand.l + (resolvedTheme === 'dark' ? 4 : -14), 0, 100);
   const useDarkForeground = brand.l > 65;
 

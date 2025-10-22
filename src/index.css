@@ -89,7 +89,7 @@
     --color-border-subtle: 46 51 64;
     --color-border-strong: 100 108 136;
 
-    --color-primary-soft: var(--brand-h) var(--brand-s) 26%;
+    --color-primary-soft: var(--brand-h) var(--brand-s) 92%;
     --color-primary-hover: var(--brand-h) var(--brand-s) calc(var(--brand-l) + 6%);
     --color-primary-active: var(--brand-h) var(--brand-s) calc(var(--brand-l) + 10%);
     --color-primary-foreground: 220 24% 95%;
