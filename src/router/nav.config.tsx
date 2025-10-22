@@ -158,4 +158,10 @@ export const NAV_ITEMS: NavItem[] = [
     inSidebar: false,
     protected: false,
   },
+  {
+    title: 'Modern Auth Demo',
+    path: '/auth/modern',
+    inSidebar: false,
+    protected: false,
+  },
 ];
