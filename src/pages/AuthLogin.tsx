@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import heroIllustration from '../assets/hero-reports.png';
 import NativeGoogleSignInButton from '../components/NativeGoogleSignInButton';
 import LoginCard from '../components/auth/LoginCard';
 import ErrorBoundary from '../components/system/ErrorBoundary';
@@ -168,24 +169,18 @@ export default function AuthLogin() {
 
   const skeleton = useMemo(
     () => (
-      <div className="grid w-full animate-pulse gap-6 lg:grid-cols-[1.2fr_1fr]">
-        <div className="rounded-[32px] border border-border-subtle/60 bg-surface/80 p-8 shadow-lg backdrop-blur">
-          <div className="space-y-5 text-center lg:text-left">
-            <div className="mx-auto h-12 w-12 rounded-full bg-surface-alt lg:mx-0" />
-            <div className="mx-auto h-6 w-40 rounded-full bg-surface-alt/80 lg:mx-0" />
-            <div className="mx-auto h-4 w-3/4 rounded-full bg-surface-alt/80 lg:mx-0" />
-            <div className="mx-auto h-10 w-full rounded-2xl bg-surface-alt/70 lg:mx-0" />
-          </div>
+      <div className="animate-pulse space-y-6">
+        <div className="space-y-3">
+          <div className="h-5 w-24 rounded-full bg-surface-alt/80" />
+          <div className="h-8 w-2/3 rounded-full bg-surface-alt/80" />
+          <div className="h-4 w-3/4 rounded-full bg-surface-alt/60" />
         </div>
-        <div className="space-y-4 rounded-[32px] border border-border-subtle/60 bg-surface p-8 shadow-lg">
-          <div className="h-5 w-1/2 rounded-full bg-surface-alt" />
-          <div className="h-4 w-2/3 rounded-full bg-surface-alt" />
-          <div className="space-y-3 pt-4">
-            <div className="h-12 rounded-2xl bg-surface-alt" />
-            <div className="h-12 rounded-2xl bg-surface-alt" />
-            <div className="h-12 rounded-2xl bg-surface-alt" />
-          </div>
+        <div className="space-y-3">
+          <div className="h-12 rounded-2xl bg-surface-alt/70" />
+          <div className="h-12 rounded-2xl bg-surface-alt/60" />
+          <div className="h-12 rounded-2xl bg-surface-alt/50" />
         </div>
+        <div className="h-10 rounded-full bg-surface-alt/70" />
       </div>
     ),
     []
@@ -215,43 +210,26 @@ export default function AuthLogin() {
 
   return (
     <ErrorBoundary>
-      <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-surface via-surface-alt to-surface px-6 py-12 text-text transition-colors sm:py-16">
-        <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-          <div className="absolute -left-1/3 top-10 h-80 w-80 rounded-full bg-primary/10 blur-3xl" />
-          <div className="absolute bottom-0 right-[-10%] h-96 w-96 rounded-full bg-info/10 blur-3xl" />
-          <div className="absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-surface" />
+      <main className="relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br from-surface via-surface-alt to-surface text-text transition-colors lg:flex-row">
+        <div className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute -left-1/3 top-20 h-96 w-96 rounded-full bg-primary/10 blur-3xl" />
+          <div className="absolute bottom-[-10%] right-[-15%] h-[32rem] w-[32rem] rounded-full bg-info/10 blur-3xl" />
         </div>
-        <div className="relative mx-auto flex min-h-[70vh] w-full max-w-6xl flex-col gap-14 lg:flex-row lg:items-center lg:justify-between">
-          <section className="max-w-2xl space-y-8 text-center lg:text-left">
-            <div className="inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-              Selangkah menuju finansial sehat
-            </div>
-            <div className="space-y-4">
-              <h1 className="text-3xl font-semibold leading-tight sm:text-4xl">
-                Semua catatan finansialmu, aman dalam satu tempat.
+
+        <section className="flex w-full flex-1 items-center justify-center px-6 py-14 sm:px-10 lg:w-1/2 lg:py-16">
+          <div className="w-full max-w-lg space-y-10">
+            <div className="space-y-3 text-center lg:text-left">
+              <span className="inline-flex items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-primary">
+                Selamat datang kembali
+              </span>
+              <h1 className="text-3xl font-semibold leading-tight text-text sm:text-4xl">
+                Atur keuangan dengan percaya diri setiap hari.
               </h1>
               <p className="text-base text-muted">
-                Mulai kembali memantau cash flow, membangun kebiasaan menabung, dan dapatkan insight yang relevan setiap kali kamu login.
+                Masuk untuk mengakses ringkasan cash flow, laporan pintar, dan tools hemat andalanmu di HematWoi.
               </p>
             </div>
-            <dl className="grid gap-4 sm:grid-cols-3">
-              {heroTips.map((tip) => (
-                <div
-                  key={tip}
-                  className="rounded-3xl border border-border-subtle/50 bg-surface/80 p-4 text-left shadow-sm backdrop-blur"
-                >
-                  <dt className="flex items-center gap-2 text-sm font-semibold text-text">
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-primary">✓</span>
-                    HematWoi
-                  </dt>
-                  <dd className="mt-2 text-sm text-muted">{tip}</dd>
-                </div>
-              ))}
-            </dl>
-          </section>
-
-          <section className="w-full max-w-xl">
-            <div className="space-y-4">
+            <div className="space-y-4 rounded-[32px] border border-border-subtle/60 bg-surface/95 p-6 shadow-xl backdrop-blur-sm sm:p-8">
               {sessionError ? (
                 <div className="rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger" aria-live="polite">
                   {sessionError}
@@ -265,10 +243,10 @@ export default function AuthLogin() {
               {checking ? (
                 skeleton
               ) : (
-                <div className="space-y-6 rounded-[32px] border border-border-subtle/60 bg-surface/90 p-6 shadow-xl backdrop-blur-sm sm:p-8">
+                <>
                   <header className="space-y-2 text-center sm:text-left">
                     <p className="text-xs font-semibold uppercase tracking-[0.3em] text-muted">Masuk ke akunmu</p>
-                    <h2 className="text-2xl font-semibold text-text">Akses dashboard dan lanjutkan perjalanan hematmu</h2>
+                    <h2 className="text-2xl font-semibold text-text">Lanjutkan perjalanan finansialmu bersama HematWoi</h2>
                   </header>
                   <LoginCard
                     defaultIdentifier={prefilledIdentifier}
@@ -313,11 +291,48 @@ export default function AuthLogin() {
                       Jika pop-up tertutup, tekan tombol lagi atau lanjutkan dengan email yang kamu gunakan sehari-hari.
                     </p>
                   </div>
-                </div>
+                </>
               )}
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
+
+        <section className="relative hidden w-full flex-1 overflow-hidden bg-gradient-to-br from-primary to-primary/70 text-white lg:flex">
+          <div className="absolute inset-0">
+            <div className="absolute -left-32 top-28 h-72 w-72 rounded-full bg-white/10 blur-3xl" />
+            <div className="absolute bottom-[-6rem] right-[-3rem] h-[26rem] w-[26rem] rounded-full bg-info/20 blur-3xl" />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.2),transparent_55%)]" />
+          </div>
+          <div className="relative z-10 flex w-full flex-col justify-between gap-12 px-12 py-16">
+            <div className="space-y-4">
+              <p className="inline-flex items-center rounded-full bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-white/80">
+                HematWoi Dashboard
+              </p>
+              <h2 className="text-3xl font-semibold leading-tight lg:text-4xl">
+                Kelola tim keuanganmu dan pantau performa secara realtime.
+              </h2>
+              <p className="text-sm text-white/80">
+                Ringkasan saldo, laporan otomatis, dan insight cerdas membantu kamu mengambil keputusan lebih cepat.
+              </p>
+            </div>
+            <div className="relative mx-auto w-full max-w-md">
+              <div className="absolute inset-0 rounded-[36px] bg-white/20 blur-2xl" aria-hidden="true" />
+              <img
+                src={heroIllustration}
+                alt="Pratinjau dashboard HematWoi"
+                className="relative rounded-[28px] border border-white/30 shadow-2xl"
+              />
+            </div>
+            <dl className="grid gap-4 sm:grid-cols-3">
+              {heroTips.map((tip) => (
+                <div key={tip} className="rounded-3xl border border-white/20 bg-white/10 p-4">
+                  <dt className="text-xs font-semibold uppercase tracking-widest text-white/70">Insight</dt>
+                  <dd className="mt-2 text-sm text-white">{tip}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </section>
       </main>
     </ErrorBoundary>
   );
