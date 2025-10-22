@@ -352,8 +352,8 @@ export default function ProfilePage() {
   );
 
   const handleSignOutTarget = useCallback(
-    async (sessionId?: string) => {
-      await signOutSession(sessionId);
+    async (sessionId?: string, current?: boolean) => {
+      await signOutSession(sessionId, current);
       try {
         await loadSessions();
       } catch {
