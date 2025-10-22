@@ -44,22 +44,33 @@ function formatValue(value: number) {
   return formatCurrency(Math.trunc(value ?? 0), "IDR")
 }
 
+const SPARKLINE_WIDTH = 120
+const SPARKLINE_HEIGHT = 48
+const SPARKLINE_MIDPOINT = SPARKLINE_HEIGHT / 2
+
 function createSparkline(values: number[]): string {
-  if (!values.length) return ""
-  const width = 120
-  const height = 48
+  if (!values.length) {
+    return `0,${SPARKLINE_MIDPOINT} ${SPARKLINE_WIDTH},${SPARKLINE_MIDPOINT}`
+  }
+  const width = SPARKLINE_WIDTH
+  const height = SPARKLINE_HEIGHT
   const min = Math.min(...values)
   const max = Math.max(...values)
   const diff = max - min || 1
   const step = values.length > 1 ? width / (values.length - 1) : width
-  return values
-    .map((value, index) => {
-      const x = index * step
-      const normalized = (value - min) / diff
-      const y = height - normalized * (height - 10) - 5
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(" ")
+  const coordinates = values.map((value, index) => {
+    const x = index * step
+    const normalized = (value - min) / diff
+    const y = height - normalized * (height - 10) - 5
+    return { x, y }
+  })
+
+  if (values.length === 1) {
+    const y = coordinates[0]?.y ?? SPARKLINE_MIDPOINT
+    return `0,${y.toFixed(1)} ${width},${y.toFixed(1)}`
+  }
+
+  return coordinates.map(({ x, y }) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ")
 }
 
 function DashboardSummary({
@@ -83,6 +94,9 @@ function DashboardSummary({
   const incomeSparklinePath = useMemo(() => createSparkline(incomeTrend), [incomeTrend])
   const expenseSparklinePath = useMemo(() => createSparkline(expenseTrend), [expenseTrend])
   const balanceSparklinePath = useMemo(() => createSparkline(balanceTrend), [balanceTrend])
+  const showIncomeSkeleton = loading && incomeTrend.length > 0
+  const showExpenseSkeleton = loading && expenseTrend.length > 0
+  const showBalanceSkeleton = loading && balanceTrend.length > 0
 
   const renderMoM = (value: number | null) => {
     if (loading) {
@@ -153,7 +167,7 @@ function DashboardSummary({
                 <TrendingUp className="h-4 w-4 sm:h-5 sm:w-5" />
               </IconBadge>
             </div>
-            {loading ? (
+            {showIncomeSkeleton ? (
               <SkeletonBar />
             ) : (
               <div className="flex items-baseline justify-between gap-2">
@@ -178,7 +192,7 @@ function DashboardSummary({
                 <TrendingDown className="h-4 w-4 sm:h-5 sm:w-5" />
               </IconBadge>
             </div>
-            {loading ? (
+            {showExpenseSkeleton ? (
               <SkeletonBar />
             ) : (
               <div className="flex items-baseline justify-between gap-2">
@@ -260,7 +274,7 @@ function DashboardSummary({
                 <Banknote className="h-4 w-4 sm:h-5 sm:w-5" />
               </IconBadge>
             </div>
-            {loading ? (
+            {showBalanceSkeleton ? (
               <SkeletonBar />
             ) : (
               <div className="flex items-baseline justify-between gap-2">
