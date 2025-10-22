@@ -170,30 +170,12 @@ export async function getProfile(): Promise<UserProfile> {
       throw error;
     }
     if (!data) {
-      const defaults = {
-        id: user.id,
-        full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
-        username: null,
-        avatar_url: null,
-        currency: 'IDR',
-        locale: 'id-ID',
-        date_format: 'DD/MM/YYYY',
-        timezone: 'Asia/Jakarta',
-        theme: 'system',
-        notifications: {
-          weekly_summary: true,
-          monthly_summary: false,
-          bill_due: true,
-          goal_reminder: true,
-        },
-      };
-      const { data: inserted, error: insertError } = await supabase
-        .from('user_profiles')
-        .insert(defaults)
-        .select('*')
-        .single();
-      if (insertError) throw insertError;
-      return mapProfileRow(inserted);
+      const { data: ensured, error: ensureError } = await supabase.rpc('ensure_user_profile');
+      if (ensureError) throw ensureError;
+      if (!ensured) {
+        throw new Error('Profil tidak ditemukan.');
+      }
+      return mapProfileRow(ensured as any);
     }
     return mapProfileRow(data);
   } catch (error) {
@@ -208,17 +190,14 @@ export async function checkUsernameAvailability(username: string): Promise<boole
       throw new Error('Username tidak valid.');
     }
     validateUsername(normalized);
-    const user = await requireUser();
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('username', normalized)
-      .neq('id', user.id)
-      .maybeSingle();
-    if (error && error.code !== 'PGRST116') {
+    await requireUser();
+    const { data, error } = await supabase.rpc('is_username_available', {
+      target_username: normalized,
+    });
+    if (error) {
       throw error;
     }
-    return !data;
+    return Boolean(data);
   } catch (error) {
     wrapError('checkUsernameAvailability', error, 'Tidak bisa mengecek username.');
   }
@@ -441,51 +420,59 @@ function detectDeviceLabel(agent: string | null | undefined) {
   return 'Perangkat tidak dikenal';
 }
 
+type SessionRow = {
+  id: string;
+  created_at: string | null;
+  last_sign_in_at: string | null;
+  expires_at: string | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  current: boolean | null;
+};
+
+function mapSessionRow(row: SessionRow): SessionInfo {
+  return {
+    id: row.id,
+    created_at: row.created_at ?? null,
+    expires_at: row.expires_at ?? null,
+    last_sign_in_at: row.last_sign_in_at ?? null,
+    ip_address: row.ip_address ?? null,
+    user_agent: row.user_agent ?? null,
+    label: detectDeviceLabel(row.user_agent),
+    current: Boolean(row.current),
+  };
+}
+
 export async function listSessions(): Promise<SessionInfo[]> {
   try {
-    const { data, error } = await supabase.auth.getSession();
+    const { data, error } = await supabase.rpc('list_user_sessions');
     if (error) throw error;
-    const session = data.session;
-    if (!session) return [];
-    const browserAgent =
-      typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string'
-        ? navigator.userAgent
-        : '';
-    const storedAgent = (session.user as any)?.user_metadata?.user_agent as string | undefined;
-    const agent = storedAgent || browserAgent || null;
-    const info: SessionInfo = {
-      id: session.refresh_token ?? session.access_token ?? 'current',
-      created_at: session.user?.created_at ?? null,
-      expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
-      last_sign_in_at: session.user?.last_sign_in_at ?? null,
-      ip_address: (session.user as any)?.user_metadata?.last_sign_in_ip ?? null,
-      user_agent: agent,
-      label: detectDeviceLabel(agent),
-      current: true,
-    };
-    return [info];
+    const rows = Array.isArray(data) ? (data as SessionRow[]) : [];
+    return rows.map(mapSessionRow);
   } catch (error) {
     wrapError('listSessions', error, 'Tidak bisa memuat sesi.');
   }
 }
 
-export async function signOutSession(sessionId?: string): Promise<void> {
+export async function signOutSession(sessionId?: string, current?: boolean): Promise<void> {
   try {
     if (!sessionId) {
       const { error } = await supabase.auth.signOut({ scope: 'global' });
       if (error) throw error;
       return;
     }
-    const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    const currentId = data.session?.refresh_token ?? data.session?.access_token;
-    if (currentId && sessionId === currentId) {
-      const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
-      if (signOutError) throw signOutError;
+    if (current) {
+      const { error } = await supabase.auth.signOut({ scope: 'local' });
+      if (error) throw error;
       return;
     }
-    const { error: globalError } = await supabase.auth.signOut({ scope: 'global' });
-    if (globalError) throw globalError;
+    const { data, error } = await supabase.rpc('sign_out_session', {
+      target_session_id: sessionId,
+    });
+    if (error) throw error;
+    if (!data) {
+      throw new Error('Sesi tidak ditemukan atau sudah berakhir.');
+    }
   } catch (error) {
     wrapError('signOutSession', error, 'Tidak bisa keluar dari sesi.');
   }
