@@ -57,6 +57,8 @@ export interface DailyDigestModalData {
   upcoming: DigestUpcomingItem[];
 }
 
+type DailyDigestBaseData = Omit<DailyDigestModalData, 'upcoming'>;
+
 export interface UseShowDigestOnLoginOptions {
   transactions?: DigestTransactionLike[] | null;
   balanceHint?: number | null;
@@ -152,11 +154,10 @@ function loadUpcomingSubscriptions(): DigestUpcomingItem[] {
   }
 }
 
-function buildDigestData(
+function buildDigestBaseData(
   transactions: DigestTransactionLike[] | null | undefined,
   balanceHint: number | null | undefined,
-  upcoming: DigestUpcomingItem[],
-): DailyDigestModalData {
+): DailyDigestBaseData {
   const todayKey = getTodayKey();
   const monthKey = todayKey.slice(0, 7);
   const todayDate = new Date(`${todayKey}T00:00:00+07:00`);
@@ -286,7 +287,6 @@ function buildDigestData(
     yesterdayExpense,
     yesterdayCount,
     topYesterdayExpenses,
-    upcoming,
   };
 }
 
@@ -401,9 +401,14 @@ export default function useShowDigestOnLogin({
   const autoOpenRef = useRef(false);
   const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
 
+  const baseData = useMemo(
+    () => buildDigestBaseData(transactions ?? null, balanceHint ?? null),
+    [transactions, balanceHint],
+  );
+
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, balanceHint ?? null, upcoming),
-    [transactions, balanceHint, upcoming],
+    () => ({ ...baseData, upcoming }),
+    [baseData, upcoming],
   );
 
   useEffect(() => {
