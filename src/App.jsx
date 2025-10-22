@@ -475,7 +475,7 @@ function AppShell({ prefs, setPrefs }) {
 
     const hoverLightness = clamp(brand.l + (isDark ? 6 : -7), isDark ? 18 : 8, isDark ? 96 : 92);
     const activeLightness = clamp(brand.l + (isDark ? 10 : -12), isDark ? 15 : 6, isDark ? 98 : 88);
-    const softLightness = clamp(isDark ? brand.l / 2 : brand.l + 32, isDark ? 18 : 70, isDark ? 42 : 96);
+    const softLightness = clamp(brand.l + 32, 70, 96);
     const ringLightness = clamp(brand.l + (isDark ? 4 : -14), 0, 100);
 
     root.style.setProperty('--color-primary-hover', `${brand.h} ${brand.s}% ${hoverLightness}%`);
