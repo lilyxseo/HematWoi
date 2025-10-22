@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { IconBrandApple, IconBrandGoogle } from '@tabler/icons-react';
 import { Eye, EyeOff } from 'lucide-react';
@@ -6,16 +6,34 @@ import ErrorBoundary from '../components/system/ErrorBoundary';
 import Logo from '../components/Logo';
 
 type FormState = {
-  email: string;
+  identifier: string;
   password: string;
+  remember: boolean;
 };
 
-type FormErrors = Partial<Record<keyof FormState, string>>;
+type CredentialsState = Pick<FormState, 'identifier' | 'password'>;
 
+type FormErrors = Partial<Record<keyof CredentialsState, string>>;
+
+const STORAGE_KEY = 'hw:lastIdentifier';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,}$/;
 
 export default function AuthLogin() {
-  const [form, setForm] = useState<FormState>({ email: '', password: '' });
+  const [form, setForm] = useState<FormState>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = window.localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          return { identifier: stored, password: '', remember: true };
+        }
+      } catch {
+        // ignore read errors
+      }
+    }
+
+    return { identifier: '', password: '', remember: false };
+  });
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -27,13 +45,19 @@ export default function AuthLogin() {
     };
   }, []);
 
-  const validate = useCallback((state: FormState): FormErrors => {
+  const validate = useCallback((state: CredentialsState): FormErrors => {
     const nextErrors: FormErrors = {};
 
-    if (!state.email.trim()) {
-      nextErrors.email = 'Email wajib diisi.';
-    } else if (!EMAIL_PATTERN.test(state.email.trim())) {
-      nextErrors.email = 'Gunakan format email yang valid.';
+    const trimmedIdentifier = state.identifier.trim();
+
+    if (!trimmedIdentifier) {
+      nextErrors.identifier = 'Email atau username wajib diisi.';
+    } else if (trimmedIdentifier.includes('@')) {
+      if (!EMAIL_PATTERN.test(trimmedIdentifier)) {
+        nextErrors.identifier = 'Gunakan format email yang valid.';
+      }
+    } else if (!USERNAME_PATTERN.test(trimmedIdentifier)) {
+      nextErrors.identifier = 'Gunakan username minimal 3 karakter.';
     }
 
     if (!state.password.trim()) {
@@ -44,7 +68,7 @@ export default function AuthLogin() {
   }, []);
 
   const handleFieldChange = useCallback(
-    (field: keyof FormState) =>
+    (field: keyof CredentialsState) =>
       (event: ChangeEvent<HTMLInputElement>) => {
         const value = event.target.value;
         setForm((prev) => ({ ...prev, [field]: value }));
@@ -53,16 +77,39 @@ export default function AuthLogin() {
     []
   );
 
+  const handleRememberChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target;
+    setForm((prev) => ({ ...prev, remember: checked }));
+  }, []);
+
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword((previous) => !previous);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const trimmedIdentifier = form.identifier.trim();
+      if (form.remember && trimmedIdentifier) {
+        window.localStorage.setItem(STORAGE_KEY, trimmedIdentifier);
+      } else {
+        window.localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      // ignore persistence errors
+    }
+  }, [form.identifier, form.remember]);
 
   const handleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       if (loading) return;
 
-      const nextErrors = validate(form);
+      const credentials: CredentialsState = {
+        identifier: form.identifier,
+        password: form.password,
+      };
+      const nextErrors = validate(credentials);
       setErrors(nextErrors);
       if (Object.keys(nextErrors).length > 0) {
         return;
@@ -70,8 +117,11 @@ export default function AuthLogin() {
 
       setLoading(true);
       window.setTimeout(() => {
-        window.alert('Login berhasil (mock)');
+        const identifier = credentials.identifier.trim();
+        const loginMethod = identifier.includes('@') ? 'email' : 'username';
+        window.alert(`Login ${loginMethod} berhasil (mock)`);
         setLoading(false);
+        setForm((prev) => ({ ...prev, password: '' }));
       }, 900);
     },
     [form, loading, validate]
@@ -108,7 +158,10 @@ export default function AuthLogin() {
                   <button
                     type="button"
                     onClick={handleSocialLogin('Apple')}
-                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-border-subtle bg-surface px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+                    disabled
+                    aria-disabled="true"
+                    title="Login dengan Apple belum tersedia"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-border-subtle bg-surface px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <IconBrandApple className="h-5 w-5" aria-hidden="true" />
                     <span>Sign in with Apple</span>
@@ -123,24 +176,24 @@ export default function AuthLogin() {
 
                 <form onSubmit={handleSubmit} className="space-y-6" noValidate>
                   <div className="space-y-1.5">
-                    <label htmlFor="email" className="text-sm font-medium text-text">
-                      Email
+                    <label htmlFor="identifier" className="text-sm font-medium text-text">
+                      Email atau Username
                     </label>
                     <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
+                      id="identifier"
+                      name="identifier"
+                      type="text"
+                      autoComplete="username"
                       required
-                      value={form.email}
-                      onChange={handleFieldChange('email')}
+                      value={form.identifier}
+                      onChange={handleFieldChange('identifier')}
                       className="min-h-[44px] w-full rounded-2xl border border-border-subtle bg-surface px-3 py-3 text-sm text-text transition placeholder:text-muted focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
-                      placeholder="nama@email.com"
-                      aria-invalid={Boolean(errors.email)}
+                      placeholder="nama@email.com atau username"
+                      aria-invalid={Boolean(errors.identifier)}
                     />
-                    {errors.email ? (
+                    {errors.identifier ? (
                       <p className="text-xs text-danger" role="alert" aria-live="polite">
-                        {errors.email}
+                        {errors.identifier}
                       </p>
                     ) : null}
                   </div>
@@ -182,7 +235,18 @@ export default function AuthLogin() {
                     ) : null}
                   </div>
 
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label htmlFor="remember" className="flex cursor-pointer items-center gap-2 text-sm text-text">
+                      <input
+                        id="remember"
+                        name="remember"
+                        type="checkbox"
+                        checked={form.remember}
+                        onChange={handleRememberChange}
+                        className="h-4 w-4 rounded border-border-subtle text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+                      />
+                      <span>Remember me</span>
+                    </label>
                     <Link
                       to="/forgot-password"
                       className="text-sm font-semibold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
@@ -206,7 +270,7 @@ export default function AuthLogin() {
             </div>
           </section>
 
-          <aside className="flex flex-col justify-center px-6 pb-16 pt-0 sm:px-12 sm:pb-20 lg:px-16 lg:py-12">
+          <aside className="hidden flex-col justify-center px-6 pb-16 pt-0 sm:px-12 sm:pb-20 lg:flex lg:px-16 lg:py-12">
             <div className="flex w-full grow items-center justify-center">
               <div
                 className="h-full w-full min-h-[320px] rounded-3xl border border-border-subtle bg-surface-alt"
