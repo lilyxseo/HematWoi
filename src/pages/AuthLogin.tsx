@@ -6,16 +6,19 @@ import ErrorBoundary from '../components/system/ErrorBoundary';
 import Logo from '../components/Logo';
 
 type FormState = {
-  email: string;
+  identifier: string;
   password: string;
+  rememberMe: boolean;
 };
 
-type FormErrors = Partial<Record<keyof FormState, string>>;
+type FormErrors = Partial<Record<'identifier' | 'password', string>>;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+const isEmail = (value: string) => EMAIL_PATTERN.test(value.trim());
+
 export default function AuthLogin() {
-  const [form, setForm] = useState<FormState>({ email: '', password: '' });
+  const [form, setForm] = useState<FormState>({ identifier: '', password: '', rememberMe: false });
   const [errors, setErrors] = useState<FormErrors>({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -30,10 +33,10 @@ export default function AuthLogin() {
   const validate = useCallback((state: FormState): FormErrors => {
     const nextErrors: FormErrors = {};
 
-    if (!state.email.trim()) {
-      nextErrors.email = 'Email wajib diisi.';
-    } else if (!EMAIL_PATTERN.test(state.email.trim())) {
-      nextErrors.email = 'Gunakan format email yang valid.';
+    if (!state.identifier.trim()) {
+      nextErrors.identifier = 'Email atau username wajib diisi.';
+    } else if (state.identifier.includes('@') && !isEmail(state.identifier)) {
+      nextErrors.identifier = 'Gunakan format email yang valid.';
     }
 
     if (!state.password.trim()) {
@@ -44,7 +47,7 @@ export default function AuthLogin() {
   }, []);
 
   const handleFieldChange = useCallback(
-    (field: keyof FormState) =>
+    <Field extends 'identifier' | 'password'>(field: Field) =>
       (event: ChangeEvent<HTMLInputElement>) => {
         const value = event.target.value;
         setForm((prev) => ({ ...prev, [field]: value }));
@@ -52,6 +55,11 @@ export default function AuthLogin() {
       },
     []
   );
+
+  const handleRememberMeChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target;
+    setForm((prev) => ({ ...prev, rememberMe: checked }));
+  }, []);
 
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword((previous) => !previous);
@@ -107,11 +115,12 @@ export default function AuthLogin() {
                   </button>
                   <button
                     type="button"
-                    onClick={handleSocialLogin('Apple')}
-                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-border-subtle bg-surface px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+                    disabled
+                    className="inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-2xl border border-border-subtle bg-surface px-4 text-sm font-semibold text-muted transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed"
+                    aria-disabled="true"
                   >
                     <IconBrandApple className="h-5 w-5" aria-hidden="true" />
-                    <span>Sign in with Apple</span>
+                    <span>Sign in with Apple (Segera Hadir)</span>
                   </button>
                 </div>
 
@@ -123,24 +132,24 @@ export default function AuthLogin() {
 
                 <form onSubmit={handleSubmit} className="space-y-6" noValidate>
                   <div className="space-y-1.5">
-                    <label htmlFor="email" className="text-sm font-medium text-text">
-                      Email
+                    <label htmlFor="identifier" className="text-sm font-medium text-text">
+                      Email atau Username
                     </label>
                     <input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
+                      id="identifier"
+                      name="identifier"
+                      type="text"
+                      autoComplete="username"
                       required
-                      value={form.email}
-                      onChange={handleFieldChange('email')}
+                      value={form.identifier}
+                      onChange={handleFieldChange('identifier')}
                       className="min-h-[44px] w-full rounded-2xl border border-border-subtle bg-surface px-3 py-3 text-sm text-text transition placeholder:text-muted focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
-                      placeholder="nama@email.com"
-                      aria-invalid={Boolean(errors.email)}
+                      placeholder="nama@email.com atau username"
+                      aria-invalid={Boolean(errors.identifier)}
                     />
-                    {errors.email ? (
+                    {errors.identifier ? (
                       <p className="text-xs text-danger" role="alert" aria-live="polite">
-                        {errors.email}
+                        {errors.identifier}
                       </p>
                     ) : null}
                   </div>
@@ -182,7 +191,17 @@ export default function AuthLogin() {
                     ) : null}
                   </div>
 
-                  <div className="flex justify-end">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label className="inline-flex items-center gap-2 text-sm text-text">
+                      <input
+                        type="checkbox"
+                        name="remember-me"
+                        checked={form.rememberMe}
+                        onChange={handleRememberMeChange}
+                        className="h-4 w-4 rounded border-border-subtle text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+                      />
+                      <span>Remember me</span>
+                    </label>
                     <Link
                       to="/forgot-password"
                       className="text-sm font-semibold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
@@ -206,7 +225,7 @@ export default function AuthLogin() {
             </div>
           </section>
 
-          <aside className="flex flex-col justify-center px-6 pb-16 pt-0 sm:px-12 sm:pb-20 lg:px-16 lg:py-12">
+          <aside className="hidden flex-col justify-center px-6 pb-16 pt-0 sm:px-12 sm:pb-20 lg:flex lg:px-16 lg:py-12">
             <div className="flex w-full grow items-center justify-center">
               <div
                 className="h-full w-full min-h-[320px] rounded-3xl border border-border-subtle bg-surface-alt"
