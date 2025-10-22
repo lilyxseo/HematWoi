@@ -439,6 +439,7 @@ export default function TransactionAdd({ onAdd }) {
         account_id: template.account_id,
         to_account_id: template.type === 'transfer' ? template.to_account_id : null,
         category_id: template.type !== 'transfer' ? template.category_id || null : null,
+        category_name: template.type !== 'transfer' ? category?.name || null : null,
         title: trimmedTemplateTitle ? trimmedTemplateTitle : null,
         notes: trimmedTemplateNotes ? trimmedTemplateNotes : null,
       });
@@ -548,6 +549,7 @@ export default function TransactionAdd({ onAdd }) {
         account_id: accountId,
         to_account_id: isTransfer ? toAccountId : null,
         category_id: !isTransfer ? categoryId || null : null,
+        category_name: !isTransfer ? selectedCategory?.name || null : null,
         title: trimmedTitle ? trimmedTitle : null,
         notes: trimmedNotes ? trimmedNotes : null,
       });
