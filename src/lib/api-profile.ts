@@ -1,3 +1,4 @@
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 const isDevelopment = Boolean(
@@ -96,12 +97,14 @@ function sanitizePartial<T extends Record<string, unknown>>(payload: T) {
   ) as Partial<T>;
 }
 
+const AVATAR_SIGNED_URL_TTL = 3600; // 1 hour
+
 async function resolveAvatarUrl(path: string | null): Promise<string | null> {
   if (!path) return null;
   try {
     const { data, error } = await supabase.storage
       .from('avatars')
-      .createSignedUrl(path, 60);
+      .createSignedUrl(path, AVATAR_SIGNED_URL_TTL);
     if (error) throw error;
     const signed = data?.signedUrl ?? null;
     if (!signed) return null;
@@ -441,29 +444,153 @@ function detectDeviceLabel(agent: string | null | undefined) {
   return 'Perangkat tidak dikenal';
 }
 
+function parseTimestamp(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value).toISOString();
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseInt(trimmed, 10);
+    if (Number.isFinite(parsed) && trimmed.length >= 10 && !Number.isNaN(parsed)) {
+      return new Date(parsed).toISOString();
+    }
+    const date = new Date(trimmed);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+  return null;
+}
+
+function toNullableString(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+function buildCurrentSessionInfo(session: Session | null): SessionInfo | null {
+  if (!session) return null;
+  const browserAgent =
+    typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string'
+      ? navigator.userAgent
+      : '';
+  const storedAgent = (session.user as any)?.user_metadata?.user_agent as string | undefined;
+  const agent = storedAgent || browserAgent || null;
+  return {
+    id: session.refresh_token ?? session.access_token ?? 'current',
+    created_at: session.user?.created_at ?? null,
+    expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
+    last_sign_in_at: session.user?.last_sign_in_at ?? null,
+    ip_address: (session.user as any)?.user_metadata?.last_sign_in_ip ?? null,
+    user_agent: agent,
+    label: detectDeviceLabel(agent),
+    current: true,
+  };
+}
+
+function mapSessionRecord(row: any, activeTokens: Set<string>): SessionInfo | null {
+  if (!row || typeof row !== 'object') return null;
+  const rawId =
+    row.session_id ?? row.id ?? row.sessionid ?? row.refresh_token ?? row.access_token ?? null;
+  const id = rawId ? String(rawId) : null;
+  if (!id) return null;
+  const agent =
+    toNullableString(row.user_agent ?? row.useragent ?? row.ua ?? row.device_agent ?? null) ?? null;
+  const refreshToken = toNullableString(row.refresh_token ?? row.session_token ?? null);
+  const accessToken = toNullableString(row.access_token ?? null);
+  const isCurrentFlag = Boolean(row.is_current ?? row.current ?? false);
+  const isCurrentCandidate = [refreshToken, accessToken, id].some(
+    (token) => (token ? activeTokens.has(token) : false),
+  );
+
+  return {
+    id,
+    created_at: parseTimestamp(row.created_at ?? row.inserted_at ?? null),
+    expires_at: parseTimestamp(row.expires_at ?? row.expire_at ?? row.expired_at ?? null),
+    last_sign_in_at: parseTimestamp(
+      row.last_sign_in_at ?? row.updated_at ?? row.last_active_at ?? row.created_at ?? null,
+    ),
+    ip_address: toNullableString(row.ip_address ?? row.ip ?? row.client_ip ?? null),
+    user_agent: agent,
+    label: detectDeviceLabel(agent),
+    current: isCurrentFlag || isCurrentCandidate,
+  };
+}
+
+function deduplicateSessions(sessions: SessionInfo[]): SessionInfo[] {
+  const seen = new Set<string>();
+  const result: SessionInfo[] = [];
+  for (const session of sessions) {
+    const key = session.id ?? JSON.stringify([session.user_agent, session.last_sign_in_at]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(session);
+  }
+  return result;
+}
+
 export async function listSessions(): Promise<SessionInfo[]> {
   try {
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
     const session = data.session;
     if (!session) return [];
-    const browserAgent =
-      typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string'
-        ? navigator.userAgent
-        : '';
-    const storedAgent = (session.user as any)?.user_metadata?.user_agent as string | undefined;
-    const agent = storedAgent || browserAgent || null;
-    const info: SessionInfo = {
-      id: session.refresh_token ?? session.access_token ?? 'current',
-      created_at: session.user?.created_at ?? null,
-      expires_at: session.expires_at ? new Date(session.expires_at * 1000).toISOString() : null,
-      last_sign_in_at: session.user?.last_sign_in_at ?? null,
-      ip_address: (session.user as any)?.user_metadata?.last_sign_in_ip ?? null,
-      user_agent: agent,
-      label: detectDeviceLabel(agent),
-      current: true,
-    };
-    return [info];
+
+    const tokens = new Set<string>();
+    if (session.access_token) tokens.add(session.access_token);
+    if (session.refresh_token) tokens.add(session.refresh_token);
+
+    let userId = session.user?.id ?? null;
+    if (!userId) {
+      try {
+        const user = await requireUser();
+        userId = user.id;
+      } catch (userError) {
+        logDevError('listSessions:requireUser', userError);
+      }
+    }
+
+    const aggregated: SessionInfo[] = [];
+    if (userId) {
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('list_user_sessions', {
+          target_user_id: userId,
+          user_id: userId,
+        });
+        if (!rpcError && Array.isArray(rpcData)) {
+          for (const row of rpcData) {
+            const mapped = mapSessionRecord(row, tokens);
+            if (mapped) {
+              aggregated.push(mapped);
+            }
+          }
+        } else if (rpcError) {
+          logDevError('listSessions:rpc', rpcError);
+        }
+      } catch (rpcError) {
+        logDevError('listSessions:rpc-exception', rpcError);
+      }
+    }
+
+    const currentInfo = buildCurrentSessionInfo(session);
+    if (aggregated.length === 0) {
+      return currentInfo ? [currentInfo] : [];
+    }
+
+    if (currentInfo && !aggregated.some((item) => item.current)) {
+      aggregated.unshift(currentInfo);
+    }
+
+    return deduplicateSessions(aggregated);
   } catch (error) {
     wrapError('listSessions', error, 'Tidak bisa memuat sesi.');
   }
@@ -478,13 +605,25 @@ export async function signOutSession(sessionId?: string): Promise<void> {
     }
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
-    const currentId = data.session?.refresh_token ?? data.session?.access_token;
-    if (currentId && sessionId === currentId) {
+    const currentRefresh = data.session?.refresh_token ?? null;
+    const currentAccess = data.session?.access_token ?? null;
+    if (sessionId === currentRefresh || sessionId === currentAccess) {
       const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
       if (signOutError) throw signOutError;
       return;
     }
-    const { error: globalError } = await supabase.auth.signOut({ scope: 'global' });
+    try {
+      const { error: rpcError } = await supabase.rpc('sign_out_session', {
+        target_session_id: sessionId,
+      });
+      if (!rpcError) {
+        return;
+      }
+      logDevError('signOutSession:rpc', rpcError);
+    } catch (rpcError) {
+      logDevError('signOutSession:rpc-exception', rpcError);
+    }
+    const { error: globalError } = await supabase.auth.signOut({ scope: 'others' });
     if (globalError) throw globalError;
   } catch (error) {
     wrapError('signOutSession', error, 'Tidak bisa keluar dari sesi.');

@@ -21,6 +21,8 @@ type UsernameStatus =
   | 'error';
 
 const USERNAME_REGEX = /^[_a-z0-9]{3,30}$/;
+const AVATAR_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
 
 function normalizeUsernameInput(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -43,6 +45,7 @@ export default function AccountCard({
   const [formError, setFormError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const dropRef = useRef<HTMLLabelElement | null>(null);
 
   useEffect(() => {
@@ -86,6 +89,11 @@ export default function AccountCard({
       }
       return;
     }
+    if (offline) {
+      setStatus('error');
+      setStatusMessage('Perlu koneksi internet untuk mengecek ketersediaan username.');
+      return;
+    }
     let active = true;
     setStatus('checking');
     setStatusMessage('Memeriksa ketersediaan…');
@@ -112,7 +120,7 @@ export default function AccountCard({
       active = false;
       window.clearTimeout(handler);
     };
-  }, [username, onCheckUsername, profile]);
+  }, [username, onCheckUsername, profile, offline]);
 
   const hasChanges = useMemo(() => {
     const trimmedName = fullName.trim();
@@ -122,10 +130,25 @@ export default function AccountCard({
     return !normalized || usernameChanged;
   }, [fullName, username, profile]);
 
+  const hasStatusError =
+    status === 'invalid' || status === 'taken' || status === 'error' || status === 'checking';
+
+  const validateAvatarFile = useCallback((file: File) => {
+    if (!AVATAR_TYPES.has(file.type)) {
+      setFormError('Format avatar harus PNG, JPG, atau WEBP.');
+      return false;
+    }
+    if (file.size > MAX_AVATAR_SIZE) {
+      setFormError('Ukuran avatar maksimal 2MB.');
+      return false;
+    }
+    return true;
+  }, []);
+
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
-      if (!hasChanges || offline) return;
+      if (!hasChanges || offline || hasStatusError) return;
       setSaving(true);
       setFormError('');
       try {
@@ -144,12 +167,15 @@ export default function AccountCard({
         setSaving(false);
       }
     },
-    [hasChanges, offline, onSave, fullName, username],
+    [hasChanges, offline, onSave, fullName, username, hasStatusError],
   );
 
   const handleFile = useCallback(
     async (file?: File | null) => {
       if (!file || offline) return;
+      if (!validateAvatarFile(file)) {
+        return;
+      }
       setUploading(true);
       setFormError('');
       try {
@@ -165,7 +191,7 @@ export default function AccountCard({
         setUploading(false);
       }
     },
-    [offline, onUploadAvatar, profile?.avatar_signed_url],
+    [offline, onUploadAvatar, profile?.avatar_signed_url, validateAvatarFile],
   );
 
   const onFileChange = useCallback(
@@ -183,6 +209,7 @@ export default function AccountCard({
       if (offline) return;
       const file = event.dataTransfer.files?.[0];
       void handleFile(file ?? null);
+      event.dataTransfer.clearData();
     },
     [handleFile, offline],
   );
@@ -207,6 +234,11 @@ export default function AccountCard({
     };
   }, []);
 
+  const openFileDialog = useCallback(() => {
+    if (offline || uploading) return;
+    fileInputRef.current?.click();
+  }, [offline, uploading]);
+
   return (
     <section
       aria-labelledby="profile-account-heading"
@@ -225,12 +257,22 @@ export default function AccountCard({
             htmlFor="avatar-upload"
             onDrop={onDrop}
             onDragOver={onDragOver}
-            className="group relative flex h-full min-h-[200px] cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border-subtle bg-surface-alt/60 p-4 text-center transition hover:border-primary/60 focus-within:border-primary focus-within:ring-2 focus-within:ring-ring-primary"
+            tabIndex={offline ? -1 : 0}
+            onKeyDown={(event) => {
+              if (offline) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openFileDialog();
+              }
+            }}
+            aria-disabled={offline || uploading}
+            className="group relative flex h-full min-h-[200px] cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border-subtle bg-surface-alt/60 p-4 text-center transition hover:border-primary/60 focus:outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring-primary focus-within:border-primary focus-within:ring-2 focus-within:ring-ring-primary"
           >
             <input
               id="avatar-upload"
               type="file"
               accept="image/png,image/jpeg,image/webp"
+              ref={fileInputRef}
               onChange={onFileChange}
               disabled={offline || uploading}
               className="sr-only"
@@ -263,9 +305,14 @@ export default function AccountCard({
                 <p className="text-xs text-warning">Mode offline — unggah dinonaktifkan.</p>
               ) : null}
             </div>
-            <div className="inline-flex items-center gap-2 rounded-2xl bg-surface px-3 py-2 text-xs font-semibold text-primary shadow-sm">
+            <button
+              type="button"
+              onClick={openFileDialog}
+              disabled={offline || uploading}
+              className="inline-flex items-center gap-2 rounded-2xl bg-surface px-3 py-2 text-xs font-semibold text-primary shadow-sm transition hover:text-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+            >
               <UploadCloud className="h-4 w-4" aria-hidden="true" /> Pilih file
-            </div>
+            </button>
           </label>
         </div>
         <div className="flex flex-col gap-1">
@@ -351,7 +398,7 @@ export default function AccountCard({
           <div className="flex w-full justify-end">
             <button
               type="submit"
-              disabled={!hasChanges || saving || offline || status === 'checking' || status === 'invalid' || status === 'taken'}
+              disabled={!hasChanges || saving || offline || hasStatusError}
               className="inline-flex h-11 items-center justify-center rounded-2xl bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}
