@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, ImageDown, Loader2, UploadCloud } from 'lucide-react';
+import { isNativePlatform, takePhotoOrPick } from '../../lib/native';
 import type { UserProfile } from '../../lib/api-profile';
 
 interface AccountCardProps {
@@ -44,6 +45,7 @@ export default function AccountCard({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const dropRef = useRef<HTMLLabelElement | null>(null);
+  const [nativeUploadAvailable, setNativeUploadAvailable] = useState(false);
 
   useEffect(() => {
     setFullName(profile?.full_name ?? '');
@@ -53,6 +55,10 @@ export default function AccountCard({
     setFormError('');
     setPreviewUrl(profile?.avatar_signed_url ?? null);
   }, [profile]);
+
+  useEffect(() => {
+    setNativeUploadAvailable(isNativePlatform());
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -147,16 +153,23 @@ export default function AccountCard({
     [hasChanges, offline, onSave, fullName, username],
   );
 
-  const handleFile = useCallback(
-    async (file?: File | null) => {
+  const uploadAvatarFile = useCallback(
+    async (file: File, previewSource?: Blob) => {
       if (!file || offline) return;
       setUploading(true);
       setFormError('');
+      let objectUrl: string | null = null;
       try {
-        const url = URL.createObjectURL(file);
-        setPreviewUrl(url);
+        const previewBlob = previewSource ?? file;
+        if (previewBlob) {
+          objectUrl = URL.createObjectURL(previewBlob);
+          setPreviewUrl(objectUrl);
+        }
         await onUploadAvatar(file);
       } catch (error) {
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+        }
         setFormError(
           error instanceof Error ? error.message : 'Tidak bisa mengunggah avatar saat ini.',
         );
@@ -167,6 +180,46 @@ export default function AccountCard({
     },
     [offline, onUploadAvatar, profile?.avatar_signed_url],
   );
+
+  const handleFile = useCallback(
+    async (file?: File | null) => {
+      if (!file || offline) return;
+      await uploadAvatarFile(file);
+    },
+    [offline, uploadAvatarFile],
+  );
+
+  const handleNativeCapture = useCallback(async () => {
+    if (!nativeUploadAvailable || offline) return;
+    try {
+      const media = await takePhotoOrPick({
+        fileName: `avatar-${Date.now()}`,
+        allowEditing: true,
+        quality: 85,
+        accept: 'image/*',
+      });
+      const extensionFromName = media.fileName?.split('.').pop()?.toLowerCase();
+      const mimeExt = media.mimeType?.split('/').pop();
+      const resolvedExtension = extensionFromName || mimeExt || 'jpg';
+      const baseName = media.fileName?.replace(/\.[^.]+$/, '') || `avatar-${Date.now()}`;
+      const safeName = `${baseName}.${resolvedExtension}`;
+      const file = new File([media.blob], safeName, {
+        type: media.mimeType || 'image/jpeg',
+        lastModified: Date.now(),
+      });
+      await uploadAvatarFile(file, media.blob);
+    } catch (error) {
+      if (error instanceof Error) {
+        const lowered = error.message.toLowerCase();
+        if (lowered.includes('batal') || lowered.includes('cancel')) {
+          return;
+        }
+        setFormError(error.message);
+      } else {
+        setFormError('Tidak bisa mengunggah avatar saat ini.');
+      }
+    }
+  }, [nativeUploadAvailable, offline, uploadAvatarFile]);
 
   const onFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -180,19 +233,23 @@ export default function AccountCard({
   const onDrop = useCallback(
     (event: React.DragEvent<HTMLLabelElement>) => {
       event.preventDefault();
-      if (offline) return;
+      if (offline || nativeUploadAvailable) return;
       const file = event.dataTransfer.files?.[0];
       void handleFile(file ?? null);
     },
-    [handleFile, offline],
+    [handleFile, offline, nativeUploadAvailable],
   );
 
-  const onDragOver = useCallback((event: React.DragEvent<HTMLLabelElement>) => {
-    if (offline) return;
-    event.preventDefault();
-  }, [offline]);
+  const onDragOver = useCallback(
+    (event: React.DragEvent<HTMLLabelElement>) => {
+      if (offline || nativeUploadAvailable) return;
+      event.preventDefault();
+    },
+    [offline, nativeUploadAvailable],
+  );
 
   useEffect(() => {
+    if (nativeUploadAvailable) return;
     const node = dropRef.current;
     if (!node) return;
     const prevent = (event: DragEvent) => {
@@ -205,7 +262,7 @@ export default function AccountCard({
       node.removeEventListener('dragenter', prevent);
       node.removeEventListener('dragleave', prevent);
     };
-  }, []);
+  }, [nativeUploadAvailable]);
 
   return (
     <section
@@ -225,14 +282,31 @@ export default function AccountCard({
             htmlFor="avatar-upload"
             onDrop={onDrop}
             onDragOver={onDragOver}
+            onClick={(event) => {
+              if (!nativeUploadAvailable) return;
+              event.preventDefault();
+              event.stopPropagation();
+              void handleNativeCapture();
+            }}
+            onKeyDown={(event) => {
+              if (!nativeUploadAvailable) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                event.stopPropagation();
+                void handleNativeCapture();
+              }
+            }}
             className="group relative flex h-full min-h-[200px] cursor-pointer flex-col items-center justify-center gap-3 rounded-3xl border border-dashed border-border-subtle bg-surface-alt/60 p-4 text-center transition hover:border-primary/60 focus-within:border-primary focus-within:ring-2 focus-within:ring-ring-primary"
+            role={nativeUploadAvailable ? 'button' : undefined}
+            tabIndex={nativeUploadAvailable ? 0 : undefined}
+            aria-disabled={offline || uploading}
           >
             <input
               id="avatar-upload"
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={onFileChange}
-              disabled={offline || uploading}
+              disabled={offline || uploading || nativeUploadAvailable}
               className="sr-only"
             />
             <div className="relative h-24 w-24 overflow-hidden rounded-2xl border border-border-subtle bg-surface">
@@ -257,14 +331,17 @@ export default function AccountCard({
             <div className="space-y-1">
               <p className="text-sm font-medium text-foreground">Perbarui avatar</p>
               <p className="text-xs text-muted">
-                Seret & lepas atau klik untuk unggah. PNG/JPG/WEBP, maksimal 2MB.
+                {nativeUploadAvailable
+                  ? 'Ketuk untuk mengambil foto atau pilih dari galeri. Maksimal 2MB.'
+                  : 'Seret & lepas atau klik untuk unggah. PNG/JPG/WEBP, maksimal 2MB.'}
               </p>
               {offline ? (
                 <p className="text-xs text-warning">Mode offline — unggah dinonaktifkan.</p>
               ) : null}
             </div>
             <div className="inline-flex items-center gap-2 rounded-2xl bg-surface px-3 py-2 text-xs font-semibold text-primary shadow-sm">
-              <UploadCloud className="h-4 w-4" aria-hidden="true" /> Pilih file
+              <UploadCloud className="h-4 w-4" aria-hidden="true" />
+              {nativeUploadAvailable ? 'Buka kamera/galeri' : 'Pilih file'}
             </div>
           </label>
         </div>
