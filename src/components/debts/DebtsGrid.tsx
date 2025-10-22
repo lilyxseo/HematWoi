@@ -209,8 +209,8 @@ export default function DebtsGrid({
                 />
               ) : null}
 
-              <header className="relative z-10 flex flex-col gap-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+              <header className="relative z-10 space-y-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[0.68rem] font-semibold uppercase tracking-wide text-muted">
@@ -237,22 +237,22 @@ export default function DebtsGrid({
                       {debt.title || 'Tidak ada judul'}
                     </p>
                   </div>
-                  <div className="flex flex-col items-end gap-3 text-right text-sm text-muted">
-                    <div className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-surface/70 px-3 py-1.5 shadow-inner">
-                      <CalendarClock className="h-4 w-4 text-muted" aria-hidden="true" />
-                      <span className={clsx('text-sm font-semibold', overdue ? 'text-rose-200' : 'text-text')}>
-                        {formatDate(debt.due_date)}
-                      </span>
-                    </div>
-                    <div className="text-xs uppercase tracking-wide text-muted/80">
-                      Tenor {formatTenor(debt)}
+                  <div className="flex flex-col items-start gap-2 text-sm text-muted lg:items-end lg:text-right">
+                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                      <div className="inline-flex items-center gap-2 rounded-2xl border border-border/60 bg-surface/70 px-3 py-1.5 shadow-inner">
+                        <CalendarClock className="h-4 w-4 text-muted" aria-hidden="true" />
+                        <span className={clsx('text-sm font-semibold', overdue ? 'text-rose-200' : 'text-text')}>
+                          {formatDate(debt.due_date)}
+                        </span>
+                      </div>
+                      <span className="text-xs uppercase tracking-wide text-muted/80">Tenor {formatTenor(debt)}</span>
                     </div>
                   </div>
                 </div>
               </header>
 
-              <div className="relative z-10 grid grid-cols-1 gap-6 text-sm text-muted md:grid-cols-2">
-                <div className="space-y-4">
+              <div className="relative z-10 flex flex-col gap-6 text-sm text-muted lg:flex-row lg:items-start lg:justify-between">
+                <div className="space-y-6 lg:flex-1">
                   <div className="space-y-1">
                     <p className="text-[11px] uppercase tracking-wide text-muted/70">Bunga</p>
                     <p className="text-base font-medium text-text">{formatPercent(debt.rate_percent)}</p>
@@ -293,25 +293,10 @@ export default function DebtsGrid({
                       <p className="text-sm leading-relaxed text-text/80">{notes}</p>
                     </div>
                   ) : null}
-                </div>
-                <div className="space-y-5">
-                  <div className="grid grid-cols-1 gap-3 rounded-2xl border border-border/60 bg-surface/70 p-4 text-xs uppercase tracking-wide text-muted/70 sm:grid-cols-2 lg:grid-cols-3">
-                    <div className="min-w-0 space-y-1">
-                      <p>Jumlah</p>
-                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(debt.amount)}</p>
-                    </div>
-                    <div className="min-w-0 space-y-1">
-                      <p>Terbayar</p>
-                      <p className="text-base font-medium text-muted tabular-nums">{formatCurrency(debt.paid_total)}</p>
-                    </div>
-                    <div className="min-w-0 space-y-1">
-                      <p>Sisa</p>
-                      <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(remaining)}</p>
-                    </div>
-                  </div>
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between text-xs text-muted/80">
-                      <span>Progress pembayaran</span>
+                    <p className="text-[11px] uppercase tracking-wide text-muted/70">Progress pembayaran</p>
+                    <div className="flex items-center justify-between text-sm text-muted/80">
+                      <span>Progress</span>
                       <span className="font-semibold text-text">{progressPercent}%</span>
                     </div>
                     <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted/20">
@@ -330,35 +315,53 @@ export default function DebtsGrid({
                     ) : null}
                   </div>
                 </div>
+                <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-border/60 bg-surface/70 p-4 text-center text-xs uppercase tracking-wide text-muted/70 lg:max-w-xs">
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-[11px] uppercase tracking-wide text-muted/70">Jumlah</p>
+                    <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(debt.amount)}</p>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-[11px] uppercase tracking-wide text-muted/70">Terbayar</p>
+                    <p className="text-base font-medium text-muted tabular-nums">{formatCurrency(debt.paid_total)}</p>
+                  </div>
+                  <div className="flex flex-col items-center gap-1">
+                    <p className="text-[11px] uppercase tracking-wide text-muted/70">Sisa</p>
+                    <p className="text-base font-semibold text-text tabular-nums">{formatCurrency(remaining)}</p>
+                  </div>
+                </div>
               </div>
 
-              <footer className="relative z-10 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => onAddPayment(debt)}
-                  className="inline-flex w-full min-w-[180px] flex-1 items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                  aria-label="Catat pembayaran"
-                >
-                  <Wallet className="h-4 w-4" aria-hidden="true" />
-                  Catat pembayaran
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onEdit(debt)}
-                  className="inline-flex w-full min-w-[150px] flex-1 items-center justify-center gap-2 rounded-2xl border border-border/60 bg-surface/70 px-4 py-2.5 text-sm font-semibold text-text transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                  aria-label="Ubah hutang"
-                >
-                  <Pencil className="h-4 w-4" aria-hidden="true" />
-                  Edit data
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(debt)}
-                  className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-border/60 bg-surface/70 text-rose-300 transition hover:-translate-y-0.5 hover:bg-rose-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
-                  aria-label="Hapus hutang"
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                </button>
+              <footer className="relative z-10 flex flex-col gap-3 sm:flex-col sm:gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex w-full flex-col gap-3 md:flex-row md:gap-2 lg:flex-1">
+                  <button
+                    type="button"
+                    onClick={() => onAddPayment(debt)}
+                    className="inline-flex w-full flex-1 items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+                    aria-label="Catat pembayaran"
+                  >
+                    <Wallet className="h-4 w-4" aria-hidden="true" />
+                    Catat pembayaran
+                  </button>
+                </div>
+                <div className="flex w-full flex-col gap-3 md:flex-row md:items-stretch md:justify-end md:gap-2 lg:w-auto lg:items-center">
+                  <button
+                    type="button"
+                    onClick={() => onEdit(debt)}
+                    className="inline-flex w-full min-w-[150px] flex-1 items-center justify-center gap-2 rounded-2xl border border-border/60 bg-surface/70 px-4 py-2.5 text-sm font-semibold text-text transition hover:-translate-y-0.5 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                    aria-label="Ubah hutang"
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                    Edit data
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(debt)}
+                    className="inline-flex h-11 w-full flex-shrink-0 items-center justify-center rounded-full border border-border/60 bg-surface/70 text-rose-300 transition hover:-translate-y-0.5 hover:bg-rose-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60 md:h-11 md:w-11"
+                    aria-label="Hapus hutang"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
               </footer>
             </article>
           );
