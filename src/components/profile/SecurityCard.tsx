@@ -8,7 +8,7 @@ interface SecurityCardProps {
   loadingSessions: boolean;
   hasPassword: boolean;
   onRefreshSessions: () => Promise<void>;
-  onSignOutSession: (sessionId?: string) => Promise<void>;
+  onSignOutSession: (sessionId?: string, current?: boolean) => Promise<void>;
   onChangePassword: (payload: PasswordChangePayload) => Promise<void>;
   onCreatePassword: (payload: PasswordCreatePayload) => Promise<void>;
 }
@@ -152,12 +152,12 @@ export default function SecurityCard({
   }, [onRefreshSessions]);
 
   const handleSignOut = useCallback(
-    async (sessionId?: string) => {
+    async (sessionId?: string, current?: boolean) => {
       setSessionError('');
       setSessionMessage('');
       setSessionBusy(true);
       try {
-        await onSignOutSession(sessionId);
+        await onSignOutSession(sessionId, current);
         setSessionMessage('Sesi berhasil ditutup.');
       } catch (error) {
         setSessionError(
@@ -424,7 +424,7 @@ export default function SecurityCard({
                   <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
                     <button
                       type="button"
-                      onClick={() => void handleSignOut(session.id)}
+                      onClick={() => void handleSignOut(session.id, session.current)}
                       disabled={sessionBusy || offline}
                       className="inline-flex h-9 items-center justify-center gap-2 rounded-full border border-border-subtle bg-surface px-4 font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring-primary disabled:cursor-not-allowed disabled:opacity-60"
                     >
