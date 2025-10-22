@@ -215,6 +215,18 @@ export default function Transactions() {
     }
   });
 
+  const categoriesById = useMemo(() => {
+    const map = new Map();
+    (categories || []).forEach((cat) => {
+      if (!cat?.id) return;
+      map.set(cat.id, cat);
+      if (cat.name) {
+        map.set(cat.name.toLowerCase(), cat);
+      }
+    });
+    return map;
+  }, [categories]);
+
   useEffect(() => {
     if (!optimisticItems.length) {
       setItems((current) => {
@@ -251,10 +263,19 @@ export default function Transactions() {
       );
       return;
     }
+    const categoryId = pending.category_id;
+    const category = categoryId ? categoriesById.get(categoryId) : null;
+    const enhancedPending = category
+      ? {
+          ...pending,
+          category: pending.category ?? category?.name ?? null,
+          category_color: pending.category_color ?? category?.color ?? null,
+        }
+      : pending;
     setOptimisticItems((current) => {
-      const exists = current.some((item) => item.id === pending.id);
+      const exists = current.some((item) => item.id === enhancedPending.id);
       if (exists) return current;
-      return [pending, ...current].slice(0, pageSize);
+      return [enhancedPending, ...current].slice(0, pageSize);
     });
     const { recentTransaction: _ignoredRecent, ...rest } = location.state || {};
     const nextState = Object.keys(rest).length ? rest : null;
@@ -262,7 +283,7 @@ export default function Transactions() {
       { pathname: location.pathname, search: location.search },
       { replace: true, state: nextState },
     );
-  }, [location, navigate, page, pageSize]);
+  }, [categoriesById, location, navigate, page, pageSize]);
 
   useEffect(() => {
     setSearchTerm(filter.search);
@@ -372,18 +393,6 @@ export default function Transactions() {
     }, 250);
     return () => clearTimeout(timer);
   }, [searchTerm, filter.search, setFilter]);
-
-  const categoriesById = useMemo(() => {
-    const map = new Map();
-    (categories || []).forEach((cat) => {
-      if (!cat?.id) return;
-      map.set(cat.id, cat);
-      if (cat.name) {
-        map.set(cat.name.toLowerCase(), cat);
-      }
-    });
-    return map;
-  }, [categories]);
 
   const visibleItems = useMemo(() => {
     if (!Array.isArray(items) || items.length === 0) return [];
