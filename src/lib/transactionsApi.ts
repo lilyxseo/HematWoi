@@ -12,6 +12,7 @@ export interface CreateTransactionPayload {
   account_id: string;
   to_account_id?: string | null;
   category_id?: string | null;
+  category_name?: string | null;
   merchant_id?: string | null;
   title?: string | null;
   notes?: string | null;
@@ -61,6 +62,7 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
     account_id,
     to_account_id,
     category_id,
+    category_name,
     merchant_id,
     title,
     notes,
@@ -139,7 +141,11 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
   };
 
   try {
-    const normalized = mapTransactionRow(record);
+    const cacheSource: Record<string, any> = {
+      ...record,
+      category_name: category_name ?? null,
+    };
+    const normalized = mapTransactionRow(cacheSource);
     if (normalized?.id) {
       await dbCache.set('transactions', normalized);
     }
