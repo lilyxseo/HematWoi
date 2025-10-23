@@ -400,20 +400,30 @@ export default function useShowDigestOnLogin({
   const [userId, setUserId] = useState<string | null>(null);
   const autoOpenRef = useRef(false);
   const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
+
+  const transactionsReady = Array.isArray(transactions);
 
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, balanceHint ?? null, upcoming),
-    [transactions, balanceHint, upcoming],
+    () => {
+      if (!transactionsReady) {
+        return null;
+      }
+      return buildDigestData(transactions ?? null, balanceHint ?? null, upcoming);
+    },
+    [transactionsReady, transactions, balanceHint, upcoming],
   );
 
   useEffect(() => {
     const subscriptionsUpcoming = loadUpcomingSubscriptions();
     setUpcoming(subscriptionsUpcoming);
     if (!userId) {
+      setUpcomingLoading(false);
       return;
     }
 
     let active = true;
+    setUpcomingLoading(true);
     fetchUpcomingDebts(userId)
       .then((debts) => {
         if (!active) return;
@@ -422,6 +432,10 @@ export default function useShowDigestOnLogin({
       .catch(() => {
         if (!active) return;
         setUpcoming(subscriptionsUpcoming);
+      })
+      .finally(() => {
+        if (!active) return;
+        setUpcomingLoading(false);
       });
 
     return () => {
@@ -515,7 +529,7 @@ export default function useShowDigestOnLogin({
   return {
     open,
     data,
-    loading: false,
+    loading: !transactionsReady || upcomingLoading,
     openManual,
     close,
   };
