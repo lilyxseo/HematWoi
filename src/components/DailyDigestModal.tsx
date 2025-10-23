@@ -7,6 +7,7 @@ import { useLockBodyScroll } from '../hooks/useLockBodyScroll';
 interface DailyDigestModalProps {
   open: boolean;
   data: DailyDigestModalData | null;
+  loading?: boolean;
   onClose: () => void;
 }
 
@@ -33,7 +34,7 @@ function formatDaysLabel(days: number): string {
   return `Dalam ${days} hari`;
 }
 
-export default function DailyDigestModal({ open, data, onClose }: DailyDigestModalProps) {
+export default function DailyDigestModal({ open, data, loading = false, onClose }: DailyDigestModalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -101,9 +102,9 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
 
   if (!open) return null;
 
-  const hasData = Boolean(data);
+  const showContent = !loading && Boolean(data);
 
-  const content = hasData ? (
+  const content = showContent ? (
     <>
       <header className="space-y-1">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{data!.todayLabel}</p>
@@ -186,7 +187,9 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
   ) : (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <span className="h-10 w-10 animate-spin rounded-full border-2 border-border-subtle border-t-transparent" aria-hidden="true" />
-      <p className="text-sm text-muted">Menyiapkan ringkasan harian…</p>
+      <p className="text-sm text-muted" role="status" aria-live="polite">
+        Menyiapkan ringkasan harian…
+      </p>
     </div>
   );
 
@@ -201,6 +204,7 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
       <div
         ref={containerRef}
         className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-border-subtle bg-surface p-6 text-text shadow-2xl backdrop-blur-md md:p-8"
+        aria-busy={loading}
       >
         <button
           ref={closeButtonRef}
