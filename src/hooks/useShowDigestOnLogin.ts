@@ -400,6 +400,8 @@ export default function useShowDigestOnLogin({
   const [userId, setUserId] = useState<string | null>(null);
   const autoOpenRef = useRef(false);
   const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
+  const [upcomingLoading, setUpcomingLoading] = useState(true);
+  const [transactionsLoading, setTransactionsLoading] = useState(() => typeof transactions === 'undefined');
 
   const data = useMemo(
     () => buildDigestData(transactions ?? null, balanceHint ?? null, upcoming),
@@ -407,21 +409,31 @@ export default function useShowDigestOnLogin({
   );
 
   useEffect(() => {
+    setTransactionsLoading(typeof transactions === 'undefined');
+  }, [transactions]);
+
+  useEffect(() => {
+    let active = true;
+    setUpcomingLoading(true);
     const subscriptionsUpcoming = loadUpcomingSubscriptions();
     setUpcoming(subscriptionsUpcoming);
     if (!userId) {
-      return;
+      setUpcomingLoading(false);
+      return () => {
+        active = false;
+      };
     }
 
-    let active = true;
     fetchUpcomingDebts(userId)
       .then((debts) => {
         if (!active) return;
         setUpcoming(mergeUpcoming(subscriptionsUpcoming, debts));
+        setUpcomingLoading(false);
       })
       .catch(() => {
         if (!active) return;
         setUpcoming(subscriptionsUpcoming);
+        setUpcomingLoading(false);
       });
 
     return () => {
@@ -512,10 +524,12 @@ export default function useShowDigestOnLogin({
     tryOpenForUser(userId, false);
   }, [userId, tryOpenForUser]);
 
+  const loading = upcomingLoading || transactionsLoading;
+
   return {
     open,
     data,
-    loading: false,
+    loading,
     openManual,
     close,
   };
