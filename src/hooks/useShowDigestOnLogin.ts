@@ -400,20 +400,63 @@ export default function useShowDigestOnLogin({
   const [userId, setUserId] = useState<string | null>(null);
   const autoOpenRef = useRef(false);
   const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
+
+  const initialTransactionsRef = useRef(transactions ?? null);
+  const [transactionsSettled, setTransactionsSettled] = useState(() => {
+    if (!Array.isArray(transactions)) {
+      return false;
+    }
+    return transactions.length > 0;
+  });
+
+  useEffect(() => {
+    if (!Array.isArray(transactions)) {
+      setTransactionsSettled(false);
+      return;
+    }
+
+    if (!initialTransactionsRef.current && transactions) {
+      initialTransactionsRef.current = transactions;
+    }
+
+    if (transactions.length > 0) {
+      setTransactionsSettled(true);
+      return;
+    }
+
+    const initialTransactions = initialTransactionsRef.current;
+    if (initialTransactions && initialTransactions !== transactions) {
+      setTransactionsSettled(true);
+      initialTransactionsRef.current = transactions;
+      return;
+    }
+
+    if (!userId) {
+      setTransactionsSettled(true);
+    }
+  }, [transactions, userId]);
 
   const data = useMemo(
-    () => buildDigestData(transactions ?? null, balanceHint ?? null, upcoming),
-    [transactions, balanceHint, upcoming],
+    () => {
+      if (!transactionsSettled || !Array.isArray(transactions)) {
+        return null;
+      }
+      return buildDigestData(transactions, balanceHint ?? null, upcoming);
+    },
+    [transactionsSettled, transactions, balanceHint, upcoming],
   );
 
   useEffect(() => {
     const subscriptionsUpcoming = loadUpcomingSubscriptions();
     setUpcoming(subscriptionsUpcoming);
     if (!userId) {
+      setUpcomingLoading(false);
       return;
     }
 
     let active = true;
+    setUpcomingLoading(true);
     fetchUpcomingDebts(userId)
       .then((debts) => {
         if (!active) return;
@@ -422,6 +465,10 @@ export default function useShowDigestOnLogin({
       .catch(() => {
         if (!active) return;
         setUpcoming(subscriptionsUpcoming);
+      })
+      .finally(() => {
+        if (!active) return;
+        setUpcomingLoading(false);
       });
 
     return () => {
@@ -515,7 +562,7 @@ export default function useShowDigestOnLogin({
   return {
     open,
     data,
-    loading: false,
+    loading: !transactionsSettled || upcomingLoading,
     openManual,
     close,
   };
