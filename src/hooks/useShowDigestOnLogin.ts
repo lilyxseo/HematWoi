@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { findUpcoming, loadSubscriptions } from '../lib/subscriptions';
 
@@ -400,11 +400,17 @@ export default function useShowDigestOnLogin({
   const [userId, setUserId] = useState<string | null>(null);
   const autoOpenRef = useRef(false);
   const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
+  const [data, setData] = useState<DailyDigestModalData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const pendingUpcomingRef = useRef(0);
 
-  const data = useMemo(
-    () => buildDigestData(transactions ?? null, balanceHint ?? null, upcoming),
-    [transactions, balanceHint, upcoming],
-  );
+  useEffect(() => {
+    const nextData = buildDigestData(transactions ?? null, balanceHint ?? null, upcoming);
+    setData(nextData);
+    if (pendingUpcomingRef.current === 0) {
+      setLoading(false);
+    }
+  }, [transactions, balanceHint, upcoming]);
 
   useEffect(() => {
     const subscriptionsUpcoming = loadUpcomingSubscriptions();
@@ -414,14 +420,30 @@ export default function useShowDigestOnLogin({
     }
 
     let active = true;
+    pendingUpcomingRef.current += 1;
+    setLoading(true);
+
     fetchUpcomingDebts(userId)
       .then((debts) => {
-        if (!active) return;
+        if (!active) {
+          return;
+        }
         setUpcoming(mergeUpcoming(subscriptionsUpcoming, debts));
       })
       .catch(() => {
-        if (!active) return;
-        setUpcoming(subscriptionsUpcoming);
+        if (!active) {
+          return;
+        }
+        setUpcoming([...subscriptionsUpcoming]);
+      })
+      .finally(() => {
+        pendingUpcomingRef.current = Math.max(0, pendingUpcomingRef.current - 1);
+        if (!active) {
+          return;
+        }
+        if (pendingUpcomingRef.current === 0) {
+          setLoading(false);
+        }
       });
 
     return () => {
@@ -515,7 +537,7 @@ export default function useShowDigestOnLogin({
   return {
     open,
     data,
-    loading: false,
+    loading,
     openManual,
     close,
   };
