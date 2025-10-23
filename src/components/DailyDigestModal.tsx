@@ -7,6 +7,7 @@ import { useLockBodyScroll } from '../hooks/useLockBodyScroll';
 interface DailyDigestModalProps {
   open: boolean;
   data: DailyDigestModalData | null;
+  loading?: boolean;
   onClose: () => void;
 }
 
@@ -33,7 +34,12 @@ function formatDaysLabel(days: number): string {
   return `Dalam ${days} hari`;
 }
 
-export default function DailyDigestModal({ open, data, onClose }: DailyDigestModalProps) {
+export default function DailyDigestModal({
+  open,
+  data,
+  loading = false,
+  onClose,
+}: DailyDigestModalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -101,7 +107,7 @@ export default function DailyDigestModal({ open, data, onClose }: DailyDigestMod
 
   if (!open) return null;
 
-  const hasData = Boolean(data);
+  const hasData = !loading && Boolean(data);
 
   const content = hasData ? (
     <>
