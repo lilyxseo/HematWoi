@@ -247,6 +247,8 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
 function AppShell({ prefs, setPrefs }) {
   const { mode, setMode } = useMode();
   const [data, setData] = useState(loadInitial);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const transactionsFetchesRef = useRef(0);
   const [filter, setFilter] = useState({
     type: "all",
     q: "",
@@ -661,11 +663,18 @@ function AppShell({ prefs, setPrefs }) {
   }, []);
 
   const fetchTxsCloud = useCallback(async () => {
+    transactionsFetchesRef.current += 1;
+    setTransactionsLoading(true);
     try {
       const res = await listTransactions({ pageSize: 1000 });
       setData((d) => ({ ...d, txs: res.rows || [] }));
     } catch (e) {
       console.error("fetch transactions failed", e);
+    } finally {
+      transactionsFetchesRef.current = Math.max(0, transactionsFetchesRef.current - 1);
+      if (transactionsFetchesRef.current === 0) {
+        setTransactionsLoading(false);
+      }
     }
   }, []);
 
@@ -822,6 +831,7 @@ function AppShell({ prefs, setPrefs }) {
 
   useEffect(() => {
     if (useCloud && sessionUser) {
+      setTransactionsLoading(true);
       fetchCategoriesCloud();
       fetchTxsCloud();
       fetchBudgetsCloud();
@@ -835,6 +845,13 @@ function AppShell({ prefs, setPrefs }) {
     fetchBudgetsCloud,
     fetchBudgetStatusCloud,
   ]);
+
+  useEffect(() => {
+    if (!useCloud || !sessionUser) {
+      transactionsFetchesRef.current = 0;
+      setTransactionsLoading(false);
+    }
+  }, [useCloud, sessionUser]);
 
   const triggerMoneyTalk = (tx) => {
     const category = tx.category;
@@ -1166,6 +1183,7 @@ function AppShell({ prefs, setPrefs }) {
                         filter.month === "all" ? currentMonth : filter.month
                       }
                       txs={data.txs}
+                      txsLoading={transactionsLoading}
                       budgets={data.budgets}
                       budgetStatus={data.budgetStatus}
                       months={months}
