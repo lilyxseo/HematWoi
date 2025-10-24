@@ -63,6 +63,7 @@ export default function Dashboard({ stats, txs }) {
         open={digest.open}
         data={digest.data}
         loading={digest.loading}
+        upcomingLoading={digest.upcomingLoading}
         onClose={digest.close}
       />
       <div className="mx-auto max-w-full space-y-6 overflow-hidden px-3 sm:space-y-8 sm:px-4 md:space-y-10 md:px-6 max-[400px]:space-y-5 max-[400px]:px-2">
