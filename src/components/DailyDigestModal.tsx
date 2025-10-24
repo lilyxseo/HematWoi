@@ -8,6 +8,7 @@ interface DailyDigestModalProps {
   open: boolean;
   data: DailyDigestModalData | null;
   loading: boolean;
+  upcomingLoading?: boolean;
   onClose: () => void;
 }
 
@@ -34,7 +35,13 @@ function formatDaysLabel(days: number): string {
   return `Dalam ${days} hari`;
 }
 
-export default function DailyDigestModal({ open, data, loading, onClose }: DailyDigestModalProps) {
+export default function DailyDigestModal({
+  open,
+  data,
+  loading,
+  upcomingLoading = false,
+  onClose,
+}: DailyDigestModalProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -164,7 +171,15 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
             <span>Pengingat 7 hari</span>
             <span>{data!.upcoming.length} agenda</span>
           </div>
-          {data!.upcoming.length ? (
+          {upcomingLoading ? (
+            <div className="mt-3 flex items-center gap-3 rounded-xl bg-surface p-3 text-sm text-muted">
+              <span
+                className="h-4 w-4 animate-spin rounded-full border border-border-subtle border-t-transparent"
+                aria-hidden="true"
+              />
+              <span>Memuat pengingat mendatang…</span>
+            </div>
+          ) : data!.upcoming.length ? (
             <ul className="mt-3 space-y-2 text-sm text-text">
               {data!.upcoming.map((item) => (
                 <li key={`${item.name}-${item.days}`} className="flex items-center justify-between gap-3 rounded-xl bg-surface p-3">
