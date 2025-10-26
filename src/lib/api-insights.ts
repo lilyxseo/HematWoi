@@ -222,7 +222,7 @@ export async function getDueDebtsIn7Days(): Promise<DueItemInsight[]> {
 
   const debtsPromise = supabase
     .from('debts')
-    .select('id,title,party_name,due_date,amount,paid_total,status')
+    .select('id,title,party_name,due_date,amount,paid_total,status,type')
     .eq('user_id', userId)
     .neq('status', 'paid')
     .not('due_date', 'is', null)
@@ -254,6 +254,7 @@ export async function getDueDebtsIn7Days(): Promise<DueItemInsight[]> {
   const items: DueItemInsight[] = []
 
   for (const row of debtsResponse.data ?? []) {
+    if ((row as any)?.type === 'receivable') continue
     const dueDate = row?.due_date ? new Date(row.due_date as any) : null
     if (!dueDate || Number.isNaN(dueDate.getTime())) continue
     const daysLeft = Math.max(0, Math.ceil((dueDate.getTime() - nowJakarta.getTime()) / (24 * 60 * 60 * 1000)))

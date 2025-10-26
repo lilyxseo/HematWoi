@@ -342,6 +342,10 @@ async function fetchUpcomingDebts(userId: string | null): Promise<DigestUpcoming
         const remaining = Math.max(total - paid, 0);
         if (remaining <= 0) return null;
 
+        if (row?.type === 'receivable') {
+          return null;
+        }
+
         const rawTitle = typeof row?.title === 'string' ? row.title.trim() : '';
         const rawParty = typeof row?.party_name === 'string' ? row.party_name.trim() : '';
         const label = rawTitle || rawParty;
