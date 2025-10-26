@@ -81,6 +81,13 @@ export const NAV_ITEMS: NavItem[] = [
     inSidebar: false,
     protected: true,
   },
+  {
+    title: 'Simulasi Anggaran',
+    path: '/budgets/simulation',
+    inSidebar: false,
+    protected: true,
+    breadcrumb: 'Simulasi Anggaran',
+  },
   {  
     title: 'Goals',
     path: '/goals',
