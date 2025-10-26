@@ -84,7 +84,7 @@ export async function getMonthlyBudgets(periodMonth: string, userId?: string): P
   const normalized = normalizeMonthStart(periodMonth);
   const { data, error } = await supabase
     .from('budgets')
-    .select('id,category_id,planned,carryover_enabled,notes,category:categories(id,name)')
+    .select('id,category_id,planned,carryover_enabled,notes:note,category:categories(id,name)')
     .eq('user_id', resolvedUserId)
     .eq('period_month', normalized)
     .order('created_at', { ascending: true });
