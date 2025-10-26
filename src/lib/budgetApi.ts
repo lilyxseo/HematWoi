@@ -42,6 +42,18 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
+function isMissingColumnError(error: unknown, column: string): boolean {
+  const message =
+    typeof error === 'string'
+      ? error
+      : typeof error === 'object' && error
+        ? String((error as { message?: unknown }).message ?? '')
+        : '';
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('column') && normalized.includes('does not exist') && normalized.includes(column.toLowerCase());
+}
+
 async function parsePostgrestError(response: Response, fallback: string): Promise<Error> {
   let message = fallback;
   try {
@@ -228,17 +240,52 @@ function getPreviousPeriod(period: string): string | null {
   }
 }
 
-async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
+type RawBudgetRow = Omit<BudgetRow, 'amount_planned'> & {
+  amount_planned: number | string | null;
+};
+
+async function fetchBudgetsWithAmountColumn(
+  userId: string,
+  period: string,
+  column: 'planned_amount' | 'planned'
+): Promise<{ rows: BudgetRow[]; rawAmounts: Array<number | string | null> }> {
   const { data, error } = await supabase
     .from('budgets')
     .select(
-      'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
+      `id,user_id,category_id,amount_planned:${column},carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)`
     )
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+  const rawRows = ((data ?? []) as RawBudgetRow[]).map((row) => {
+    const { amount_planned, ...rest } = row;
+    const numeric = Number(amount_planned ?? 0);
+    return {
+      ...rest,
+      amount_planned: Number.isFinite(numeric) ? numeric : 0,
+    } satisfies BudgetRow;
+  });
+  const rawAmounts = (data ?? []).map((row) => (row as RawBudgetRow).amount_planned ?? null);
+  return { rows: rawRows, rawAmounts };
+}
+
+async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
+  try {
+    const primary = await fetchBudgetsWithAmountColumn(userId, period, 'planned_amount');
+    const hasAmount = primary.rawAmounts.some((value) => value != null);
+    if (primary.rows.length === 0 || hasAmount) {
+      return primary.rows;
+    }
+    const fallback = await fetchBudgetsWithAmountColumn(userId, period, 'planned');
+    return fallback.rows;
+  } catch (error) {
+    if (isMissingColumnError(error, 'planned_amount')) {
+      const fallback = await fetchBudgetsWithAmountColumn(userId, period, 'planned');
+      return fallback.rows;
+    }
+    throw error;
+  }
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
