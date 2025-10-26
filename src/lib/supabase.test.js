@@ -37,8 +37,9 @@ describe('supabase client env handling', () => {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,
+        detectSessionInUrl: true,
         flowType: 'pkce',
+        storageKey: 'hematwoi-auth',
       },
     })
     expect(console.warn).not.toHaveBeenCalled()
