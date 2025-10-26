@@ -1188,6 +1188,29 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
   };
 }
 
+async function upsertBudgetViaRest(userId: string, input: UpsertBudgetInput): Promise<void> {
+  const periodMonth = toMonthStart(input.period);
+  const body: Record<string, unknown> = {
+    user_id: userId,
+    category_id: input.category_id,
+    period_month: periodMonth,
+    planned: Number(input.amount_planned ?? 0),
+    carryover_enabled: Boolean(input.carryover_enabled),
+    notes: input.notes ?? null,
+  };
+
+  if (input.id) {
+    body.id = input.id;
+  }
+
+  const { error } = await supabase
+    .from('budgets')
+    .upsert(body, { onConflict: 'user_id,category_id,period_month' })
+    .select('id')
+    .maybeSingle();
+  if (error) throw error;
+}
+
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
@@ -1217,7 +1240,8 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
     }
     const msg = (error.message || '').toLowerCase();
     if (error.code === '404' || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
+      await upsertBudgetViaRest(userId, input);
+      return;
     }
     throw error;
   }
