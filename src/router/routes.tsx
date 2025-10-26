@@ -45,6 +45,8 @@ function loadComponent(path: string) {
       return lazy(() => import('../pages/Profile'));
     case '/auth':
       return lazy(() => import('../pages/AuthLogin'));
+    case '/auth/modern':
+      return lazy(() => import('../pages/ModernDashboardLogin'));
     case '/native-google-login':
       return lazy(() => import('../pages/NativeGoogleLogin'));
     default:
