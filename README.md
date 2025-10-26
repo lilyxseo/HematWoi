@@ -210,7 +210,7 @@ menulis nilai ke `capacitor.config.ts` dan berkas native.
 - iOS: ambil nilai **Reversed client ID** dari Google Cloud dan isi variabel
   `GOOGLE_REVERSED_CLIENT_ID` di Xcode (tersimpan pada `Info.plist`).
 - Supabase: tambahkan redirect URL `hematwoi://auth/callback` dan
-  `https://hemat-woi.me/auth/callback`.
+  `https://www.hemat-woi.me/auth/callback`.
 
 ### Kamera, Penyimpanan, dan Notifikasi
 
@@ -219,7 +219,7 @@ menulis nilai ke `capacitor.config.ts` dan berkas native.
 - Preferensi tema, aksen warna, dan pengguna terakhir disimpan memakai
   `@capacitor/preferences` sehingga UI terhydrate sebelum React dirender.
 - Pengingat hutang dijadwalkan lewat `@capacitor/local-notifications`. Android
-  membuat kanal bernama `hematwoi-debts` secara otomatis.
+  membuat kanal bernama `hematwoi-reminders` secara otomatis.
 
 ### Debug Error Umum
 

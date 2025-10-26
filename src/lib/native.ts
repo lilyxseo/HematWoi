@@ -19,7 +19,7 @@ import { Directory, Filesystem } from '@capacitor/filesystem';
 const NATIVE_UI_KEY = 'hematwoi:native:ui';
 const NATIVE_LAST_USER_KEY = 'hematwoi:native:last-user';
 const NATIVE_ACCENT_KEY = 'hematwoi:native:accent';
-const NATIVE_DEBT_CHANNEL = 'hematwoi-debts';
+const NATIVE_REMINDER_CHANNEL = 'hematwoi-reminders';
 
 export type NativeBrand = {
   h: number;
@@ -192,7 +192,7 @@ export async function scheduleDebtReminderNotification(
         schedule,
         sound: isAndroid() ? 'default' : undefined,
         smallIcon: isAndroid() ? 'ic_stat_icon' : undefined,
-        channelId: isAndroid() ? NATIVE_DEBT_CHANNEL : undefined,
+        channelId: isAndroid() ? NATIVE_REMINDER_CHANNEL : undefined,
         extra: {
           type: 'debt-reminder',
           ...(notification.extra ?? {}),
@@ -301,7 +301,7 @@ async function ensureNotificationChannel(): Promise<void> {
   if (!isNativePlatform() || notificationChannelReady || !isAndroid()) return;
   try {
     await LocalNotifications.createChannel({
-      id: NATIVE_DEBT_CHANNEL,
+      id: NATIVE_REMINDER_CHANNEL,
       name: 'Pengingat Hutang',
       description: 'Notifikasi pengingat hutang HematWoi',
       importance: 4,
