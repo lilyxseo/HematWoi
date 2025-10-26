@@ -70,6 +70,116 @@ function parseOrderIndex(value: unknown): number | undefined {
   return undefined;
 }
 
+function parseBudgetNumeric(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.replace(/,/g, '');
+    const parsed = Number.parseFloat(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizePeriodMonth(value?: string | null): string {
+  if (!value) {
+    return new Date().toISOString().slice(0, 10);
+  }
+  const iso = String(value);
+  if (/^\d{4}-\d{2}-\d{2}/.test(iso)) {
+    return iso.slice(0, 10);
+  }
+  if (/^\d{4}-\d{2}$/.test(iso)) {
+    return `${iso}-01`;
+  }
+  return iso;
+}
+
+interface RawBudgetCategory {
+  id?: string | null;
+  name?: string | null;
+  type?: string | null;
+  category_type?: string | null;
+}
+
+interface RawBudgetRow {
+  id: string;
+  user_id: string;
+  category_id?: string | null;
+  amount_planned?: number | string | null;
+  planned?: number | string | null;
+  planned_amount?: number | string | null;
+  carryover_enabled?: boolean | null;
+  carryover?: boolean | null;
+  carry_rule?: string | null;
+  notes?: string | null;
+  note?: string | null;
+  period_month?: string | null;
+  period?: string | null;
+  month?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  category?: RawBudgetCategory | null;
+  categories?: RawBudgetCategory | null;
+}
+
+function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
+  const amountCandidates = [
+    parseBudgetNumeric(row.amount_planned),
+    parseBudgetNumeric(row.planned_amount),
+    parseBudgetNumeric(row.planned),
+  ];
+  const resolvedAmount = amountCandidates.find((value) => value != null) ?? 0;
+
+  const carryRule = typeof row.carry_rule === 'string' ? row.carry_rule : null;
+  const carryFromRule = carryRule ? carryRule !== 'none' : null;
+  const carryCandidates: Array<boolean | null | undefined> = [
+    row.carryover_enabled,
+    row.carryover,
+    carryFromRule,
+  ];
+  const resolvedCarry = carryCandidates.find((value): value is boolean => typeof value === 'boolean') ?? false;
+
+  const noteValue = row.notes ?? row.note ?? null;
+  const normalizedNotes = noteValue != null ? String(noteValue) : null;
+
+  const rawCategory = row.category ?? row.categories ?? null;
+  let category: BudgetRow['category'] = null;
+  if (rawCategory && (rawCategory.id || rawCategory.name)) {
+    const categoryIdValue = rawCategory.id ?? row.category_id ?? null;
+    if (categoryIdValue) {
+      category = {
+        id: String(categoryIdValue) as UUID,
+        name: String(rawCategory.name ?? ''),
+        type: (rawCategory.type ?? rawCategory.category_type ?? null) as 'income' | 'expense' | null,
+      };
+    }
+  }
+
+  const categoryId = row.category_id ? (String(row.category_id) as UUID) : null;
+
+  const createdAt = row.created_at ? String(row.created_at) : new Date().toISOString();
+  const updatedAtBase = row.updated_at ?? row.created_at;
+  const updatedAt = updatedAtBase ? String(updatedAtBase) : createdAt;
+
+  return {
+    id: String(row.id) as UUID,
+    user_id: String(row.user_id) as UUID,
+    category_id: categoryId,
+    amount_planned: Number(resolvedAmount),
+    carryover_enabled: resolvedCarry,
+    notes: normalizedNotes,
+    period_month: normalizePeriodMonth(row.period_month ?? row.period ?? row.month ?? null),
+    created_at: createdAt,
+    updated_at: updatedAt,
+    category,
+  };
+}
+
 function mapCategoryRecordToExpense(category: {
   id: string;
   user_id: string | null;
@@ -98,7 +208,7 @@ function mapCategoryRecordToExpense(category: {
 export interface BudgetRow {
   id: UUID;
   user_id: UUID;
-  category_id: UUID;
+  category_id: Nullable<UUID>;
   amount_planned: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
@@ -231,14 +341,13 @@ function getPreviousPeriod(period: string): string | null {
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
   const { data, error } = await supabase
     .from('budgets')
-    .select(
-      'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
-    )
+    .select('*, category:categories(id,name,type)')
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+  const rows = (data ?? []) as RawBudgetRow[];
+  return rows.map(normalizeBudgetRow);
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
