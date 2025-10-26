@@ -98,7 +98,7 @@ function mapCategoryRecordToExpense(category: {
 export interface BudgetRow {
   id: UUID;
   user_id: UUID;
-  category_id: UUID;
+  category_id: Nullable<UUID>;
   amount_planned: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
@@ -228,17 +228,85 @@ function getPreviousPeriod(period: string): string | null {
   }
 }
 
+interface SupabaseBudgetRow {
+  id: UUID;
+  user_id: UUID;
+  category_id: Nullable<UUID>;
+  amount_planned?: number | string | null;
+  planned?: number | string | null;
+  planned_amount?: number | string | null;
+  carryover_enabled?: boolean | string | null;
+  carry_rule?: string | null;
+  notes?: string | null;
+  note?: string | null;
+  period_month: string;
+  created_at: string;
+  updated_at: string;
+  category: {
+    id: UUID;
+    name: string;
+    type?: 'income' | 'expense' | null;
+  } | null;
+}
+
+function parseNumeric(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const normalized = Number.parseFloat(value);
+    return Number.isFinite(normalized) ? normalized : 0;
+  }
+  return 0;
+}
+
+function resolveCarryoverEnabled(row: SupabaseBudgetRow): boolean {
+  if (typeof row.carryover_enabled === 'boolean') {
+    return row.carryover_enabled;
+  }
+  if (typeof row.carryover_enabled === 'string') {
+    const normalized = row.carryover_enabled.trim().toLowerCase();
+    return normalized === 'true' || normalized === 't' || normalized === '1' || normalized === 'yes';
+  }
+  if (typeof row.carry_rule === 'string') {
+    return row.carry_rule.toLowerCase() !== 'none';
+  }
+  return false;
+}
+
+function mapBudgetRow(row: SupabaseBudgetRow): BudgetRow {
+  const amountSource =
+    row.amount_planned ??
+    row.planned ??
+    row.planned_amount ??
+    0;
+  const amount_planned = parseNumeric(amountSource);
+  const notes = row.notes ?? row.note ?? null;
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    category_id: row.category_id ?? null,
+    amount_planned,
+    carryover_enabled: resolveCarryoverEnabled(row),
+    notes,
+    period_month: row.period_month,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    category: row.category ?? null,
+  } satisfies BudgetRow;
+}
+
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
   const { data, error } = await supabase
     .from('budgets')
     .select(
-      'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
+      'id,user_id,category_id,amount_planned:planned,planned,planned_amount,carryover_enabled,carry_rule,notes,note,period_month,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+  return (data ?? []).map((row) => mapBudgetRow(row as SupabaseBudgetRow));
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
@@ -1123,7 +1191,8 @@ export async function deleteBudget(id: UUID): Promise<void> {
 
 export function mergeBudgetsWithSpent(budgets: BudgetRow[], spentMap: Record<string, number>): BudgetWithSpent[] {
   return budgets.map((budget) => {
-    const spent = spentMap[budget.category_id] ?? 0;
+    const categoryKey = budget.category_id ? String(budget.category_id) : null;
+    const spent = categoryKey ? spentMap[categoryKey] ?? 0 : 0;
     return {
       ...budget,
       spent,
