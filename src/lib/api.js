@@ -819,8 +819,14 @@ function createCategoryFallbackParams(userId, type) {
 }
 
 function extractMissingColumnName(bodyText) {
-  const match = bodyText.match(/column\s+"?([A-Za-z0-9_]+)"?\s+does not exist/i);
-  return match ? match[1] : null;
+  const match = bodyText.match(
+    /column\s+"?([A-Za-z0-9_.]+)"?\s+does not exist/i
+  );
+  if (!match) return null;
+  const identifier = match[1] ?? "";
+  if (!identifier) return null;
+  const columnName = identifier.split(".").pop();
+  return columnName && columnName.trim() ? columnName.trim() : null;
 }
 
 function isMissingRelationError(bodyText) {
