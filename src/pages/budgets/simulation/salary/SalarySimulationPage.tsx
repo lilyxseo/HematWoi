@@ -514,10 +514,30 @@ export default function SalarySimulationPage() {
       addToast('Tidak ada alokasi untuk diterapkan.', 'info');
       return;
     }
+
+    const validCategoryIds = new Set(categories.map((category) => category.id));
+    const filteredItems = items.filter((item) => validCategoryIds.has(item.categoryId));
+    const removedCount = items.length - filteredItems.length;
+
+    if (removedCount > 0) {
+      setItems(filteredItems);
+      addToast(
+        removedCount === 1
+          ? '1 kategori simulasi dihapus karena sudah tidak tersedia.'
+          : `${removedCount} kategori simulasi dihapus karena sudah tidak tersedia.`,
+        'info',
+      );
+    }
+
+    if (!filteredItems.length) {
+      addToast('Tidak ada kategori valid untuk diterapkan. Tambahkan kategori baru.', 'error');
+      return;
+    }
+
     setApplying(true);
     try {
       await Promise.all(
-        items.map((item) => {
+        filteredItems.map((item) => {
           const existing = budgetMap.get(item.categoryId);
           return upsertBudget({
             category_id: item.categoryId,
@@ -529,14 +549,14 @@ export default function SalarySimulationPage() {
         }),
       );
       addToast('Alokasi simulasi diterapkan ke budget bulan ini.', 'success');
-      loadBudgets();
+      await loadBudgets();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal menerapkan simulasi ke budget';
       addToast(message, 'error');
     } finally {
       setApplying(false);
     }
-  }, [items, addToast, budgetMap, period, loadBudgets]);
+  }, [items, categories, addToast, budgetMap, period, loadBudgets]);
 
   const buildPayload = useCallback(
     () => ({
