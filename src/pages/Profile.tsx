@@ -111,7 +111,15 @@ function applyThemeInstant(mode: ThemeMode) {
 
 function userHasPassword(user: User | null): boolean {
   if (!user) return false;
-  return Boolean(user.identities?.some((identity) => identity.provider === 'email'));
+  if (user.identities?.some((identity) => identity.provider === 'email')) {
+    return true;
+  }
+  const providers = Array.isArray(user.app_metadata?.providers) ? user.app_metadata?.providers : [];
+  if (providers.includes('email')) {
+    return true;
+  }
+  const primaryProvider = user.app_metadata?.provider;
+  return typeof primaryProvider === 'string' && primaryProvider === 'email';
 }
 
 type TabKey =
