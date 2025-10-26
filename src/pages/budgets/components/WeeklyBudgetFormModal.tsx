@@ -17,6 +17,7 @@ interface WeeklyBudgetFormModalProps {
   submitting?: boolean;
   onClose: () => void;
   onSubmit: (values: WeeklyBudgetFormValues) => Promise<void> | void;
+  fallbackCategory?: { id: string; name: string } | null;
 }
 
 const MODAL_CLASS = 'fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-10 backdrop-blur-sm';
@@ -84,6 +85,7 @@ export default function WeeklyBudgetFormModal({
   submitting,
   onClose,
   onSubmit,
+  fallbackCategory,
 }: WeeklyBudgetFormModalProps) {
   const [values, setValues] = useState<WeeklyBudgetFormValues>(initialValues);
   const [errors, setErrors] = useState<Partial<Record<keyof WeeklyBudgetFormValues, string>>>({});
@@ -115,16 +117,39 @@ export default function WeeklyBudgetFormModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
+  const categoriesForSelect = useMemo(() => {
+    if (!fallbackCategory) {
+      return categories;
+    }
+
+    const exists = categories.some((category) => category.id === fallbackCategory.id);
+    if (exists) {
+      return categories;
+    }
+
+    const fallback: ExpenseCategory = {
+      id: fallbackCategory.id,
+      name: fallbackCategory.name,
+      type: 'expense',
+      user_id: '',
+      inserted_at: '1970-01-01T00:00:00.000Z',
+      group_name: null,
+      order_index: null,
+    };
+
+    return [...categories, fallback];
+  }, [categories, fallbackCategory]);
+
   const groupedCategories = useMemo(() => {
     const groups = new Map<string, ExpenseCategory[]>();
-    for (const category of categories) {
+    for (const category of categoriesForSelect) {
       const key = category.group_name ?? 'Ungrouped';
       const list = groups.get(key) ?? [];
       list.push(category);
       groups.set(key, list);
     }
     return Array.from(groups.entries());
-  }, [categories]);
+  }, [categoriesForSelect]);
 
   const handleChange = (
     field: keyof WeeklyBudgetFormValues,
@@ -213,7 +238,7 @@ export default function WeeklyBudgetFormModal({
                 onChange={(event) => handleChange('category_id', event.target.value)}
                 className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                 required
-                disabled={categories.length === 0}
+                disabled={categoriesForSelect.length === 0}
               >
                 <option value="" disabled>
                   Pilih kategori
