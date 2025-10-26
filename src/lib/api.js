@@ -860,7 +860,14 @@ async function fetchCategoriesFromRest(userId, type) {
           categoryViewUnavailable = true;
           break;
         }
-        throw await readPostgrestError(response, "Gagal memuat kategori");
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn(
+            "[HW] Falling back to categories endpoint due to v_categories_budget error",
+            bodyText || response.statusText
+          );
+        }
+        categoryViewUnavailable = true;
+        break;
       }
       if (!response.ok) {
         throw await readPostgrestError(response, "Gagal memuat kategori");
