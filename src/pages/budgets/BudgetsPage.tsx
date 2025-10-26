@@ -597,6 +597,14 @@ export default function BudgetsPage() {
       >
         <button
           type="button"
+          onClick={() => navigate('/budgets/simulation')}
+          className="hidden h-11 items-center gap-2 rounded-2xl border-2 border-accent/40 px-4 text-sm font-semibold text-accent transition hover:border-accent hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent md:inline-flex"
+        >
+          <span role="img" aria-hidden="true">💡</span>
+          Simulasikan Anggaran
+        </button>
+        <button
+          type="button"
           onClick={handleRefresh}
           className="hidden h-11 items-center gap-2 rounded-2xl border border-border bg-surface px-4 text-sm font-semibold text-text transition hover:border-brand/40 hover:bg-brand/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:inline-flex"
         >
