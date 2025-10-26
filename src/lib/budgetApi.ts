@@ -1188,6 +1188,55 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
   };
 }
 
+function normalizeBudgetInput(input: UpsertBudgetInput) {
+  return {
+    categoryId: input.category_id,
+    amountPlanned: Number(input.amount_planned ?? 0),
+    periodMonth: toMonthStart(input.period),
+    carryoverEnabled: Boolean(input.carryover_enabled),
+    notes: input.notes ?? null,
+  };
+}
+
+function isUnauthorizedError(error: { message?: string | null; code?: string | null }): boolean {
+  return (
+    error.message === 'Unauthorized' ||
+    error.code === '401' ||
+    error.code === 'PGRST301' ||
+    error.code === '42501'
+  );
+}
+
+function isMissingBudUpsert(error: { message?: string | null; code?: string | null }): boolean {
+  const message = (error.message ?? '').toLowerCase();
+  return error.code === '404' || message.includes('bud_upsert');
+}
+
+async function upsertBudgetViaRest(
+  userId: string,
+  normalized: ReturnType<typeof normalizeBudgetInput>,
+): Promise<void> {
+  const insertPayload = {
+    user_id: userId,
+    category_id: normalized.categoryId,
+    period_month: normalized.periodMonth,
+    planned: normalized.amountPlanned,
+    carryover_enabled: normalized.carryoverEnabled,
+    notes: normalized.notes,
+  };
+
+  const { error } = await supabase
+    .from('budgets')
+    .upsert(insertPayload, { onConflict: 'user_id,period_month,category_key' });
+
+  if (error) {
+    if (isUnauthorizedError(error)) {
+      throw new Error('Silakan login untuk menyimpan anggaran');
+    }
+    throw error;
+  }
+}
+
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
@@ -1202,25 +1251,30 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
     throw error;
   }
 
+  const normalized = normalizeBudgetInput(input);
   const payload = {
-    p_category_id: input.category_id,
-    p_amount_planned: Number(input.amount_planned ?? 0),
-    p_period_month: toMonthStart(input.period), // 'YYYY-MM-01'
-    p_carryover_enabled: Boolean(input.carryover_enabled),
-    p_notes: input.notes ?? null,
+    p_category_id: normalized.categoryId,
+    p_amount_planned: normalized.amountPlanned,
+    p_period_month: normalized.periodMonth, // 'YYYY-MM-01'
+    p_carryover_enabled: normalized.carryoverEnabled,
+    p_notes: normalized.notes,
   };
 
   const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) {
-    if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
-      throw new Error('Silakan login untuk menyimpan anggaran');
-    }
-    const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
-    }
-    throw error;
+  if (!error) {
+    return;
   }
+
+  if (isUnauthorizedError(error)) {
+    throw new Error('Silakan login untuk menyimpan anggaran');
+  }
+
+  if (isMissingBudUpsert(error)) {
+    await upsertBudgetViaRest(userId, normalized);
+    return;
+  }
+
+  throw error;
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
