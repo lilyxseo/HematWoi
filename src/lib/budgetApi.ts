@@ -9,6 +9,8 @@ type UUID = string;
 
 type Nullable<T> = T | null;
 
+type CarryRule = 'none' | 'carry-positive' | 'carry-all' | 'reset-zero';
+
 export interface ExpenseCategory {
   id: UUID;
   user_id: UUID;
@@ -95,10 +97,61 @@ function mapCategoryRecordToExpense(category: {
   };
 }
 
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof column !== 'string') return false;
+  const message = (error as { message?: unknown })?.message;
+  if (typeof message !== 'string') return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('does not exist') && normalized.includes(`column ${column.toLowerCase()}`);
+}
+
+type NewBudgetRow = {
+  id: UUID;
+  user_id: UUID;
+  category_id: UUID | null;
+  planned: number | null;
+  rollover_in: number | null;
+  rollover_out: number | null;
+  carry_rule: string | null;
+  note: string | null;
+  name: string | null;
+  period_month: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  category: BudgetRow['category'];
+};
+
+function mapNewSchemaBudgetRow(row: NewBudgetRow, fallbackPeriod: string): BudgetRow {
+  const planned = Number(row.planned ?? 0);
+  const rolloverIn = Number(row.rollover_in ?? 0);
+  const rolloverOut = Number(row.rollover_out ?? 0);
+  const carryRule = (row.carry_rule as CarryRule | null) ?? null;
+  const periodMonth = row.period_month && typeof row.period_month === 'string'
+    ? row.period_month
+    : fallbackPeriod;
+
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    category_id: row.category_id ?? null,
+    amount_planned: Number.isFinite(planned) ? planned : 0,
+    carryover_enabled: carryRule ? carryRule !== 'none' : false,
+    notes: row.note ?? null,
+    period_month: periodMonth,
+    created_at: row.created_at ?? new Date().toISOString(),
+    updated_at: row.updated_at ?? new Date().toISOString(),
+    category: row.category ?? null,
+    name: row.name ?? null,
+    carry_rule: carryRule,
+    rollover_in: Number.isFinite(rolloverIn) ? rolloverIn : 0,
+    rollover_out: Number.isFinite(rolloverOut) ? rolloverOut : 0,
+  };
+}
+
 export interface BudgetRow {
   id: UUID;
   user_id: UUID;
-  category_id: UUID;
+  category_id: UUID | null;
   amount_planned: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
@@ -110,6 +163,10 @@ export interface BudgetRow {
     name: string;
     type?: 'income' | 'expense' | null;
   } | null;
+  name?: Nullable<string>;
+  carry_rule?: CarryRule | null;
+  rollover_in?: number;
+  rollover_out?: number;
 }
 
 export interface BudgetSpentRow {
@@ -229,16 +286,46 @@ function getPreviousPeriod(period: string): string | null {
 }
 
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
-  const { data, error } = await supabase
+  const periodMonth = toMonthStart(period);
+  const baseQuery = supabase
     .from('budgets')
     .select(
       'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
-    .eq('period_month', toMonthStart(period))
+    .eq('period_month', periodMonth)
     .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+
+  const { data, error } = await baseQuery;
+
+  if (!error) {
+    return (data ?? []) as BudgetRow[];
+  }
+
+  const missingCarryover = isMissingColumnError(error, 'budgets.carryover_enabled');
+  const missingNotes = isMissingColumnError(error, 'budgets.notes');
+
+  if (!missingCarryover && !missingNotes) {
+    throw error;
+  }
+
+  const fallbackQuery = supabase
+    .from('budgets')
+    .select(
+      'id,user_id,category_id,planned,rollover_in,rollover_out,carry_rule,note,name,period_month,created_at,updated_at,category:categories(id,name,type)'
+    )
+    .eq('user_id', userId)
+    .eq('period_month', periodMonth)
+    .order('created_at', { ascending: false });
+
+  const fallbackResponse = await fallbackQuery;
+  if (fallbackResponse.error) {
+    throw fallbackResponse.error;
+  }
+
+  return ((fallbackResponse.data ?? []) as NewBudgetRow[]).map((row) =>
+    mapNewSchemaBudgetRow(row, periodMonth)
+  );
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
@@ -1123,7 +1210,8 @@ export async function deleteBudget(id: UUID): Promise<void> {
 
 export function mergeBudgetsWithSpent(budgets: BudgetRow[], spentMap: Record<string, number>): BudgetWithSpent[] {
   return budgets.map((budget) => {
-    const spent = spentMap[budget.category_id] ?? 0;
+    const categoryKey = budget.category_id ? String(budget.category_id) : null;
+    const spent = categoryKey ? spentMap[categoryKey] ?? 0 : 0;
     return {
       ...budget,
       spent,
