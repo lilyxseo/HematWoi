@@ -538,6 +538,10 @@ function extractMissingColumnName(bodyText: string): string | null {
   return match ? match[1] ?? null : null;
 }
 
+function isMissingRelationError(bodyText: string): boolean {
+  return /relation\s+"?[A-Za-z0-9_.]+"?\s+does not exist/i.test(bodyText);
+}
+
 async function fetchExpenseCategoriesRemote(
   userId: string,
   signal?: AbortSignal
@@ -563,6 +567,10 @@ async function fetchExpenseCategoriesRemote(
         if (shouldRetry) {
           missingCategoryViewColumns.add(missingColumnName);
           continue;
+        }
+        if (isMissingRelationError(bodyText)) {
+          categoriesViewUnavailable = true;
+          break;
         }
         const missingColumn =
           /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);

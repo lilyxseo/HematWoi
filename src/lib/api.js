@@ -823,6 +823,10 @@ function extractMissingColumnName(bodyText) {
   return match ? match[1] : null;
 }
 
+function isMissingRelationError(bodyText) {
+  return /relation\s+"?[A-Za-z0-9_.]+"?\s+does not exist/i.test(bodyText);
+}
+
 async function fetchCategoriesFromRest(userId, type) {
   const headers = buildRestHeaders();
 
@@ -845,6 +849,10 @@ async function fetchCategoriesFromRest(userId, type) {
         if (shouldRetry) {
           missingCategoryViewColumns.add(missingColumnName);
           continue;
+        }
+        if (isMissingRelationError(bodyText)) {
+          categoryViewUnavailable = true;
+          break;
         }
         const missingColumn =
           /column/iu.test(bodyText) && /does not exist/iu.test(bodyText);
