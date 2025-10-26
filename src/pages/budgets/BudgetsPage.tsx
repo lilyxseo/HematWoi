@@ -223,6 +223,63 @@ export default function BudgetsPage() {
     });
   }, [period, weekly.weeks]);
 
+  const availableCategories = useMemo(() => {
+    const seen = new Set<string>();
+    const ordered: ExpenseCategory[] = [];
+    const fallback: ExpenseCategory[] = [];
+
+    for (const category of categories) {
+      if (!category?.id) continue;
+      seen.add(category.id);
+      ordered.push(category);
+    }
+
+    type CategoryFragment = {
+      id?: string | null;
+      name?: string | null;
+      type?: 'income' | 'expense' | null;
+    };
+
+    const ensureCategory = (category?: CategoryFragment) => {
+      const id = category?.id;
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      fallback.push({
+        id,
+        user_id: 'local',
+        type: category?.type === 'income' ? 'income' : 'expense',
+        name: category?.name?.trim() || 'Tanpa kategori',
+        inserted_at: '1970-01-01T00:00:00.000Z',
+        group_name: null,
+        order_index: null,
+      });
+    };
+
+    const ensureBudgetCategory = (categoryId?: string | null, category?: CategoryFragment | null) => {
+      if (!categoryId && !category?.id) return;
+      ensureCategory({
+        id: category?.id ?? categoryId ?? null,
+        name: category?.name ?? null,
+        type: category?.type ?? null,
+      });
+    };
+
+    for (const row of monthly.rows) {
+      ensureBudgetCategory(row.category_id, row.category ?? undefined);
+    }
+
+    for (const row of weekly.rows) {
+      ensureBudgetCategory(row.category_id, row.category ?? undefined);
+    }
+
+    ensureBudgetCategory(editingMonthly?.category_id, editingMonthly?.category ?? undefined);
+    ensureBudgetCategory(editingWeekly?.category_id, editingWeekly?.category ?? undefined);
+
+    fallback.sort((a, b) => a.name.localeCompare(b.name, 'id-ID', { sensitivity: 'base' }));
+
+    return [...ordered, ...fallback];
+  }, [categories, monthly.rows, weekly.rows, editingMonthly, editingWeekly]);
+
   const monthlyInitialValues = useMemo<BudgetFormValues>(() => {
     if (editingMonthly) {
       return {
@@ -727,7 +784,7 @@ export default function BudgetsPage() {
       <BudgetFormModal
         open={monthlyModalOpen}
         title={editingMonthly ? 'Edit anggaran' : 'Tambah anggaran'}
-        categories={categories}
+        categories={availableCategories}
         initialValues={monthlyInitialValues}
         submitting={submittingMonthly}
         onClose={() => {
@@ -740,7 +797,7 @@ export default function BudgetsPage() {
       <WeeklyBudgetFormModal
         open={weeklyModalOpen}
         title={editingWeekly ? 'Edit anggaran mingguan' : 'Tambah anggaran mingguan'}
-        categories={categories}
+        categories={availableCategories}
         initialValues={weeklyInitialValues}
         submitting={submittingWeekly}
         onClose={() => {
