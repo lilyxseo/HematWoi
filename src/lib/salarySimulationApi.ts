@@ -138,6 +138,19 @@ export interface SalarySimulationRow {
   items?: SalarySimulationItemRow[];
 }
 
+export interface ApplySimulationBudgetItem {
+  categoryId: UUID;
+  amount: number;
+  carryoverEnabled?: boolean | null;
+  notes?: string | null;
+}
+
+export interface ApplySimulationBudgetsPayload {
+  periodMonth: string;
+  items: ApplySimulationBudgetItem[];
+  userId?: string;
+}
+
 export async function getSalarySimulations(
   userId?: string,
   options: { periodMonth?: string } = {}
@@ -329,4 +342,33 @@ export async function duplicateSalarySimulation(id: UUID, userId?: string): Prom
     })),
   });
   return clone;
+}
+
+export async function applySimulationBudgets(payload: ApplySimulationBudgetsPayload): Promise<void> {
+  const { items } = payload;
+  if (!items.length) return;
+
+  const resolvedUserId = payload.userId ?? (await getCurrentUserId());
+  ensureAuth(resolvedUserId);
+  await writeGuard();
+
+  const normalizedPeriod = normalizeMonthStart(payload.periodMonth);
+  const rows = items
+    .filter((item) => item.categoryId)
+    .map((item) => ({
+      user_id: resolvedUserId,
+      category_id: item.categoryId,
+      period_month: normalizedPeriod,
+      planned: Number(item.amount ?? 0),
+      carryover_enabled: Boolean(item.carryoverEnabled),
+      notes: item.notes?.trim() ? item.notes : null,
+      updated_at: new Date().toISOString(),
+    }));
+
+  if (!rows.length) return;
+
+  const { error } = await supabase
+    .from('budgets')
+    .upsert(rows, { onConflict: 'user_id,period_month,category_id' });
+  if (error) throw error;
 }
