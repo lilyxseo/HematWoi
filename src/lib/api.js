@@ -795,9 +795,10 @@ function createCategoryViewParams(userId, type) {
     select: buildCategoryViewSelect(),
     user_id: `eq.${userId}`,
   });
-  buildCategoryViewOrderParams().forEach((order) => {
-    params.append("order", order);
-  });
+  const orderParams = buildCategoryViewOrderParams();
+  if (orderParams.length > 0) {
+    params.set("order", orderParams.join(","));
+  }
   if (type === "income" || type === "expense") {
     params.set("type", `eq.${type}`);
   }
@@ -809,9 +810,9 @@ function createCategoryFallbackParams(userId, type) {
     select: CATEGORY_REST_SELECT,
     user_id: `eq.${userId}`,
   });
-  CATEGORY_REST_ORDER_PARAMS.forEach((order) => {
-    params.append("order", order);
-  });
+  if (CATEGORY_REST_ORDER_PARAMS.length > 0) {
+    params.set("order", CATEGORY_REST_ORDER_PARAMS.join(","));
+  }
   if (type === "income" || type === "expense") {
     params.set("type", `eq.${type}`);
   }

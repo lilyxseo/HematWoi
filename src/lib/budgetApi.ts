@@ -515,9 +515,10 @@ function createCategoryViewParams(userId: string, type: 'income' | 'expense'): U
     user_id: `eq.${userId}`,
     type: `eq.${type}`,
   });
-  buildCategoryViewOrderParams().forEach((order) => {
-    params.append('order', order);
-  });
+  const orderParams = buildCategoryViewOrderParams();
+  if (orderParams.length > 0) {
+    params.set('order', orderParams.join(','));
+  }
   return params;
 }
 
@@ -527,9 +528,9 @@ function createCategoryFallbackParams(userId: string, type: 'income' | 'expense'
     user_id: `eq.${userId}`,
     type: `eq.${type}`,
   });
-  CATEGORY_ORDER_PARAMS.forEach((order) => {
-    params.append('order', order);
-  });
+  if (CATEGORY_ORDER_PARAMS.length > 0) {
+    params.set('order', CATEGORY_ORDER_PARAMS.join(','));
+  }
   return params;
 }
 
