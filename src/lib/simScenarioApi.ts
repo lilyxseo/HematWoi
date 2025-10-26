@@ -273,7 +273,7 @@ export async function computeBaseline(period_month: string): Promise<BaselineDat
   const [monthlyResponse, weeklyResponse, transactionsResponse] = await Promise.all([
     supabase
       .from('budgets')
-      .select('category_id,planned_amount,carryover_enabled,category:categories(id,name,type)')
+      .select('category_id,planned_amount:planned,carryover_enabled,category:categories(id,name,type)')
       .eq('user_id', userId)
       .eq('period_month', monthStart),
     supabase
