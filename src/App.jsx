@@ -18,6 +18,7 @@ import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
 import BudgetSimulationPage from "./pages/BudgetSimulation";
+import SalarySimulationPage from "./pages/budgets/salary-simulation/SalarySimulationPage";
 import DebtsPage from "./pages/Debts";
 import Categories from "./pages/Categories";
 import DataPage from "./pages/DataPage";
@@ -1197,6 +1198,10 @@ function AppShell({ prefs, setPrefs }) {
                 <Route
                   path="budgets/simulation"
                   element={<BudgetSimulationPage />}
+                />
+                <Route
+                  path="budgets/simulation/salary"
+                  element={<SalarySimulationPage />}
                 />
                 <Route path="debts" element={<DebtsPage />} />
                 <Route path="goals" element={<GoalsPage />} />
