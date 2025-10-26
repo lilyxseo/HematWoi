@@ -50,7 +50,7 @@ import {
   listExpenseCategories,
   updateSalarySimulation,
 } from '../../../../lib/salarySimulationApi';
-import { upsertBudget } from '../../../../lib/budgetApi';
+import { upsertBudget } from '../../../../lib/api-budgets';
 
 interface AllocationItem {
   categoryId: string;
@@ -522,9 +522,9 @@ export default function SalarySimulationPage() {
           return upsertBudget({
             category_id: item.categoryId,
             period,
-            amount_planned: item.amount,
-            carryover_enabled: existing?.carryover_enabled ?? false,
-            notes: existing?.notes ?? undefined,
+            planned: item.amount,
+            carry_rule: existing?.carryover_enabled ? 'carry-positive' : 'none',
+            note: existing?.notes ?? undefined,
           });
         }),
       );
