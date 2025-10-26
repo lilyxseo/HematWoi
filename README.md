@@ -219,7 +219,7 @@ menulis nilai ke `capacitor.config.ts` dan berkas native.
 - Preferensi tema, aksen warna, dan pengguna terakhir disimpan memakai
   `@capacitor/preferences` sehingga UI terhydrate sebelum React dirender.
 - Pengingat hutang dijadwalkan lewat `@capacitor/local-notifications`. Android
-  membuat kanal bernama `hematwoi-debts` secara otomatis.
+  membuat kanal bernama `hematwoi-reminders` secara otomatis.
 
 ### Debug Error Umum
 
