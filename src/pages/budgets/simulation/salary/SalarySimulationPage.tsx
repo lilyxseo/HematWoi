@@ -255,21 +255,6 @@ export default function SalarySimulationPage() {
     [items, budgetMap],
   );
 
-  const overBudgetItems = useMemo(
-    () =>
-      items
-        .map((item) => {
-          const budget = budgetMap.get(item.categoryId)?.amount_planned ?? 0;
-          return {
-            item,
-            budget,
-            delta: item.amount - budget,
-          };
-        })
-        .filter(({ delta }) => delta > 0),
-    [items, budgetMap],
-  );
-
   const draftKey = useMemo(() => (user ? `salary-simulation-draft:${user.id}` : 'salary-simulation-draft'), [user]);
 
   useEffect(() => {
@@ -908,14 +893,17 @@ export default function SalarySimulationPage() {
               </div>
               {items.map((item) => {
                 const budget = budgetMap.get(item.categoryId);
-                const isOverBudget = budget ? item.amount > budget.amount_planned : false;
+                const plannedBudget = Number(budget?.amount_planned ?? 0);
+                const difference = item.amount - plannedBudget;
+                const differenceClass = clsx(
+                  difference === 0 && 'text-muted',
+                  difference > 0 && 'text-amber-600 dark:text-amber-300',
+                  difference < 0 && 'text-emerald-600 dark:text-emerald-300',
+                );
                 return (
                   <div
                     key={item.categoryId}
-                    className={clsx(
-                      'grid gap-3 rounded-2xl border border-border/70 bg-surface-alt/80 p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto]',
-                      isOverBudget && 'border-rose-400/70 bg-rose-50/60 dark:bg-rose-500/10',
-                    )}
+                    className="grid gap-3 rounded-2xl border border-border/70 bg-surface-alt/80 p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
                   >
                     <div className="space-y-1">
                       <div className="flex items-start justify-between gap-2">
@@ -931,19 +919,14 @@ export default function SalarySimulationPage() {
                         ) : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                        <span>Budget: {formatCurrency(budget?.amount_planned ?? 0)}</span>
+                        <span>Budget: {formatCurrency(plannedBudget)}</span>
                         <span>
                           Selisih:{' '}
-                          <span className={clsx(isOverBudget ? 'text-rose-500' : 'text-emerald-500')}>
-                            {formatCurrency(item.amount - (budget?.amount_planned ?? 0))}
+                          <span className={differenceClass}>
+                            {formatCurrency(difference)}
                           </span>
                         </span>
                       </div>
-                      {isOverBudget ? (
-                        <div className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700 dark:bg-rose-500/20 dark:text-rose-200">
-                          <AlertTriangle className="h-3 w-3" /> Melebihi budget
-                        </div>
-                      ) : null}
                     </div>
                     <div>
                       <CurrencyInput
@@ -1123,22 +1106,6 @@ export default function SalarySimulationPage() {
             {renderInsight()}
           </div>
 
-          {overBudgetItems.length ? (
-            <div className="rounded-2xl border border-amber-300 bg-amber-50/80 p-4 text-sm text-amber-800">
-              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-amber-600">
-                <AlertTriangle className="h-4 w-4" /> Kategori melebihi budget
-              </div>
-              <ul className="space-y-1 text-sm">
-                {overBudgetItems.map(({ item, delta }) => (
-                  <li key={item.categoryId}>
-                    {item.categoryName}:{' '}
-                    <span className="font-semibold text-amber-700">{formatCurrency(delta)}</span>{' '}
-                    di atas budget
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
         </div>
       </Section>
 
