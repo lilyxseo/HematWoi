@@ -1211,15 +1211,55 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   };
 
   const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) {
-    if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
+  if (!error) {
+    return;
+  }
+
+  const normalizedMessage = (error.message || '').toLowerCase();
+  if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
+    throw new Error('Silakan login untuk menyimpan anggaran');
+  }
+  if (error.code === '42501' || normalizedMessage.includes('permission denied')) {
+    throw new Error('Anda tidak memiliki izin untuk memperbarui anggaran ini');
+  }
+
+  const rpcUnavailable =
+    error.code === '404' ||
+    normalizedMessage.includes('bud_upsert') ||
+    normalizedMessage.includes('function bud_upsert') ||
+    normalizedMessage.includes('procedure bud_upsert');
+
+  if (!rpcUnavailable) {
+    throw error;
+  }
+
+  const fallbackRow: Record<string, unknown> = {
+    user_id: userId,
+    category_id: input.category_id,
+    period_month: toMonthStart(input.period),
+    planned: Number(input.amount_planned ?? 0),
+    notes: input.notes ?? null,
+    carry_rule: input.carryover_enabled ? 'carry-positive' : 'none',
+  };
+
+  if (input.id) {
+    fallbackRow.id = input.id;
+  }
+
+  const { error: fallbackError } = await supabase
+    .from('budgets')
+    .upsert(fallbackRow, { onConflict: 'user_id,period_month,category_id' })
+    .select('id')
+    .maybeSingle();
+
+  if (fallbackError) {
+    if (fallbackError.message === 'Unauthorized' || fallbackError.code === '401') {
       throw new Error('Silakan login untuk menyimpan anggaran');
     }
-    const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
+    if ((fallbackError.message || '').toLowerCase().includes('permission denied')) {
+      throw new Error('Anda tidak memiliki izin untuk memperbarui anggaran ini');
     }
-    throw error;
+    throw fallbackError;
   }
 }
 
