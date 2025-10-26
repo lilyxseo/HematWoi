@@ -21,6 +21,7 @@ import {
   HandCoins,
   Heart,
   Tags,
+  PiggyBank,
   Database,
   Repeat,
   Settings as SettingsIcon,
@@ -74,6 +75,15 @@ export const NAV_ITEMS: NavItem[] = [
     section: 'primary',
     inSidebar: true,
     protected: true,
+  },
+  {
+    title: 'Simulasi Gajian',
+    path: '/budgets/simulation/salary',
+    icon: <PiggyBank className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+    breadcrumb: 'Simulasi Gajian',
   },
   {
     title: 'Simulasi Anggaran',
