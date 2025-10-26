@@ -15,7 +15,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   bundledWebRuntime: false,
   server: {
-    url: 'https://hemat-woi.me',
+    url: 'https://www.hemat-woi.me',
     cleartext: true,
   },
   plugins: {
