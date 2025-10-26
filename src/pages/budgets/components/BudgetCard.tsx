@@ -114,13 +114,16 @@ export default function BudgetCard({
   const StatusIcon = status.icon;
   const progressTone = getProgressTone(rawProgress);
   const carryoverEnabled = Boolean(budget.carryover_enabled);
-  const categoryName = budget.category?.name ?? 'Tanpa kategori';
+  const categoryName = budget.category?.name ?? budget.name ?? 'Tanpa kategori';
   const categoryInitial = categoryName.trim().charAt(0).toUpperCase() || 'B';
-  const categoryType = budget.category?.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
+  const categoryTypeRaw = budget.category?.type ?? null;
+  const categoryType = categoryTypeRaw === 'income' ? 'Pemasukan' : categoryTypeRaw === 'expense' ? 'Pengeluaran' : 'Custom';
   const categoryTypeClass =
-    budget.category?.type === 'income'
+    categoryTypeRaw === 'income'
       ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
-      : 'bg-rose-500/10 text-rose-600 dark:text-rose-300';
+      : categoryTypeRaw === 'expense'
+      ? 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
+      : 'bg-slate-500/10 text-slate-600 dark:text-slate-300';
   const notes = budget.notes?.trim();
   const percentageLabel =
     planned > 0 ? `${Math.min(100, Math.round((spent / planned) * 100))}% dari anggaran` : 'Tidak ada batas';
