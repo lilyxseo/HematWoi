@@ -228,17 +228,121 @@ function getPreviousPeriod(period: string): string | null {
   }
 }
 
-async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
+type SalarySimulationBudgetRow = {
+  id: string;
+  user_id: string;
+  period_month: string;
+  created_at: string | null;
+  updated_at: string | null;
+  items?: {
+    id: string;
+    category_id: string;
+    allocation_amount: number | null;
+    notes: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    category?: {
+      id: string;
+      name: string | null;
+      type?: 'income' | 'expense' | null;
+    } | null;
+  }[];
+};
+
+function isRelationMissingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { code, message } = error as { code?: string; message?: string };
+  if (code === '42P01') return true;
+  if (typeof message === 'string') {
+    const normalized = message.toLowerCase();
+    if (normalized.includes('relation') && normalized.includes('budgets') && normalized.includes('does not exist')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function fetchBudgetsFromSalarySimulation(
+  userId: string,
+  period: string,
+): Promise<BudgetRow[] | null> {
   const { data, error } = await supabase
-    .from('budgets')
+    .from('salary_simulations')
     .select(
-      'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
+      'id,user_id,period_month,created_at,updated_at,items:salary_simulation_items(id,category_id,allocation_amount,notes,created_at,updated_at,category:categories(id,name,type))'
     )
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    if (isRelationMissingError(error)) {
+      return null;
+    }
+    throw error;
+  }
+
+  const simulation = (data ?? null) as SalarySimulationBudgetRow | null;
+  if (!simulation || !simulation.items || simulation.items.length === 0) {
+    return null;
+  }
+
+  return simulation.items.map((item) => ({
+    id: item.id,
+    user_id: simulation.user_id,
+    category_id: item.category_id,
+    amount_planned: Number(item.allocation_amount ?? 0),
+    carryover_enabled: false,
+    notes: item.notes ?? null,
+    period_month: simulation.period_month,
+    created_at: item.created_at ?? simulation.created_at ?? toMonthStart(period),
+    updated_at: item.updated_at ?? simulation.updated_at ?? toMonthStart(period),
+    category: item.category
+      ? {
+          id: item.category.id,
+          name: item.category.name ?? '',
+          type: item.category.type ?? null,
+        }
+      : null,
+  }));
+}
+
+async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
+  const monthStart = toMonthStart(period);
+  try {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select(
+        'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
+      )
+      .eq('user_id', userId)
+      .eq('period_month', monthStart)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      if (!isRelationMissingError(error)) {
+        throw error;
+      }
+    }
+
+    const rows = (data ?? []) as BudgetRow[];
+    if (rows.length > 0) {
+      return rows;
+    }
+
+    const fallback = await fetchBudgetsFromSalarySimulation(userId, period);
+    return fallback ?? rows;
+  } catch (error) {
+    if (isRelationMissingError(error)) {
+      const fallback = await fetchBudgetsFromSalarySimulation(userId, period);
+      if (fallback) {
+        return fallback;
+      }
+    }
+    throw error;
+  }
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
