@@ -228,17 +228,55 @@ function getPreviousPeriod(period: string): string | null {
   }
 }
 
+function mapCarryRuleToCarryoverEnabled(value: unknown): boolean {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  switch (value) {
+    case 'carry-positive':
+    case 'carry-all':
+      return true;
+    default:
+      return false;
+  }
+}
+
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
   const { data, error } = await supabase
     .from('budgets')
     .select(
-      'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
+      'id,user_id,category_id,planned,carry_rule,rollover_in,rollover_out,note,period_month,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+  return (data ?? []).map((row) => {
+    const typed = row as {
+      id: string;
+      user_id: string;
+      category_id: string | null;
+      planned?: number | string | null;
+      carry_rule?: string | null;
+      note?: string | null;
+      period_month: string;
+      created_at: string;
+      updated_at: string;
+      category?: { id: string; name: string | null; type?: 'income' | 'expense' | null } | null;
+    };
+    return {
+      id: typed.id as UUID,
+      user_id: typed.user_id as UUID,
+      category_id: (typed.category_id ?? '') as UUID,
+      amount_planned: Number(typed.planned ?? 0),
+      carryover_enabled: mapCarryRuleToCarryoverEnabled(typed.carry_rule),
+      notes: (typed.note ?? null) as Nullable<string>,
+      period_month: typed.period_month,
+      created_at: typed.created_at,
+      updated_at: typed.updated_at,
+      category: typed.category ?? null,
+    } satisfies BudgetRow;
+  });
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
