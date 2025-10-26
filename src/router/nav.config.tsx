@@ -76,6 +76,14 @@ export const NAV_ITEMS: NavItem[] = [
     protected: true,
   },
   {
+    title: 'Simulasi Gajian',
+    path: '/budgets/simulation/salary',
+    icon: <HandCoins className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
     title: 'Simulasi Anggaran',
     path: '/budgets/simulation',
     inSidebar: false,
