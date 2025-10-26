@@ -241,6 +241,86 @@ async function fetchBudgetsForPeriod(userId: string, period: string): Promise<Bu
   return (data ?? []) as BudgetRow[];
 }
 
+interface SalarySimulationItemRecord {
+  id: string;
+  category_id: string | null;
+  allocation_amount: number | null;
+  notes: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  category?: {
+    id?: string | null;
+    name?: string | null;
+    type?: 'income' | 'expense' | null;
+  } | null;
+}
+
+interface SalarySimulationRecord {
+  id: string;
+  user_id: string | null;
+  period_month: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  items?: SalarySimulationItemRecord[] | null;
+}
+
+async function fetchSimulationBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
+  const monthStart = toMonthStart(period);
+  const { data, error } = await supabase
+    .from('salary_simulations')
+    .select(
+      'id,user_id,period_month,created_at,updated_at,items:salary_simulation_items(id,category_id,allocation_amount,notes,created_at,updated_at,category:categories(id,name,type))'
+    )
+    .eq('user_id', userId)
+    .eq('period_month', monthStart)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (error) throw error;
+
+  const simulation = ((data ?? [])[0] ?? null) as SalarySimulationRecord | null;
+  if (!simulation?.items?.length) {
+    return [];
+  }
+
+  const ownerId = (simulation.user_id ?? userId) as UUID;
+  const periodMonth = simulation.period_month ?? monthStart;
+  const simulationCreated = simulation.created_at ?? monthStart;
+  const simulationUpdated = simulation.updated_at ?? simulationCreated;
+
+  return simulation.items
+    .filter((item): item is SalarySimulationItemRecord & { category_id: string } => {
+      return typeof item.category_id === 'string' && item.category_id.length > 0;
+    })
+    .map((item) => {
+      const categoryId = item.category_id as UUID;
+      const amount = Number(item.allocation_amount ?? 0);
+      const createdAt = item.created_at ?? simulationCreated;
+      const updatedAt = item.updated_at ?? item.created_at ?? simulationUpdated;
+      const categoryRecord = item.category ?? null;
+      const category = categoryRecord
+        ? {
+            id: (categoryRecord.id ?? categoryId) as UUID,
+            name: categoryRecord.name ?? 'Tanpa kategori',
+            type: (categoryRecord.type as 'income' | 'expense' | null) ?? null,
+          }
+        : null;
+
+      return {
+        id: item.id as UUID,
+        user_id: ownerId,
+        category_id: categoryId,
+        amount_planned: amount,
+        carryover_enabled: false,
+        notes: item.notes ?? null,
+        period_month: periodMonth,
+        created_at: createdAt ?? periodMonth,
+        updated_at: updatedAt ?? createdAt ?? periodMonth,
+        category,
+      } satisfies BudgetRow;
+    });
+}
+
 function getMonthRange(period: string): { start: string; end: string } {
   const start = new Date(`${toMonthStart(period)}T00:00:00.000Z`);
   const end = new Date(start);
@@ -637,6 +717,12 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
   const currentBudgets = await fetchBudgetsForPeriod(userId, period);
+  const resolveWithFallback = async (rows: BudgetRow[]): Promise<BudgetRow[]> => {
+    if (rows.length > 0) {
+      return rows;
+    }
+    return fetchSimulationBudgetsForPeriod(userId, period);
+  };
   const existingCategoryIds = new Set(
     currentBudgets
       .map((row) => row.category_id)
@@ -645,7 +731,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
 
   const previousPeriod = getPreviousPeriod(period);
   if (!previousPeriod) {
-    return currentBudgets;
+    return resolveWithFallback(currentBudgets);
   }
 
   const previousBudgets = await fetchBudgetsForPeriod(userId, previousPeriod);
@@ -654,7 +740,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
   );
 
   if (!toCarryOver.length) {
-    return currentBudgets;
+    return resolveWithFallback(currentBudgets);
   }
 
   const results = await Promise.allSettled(
@@ -671,10 +757,11 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
 
   const hasSuccess = results.some((result) => result.status === 'fulfilled');
   if (!hasSuccess) {
-    return currentBudgets;
+    return resolveWithFallback(currentBudgets);
   }
 
-  return fetchBudgetsForPeriod(userId, period);
+  const refreshed = await fetchBudgetsForPeriod(userId, period);
+  return resolveWithFallback(refreshed);
 }
 
 export async function computeSpent(period: string): Promise<Record<string, number>> {
