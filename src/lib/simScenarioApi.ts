@@ -273,12 +273,12 @@ export async function computeBaseline(period_month: string): Promise<BaselineDat
   const [monthlyResponse, weeklyResponse, transactionsResponse] = await Promise.all([
     supabase
       .from('budgets')
-      .select('category_id,planned_amount,carryover_enabled,category:categories(id,name,type)')
+      .select('category_id,planned,carry_rule,category:categories(id,name,type)')
       .eq('user_id', userId)
       .eq('period_month', monthStart),
     supabase
       .from('budgets_weekly')
-      .select('category_id,planned_amount,carryover_enabled,week_start,category:categories(id,name,type)')
+      .select('category_id,planned,carry_rule,week_start,category:categories(id,name,type)')
       .eq('user_id', userId)
       .gte('week_start', monthStart)
       .lt('week_start', metadata.nextMonthStart),
@@ -317,8 +317,10 @@ export async function computeBaseline(period_month: string): Promise<BaselineDat
       categoryInfo?.name ?? 'Tanpa kategori',
       (categoryInfo?.type as 'income' | 'expense' | null) ?? null
     );
-    baseline.monthlyPlanned = Number(row.planned_amount ?? 0);
-    baseline.carryoverEnabled = Boolean(row.carryover_enabled);
+    const plannedAmount = Number(row.planned ?? row.planned_amount ?? 0);
+    const carryRule = typeof row.carry_rule === 'string' ? row.carry_rule : null;
+    baseline.monthlyPlanned = Number.isFinite(plannedAmount) ? plannedAmount : 0;
+    baseline.carryoverEnabled = carryRule === 'carry-positive' || carryRule === 'carry-all';
   }
 
   for (const row of (weeklyResponse.data ?? []) as any[]) {
@@ -335,8 +337,11 @@ export async function computeBaseline(period_month: string): Promise<BaselineDat
       categoryInfo?.name ?? 'Tanpa kategori',
       (categoryInfo?.type as 'income' | 'expense' | null) ?? null
     );
-    baseline.weeklyPlanned[normalizedWeek] = Number(row.planned_amount ?? 0);
-    baseline.weeklyCarryover[normalizedWeek] = Boolean(row.carryover_enabled ?? false);
+    const plannedAmount = Number(row.planned ?? row.planned_amount ?? 0);
+    const carryRule = typeof row.carry_rule === 'string' ? row.carry_rule : null;
+    baseline.weeklyPlanned[normalizedWeek] = Number.isFinite(plannedAmount) ? plannedAmount : 0;
+    baseline.weeklyCarryover[normalizedWeek] =
+      carryRule === 'carry-positive' || carryRule === 'carry-all';
   }
 
   const referenceDate = metadata.referenceDate;
