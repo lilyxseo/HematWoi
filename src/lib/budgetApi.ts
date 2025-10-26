@@ -1215,11 +1215,30 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
     if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
       throw new Error('Silakan login untuk menyimpan anggaran');
     }
+
     const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
+    const isMissingRpc = error.code === '404' || msg.includes('bud_upsert');
+
+    if (!isMissingRpc) {
+      throw error;
     }
-    throw error;
+
+    const fallbackPayload = {
+      user_id: userId,
+      category_id: input.category_id,
+      period_month: toMonthStart(input.period),
+      planned: Number(input.amount_planned ?? 0),
+      carryover_enabled: Boolean(input.carryover_enabled),
+      notes: input.notes ?? null,
+    };
+
+    const { error: fallbackError } = await supabase
+      .from('budgets')
+      .upsert(fallbackPayload, { onConflict: 'user_id,period_month,category_key' });
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
   }
 }
 
