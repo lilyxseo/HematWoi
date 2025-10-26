@@ -9,6 +9,8 @@ type UUID = string;
 
 type Nullable<T> = T | null;
 
+type CarryRule = 'none' | 'carry-positive' | 'carry-all' | 'reset-zero';
+
 export interface ExpenseCategory {
   id: UUID;
   user_id: UUID;
@@ -98,13 +100,16 @@ function mapCategoryRecordToExpense(category: {
 export interface BudgetRow {
   id: UUID;
   user_id: UUID;
-  category_id: UUID;
+  category_id: UUID | null;
   amount_planned: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
   period_month: string; // ISO date (YYYY-MM-01)
   created_at: string;
   updated_at: string;
+  carry_rule?: CarryRule;
+  rollover_in?: number;
+  rollover_out?: number;
   category: {
     id: UUID;
     name: string;
@@ -228,17 +233,134 @@ function getPreviousPeriod(period: string): string | null {
   }
 }
 
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const message = (error as { message?: string }).message;
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('does not exist') && normalized.includes(column.toLowerCase());
+}
+
+function normalizeCarryRule(value: unknown): CarryRule {
+  if (value === 'carry-positive' || value === 'carry-all' || value === 'reset-zero') {
+    return value;
+  }
+  return 'none';
+}
+
+function toNumberSafe(value: unknown): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function mapCategoryRelation(row: any): BudgetRow['category'] {
+  if (!row) return null;
+  const idValue = row.id ?? row.ID ?? null;
+  if (idValue == null) return null;
+  const id = String(idValue);
+  const name = row.name != null ? String(row.name) : '';
+  const type = typeof row.type === 'string' ? (row.type as 'income' | 'expense' | null) : null;
+  return { id, name, type };
+}
+
+function mapBudgetRowNewSchema(row: Record<string, any>, fallbackPeriod: string): BudgetRow {
+  const carryRule = normalizeCarryRule(row.carry_rule);
+  const carryoverEnabled =
+    typeof row.carryover_enabled === 'boolean'
+      ? row.carryover_enabled
+      : carryRule === 'carry-positive' || carryRule === 'carry-all';
+  const planned = toNumberSafe(row.planned ?? row.amount_planned);
+  const rolloverIn = toNumberSafe(row.rollover_in);
+  const rolloverOut = toNumberSafe(row.rollover_out);
+  const periodValue = row.period_month ?? row.period ?? null;
+
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    category_id: row.category_id != null ? String(row.category_id) : null,
+    amount_planned: planned,
+    carryover_enabled: carryoverEnabled,
+    notes: row.note ?? row.notes ?? null,
+    period_month: typeof periodValue === 'string' ? periodValue : fallbackPeriod,
+    created_at: row.created_at ?? new Date().toISOString(),
+    updated_at: row.updated_at ?? new Date().toISOString(),
+    carry_rule: carryRule,
+    rollover_in: rolloverIn,
+    rollover_out: rolloverOut,
+    category: mapCategoryRelation(row.category),
+  };
+}
+
+function mapBudgetRowLegacy(row: Record<string, any>, fallbackPeriod: string): BudgetRow {
+  const carryoverEnabled = typeof row.carryover_enabled === 'boolean'
+    ? row.carryover_enabled
+    : Boolean(row.carryover_enabled);
+  const carryRule = carryoverEnabled ? 'carry-positive' : 'none';
+  const planned = toNumberSafe(row.amount_planned ?? row.planned);
+  const periodValue = row.period_month ?? row.period ?? null;
+
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    category_id: row.category_id != null ? String(row.category_id) : null,
+    amount_planned: planned,
+    carryover_enabled: carryoverEnabled,
+    notes: row.notes ?? row.note ?? null,
+    period_month: typeof periodValue === 'string' ? periodValue : fallbackPeriod,
+    created_at: row.created_at ?? new Date().toISOString(),
+    updated_at: row.updated_at ?? new Date().toISOString(),
+    carry_rule: carryRule,
+    rollover_in: toNumberSafe(row.rollover_in),
+    rollover_out: toNumberSafe(row.rollover_out),
+    category: mapCategoryRelation(row.category),
+  };
+}
+
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
+  const periodMonth = toMonthStart(period);
+  const { data, error } = await supabase
+    .from('budgets')
+    .select(
+      'id,user_id,category_id,planned,rollover_in,rollover_out,carry_rule,note,period_month,created_at,updated_at,category:categories(id,name,type)'
+    )
+    .eq('user_id', userId)
+    .eq('period_month', periodMonth)
+    .order('created_at', { ascending: false });
+
+  if (!error) {
+    return (data ?? []).map((row) => mapBudgetRowNewSchema(row, periodMonth));
+  }
+
+  if (
+    isMissingColumnError(error, 'rollover_in') ||
+    isMissingColumnError(error, 'rollover_out') ||
+    isMissingColumnError(error, 'carry_rule') ||
+    isMissingColumnError(error, 'note')
+  ) {
+    return fetchBudgetsForPeriodLegacy(userId, periodMonth);
+  }
+
+  throw error;
+}
+
+async function fetchBudgetsForPeriodLegacy(userId: string, periodMonth: string): Promise<BudgetRow[]> {
   const { data, error } = await supabase
     .from('budgets')
     .select(
       'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
-    .eq('period_month', toMonthStart(period))
+    .eq('period_month', periodMonth)
     .order('created_at', { ascending: false });
+
   if (error) throw error;
-  return (data ?? []) as BudgetRow[];
+  return (data ?? []).map((row) => mapBudgetRowLegacy(row, periodMonth));
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
