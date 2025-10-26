@@ -692,7 +692,7 @@ export default function SalarySimulationPage() {
   };
 
   return (
-    <Page>
+    <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 md:px-6">
       <PageHeader title="Simulasi Gajian" description="Uji alokasi gaji ke kategori tanpa mengubah data asli.">
         <button
           type="button"
