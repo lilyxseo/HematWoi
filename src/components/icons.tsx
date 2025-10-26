@@ -183,7 +183,6 @@ export const ICONS: Record<string, LucideIcon> = {
   analyticsbar: BarChart3,
   bellring: BellRing,
   'bell-ring': BellRing,
-  reminders: BellRing,
   'calendar-days': CalendarDays,
   calendardays: CalendarDays,
   'calendar-range': CalendarRange,
