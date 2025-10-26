@@ -71,32 +71,82 @@ export async function listExpenseCategories(userId?: string): Promise<ExpenseCat
 
 export interface MonthlyBudgetRow {
   id: UUID;
-  category_id: UUID;
+  category_id: UUID | null;
   amount_planned: number;
   carryover_enabled?: boolean;
   notes?: string | null;
   category?: { id: UUID; name: string | null } | null;
 }
 
+function isCarryRuleEnabled(value: unknown): boolean {
+  if (!value) return false;
+  const normalized = String(value).toLowerCase();
+  return normalized === 'carry-positive' || normalized === 'carry-all';
+}
+
+function mapMonthlyBudgetRows(rows: Record<string, any>[]): MonthlyBudgetRow[] {
+  return rows.map((row) => {
+    const carryover =
+      typeof row.carryover_enabled === 'boolean'
+        ? row.carryover_enabled
+        : isCarryRuleEnabled((row as { carry_rule?: string | null }).carry_rule);
+
+    const plannedValue = (row as { planned?: number | null; amount_planned?: number | null }).planned;
+    const amountPlanned = Number(plannedValue ?? (row as { amount_planned?: number | null }).amount_planned ?? 0);
+
+    return {
+      id: row.id as UUID,
+      category_id: (row.category_id as UUID) ?? null,
+      amount_planned: amountPlanned,
+      carryover_enabled: carryover,
+      notes: (row as { notes?: string | null }).notes ?? null,
+      category: (row as { category?: { id: UUID; name: string | null } | null }).category ?? null,
+    };
+  });
+}
+
+function isMissingColumn(error: unknown, column: string): boolean {
+  if (!error) return false;
+  const code = (error as { code?: string }).code;
+  if (code && code === '42703') {
+    return true;
+  }
+  const message = typeof error === 'string' ? error : (error as { message?: string })?.message ?? '';
+  if (!message) return false;
+  const normalized = message.toLowerCase();
+  return normalized.includes('does not exist') && normalized.includes(`column ${column.toLowerCase()}`);
+}
+
 export async function getMonthlyBudgets(periodMonth: string, userId?: string): Promise<MonthlyBudgetRow[]> {
   const resolvedUserId = userId ?? (await getCurrentUserId());
   ensureAuth(resolvedUserId);
   const normalized = normalizeMonthStart(periodMonth);
+  const selection = 'id,category_id,planned,carryover_enabled,carry_rule,notes,category:categories(id,name)';
+
   const { data, error } = await supabase
     .from('budgets')
-    .select('id,category_id,planned,carryover_enabled,notes,category:categories(id,name)')
+    .select(selection)
     .eq('user_id', resolvedUserId)
     .eq('period_month', normalized)
     .order('created_at', { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map((row) => ({
-    id: row.id as UUID,
-    category_id: row.category_id as UUID,
-    amount_planned: Number((row as { planned?: number | null }).planned ?? 0),
-    carryover_enabled: (row as { carryover_enabled?: boolean }).carryover_enabled ?? false,
-    notes: (row as { notes?: string | null }).notes ?? null,
-    category: (row as { category?: { id: UUID; name: string | null } | null }).category ?? null,
-  }));
+
+  if (error) {
+    if (!isMissingColumn(error, 'carryover_enabled')) {
+      throw error;
+    }
+
+    const fallback = await supabase
+      .from('budgets')
+      .select('id,category_id,planned,carry_rule,notes,category:categories(id,name)')
+      .eq('user_id', resolvedUserId)
+      .eq('period_month', normalized)
+      .order('created_at', { ascending: true });
+
+    if (fallback.error) throw fallback.error;
+    return mapMonthlyBudgetRows(fallback.data ?? []);
+  }
+
+  return mapMonthlyBudgetRows(data ?? []);
 }
 
 export interface SalarySimulationItemInput {
