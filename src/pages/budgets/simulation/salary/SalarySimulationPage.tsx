@@ -130,7 +130,7 @@ function normalizePeriod(value: string | null | undefined, fallback?: string) {
     return `${extracted.year}-${extracted.month}`;
   }
   if (fallback !== undefined) {
-    return fallback;
+    return fallback && fallback.trim() ? fallback : getCurrentPeriod();
   }
   return getCurrentPeriod();
 }
@@ -540,6 +540,10 @@ export default function SalarySimulationPage() {
       addToast('Tidak ada alokasi untuk diterapkan.', 'info');
       return;
     }
+    const normalizedPeriod = normalizePeriod(period);
+    if (normalizedPeriod !== period) {
+      setPeriod(normalizedPeriod);
+    }
     setApplying(true);
     try {
       await Promise.all(
@@ -547,7 +551,7 @@ export default function SalarySimulationPage() {
           const existing = budgetMap.get(item.categoryId);
           return upsertBudget({
             category_id: item.categoryId,
-            period,
+            period: normalizedPeriod,
             amount_planned: item.amount,
             carryover_enabled: existing?.carryover_enabled ?? false,
             notes: existing?.notes ?? undefined,
@@ -562,7 +566,7 @@ export default function SalarySimulationPage() {
     } finally {
       setApplying(false);
     }
-  }, [items, addToast, budgetMap, period, loadBudgets]);
+  }, [items, addToast, budgetMap, period, loadBudgets, setPeriod]);
 
   const buildPayload = useCallback(
     () => ({
@@ -760,7 +764,9 @@ export default function SalarySimulationPage() {
                 id="period"
                 type="month"
                 value={period}
-                onChange={(event) => setPeriod(normalizePeriod(event.target.value, event.target.value))}
+                onChange={(event) =>
+                  setPeriod((prev) => normalizePeriod(event.target.value, prev ?? getCurrentPeriod()))
+                }
                 className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               />
             </div>
