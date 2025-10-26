@@ -17,6 +17,7 @@ import BootGate from "./components/BootGate";
 import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
+import BudgetSimulation from "./pages/BudgetSimulation";
 import DebtsPage from "./pages/Debts";
 import Categories from "./pages/Categories";
 import DataPage from "./pages/DataPage";
@@ -1192,6 +1193,10 @@ function AppShell({ prefs, setPrefs }) {
                 <Route
                   path="budgets"
                   element={<Budgets currentMonth={currentMonth} />}
+                />
+                <Route
+                  path="budgets/simulation"
+                  element={<BudgetSimulation />}
                 />
                 <Route path="debts" element={<DebtsPage />} />
                 <Route path="goals" element={<GoalsPage />} />
