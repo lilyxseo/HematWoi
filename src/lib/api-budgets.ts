@@ -303,7 +303,7 @@ export async function upsertBudget(payload: BudgetInput): Promise<BudgetRecord> 
       user_id: userId,
       period_month: periodIso,
       category_id: payload.category_id ?? null,
-      amount_planned: Number(payload.planned ?? 0),
+      planned: Number(payload.planned ?? 0),
       carryover_enabled: carryoverEnabled,
       notes: payload.note ?? null,
     };
@@ -344,7 +344,7 @@ export async function bulkUpsertBudgets(payloads: BudgetInput[]): Promise<Budget
         user_id: userId,
         period_month: toISODate(p.period),
         category_id: p.category_id ?? null,
-        amount_planned: Number(p.planned ?? 0),
+        planned: Number(p.planned ?? 0),
         carryover_enabled: carryoverEnabled,
         notes: p.note ?? null,
       };

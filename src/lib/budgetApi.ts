@@ -232,7 +232,7 @@ async function fetchBudgetsForPeriod(userId: string, period: string): Promise<Bu
   const { data, error } = await supabase
     .from('budgets')
     .select(
-      'id,user_id,category_id,amount_planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
+      'id,user_id,category_id,amount_planned:planned,carryover_enabled,notes,period_month,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
