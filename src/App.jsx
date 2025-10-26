@@ -18,7 +18,7 @@ import Dashboard from "./pages/Dashboard";
 import Transactions from "./pages/Transactions";
 import Budgets from "./pages/Budgets";
 import BudgetSimulationPage from "./pages/BudgetSimulation";
-import SalarySimulationPage from "./pages/budgets/salary-simulation/SalarySimulationPage";
+import SalarySimulationPage from "./pages/budgets/simulation/salary/SalarySimulationPage";
 import DebtsPage from "./pages/Debts";
 import Categories from "./pages/Categories";
 import DataPage from "./pages/DataPage";

@@ -26,6 +26,7 @@ import {
   Settings as SettingsIcon,
   User as UserIcon,
   CreditCard,
+  Sparkles,
 } from 'lucide-react';
 
 export const NAV_ITEMS: NavItem[] = [
@@ -71,6 +72,14 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Anggaran',
     path: '/budgets',
     icon: <Wallet className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Simulasi Gajian',
+    path: '/budgets/simulation/salary',
+    icon: <Sparkles className="h-5 w-5" />,
     section: 'primary',
     inSidebar: true,
     protected: true,
