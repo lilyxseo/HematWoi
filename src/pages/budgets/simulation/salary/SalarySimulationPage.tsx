@@ -702,7 +702,7 @@ export default function SalarySimulationPage() {
       </PageHeader>
 
       <Section first>
-        <div className="card space-y-4">
+        <div className="card space-y-6">
           <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Setup Gaji &amp; Periode</h2>
@@ -714,7 +714,7 @@ export default function SalarySimulationPage() {
             </div>
           </header>
           <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+            <div className="grid gap-y-4 gap-x-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,0.28fr)_minmax(0,0.22fr)_minmax(0,0.26fr)_minmax(0,1fr)]">
               <CurrencyInput
                 label="Nominal Gaji"
                 value={salaryAmount}
@@ -730,11 +730,9 @@ export default function SalarySimulationPage() {
                   type="month"
                   value={period}
                   onChange={(event) => setPeriod(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  className="h-12 w-full rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                 />
               </div>
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
                 <label htmlFor="title" className="text-xs font-medium text-muted">
                   Judul Simulasi
@@ -745,7 +743,7 @@ export default function SalarySimulationPage() {
                   placeholder={`Simulasi Gajian ${toMonthLabel(period)}`}
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  className="h-12 w-full rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                 />
               </div>
               <div className="space-y-1.5">
@@ -757,13 +755,13 @@ export default function SalarySimulationPage() {
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   rows={3}
-                  className="min-h-[72px] w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  className="min-h-[3rem] w-full rounded-2xl border border-border-subtle bg-surface-alt px-4 py-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                   placeholder="Catatan tambahan untuk simulasi ini"
                 />
               </div>
             </div>
           </div>
-          <div className="flex flex-col gap-3 rounded-2xl bg-surface-alt/70 p-4 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 rounded-2xl bg-surface-alt/70 p-4 text-sm text-muted md:flex-row md:items-end md:justify-between">
             <div className="space-y-0.5">
               {budgetsLoading ? (
                 <span className="inline-flex items-center gap-2 text-muted">
@@ -784,7 +782,7 @@ export default function SalarySimulationPage() {
             <Link
               to="/budgets"
               className={clsx(
-                'inline-flex h-10 items-center gap-2 rounded-2xl border border-brand/40 px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                'inline-flex h-12 items-center gap-2 rounded-2xl border border-brand/40 px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:ml-auto',
                 hasMonthlyBudget
                   ? 'text-brand hover:border-brand hover:text-brand'
                   : 'pointer-events-none border-border text-muted opacity-60',
@@ -799,13 +797,13 @@ export default function SalarySimulationPage() {
       </Section>
 
       <Section>
-        <div className="card space-y-4">
-          <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="card space-y-6">
+          <header className="flex flex-col gap-3 border-b border-border/60 pb-4 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Alokasi per Kategori</h2>
               <p className="text-sm text-muted">Atur nominal alokasi, lihat persentase otomatis, dan tandai kategori carryover.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-start gap-3 sm:justify-end sm:gap-4">
               <button
                 type="button"
                 onClick={() => {
@@ -892,8 +890,8 @@ export default function SalarySimulationPage() {
           ) : null}
 
           {items.length ? (
-            <div className="space-y-3">
-              <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto] items-center gap-3 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
+            <div className="space-y-5">
+              <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto] items-center gap-5 rounded-2xl bg-surface-alt px-5 py-3.5 text-xs font-semibold text-muted md:grid">
                 <div>Kategori</div>
                 <div>Nominal (Rp)</div>
                 <div>Persentase</div>
@@ -916,7 +914,7 @@ export default function SalarySimulationPage() {
                   <div
                     key={item.categoryId}
                     className={clsx(
-                      'grid gap-3 rounded-2xl border p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto]',
+                      'grid gap-5 rounded-2xl border px-5 py-4 text-sm text-text transition md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto]',
                       rowHighlight,
                     )}
                   >
@@ -952,7 +950,7 @@ export default function SalarySimulationPage() {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted">Persentase</label>
-                      <div className="rounded-2xl border border-border-subtle bg-surface-alt px-3 py-2 text-sm font-semibold text-text">
+                      <div className="rounded-2xl border border-border-subtle bg-surface-alt px-4 py-3 text-sm font-semibold text-text">
                         {formatPercent(item.percent)}
                       </div>
                       <p className="text-xs text-muted">Dihitung dari total gaji secara real-time.</p>
@@ -1006,8 +1004,8 @@ export default function SalarySimulationPage() {
       </Section>
 
       <Section>
-        <div className="card space-y-4">
-          <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="card space-y-6">
+          <header className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Ringkasan &amp; Grafik</h2>
               <p className="text-sm text-muted">Pantau distribusi gaji dan bandingkan dengan budget aktif.</p>
