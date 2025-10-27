@@ -25,7 +25,6 @@ import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { useMoneyTalk } from '../context/MoneyTalkContext';
 import { listAccounts, listCategories } from '../lib/api';
-import { listCategoriesExpense } from '../lib/budgetApi';
 import { createTransaction } from '../lib/transactionsApi';
 import {
   createTransactionTemplate,
@@ -158,7 +157,7 @@ export default function TransactionAdd({ onAdd }) {
       try {
         const [accountRows, expenseRows, incomeRows] = await Promise.all([
           listAccounts(),
-          listCategoriesExpense(),
+          listCategories('expense'),
           listCategories('income'),
         ]);
         if (!active) return;
