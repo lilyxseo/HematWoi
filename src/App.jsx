@@ -15,7 +15,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import BootGate from "./components/BootGate";
 
 import Dashboard from "./pages/Dashboard";
-import Transactions from "./pages/Transactions";
+import TransactionsPage from "./pages/TransactionsPage";
 import Budgets from "./pages/Budgets";
 import SalarySimulationPage from "./pages/budgets/simulation/salary/SalarySimulationPage";
 import DebtsPage from "./pages/Debts";
@@ -1354,20 +1354,7 @@ function AppShell({ prefs, setPrefs }) {
                     />
                   }
                 />
-                <Route
-                  path="transactions"
-                  element={
-                    <Transactions
-                      months={months}
-                      categories={allCategories}
-                      filter={filter}
-                      setFilter={setFilter}
-                      items={filtered}
-                      onRemove={removeTx}
-                      onUpdate={updateTx}
-                    />
-                  }
-                />
+                <Route path="transactions" element={<TransactionsPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route
                   path="budgets"
