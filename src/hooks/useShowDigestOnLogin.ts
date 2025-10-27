@@ -402,6 +402,7 @@ export default function useShowDigestOnLogin({
 }: UseShowDigestOnLoginOptions): UseShowDigestOnLoginResult {
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const autoOpenRef = useRef(false);
   const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
   const [upcomingLoading, setUpcomingLoading] = useState(false);
@@ -420,26 +421,34 @@ export default function useShowDigestOnLogin({
       return;
     }
 
-    if (!initialTransactionsRef.current && transactions) {
+    if (!initialTransactionsRef.current) {
       initialTransactionsRef.current = transactions;
     }
 
     if (transactions.length > 0) {
+      initialTransactionsRef.current = transactions;
       setTransactionsSettled(true);
       return;
     }
 
-    const initialTransactions = initialTransactionsRef.current;
-    if (initialTransactions && initialTransactions !== transactions) {
-      setTransactionsSettled(true);
+    if (initialTransactionsRef.current !== transactions) {
       initialTransactionsRef.current = transactions;
+      setTransactionsSettled(true);
+      return;
+    }
+
+    if (!sessionChecked) {
+      setTransactionsSettled(false);
       return;
     }
 
     if (!userId) {
       setTransactionsSettled(true);
+      return;
     }
-  }, [transactions, userId]);
+
+    setTransactionsSettled(false);
+  }, [transactions, userId, sessionChecked]);
 
   const data = useMemo(
     () => {
@@ -531,10 +540,12 @@ export default function useShowDigestOnLogin({
         const uid = session?.user?.id ?? null;
         setUserId(uid);
         tryOpenForUser(uid, false);
+        setSessionChecked(true);
       })
       .catch(() => {
         if (!active) return;
         setUserId(null);
+        setSessionChecked(true);
       });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
@@ -543,12 +554,14 @@ export default function useShowDigestOnLogin({
         setUserId(null);
         setOpen(false);
         autoOpenRef.current = false;
+        setSessionChecked(true);
         return;
       }
       if (event === 'SIGNED_IN') {
         const uid = session?.user?.id ?? null;
         setUserId(uid);
         tryOpenForUser(uid, true);
+        setSessionChecked(true);
       }
     });
 
