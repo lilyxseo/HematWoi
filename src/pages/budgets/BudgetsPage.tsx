@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
   CalendarDays,
@@ -118,6 +118,7 @@ function formatWeekOptionLabel(week: WeeklyBudgetPeriod): string {
 export default function BudgetsPage() {
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const categoriesLoadedRef = useRef(false);
   const [tab, setTab] = useState<TabValue>('monthly');
   const [period, setPeriod] = useState<string>(getCurrentPeriod());
   const [monthlyModalOpen, setMonthlyModalOpen] = useState(false);
@@ -136,6 +137,10 @@ export default function BudgetsPage() {
   const weekly = useWeeklyBudgets(period);
 
   useEffect(() => {
+    if (categoriesLoadedRef.current) {
+      return;
+    }
+    categoriesLoadedRef.current = true;
     let active = true;
     setCategoriesLoading(true);
     listCategoriesExpense()
