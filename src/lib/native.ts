@@ -19,7 +19,7 @@ import { Directory, Filesystem } from '@capacitor/filesystem';
 const NATIVE_UI_KEY = 'hematwoi:native:ui';
 const NATIVE_LAST_USER_KEY = 'hematwoi:native:last-user';
 const NATIVE_ACCENT_KEY = 'hematwoi:native:accent';
-const NATIVE_DEBT_CHANNEL = 'hematwoi-reminders';
+const NATIVE_DEBT_CHANNEL = 'hematwoi-debts';
 
 export type NativeBrand = {
   h: number;
