@@ -1,3 +1,5 @@
+import type { PostgrestError } from '@supabase/supabase-js';
+
 import { supabase } from './supabase';
 import { getCurrentUserId, getUserToken } from './session';
 
@@ -78,22 +80,55 @@ export interface MonthlyBudgetRow {
   category?: { id: UUID; name: string | null } | null;
 }
 
+function isMissingCarryoverColumn(error: PostgrestError | null): boolean {
+  if (!error) return false;
+  const message = (error.message ?? '').toLowerCase();
+  return error.code === '42703' || message.includes('carryover_enabled');
+}
+
+async function fetchMonthlyBudgets(
+  userId: string,
+  periodMonth: string,
+  includeCarryover: boolean,
+) {
+  const columns = includeCarryover
+    ? 'id,category_id,planned,carryover_enabled,notes,category:categories(id,name)'
+    : 'id,category_id,planned,notes,category:categories(id,name)';
+  return supabase
+    .from('budgets')
+    .select(columns)
+    .eq('user_id', userId)
+    .eq('period_month', periodMonth)
+    .order('created_at', { ascending: true });
+}
+
 export async function getMonthlyBudgets(periodMonth: string, userId?: string): Promise<MonthlyBudgetRow[]> {
   const resolvedUserId = userId ?? (await getCurrentUserId());
   ensureAuth(resolvedUserId);
   const normalized = normalizeMonthStart(periodMonth);
-  const { data, error } = await supabase
-    .from('budgets')
-    .select('id,category_id,planned,carryover_enabled,notes,category:categories(id,name)')
-    .eq('user_id', resolvedUserId)
-    .eq('period_month', normalized)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return (data ?? []).map((row) => ({
+
+  const primary = await fetchMonthlyBudgets(resolvedUserId, normalized, true);
+  let rows = primary.data ?? [];
+  let includeCarryover = true;
+
+  if (primary.error) {
+    if (isMissingCarryoverColumn(primary.error)) {
+      const fallback = await fetchMonthlyBudgets(resolvedUserId, normalized, false);
+      if (fallback.error) throw fallback.error;
+      rows = fallback.data ?? [];
+      includeCarryover = false;
+    } else {
+      throw primary.error;
+    }
+  }
+
+  return rows.map((row) => ({
     id: row.id as UUID,
     category_id: row.category_id as UUID,
     amount_planned: Number((row as { planned?: number | null }).planned ?? 0),
-    carryover_enabled: (row as { carryover_enabled?: boolean }).carryover_enabled ?? false,
+    carryover_enabled: includeCarryover
+      ? Boolean((row as { carryover_enabled?: boolean | null }).carryover_enabled ?? false)
+      : false,
     notes: (row as { notes?: string | null }).notes ?? null,
     category: (row as { category?: { id: UUID; name: string | null } | null }).category ?? null,
   }));
