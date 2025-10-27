@@ -310,6 +310,38 @@ export default function BudgetsPage() {
     };
   }, [editingWeekly, period, selectedWeekStart]);
 
+  const monthlyFallbackCategory = useMemo(() => {
+    if (!editingMonthly?.category_id) {
+      return null;
+    }
+
+    const exists = categories.some((category) => category.id === editingMonthly.category_id);
+    if (exists) {
+      return null;
+    }
+
+    return {
+      id: editingMonthly.category_id,
+      name: editingMonthly.category?.name ?? 'Kategori tidak tersedia',
+    };
+  }, [categories, editingMonthly]);
+
+  const weeklyFallbackCategory = useMemo(() => {
+    if (!editingWeekly?.category_id) {
+      return null;
+    }
+
+    const exists = categories.some((category) => category.id === editingWeekly.category_id);
+    if (exists) {
+      return null;
+    }
+
+    return {
+      id: editingWeekly.category_id,
+      name: editingWeekly.category?.name ?? 'Kategori tidak tersedia',
+    };
+  }, [categories, editingWeekly]);
+
   const highlightedMonthlyIds = useMemo(() => {
     return new Set(
       highlightSelections
@@ -792,6 +824,7 @@ export default function BudgetsPage() {
           setEditingMonthly(null);
         }}
         onSubmit={handleSubmitMonthly}
+        fallbackCategory={monthlyFallbackCategory}
       />
 
       <WeeklyBudgetFormModal
@@ -805,6 +838,7 @@ export default function BudgetsPage() {
           setEditingWeekly(null);
         }}
         onSubmit={handleSubmitWeekly}
+        fallbackCategory={weeklyFallbackCategory}
       />
     </Page>
   );
