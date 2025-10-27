@@ -50,7 +50,7 @@ import {
   listExpenseCategories,
   updateSalarySimulation,
 } from '../../../../lib/salarySimulationApi';
-import { upsertBudget } from '../../../../lib/budgetApi';
+import { bulkUpsertBudgets, type BudgetInput } from '../../../../lib/api-budgets';
 
 interface AllocationItem {
   categoryId: string;
@@ -109,10 +109,36 @@ function getCurrentPeriod() {
   return `${year}-${month}`;
 }
 
+function extractYearMonth(value: string | null | undefined) {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})/.exec(value.trim());
+  if (!match) return null;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return {
+    year: year.toString().padStart(4, '0'),
+    month: month.toString().padStart(2, '0'),
+  };
+}
+
+function normalizePeriod(value: string | null | undefined, fallback?: string) {
+  const extracted = extractYearMonth(value);
+  if (extracted) {
+    return `${extracted.year}-${extracted.month}`;
+  }
+  if (fallback !== undefined) {
+    return fallback && fallback.trim() ? fallback : getCurrentPeriod();
+  }
+  return getCurrentPeriod();
+}
+
 function toMonthStart(period: string) {
-  if (/^\d{4}-\d{2}$/.test(period)) return `${period}-01`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(period)) return `${period.slice(0, 7)}-01`;
-  return period;
+  const extracted = extractYearMonth(period);
+  if (!extracted) return period;
+  return `${extracted.year}-${extracted.month}-01`;
 }
 
 function roundPercent(value: number) {
@@ -280,22 +306,26 @@ export default function SalarySimulationPage() {
       });
   }, [user, addToast]);
 
-  const loadBudgets = useCallback(() => {
-    if (!user) return Promise.resolve();
-    setBudgetsLoading(true);
-    return getMonthlyBudgets(periodMonth, user.id)
-      .then((data) => {
-        setBudgets(data);
-      })
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : 'Gagal memuat budget bulan ini';
-        addToast(message, 'error');
-        setBudgets([]);
-      })
-      .finally(() => {
-        setBudgetsLoading(false);
-      });
-  }, [user, periodMonth, addToast]);
+  const loadBudgets = useCallback(
+    (targetPeriodMonth?: string) => {
+      if (!user) return Promise.resolve();
+      const periodToLoad = targetPeriodMonth ?? periodMonth;
+      setBudgetsLoading(true);
+      return getMonthlyBudgets(periodToLoad, user.id)
+        .then((data) => {
+          setBudgets(data);
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : 'Gagal memuat budget bulan ini';
+          addToast(message, 'error');
+          setBudgets([]);
+        })
+        .finally(() => {
+          setBudgetsLoading(false);
+        });
+    },
+    [user, periodMonth, addToast],
+  );
 
   useEffect(() => {
     loadBudgets();
@@ -333,7 +363,7 @@ export default function SalarySimulationPage() {
       const payload = JSON.parse(raw) as DraftPayload;
       if (payload) {
         setSalaryAmount(payload.salaryAmount ?? 0);
-        setPeriod(payload.period ?? getCurrentPeriod());
+        setPeriod(normalizePeriod(payload.period));
         setTitle(payload.title ?? '');
         setNotes(payload.notes ?? '');
         setItems(sortItems(payload.items ?? []));
@@ -514,29 +544,41 @@ export default function SalarySimulationPage() {
       addToast('Tidak ada alokasi untuk diterapkan.', 'info');
       return;
     }
+    const normalizedPeriod = normalizePeriod(period);
+    const targetPeriodMonth = toMonthStart(normalizedPeriod);
+    if (normalizedPeriod !== period) {
+      setPeriod(normalizedPeriod);
+    }
     setApplying(true);
     try {
-      await Promise.all(
-        items.map((item) => {
-          const existing = budgetMap.get(item.categoryId);
-          return upsertBudget({
-            category_id: item.categoryId,
-            period,
-            amount_planned: item.amount,
-            carryover_enabled: existing?.carryover_enabled ?? false,
-            notes: existing?.notes ?? undefined,
-          });
-        }),
-      );
+      const payloads: BudgetInput[] = items.map((item) => {
+        const existing = budgetMap.get(item.categoryId);
+        const carryRule: BudgetInput['carry_rule'] = existing?.carryover_enabled
+          ? 'carry-positive'
+          : 'none';
+        return {
+          id: existing?.id,
+          period: normalizedPeriod,
+          category_id: item.categoryId,
+          planned: item.amount,
+          carry_rule: carryRule,
+          note: existing?.notes ?? null,
+        };
+      });
+
+      if (payloads.length) {
+        await bulkUpsertBudgets(payloads);
+      }
+
       addToast('Alokasi simulasi diterapkan ke budget bulan ini.', 'success');
-      loadBudgets();
+      await loadBudgets(targetPeriodMonth);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Gagal menerapkan simulasi ke budget';
       addToast(message, 'error');
     } finally {
       setApplying(false);
     }
-  }, [items, addToast, budgetMap, period, loadBudgets]);
+  }, [items, addToast, budgetMap, period, loadBudgets, setPeriod]);
 
   const buildPayload = useCallback(
     () => ({
@@ -594,7 +636,7 @@ export default function SalarySimulationPage() {
       addToast('Simulasi berhasil diduplikasi.', 'success');
       setActiveSimulationId(clone.id);
       setSalaryAmount(clone.salary_amount);
-      setPeriod(clone.period_month.slice(0, 7));
+      setPeriod(normalizePeriod(clone.period_month));
       setTitle(clone.title ?? '');
       setNotes(clone.notes ?? '');
       setItems(sortItems(mapSimulationItems(clone.items, clone.salary_amount, categories)));
@@ -633,7 +675,7 @@ export default function SalarySimulationPage() {
         }
         setActiveSimulationId(simulation.id);
         setSalaryAmount(simulation.salary_amount);
-        setPeriod(simulation.period_month.slice(0, 7));
+        setPeriod(normalizePeriod(simulation.period_month));
         setTitle(simulation.title ?? '');
         setNotes(simulation.notes ?? '');
         setItems(sortItems(mapSimulationItems(simulation.items, simulation.salary_amount, categories)));
@@ -734,7 +776,9 @@ export default function SalarySimulationPage() {
                 id="period"
                 type="month"
                 value={period}
-                onChange={(event) => setPeriod(event.target.value)}
+                onChange={(event) =>
+                  setPeriod((prev) => normalizePeriod(event.target.value, prev ?? getCurrentPeriod()))
+                }
                 className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               />
             </div>
