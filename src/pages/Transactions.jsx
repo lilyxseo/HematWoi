@@ -33,6 +33,7 @@ import {
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
+import { supabase } from "../lib/supabase";
 
 const TYPE_LABELS = {
   income: "Pemasukan",
@@ -1105,7 +1106,6 @@ export default function Transactions() {
             open={Boolean(editTarget)}
             onClose={() => setEditTarget(null)}
             initialData={editTarget}
-            categories={categories}
             onSuccess={() => {
               refresh({ keepPage: true });
               setSelectedIds(new Set());
@@ -1406,9 +1406,10 @@ function getInitialNotesValue(data) {
   return legacyNote;
 }
 
-function TransactionFormDialog({ open, onClose, initialData, categories, onSuccess, addToast }) {
+function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast }) {
   const isEdit = Boolean(initialData);
-  const [loading, setLoading] = useState(true);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [transactionLoading, setTransactionLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
   const [type, setType] = useState(initialData?.type || "expense");
@@ -1416,45 +1417,272 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
     formatAmountDisplay(initialData?.amount ?? ""),
   );
   const [date, setDate] = useState(() => toDateInput(initialData?.date) || new Date().toISOString().slice(0, 10));
-  const [categoryId, setCategoryId] = useState(initialData?.category_id || "");
+  const [categoryId, setCategoryId] = useState(initialData?.category_id ? String(initialData.category_id) : "");
   const [title, setTitle] = useState(initialData?.title || "");
   const [notes, setNotes] = useState(() => getInitialNotesValue(initialData));
-  const [accountId, setAccountId] = useState(initialData?.account_id || "");
-  const [toAccountId, setToAccountId] = useState(initialData?.to_account_id || "");
+  const [accountId, setAccountId] = useState(initialData?.account_id ? String(initialData.account_id) : "");
+  const [toAccountId, setToAccountId] = useState(initialData?.to_account_id ? String(initialData.to_account_id) : "");
   const [receiptUrl, setReceiptUrl] = useState(initialData?.receipt_url || "");
-  const initialMerchantId = initialData?.merchant_id ?? null;
+  const [merchantId, setMerchantId] = useState(initialData?.merchant_id ?? null);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState(null);
+  const [categoryHint, setCategoryHint] = useState("");
+  const [transactionUserId, setTransactionUserId] = useState(null);
+  const categorySelectionRef = useRef("");
+  const loading = accountsLoading || transactionLoading;
 
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
+    setAccountsLoading(true);
     listAccounts()
       .then((accountRows) => {
         setAccounts(accountRows || []);
-        setLoading(false);
       })
       .catch((err) => {
         console.error(err);
         addToast(err?.message || "Gagal memuat master data", "error");
-        setLoading(false);
+      })
+      .finally(() => {
+        setAccountsLoading(false);
       });
   }, [open, addToast]);
 
   useEffect(() => {
     if (!open || !initialData) return;
-    setType(initialData.type || "expense");
+    const normalizedType = initialData.type || "expense";
+    setType(normalizedType);
     setAmount(formatAmountDisplay(initialData.amount ?? ""));
     setDate(toDateInput(initialData.date) || new Date().toISOString().slice(0, 10));
-    setCategoryId(initialData.category_id || "");
+    const initialCategoryId = initialData.category_id ? String(initialData.category_id) : "";
+    setCategoryId(normalizedType === "transfer" ? "" : initialCategoryId);
     setTitle(initialData.title || "");
     setNotes(getInitialNotesValue(initialData));
-    setAccountId(initialData.account_id || "");
-    setToAccountId(initialData.to_account_id || "");
+    setAccountId(initialData.account_id ? String(initialData.account_id) : "");
+    setToAccountId(initialData.to_account_id ? String(initialData.to_account_id) : "");
     setReceiptUrl(initialData.receipt_url || "");
+    setMerchantId(initialData.merchant_id ?? null);
   }, [open, initialData]);
 
-  const categoryOptions = useMemo(() => {
-    return (categories || []).filter((cat) => cat.type === type);
-  }, [categories, type]);
+  useEffect(() => {
+    categorySelectionRef.current = typeof categoryId === "string" ? categoryId : categoryId ? String(categoryId) : "";
+  }, [categoryId]);
+
+  useEffect(() => {
+    if (!open || !initialData?.id) return;
+    let cancelled = false;
+    let authSubscription = null;
+
+    const waitForSession = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("[edit:auth]", error);
+        }
+        if (data?.session) return data.session;
+      } catch (err) {
+        console.error("[edit:auth]", err);
+      }
+      return new Promise((resolve) => {
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (session) {
+            data.subscription.unsubscribe();
+            resolve(session);
+          }
+        });
+        authSubscription = data.subscription;
+      });
+    };
+
+    const loadTransaction = async () => {
+      setTransactionLoading(true);
+      setCategoriesError(null);
+      setCategoryHint("");
+      setTransactionUserId(null);
+      try {
+        const session = await waitForSession();
+        if (cancelled) return;
+        if (!session) {
+          throw new Error("Pengguna belum masuk");
+        }
+        const { data, error } = await supabase
+          .from("transactions")
+          .select(
+            "id,user_id,type,category_id,amount,title,notes,note,date,account_id,to_account_id,merchant_id,receipt_url",
+          )
+          .eq("id", initialData.id)
+          .maybeSingle();
+        if (error) throw error;
+        if (!data) {
+          throw new Error("Transaksi tidak ditemukan");
+        }
+        const normalizedType = data.type || "expense";
+        const normalizedCategoryId = data.category_id ? String(data.category_id) : "";
+        const normalizedUserId = data.user_id ? String(data.user_id) : null;
+        console.log("[edit:tx:get]", {
+          id: String(initialData.id),
+          type: normalizedType,
+          category_id: normalizedCategoryId || null,
+        });
+        if (cancelled) return;
+        setTransactionUserId(normalizedUserId);
+        setType(normalizedType);
+        setAmount(formatAmountDisplay(data.amount ?? ""));
+        setDate(toDateInput(data.date) || new Date().toISOString().slice(0, 10));
+        setCategoryId(normalizedType === "transfer" ? "" : normalizedCategoryId);
+        setTitle(data.title || "");
+        setNotes(getInitialNotesValue(data));
+        setAccountId(data.account_id ? String(data.account_id) : "");
+        setToAccountId(data.to_account_id ? String(data.to_account_id) : "");
+        setReceiptUrl(data.receipt_url || "");
+        setMerchantId(data.merchant_id ?? null);
+      } catch (err) {
+        console.error(err);
+        if (!cancelled) {
+          addToast(err?.message || "Gagal memuat transaksi", "error");
+          onClose?.();
+        }
+      } finally {
+        if (!cancelled) {
+          setTransactionLoading(false);
+        }
+      }
+    };
+
+    loadTransaction();
+
+    return () => {
+      cancelled = true;
+      if (authSubscription) {
+        authSubscription.unsubscribe();
+      }
+    };
+  }, [open, initialData?.id, addToast, onClose]);
+
+  const fetchCategoriesForType = useCallback(
+    async (targetType, selectedCategoryId, userId) => {
+      if (!open) return;
+      if (!userId) {
+        setCategoryOptions([]);
+        setCategoriesLoading(false);
+        setCategoryHint("");
+        return;
+      }
+      if (targetType === "transfer") {
+        setCategoriesError(null);
+        setCategoriesLoading(false);
+        setCategoryOptions([]);
+        setCategoryHint("");
+        setCategoryId("");
+        console.log("[edit:cats:list]", { type: targetType, count: 0 });
+        return;
+      }
+
+      setCategoriesLoading(true);
+      setCategoriesError(null);
+      try {
+        const normalizedSelected = selectedCategoryId ? String(selectedCategoryId) : "";
+        let nextSelectedId = normalizedSelected;
+        let nextHint = "";
+        const { data, error } = await supabase
+          .from("categories")
+          .select("id,type,name,group_name,order_index")
+          .eq("user_id", userId)
+          .eq("type", targetType)
+          .order("order_index", { ascending: true, nullsFirst: true })
+          .order("name", { ascending: true });
+        if (error) throw error;
+        const baseOptions = (data || [])
+          .map((row) => ({
+            id: row.id ? String(row.id) : "",
+            type: row.type,
+            name: row.name || "",
+            group_name: row.group_name || "",
+            order_index: row.order_index ?? null,
+          }))
+          .filter((row) => row.id);
+
+        if (nextSelectedId && !baseOptions.some((opt) => opt.id === nextSelectedId)) {
+          console.log("[edit:cats:fallback]", { id: nextSelectedId });
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from("categories")
+            .select("id,type,name,group_name,order_index")
+            .eq("id", nextSelectedId)
+            .maybeSingle();
+          if (fallbackError) throw fallbackError;
+          if (fallbackData) {
+            const fallbackId = fallbackData.id ? String(fallbackData.id) : "";
+            const fallbackType = fallbackData.type;
+            let fallbackLabel = fallbackData.name || "";
+            if (fallbackType !== targetType) {
+              fallbackLabel = `${fallbackLabel} (tipe berbeda)`;
+              nextSelectedId = "";
+              nextHint = "Kategori sebelumnya tidak cocok dengan tipe ini.";
+            } else {
+              fallbackLabel = `${fallbackLabel} (arsip)`;
+              nextSelectedId = fallbackId;
+            }
+            if (fallbackId) {
+              baseOptions.push({
+                id: fallbackId,
+                type: fallbackType,
+                name: fallbackLabel,
+                group_name: fallbackData.group_name || "",
+                order_index: fallbackData.order_index ?? null,
+              });
+            }
+          } else {
+            nextSelectedId = "";
+            nextHint = "Kategori sebelumnya tidak tersedia.";
+          }
+        }
+
+        const deduped = [];
+        const seen = new Set();
+        for (const option of baseOptions) {
+          if (!option.id || seen.has(option.id)) continue;
+          seen.add(option.id);
+          deduped.push(option);
+        }
+
+        deduped.sort((a, b) => {
+          const orderA = a.order_index ?? Number.MAX_SAFE_INTEGER;
+          const orderB = b.order_index ?? Number.MAX_SAFE_INTEGER;
+          if (orderA !== orderB) return orderA - orderB;
+          return a.name.localeCompare(b.name);
+        });
+
+        setCategoryOptions(deduped);
+        console.log("[edit:cats:list]", { type: targetType, count: deduped.length });
+        setCategoryId(nextSelectedId);
+        setCategoryHint(nextHint);
+        if (!nextSelectedId && deduped.length === 0) {
+          setCategoryHint("");
+        }
+      } catch (err) {
+        console.error(err);
+        setCategoriesError(err?.message || "Gagal memuat kategori");
+      } finally {
+        setCategoriesLoading(false);
+      }
+    },
+    [open],
+  );
+
+  useEffect(() => {
+    if (!open || !transactionUserId) return;
+    fetchCategoriesForType(type, categorySelectionRef.current, transactionUserId);
+  }, [open, type, transactionUserId, fetchCategoriesForType]);
+
+  const handleReloadCategories = useCallback(() => {
+    if (!transactionUserId || type === "transfer") return;
+    fetchCategoriesForType(type, categorySelectionRef.current, transactionUserId);
+  }, [fetchCategoriesForType, transactionUserId, type]);
+
+  useEffect(() => {
+    if (!open) return;
+    console.log("[edit:select:value]", { type, value: categoryId ? String(categoryId) : null });
+  }, [open, type, categoryId]);
 
   const isTransfer = type === "transfer";
 
@@ -1500,12 +1728,12 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
         type,
         amount: amountNumber,
         date,
-        category_id: isTransfer ? null : categoryId,
+        category_id: isTransfer ? null : categoryId || null,
         title,
         notes,
         account_id: accountId || null,
         to_account_id: isTransfer ? toAccountId || null : null,
-        merchant_id: initialMerchantId,
+        merchant_id: merchantId,
         receipt_url: receiptUrl || null,
       };
       await updateTransaction(initialData.id, payload);
@@ -1536,10 +1764,6 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
                 onChange={(event) => {
                   const nextType = event.target.value;
                   setType(nextType);
-                  const nextOptions = (categories || []).filter((cat) => cat.type === nextType);
-                  if (!nextOptions.some((cat) => cat.id === categoryId)) {
-                    setCategoryId(nextOptions[0]?.id || "");
-                  }
                 }}
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
               >
@@ -1570,18 +1794,55 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
             {!isTransfer && (
               <label className="flex flex-col gap-2 text-sm">
                 <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
-                <select
-                  value={categoryId}
-                  onChange={(event) => setCategoryId(event.target.value)}
-                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                >
-                  <option value="">Pilih kategori</option>
-                  {categoryOptions.map((cat) => (
-                    <option key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </option>
-                  ))}
-                </select>
+                {categoriesLoading ? (
+                  <div className="flex h-11 items-center justify-center rounded-xl border border-white/10 bg-white/10 text-white/70">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  </div>
+                ) : categoriesError ? (
+                  <div className="space-y-2">
+                    <div className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-3 text-xs text-danger-100">
+                      Gagal memuat kategori. Coba muat ulang.
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleReloadCategories}
+                      className="inline-flex items-center justify-center rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/40 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                ) : categoryOptions.length ? (
+                  <select
+                    value={categoryId}
+                    onChange={(event) => {
+                      setCategoryId(event.target.value);
+                      setCategoryHint("");
+                    }}
+                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  >
+                    <option value="">— Pilih Kategori —</option>
+                    {categoryOptions.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="rounded-xl border border-white/10 bg-white/10 px-3 py-3 text-xs text-white/70">
+                      Belum ada kategori untuk tipe ini.
+                    </div>
+                    <a
+                      href="/categories"
+                      className="inline-flex items-center justify-center rounded-full border border-white/20 px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/40 hover:bg-white/10 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                    >
+                      Tambah Kategori
+                    </a>
+                  </div>
+                )}
+                {categoryHint && !categoriesError && (
+                  <p className="text-xs text-amber-200">{categoryHint}</p>
+                )}
               </label>
             )}
             {isTransfer ? (
