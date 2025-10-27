@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
   Loader2,
@@ -6,8 +6,6 @@ import {
   RefreshCw,
   Copy,
   Trash2,
-  Lock,
-  Unlock,
   Sparkles,
   RotateCcw,
   Save,
@@ -57,7 +55,6 @@ interface AllocationItem {
   categoryName: string;
   amount: number;
   percent: number;
-  locked: boolean;
   color?: string | null;
   groupName?: string | null;
 }
@@ -79,7 +76,7 @@ const currencyFormatter = new Intl.NumberFormat('id-ID', {
   minimumFractionDigits: 0,
 });
 const percentFormatter = new Intl.NumberFormat('id-ID', {
-  minimumFractionDigits: 0,
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
@@ -100,6 +97,12 @@ function toMonthLabel(period: string) {
   } catch (_error) {
     return period;
   }
+}
+
+function buildSimulationTitle(period: string) {
+  const label = toMonthLabel(period);
+  if (!label) return 'Simulasi Gajian';
+  return `Simulasi Gajian ${label}`;
 }
 
 function getCurrentPeriod() {
@@ -138,7 +141,6 @@ function mapSimulationItems(
       categoryName: item.category?.name ?? category?.name ?? 'Tanpa kategori',
       amount: Number(item.allocation_amount ?? 0),
       percent: computeItemPercent(Number(item.allocation_amount ?? 0), salaryAmount),
-      locked: false,
       color: category?.color ?? null,
       groupName: category?.group_name ?? null,
     } satisfies AllocationItem;
@@ -167,17 +169,56 @@ export default function SalarySimulationPage() {
   const navigate = useNavigate();
   const { user, loading: userLoading } = useSupabaseUser();
 
+  const initialPeriodRef = useRef(getCurrentPeriod());
   const [salaryAmount, setSalaryAmount] = useState<number>(0);
-  const [period, setPeriod] = useState<string>(getCurrentPeriod());
+  const [period, setPeriod] = useState<string>(initialPeriodRef.current);
   const [title, setTitle] = useState<string>('');
+  const [autoTitle, setAutoTitle] = useState<string>(() => buildSimulationTitle(initialPeriodRef.current));
   const [notes, setNotes] = useState<string>('');
   const [items, setItems] = useState<AllocationItem[]>([]);
+
+  const titleSourceRef = useRef<'auto' | 'manual'>('auto');
+  const autoTitleValueRef = useRef<string>(autoTitle);
+
+  const applyExternalPeriodAndTitle = useCallback(
+    (nextPeriod: string, nextTitle: string) => {
+      const generated = buildSimulationTitle(nextPeriod);
+      autoTitleValueRef.current = generated;
+      setAutoTitle(generated);
+      setPeriod(nextPeriod);
+      setTitle(nextTitle);
+      const trimmed = nextTitle.trim();
+      titleSourceRef.current = trimmed && trimmed !== generated ? 'manual' : 'auto';
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const generated = buildSimulationTitle(period);
+    setAutoTitle(generated);
+    setTitle((prevTitle) => {
+      const trimmed = prevTitle.trim();
+      const wasManual =
+        titleSourceRef.current === 'manual' && trimmed.length > 0 && trimmed !== autoTitleValueRef.current;
+      autoTitleValueRef.current = generated;
+      if (wasManual) {
+        return prevTitle;
+      }
+      titleSourceRef.current = 'auto';
+      return generated;
+    });
+  }, [period]);
+
+  useEffect(() => {
+    autoTitleValueRef.current = autoTitle;
+  }, [autoTitle]);
 
   const [categories, setCategories] = useState<ExpenseCategoryRow[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState<boolean>(true);
 
   const [budgets, setBudgets] = useState<MonthlyBudgetRow[]>([]);
   const [budgetsLoading, setBudgetsLoading] = useState<boolean>(true);
+  const [carryoverUpdating, setCarryoverUpdating] = useState<Record<string, boolean>>({});
 
   const [history, setHistory] = useState<SalarySimulationRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(true);
@@ -226,6 +267,8 @@ export default function SalarySimulationPage() {
     () => budgets.reduce((sum, budget) => sum + Number(budget.amount_planned ?? 0), 0),
     [budgets],
   );
+
+  const hasCurrentBudgets = useMemo(() => budgets.length > 0, [budgets]);
 
   const hasBudgetComparison = useMemo(
     () => budgets.some((budget) => Number(budget.amount_planned ?? 0) > 0),
@@ -333,8 +376,7 @@ export default function SalarySimulationPage() {
       const payload = JSON.parse(raw) as DraftPayload;
       if (payload) {
         setSalaryAmount(payload.salaryAmount ?? 0);
-        setPeriod(payload.period ?? getCurrentPeriod());
-        setTitle(payload.title ?? '');
+        applyExternalPeriodAndTitle(payload.period ?? getCurrentPeriod(), payload.title ?? '');
         setNotes(payload.notes ?? '');
         setItems(sortItems(payload.items ?? []));
         setActiveSimulationId(payload.activeSimulationId ?? null);
@@ -344,7 +386,7 @@ export default function SalarySimulationPage() {
     } finally {
       setDraftLoaded(true);
     }
-  }, [user, draftLoaded, draftKey]);
+  }, [user, draftLoaded, draftKey, applyExternalPeriodAndTitle]);
 
   useEffect(() => {
     if (!user || !draftLoaded) return;
@@ -391,7 +433,6 @@ export default function SalarySimulationPage() {
           categoryName: category.name,
           amount: 0,
           percent: 0,
-          locked: false,
           color: category.color ?? null,
           groupName: category.group_name ?? null,
         } as AllocationItem;
@@ -406,17 +447,16 @@ export default function SalarySimulationPage() {
     setItems((prev) => prev.filter((item) => item.categoryId !== categoryId));
   }, []);
 
-  const handleToggleLock = useCallback((categoryId: string) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.categoryId === categoryId
-          ? {
-              ...item,
-              locked: !item.locked,
-            }
-          : item,
-      ),
-    );
+  const handleTitleInputChange = useCallback((value: string) => {
+    setTitle(value);
+    const trimmed = value.trim();
+    if (!trimmed) {
+      titleSourceRef.current = 'auto';
+    } else if (trimmed === autoTitleValueRef.current.trim()) {
+      titleSourceRef.current = 'auto';
+    } else {
+      titleSourceRef.current = 'manual';
+    }
   }, []);
 
   const handleAmountChange = useCallback(
@@ -437,25 +477,6 @@ export default function SalarySimulationPage() {
     [salaryAmount],
   );
 
-  const handlePercentChange = useCallback(
-    (categoryId: string, nextPercent: number) => {
-      const sanitized = Math.max(0, Number(nextPercent ?? 0));
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.categoryId !== categoryId) return item;
-          const percent = roundPercent(sanitized);
-          const amount = Math.round((salaryAmount * percent) / 100);
-          return {
-            ...item,
-            amount,
-            percent,
-          };
-        }),
-      );
-    },
-    [salaryAmount],
-  );
-
   const handleAutoDistribute = useCallback(() => {
     if (!items.length) {
       addToast('Tambahkan kategori terlebih dahulu.', 'info');
@@ -465,49 +486,60 @@ export default function SalarySimulationPage() {
       addToast('Masukkan nominal gaji terlebih dahulu.', 'error');
       return;
     }
-    const adjustable = items.filter((item) => !item.locked);
-    if (!adjustable.length) {
-      addToast('Tidak ada kategori yang bisa diatur (semua terkunci).', 'info');
+    const weights = items.map((item) => Number(budgetMap.get(item.categoryId)?.amount_planned ?? 0));
+    const hasPositiveWeight = weights.some((value) => value > 0);
+    const normalizedWeights = hasPositiveWeight ? weights : items.map(() => 1);
+    const totalWeight = normalizedWeights.reduce((sum, weight) => sum + weight, 0);
+    if (totalWeight <= 0) {
+      addToast('Tidak dapat menghitung distribusi otomatis.', 'error');
       return;
     }
-    const lockedTotal = items
-      .filter((item) => item.locked)
-      .reduce((sum, item) => sum + item.amount, 0);
-    const available = Math.max(salaryAmount - lockedTotal, 0);
 
-    let weights = adjustable.map((item) => budgetMap.get(item.categoryId)?.amount_planned ?? 0);
-    const totalBudget = weights.reduce((sum, weight) => sum + weight, 0);
-    if (totalBudget === 0) {
-      weights = adjustable.map(() => 1);
-    }
-    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-    setItems((prev) => {
-      let remainder = available;
-      let weightIndex = 0;
-      return prev.map((item) => {
-        if (item.locked) {
-          return {
-            ...item,
-            percent: computeItemPercent(item.amount, salaryAmount),
-          };
-        }
-        const weight = totalWeight > 0 ? weights[weightIndex] ?? 0 : 0;
-        const share =
-          weightIndex === adjustable.length - 1 || totalWeight === 0
-            ? remainder
-            : Math.round((available * weight) / totalWeight);
-        remainder = Math.max(0, remainder - share);
-        weightIndex += 1;
-        const percent = computeItemPercent(share, salaryAmount);
-        return {
-          ...item,
-          amount: share,
-          percent,
-        };
-      });
+    let remainder = salaryAmount;
+    const distributed = items.map((item, index) => {
+      const weight = normalizedWeights[index] ?? 0;
+      const share =
+        index === items.length - 1
+          ? Math.max(0, remainder)
+          : Math.round((salaryAmount * weight) / totalWeight);
+      remainder = Math.max(0, remainder - share);
+      const percent = computeItemPercent(share, salaryAmount);
+      return {
+        ...item,
+        amount: share,
+        percent,
+      };
     });
+
+    setItems(distributed);
   }, [items, salaryAmount, budgetMap, addToast]);
+
+  const handleToggleCarryover = useCallback(
+    async (categoryId: string, enabled: boolean) => {
+      setCarryoverUpdating((prev) => ({ ...prev, [categoryId]: true }));
+      try {
+        const existing = budgetMap.get(categoryId);
+        await upsertBudget({
+          category_id: categoryId,
+          period,
+          amount_planned: Number(existing?.amount_planned ?? 0),
+          carryover_enabled: enabled,
+          notes: existing?.notes ?? undefined,
+        });
+        addToast(
+          enabled ? 'Carryover kategori diaktifkan.' : 'Carryover kategori dimatikan.',
+          'success',
+        );
+        await loadBudgets();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Gagal memperbarui carryover';
+        addToast(message, 'error');
+      } finally {
+        setCarryoverUpdating((prev) => ({ ...prev, [categoryId]: false }));
+      }
+    },
+    [budgetMap, period, addToast, loadBudgets],
+  );
 
   const applySimulation = useCallback(async () => {
     if (!items.length) {
@@ -523,7 +555,7 @@ export default function SalarySimulationPage() {
             category_id: item.categoryId,
             period,
             amount_planned: item.amount,
-            carryover_enabled: false,
+            carryover_enabled: Boolean(existing?.carryover_enabled),
             notes: existing?.notes ?? undefined,
           });
         }),
@@ -594,8 +626,7 @@ export default function SalarySimulationPage() {
       addToast('Simulasi berhasil diduplikasi.', 'success');
       setActiveSimulationId(clone.id);
       setSalaryAmount(clone.salary_amount);
-      setPeriod(clone.period_month.slice(0, 7));
-      setTitle(clone.title ?? '');
+      applyExternalPeriodAndTitle(clone.period_month.slice(0, 7), clone.title ?? '');
       setNotes(clone.notes ?? '');
       setItems(sortItems(mapSimulationItems(clone.items, clone.salary_amount, categories)));
       setConfirmApply(false);
@@ -606,12 +637,11 @@ export default function SalarySimulationPage() {
     } finally {
       setDuplicating(false);
     }
-  }, [activeSimulationId, categories, addToast, loadHistory]);
+  }, [activeSimulationId, categories, addToast, loadHistory, applyExternalPeriodAndTitle]);
 
   const handleReset = useCallback(() => {
     setSalaryAmount(0);
-    setPeriod(getCurrentPeriod());
-    setTitle('');
+    applyExternalPeriodAndTitle(getCurrentPeriod(), '');
     setNotes('');
     setItems([]);
     setActiveSimulationId(null);
@@ -621,7 +651,7 @@ export default function SalarySimulationPage() {
     } catch (_error) {
       // ignore
     }
-  }, [draftKey]);
+  }, [draftKey, applyExternalPeriodAndTitle]);
 
   const handleLoadSimulation = useCallback(
     async (simulationId: string) => {
@@ -633,8 +663,7 @@ export default function SalarySimulationPage() {
         }
         setActiveSimulationId(simulation.id);
         setSalaryAmount(simulation.salary_amount);
-        setPeriod(simulation.period_month.slice(0, 7));
-        setTitle(simulation.title ?? '');
+        applyExternalPeriodAndTitle(simulation.period_month.slice(0, 7), simulation.title ?? '');
         setNotes(simulation.notes ?? '');
         setItems(sortItems(mapSimulationItems(simulation.items, simulation.salary_amount, categories)));
         setConfirmApply(false);
@@ -644,7 +673,7 @@ export default function SalarySimulationPage() {
         addToast(message, 'error');
       }
     },
-    [user?.id, addToast, categories],
+    [user?.id, addToast, categories, applyExternalPeriodAndTitle],
   );
 
   const handleDeleteSimulation = useCallback(
@@ -719,73 +748,85 @@ export default function SalarySimulationPage() {
               Simpan untuk membuat riwayat dan bandingkan kapan pun.
             </div>
           </header>
-          <div className="grid gap-4 md:grid-cols-2">
-            <CurrencyInput
-              label="Nominal Gaji"
-              value={salaryAmount}
-              onChangeNumber={setSalaryAmount}
-              placeholder="Masukkan nominal"
-            />
-            <div className="space-y-1.5">
-              <label htmlFor="period" className="text-xs font-medium text-muted">
-                Periode Bulan
-              </label>
-              <input
-                id="period"
-                type="month"
-                value={period}
-                onChange={(event) => setPeriod(event.target.value)}
-                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label htmlFor="title" className="text-xs font-medium text-muted">
-                Judul Simulasi
-              </label>
-              <input
-                id="title"
-                type="text"
-                placeholder={`Simulasi Gajian ${toMonthLabel(period)}`}
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-              />
-            </div>
-            <div className="space-y-1.5 md:col-span-2">
-              <label htmlFor="notes" className="text-xs font-medium text-muted">
-                Catatan (opsional)
-              </label>
-              <textarea
-                id="notes"
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                rows={3}
-                className="w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                placeholder="Catatan tambahan untuk simulasi ini"
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-2 rounded-2xl bg-surface-alt/70 p-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              {budgetsLoading ? (
-                <span className="inline-flex items-center gap-2 text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Memuat data budget bulan aktif...
-                </span>
-              ) : monthlyBudgetTotal > 0 ? (
-                <>
-                  Total budget bulan ini: <span className="font-semibold text-text">{formatCurrency(monthlyBudgetTotal)}</span>
-                </>
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-surface-alt/70 p-4 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {budgetsLoading ? (
+                  <span className="inline-flex items-center gap-2 text-muted">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Memuat data budget bulan ini...
+                  </span>
+                ) : hasCurrentBudgets ? (
+                  <>
+                    Budget bulan ini:{' '}
+                    <span className="font-semibold text-text">{formatCurrency(monthlyBudgetTotal)}</span>
+                  </>
+                ) : (
+                  'Belum ada budget bulan ini.'
+                )}
+              </div>
+              {hasCurrentBudgets ? (
+                <Link
+                  to="/budgets"
+                  className="inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-brand transition hover:bg-brand/20"
+                >
+                  Bandingkan dengan budget bulan ini
+                  <RefreshCw className="h-4 w-4" />
+                </Link>
               ) : (
-                'Belum ada budget bulan ini.'
+                <span className="inline-flex items-center gap-2 rounded-full border border-dashed border-border px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Bandingkan tidak tersedia
+                  <RefreshCw className="h-4 w-4" />
+                </span>
               )}
             </div>
-            <Link
-              to="/budgets"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-brand transition hover:underline"
-            >
-              Bandingkan dengan budget bulan ini
-              <RefreshCw className="h-4 w-4" />
-            </Link>
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,320px)] md:items-start">
+              <CurrencyInput
+                label="Nominal Gaji"
+                value={salaryAmount}
+                onChangeNumber={setSalaryAmount}
+                placeholder="Masukkan nominal"
+              />
+              <div className="space-y-1.5">
+                <label htmlFor="period" className="text-xs font-medium text-muted">
+                  Periode Bulan
+                </label>
+                <input
+                  id="period"
+                  type="month"
+                  value={period}
+                  onChange={(event) => setPeriod(event.target.value)}
+                  className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                />
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1.05fr)_minmax(0,1.4fr)] md:items-start">
+              <div className="space-y-1.5">
+                <label htmlFor="title" className="text-xs font-medium text-muted">
+                  Judul Simulasi
+                </label>
+                <input
+                  id="title"
+                  type="text"
+                  placeholder={autoTitle}
+                  value={title}
+                  onChange={(event) => handleTitleInputChange(event.target.value)}
+                  className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="notes" className="text-xs font-medium text-muted">
+                  Catatan (opsional)
+                </label>
+                <textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(event) => setNotes(event.target.value)}
+                  rows={3}
+                  className="w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                  placeholder="Catatan tambahan untuk simulasi ini"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </Section>
@@ -885,10 +926,11 @@ export default function SalarySimulationPage() {
 
           {items.length ? (
             <div className="space-y-3">
-              <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
+              <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(120px,0.8fr)_minmax(0,0.9fr)_auto] items-center gap-3 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
                 <div>Kategori</div>
                 <div>Nominal (Rp)</div>
                 <div>Persentase (%)</div>
+                <div>Carryover</div>
                 <div className="text-right">Aksi</div>
               </div>
               {items.map((item) => {
@@ -900,12 +942,17 @@ export default function SalarySimulationPage() {
                   difference > 0 && 'text-amber-600 dark:text-amber-300',
                   difference < 0 && 'text-emerald-600 dark:text-emerald-300',
                 );
+                const carryoverEnabled = Boolean(budget?.carryover_enabled);
+                const carryoverBusy = Boolean(carryoverUpdating[item.categoryId]);
                 return (
                   <div
                     key={item.categoryId}
-                    className="grid gap-3 rounded-2xl border border-border/70 bg-surface-alt/80 p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+                    className={clsx(
+                      'grid gap-4 rounded-2xl border border-border/70 bg-surface-alt/80 p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(120px,0.8fr)_minmax(0,0.9fr)_auto]',
+                      carryoverEnabled && 'border-emerald-400/60 bg-emerald-50/70 dark:border-emerald-500/40 dark:bg-emerald-500/10',
+                    )}
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="font-semibold">{item.categoryName}</div>
@@ -918,13 +965,11 @@ export default function SalarySimulationPage() {
                           />
                         ) : null}
                       </div>
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
                         <span>Budget: {formatCurrency(plannedBudget)}</span>
                         <span>
                           Selisih:{' '}
-                          <span className={differenceClass}>
-                            {formatCurrency(difference)}
-                          </span>
+                          <span className={differenceClass}>{formatCurrency(difference)}</span>
                         </span>
                       </div>
                     </div>
@@ -937,28 +982,42 @@ export default function SalarySimulationPage() {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-medium text-muted">Persentase</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          value={item.percent}
-                          onChange={(event) => handlePercentChange(item.categoryId, Number(event.target.value))}
-                          className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                          min={0}
-                          step={0.5}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleToggleLock(item.categoryId)}
+                      <div className="flex h-11 items-center justify-between rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm font-semibold text-text">
+                        <span>{formatPercent(item.percent)}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted">Carryover</label>
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface-alt px-3 py-2">
+                        <span
                           className={clsx(
-                            'inline-flex h-11 w-11 items-center justify-center rounded-2xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
-                            item.locked
-                              ? 'border-brand bg-brand/10 text-brand'
-                              : 'border-border bg-surface-alt text-muted hover:text-text',
+                            'text-sm font-semibold',
+                            carryoverEnabled
+                              ? 'text-emerald-600 dark:text-emerald-300'
+                              : 'text-muted',
                           )}
-                          title={item.locked ? 'Buka kunci persentase' : 'Kunci persentase'}
                         >
-                          {item.locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                        </button>
+                          {carryoverEnabled ? 'Aktif' : 'Nonaktif'}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {carryoverBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin text-muted" />
+                          ) : null}
+                          <label
+                            className="relative inline-flex h-6 w-11 cursor-pointer items-center"
+                            aria-label={`Atur carryover untuk ${item.categoryName}`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="peer sr-only"
+                              checked={carryoverEnabled}
+                              onChange={(event) => handleToggleCarryover(item.categoryId, event.target.checked)}
+                              disabled={budgetsLoading || carryoverBusy}
+                            />
+                            <span className="absolute inset-0 rounded-full bg-muted/30 transition peer-checked:bg-emerald-500/60 peer-disabled:opacity-60" />
+                            <span className="relative ml-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5 dark:bg-zinc-900" />
+                          </label>
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-start justify-end">
