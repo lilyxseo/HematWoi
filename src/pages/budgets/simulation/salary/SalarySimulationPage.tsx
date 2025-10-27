@@ -702,8 +702,8 @@ export default function SalarySimulationPage() {
       </PageHeader>
 
       <Section first>
-        <div className="card space-y-4">
-          <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="card space-y-6">
+          <header className="flex flex-col gap-2 border-b border-border/60 pb-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Setup Gaji &amp; Periode</h2>
               <p className="text-sm text-muted">Masukkan nominal gaji dan periode simulasi.</p>
@@ -713,58 +713,53 @@ export default function SalarySimulationPage() {
               Simpan untuk membuat riwayat dan bandingkan kapan pun.
             </div>
           </header>
-          <div className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-              <CurrencyInput
-                label="Nominal Gaji"
-                value={salaryAmount}
-                onChangeNumber={setSalaryAmount}
-                placeholder="Masukkan nominal"
+          <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,0.28fr)_minmax(0,0.22fr)_minmax(0,0.28fr)_minmax(0,1fr)] xl:gap-6">
+            <CurrencyInput
+              label="Nominal Gaji"
+              value={salaryAmount}
+              onChangeNumber={setSalaryAmount}
+              placeholder="Masukkan nominal"
+            />
+            <div className="space-y-1.5">
+              <label htmlFor="period" className="text-xs font-medium text-muted">
+                Periode Bulan
+              </label>
+              <input
+                id="period"
+                type="month"
+                value={period}
+                onChange={(event) => setPeriod(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               />
-              <div className="space-y-1.5">
-                <label htmlFor="period" className="text-xs font-medium text-muted">
-                  Periode Bulan
-                </label>
-                <input
-                  id="period"
-                  type="month"
-                  value={period}
-                  onChange={(event) => setPeriod(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                />
-              </div>
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-1.5">
-                <label htmlFor="title" className="text-xs font-medium text-muted">
-                  Judul Simulasi
-                </label>
-                <input
-                  id="title"
-                  type="text"
-                  placeholder={`Simulasi Gajian ${toMonthLabel(period)}`}
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="notes" className="text-xs font-medium text-muted">
-                  Catatan (opsional)
-                </label>
-                <textarea
-                  id="notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={3}
-                  className="min-h-[72px] w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 py-2 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                  placeholder="Catatan tambahan untuk simulasi ini"
-                />
-              </div>
+            <div className="space-y-1.5">
+              <label htmlFor="title" className="text-xs font-medium text-muted">
+                Judul Simulasi
+              </label>
+              <input
+                id="title"
+                type="text"
+                placeholder={`Simulasi Gajian ${toMonthLabel(period)}`}
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                className="h-12 w-full rounded-2xl border border-border-subtle bg-surface-alt px-4 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="notes" className="text-xs font-medium text-muted">
+                Catatan (opsional)
+              </label>
+              <textarea
+                id="notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                className="h-12 min-h-[48px] w-full resize-y rounded-2xl border border-border-subtle bg-surface-alt px-4 py-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                placeholder="Catatan tambahan untuk simulasi ini"
+              />
             </div>
           </div>
-          <div className="flex flex-col gap-3 rounded-2xl bg-surface-alt/70 p-4 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-0.5">
+          <div className="flex flex-col gap-4 rounded-2xl bg-surface-alt/70 p-4 text-sm text-muted lg:flex-row lg:items-end lg:justify-between">
+            <div className="space-y-1">
               {budgetsLoading ? (
                 <span className="inline-flex items-center gap-2 text-muted">
                   <Loader2 className="h-4 w-4 animate-spin" /> Memuat data budget bulan aktif...
@@ -784,7 +779,7 @@ export default function SalarySimulationPage() {
             <Link
               to="/budgets"
               className={clsx(
-                'inline-flex h-10 items-center gap-2 rounded-2xl border border-brand/40 px-4 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                'inline-flex h-12 items-center gap-2 self-start rounded-2xl border border-brand/40 px-5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 lg:self-end',
                 hasMonthlyBudget
                   ? 'text-brand hover:border-brand hover:text-brand'
                   : 'pointer-events-none border-border text-muted opacity-60',
@@ -798,28 +793,28 @@ export default function SalarySimulationPage() {
         </div>
       </Section>
 
-      <Section>
-        <div className="card space-y-4">
-          <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
+      <Section className="mt-8 xl:mt-9">
+        <div className="card space-y-6">
+          <header className="flex flex-col gap-2 border-b border-border/60 pb-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Alokasi per Kategori</h2>
               <p className="text-sm text-muted">Atur nominal alokasi, lihat persentase otomatis, dan tandai kategori carryover.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-4 lg:ml-auto lg:justify-end">
               <button
                 type="button"
                 onClick={() => {
                   setShowAddCategories(true);
                 }}
                 disabled={!availableCategories.length || categoriesLoading}
-                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-border px-4 text-sm font-semibold text-text transition hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-12 items-center gap-2 rounded-2xl border border-border px-5 text-sm font-semibold text-text transition hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" /> Tambah Kategori
               </button>
               <button
                 type="button"
                 onClick={handleAutoDistribute}
-                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-border px-4 text-sm font-semibold text-text transition hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                className="inline-flex h-12 items-center gap-2 rounded-2xl border border-border px-5 text-sm font-semibold text-text transition hover:border-brand/50 hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               >
                 <Sparkles className="h-4 w-4" /> Auto-Distribusi
               </button>
@@ -892,8 +887,8 @@ export default function SalarySimulationPage() {
           ) : null}
 
           {items.length ? (
-            <div className="space-y-3">
-              <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto] items-center gap-3 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
+            <div className="space-y-5">
+              <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto] items-center gap-6 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
                 <div>Kategori</div>
                 <div>Nominal (Rp)</div>
                 <div>Persentase</div>
@@ -916,7 +911,7 @@ export default function SalarySimulationPage() {
                   <div
                     key={item.categoryId}
                     className={clsx(
-                      'grid gap-3 rounded-2xl border p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto]',
+                      'grid gap-6 rounded-2xl border p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto]',
                       rowHighlight,
                     )}
                   >
