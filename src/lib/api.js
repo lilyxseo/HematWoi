@@ -741,7 +741,20 @@ function normalizeCategoryColor(value) {
 
 let categoryViewUnavailable = false;
 
-function mapCategoryRow(row = {}, userId) {
+function normalizeCategoryType(value, fallback) {
+  const valid = new Set(["income", "expense"]);
+  const normalized = typeof value === "string" ? value.toLowerCase() : "";
+  if (valid.has(normalized)) {
+    return normalized;
+  }
+  const fallbackNormalized = typeof fallback === "string" ? fallback.toLowerCase() : "";
+  if (valid.has(fallbackNormalized)) {
+    return fallbackNormalized;
+  }
+  return "expense";
+}
+
+function mapCategoryRow(row = {}, userId, fallbackType) {
   const groupValue =
     typeof row.group_name === "string"
       ? row.group_name
@@ -757,10 +770,7 @@ function mapCategoryRow(row = {}, userId) {
     : typeFromGroup.includes("expense")
     ? "expense"
     : undefined;
-  let normalizedType = typeof inferredType === "string" ? inferredType.toLowerCase() : "";
-  if (!normalizedType || !["income", "expense"].includes(normalizedType)) {
-    normalizedType = "expense";
-  }
+  const normalizedType = normalizeCategoryType(inferredType, fallbackType);
   const rawOrder = row.order_index ?? row.sort_order;
   const orderIndex = parseOrderIndex(rawOrder);
   const colorValue = row.color ?? row.category_color ?? null;
@@ -896,7 +906,7 @@ export async function listCategories(type) {
 
   try {
     const remoteRows = await fetchCategoriesFromRest(userId, type);
-    const rows = remoteRows.map((row) => mapCategoryRow(row, userId));
+    const rows = remoteRows.map((row) => mapCategoryRow(row, userId, type));
     rows.sort((a, b) => {
       const orderA = a.order_index ?? Number.MAX_SAFE_INTEGER;
       const orderB = b.order_index ?? Number.MAX_SAFE_INTEGER;
