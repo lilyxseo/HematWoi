@@ -1188,11 +1188,27 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
   };
 }
 
-export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
+function isUndefinedColumnError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: string | null }).code === '42703',
+  );
+}
+
+function isMissingBudUpsert(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: string | null }).code ?? null;
+  if (code === '404') return true;
+  const message = ((error as { message?: string | null }).message ?? '').toLowerCase();
+  return message.includes('bud_upsert') || message.includes('function bud_upsert');
+}
+
+async function ensureBudgetWriteAccess(): Promise<string> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
 
-  // Pastikan benar-benar logged-in (punya token) sebelum menulis ke cloud
   try {
     await getUserToken();
   } catch (error) {
@@ -1201,6 +1217,68 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
     }
     throw error;
   }
+
+  return userId;
+}
+
+type BudgetRowPayload = {
+  user_id: string;
+  period_month: string;
+  category_id: string;
+  planned: number;
+  carry_rule: string;
+  note: string | null;
+  carryover_enabled?: boolean;
+};
+
+function buildBudgetRowPayload(
+  userId: string,
+  input: UpsertBudgetInput,
+  includeCarryover: boolean,
+): BudgetRowPayload {
+  const carryoverEnabled = Boolean(input.carryover_enabled);
+  const row: BudgetRowPayload = {
+    user_id: userId,
+    period_month: toMonthStart(input.period),
+    category_id: input.category_id,
+    planned: Number(input.amount_planned ?? 0),
+    carry_rule: carryoverEnabled ? 'carry-positive' : 'none',
+    note: input.notes ?? null,
+  };
+  if (includeCarryover) {
+    row.carryover_enabled = carryoverEnabled;
+  }
+  return row;
+}
+
+async function upsertBudgetsDirect(userId: string, inputs: UpsertBudgetInput[]): Promise<void> {
+  if (!inputs.length) return;
+
+  const perform = (includeCarryover: boolean) =>
+    supabase
+      .from('budgets')
+      .upsert(inputs.map((input) => buildBudgetRowPayload(userId, input, includeCarryover)), {
+        onConflict: 'user_id,period_month,category_key',
+      })
+      .select('id');
+
+  let includeCarryover = true;
+  let { error } = await perform(includeCarryover);
+  if (error && isUndefinedColumnError(error)) {
+    includeCarryover = false;
+    ({ error } = await perform(includeCarryover));
+  }
+  if (error) {
+    throw error;
+  }
+}
+
+async function fallbackUpsertMonthlyBudget(userId: string, input: UpsertBudgetInput): Promise<void> {
+  await upsertBudgetsDirect(userId, [input]);
+}
+
+export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
+  const userId = await ensureBudgetWriteAccess();
 
   const payload = {
     p_category_id: input.category_id,
@@ -1211,16 +1289,34 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   };
 
   const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) {
-    if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
-      throw new Error('Silakan login untuk menyimpan anggaran');
-    }
-    const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
-    }
-    throw error;
+  if (!error) {
+    return;
   }
+
+  if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
+    throw new Error('Silakan login untuk menyimpan anggaran');
+  }
+
+  if (isMissingBudUpsert(error)) {
+    try {
+      await fallbackUpsertMonthlyBudget(userId, input);
+      return;
+    } catch (fallbackError) {
+      throw fallbackError instanceof Error
+        ? fallbackError
+        : new Error('Gagal menyimpan anggaran tanpa fungsi bud_upsert');
+    }
+  }
+
+  throw error;
+}
+
+export async function upsertBudgets(inputs: UpsertBudgetInput[]): Promise<void> {
+  if (!inputs.length) {
+    return;
+  }
+  const userId = await ensureBudgetWriteAccess();
+  await upsertBudgetsDirect(userId, inputs);
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
