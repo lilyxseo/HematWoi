@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogIn, LogOut, Menu, Settings, UserRound } from "lucide-react";
+import { Bell, LogIn, LogOut, Menu, RefreshCcw, Settings, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -13,13 +13,31 @@ function getDisplayName(user) {
   return "Pengguna";
 }
 
-export default function AppTopbar() {
+export default function AppTopbar({
+  onRefreshCloud = null,
+  cloudRefreshDisabled = false,
+  refreshing = false,
+} = {}) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [user, setUser] = useState(null);
   const dropdownRef = useRef(null);
   const profileButtonRef = useRef(null);
   const navigate = useNavigate();
   const isAuthenticated = Boolean(user);
+
+  const handleRefreshClick = () => {
+    if (!onRefreshCloud || cloudRefreshDisabled) return;
+    try {
+      const result = onRefreshCloud();
+      if (result && typeof result.then === "function") {
+        result.catch(() => {
+          /* refresh errors handled upstream */
+        });
+      }
+    } catch {
+      /* ignore refresh errors */
+    }
+  };
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -104,6 +122,23 @@ export default function AppTopbar() {
           <span className="text-base font-semibold text-text">HematWoi</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          {onRefreshCloud ? (
+            <button
+              type="button"
+              onClick={handleRefreshClick}
+              disabled={cloudRefreshDisabled}
+              className={`inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-surface-1 text-text transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95 ${
+                cloudRefreshDisabled
+                  ? "cursor-not-allowed opacity-60"
+                  : "hover:-translate-y-0.5 hover:bg-surface-2"
+              }`}
+              aria-label="Segarkan data cloud"
+            >
+              <RefreshCcw
+                className={`h-5 w-5 ${refreshing ? "animate-spin text-brand" : ""}`}
+              />
+            </button>
+          ) : null}
           <button
             type="button"
             className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-surface-1 text-text transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95"
