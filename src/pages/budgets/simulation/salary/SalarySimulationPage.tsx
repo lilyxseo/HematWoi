@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
   Loader2,
@@ -6,8 +6,6 @@ import {
   RefreshCw,
   Copy,
   Trash2,
-  Lock,
-  Unlock,
   Sparkles,
   RotateCcw,
   Save,
@@ -56,8 +54,7 @@ interface AllocationItem {
   categoryId: string;
   categoryName: string;
   amount: number;
-  percent: number;
-  locked: boolean;
+  carryover: boolean;
   color?: string | null;
   groupName?: string | null;
 }
@@ -82,6 +79,11 @@ const percentFormatter = new Intl.NumberFormat('id-ID', {
   minimumFractionDigits: 0,
   maximumFractionDigits: 2,
 });
+
+function buildSimulationTitle(period: string) {
+  const label = toMonthLabel(period);
+  return label ? `Simulasi Gajian ${label}` : 'Simulasi Gajian';
+}
 
 function formatCurrency(value: number) {
   return currencyFormatter.format(Number.isFinite(value) ? value : 0);
@@ -129,6 +131,7 @@ function mapSimulationItems(
   items: SalarySimulationItemRow[] | undefined,
   salaryAmount: number,
   categories: ExpenseCategoryRow[],
+  budgetMap?: Map<string, MonthlyBudgetRow>,
 ): AllocationItem[] {
   const categoryMap = new Map(categories.map((category) => [category.id, category] as const));
   return (items ?? []).map((item) => {
@@ -137,8 +140,7 @@ function mapSimulationItems(
       categoryId: item.category_id,
       categoryName: item.category?.name ?? category?.name ?? 'Tanpa kategori',
       amount: Number(item.allocation_amount ?? 0),
-      percent: computeItemPercent(Number(item.allocation_amount ?? 0), salaryAmount),
-      locked: false,
+      carryover: Boolean(budgetMap?.get(item.category_id)?.carryover_enabled ?? false),
       color: category?.color ?? null,
       groupName: category?.group_name ?? null,
     } satisfies AllocationItem;
@@ -193,6 +195,9 @@ export default function SalarySimulationPage() {
 
   const [draftLoaded, setDraftLoaded] = useState<boolean>(false);
 
+  const lastGeneratedTitleRef = useRef<string>(buildSimulationTitle(period));
+  const budgetSignatureRef = useRef<string>('');
+
   const periodMonth = useMemo(() => toMonthStart(period), [period]);
 
   const budgetMap = useMemo(() => {
@@ -202,6 +207,35 @@ export default function SalarySimulationPage() {
     }
     return map;
   }, [budgets]);
+
+  useEffect(() => {
+    const signature = budgets
+      .map((budget) => `${budget.category_id}:${budget.carryover_enabled ? '1' : '0'}`)
+      .sort()
+      .join('|');
+    if (budgetSignatureRef.current === signature) {
+      return;
+    }
+    budgetSignatureRef.current = signature;
+    setItems((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const budget = budgetMap.get(item.categoryId);
+        if (typeof budget?.carryover_enabled === 'boolean') {
+          const nextCarryover = Boolean(budget.carryover_enabled);
+          if (item.carryover !== nextCarryover) {
+            changed = true;
+            return {
+              ...item,
+              carryover: nextCarryover,
+            };
+          }
+        }
+        return item;
+      });
+      return changed ? next : prev;
+    });
+  }, [budgets, budgetMap]);
 
   const totalAllocation = useMemo(
     () => items.reduce((sum, item) => sum + Number(item.amount ?? 0), 0),
@@ -262,6 +296,15 @@ export default function SalarySimulationPage() {
       navigate('/auth', { replace: true });
     }
   }, [userLoading, user, navigate]);
+
+  useEffect(() => {
+    const autoTitle = buildSimulationTitle(period);
+    const shouldUpdate = title.trim().length === 0 || title === lastGeneratedTitleRef.current;
+    lastGeneratedTitleRef.current = autoTitle;
+    if (shouldUpdate && title !== autoTitle) {
+      setTitle(autoTitle);
+    }
+  }, [period, title]);
 
   useEffect(() => {
     if (!user) return;
@@ -336,7 +379,15 @@ export default function SalarySimulationPage() {
         setPeriod(payload.period ?? getCurrentPeriod());
         setTitle(payload.title ?? '');
         setNotes(payload.notes ?? '');
-        setItems(sortItems(payload.items ?? []));
+        const normalizedItems = (payload.items ?? []).map((item) => ({
+          categoryId: item.categoryId,
+          categoryName: item.categoryName,
+          amount: Number(item.amount ?? 0),
+          carryover: Boolean((item as { carryover?: boolean }).carryover ?? false),
+          color: item.color ?? null,
+          groupName: item.groupName ?? null,
+        }));
+        setItems(sortItems(normalizedItems));
         setActiveSimulationId(payload.activeSimulationId ?? null);
       }
     } catch (_error) {
@@ -363,15 +414,6 @@ export default function SalarySimulationPage() {
     }
   }, [user, draftLoaded, draftKey, salaryAmount, period, title, notes, items, activeSimulationId]);
 
-  useEffect(() => {
-    setItems((prev) =>
-      prev.map((item) => ({
-        ...item,
-        percent: computeItemPercent(item.amount, salaryAmount),
-      })),
-    );
-  }, [salaryAmount]);
-
   const availableCategories = useMemo(() => {
     const selected = new Set(items.map((item) => item.categoryId));
     return categories.filter((category) => !selected.has(category.id));
@@ -386,12 +428,12 @@ export default function SalarySimulationPage() {
       .map((categoryId) => {
         const category = categories.find((item) => item.id === categoryId);
         if (!category) return null;
+        const budget = budgetMap.get(category.id);
         return {
           categoryId: category.id,
           categoryName: category.name,
           amount: 0,
-          percent: 0,
-          locked: false,
+          carryover: Boolean(budget?.carryover_enabled ?? false),
           color: category.color ?? null,
           groupName: category.group_name ?? null,
         } as AllocationItem;
@@ -400,61 +442,38 @@ export default function SalarySimulationPage() {
     setItems((prev) => sortItems([...prev, ...newItems]));
     setSelectedToAdd([]);
     setShowAddCategories(false);
-  }, [selectedToAdd, categories]);
+  }, [selectedToAdd, categories, budgetMap]);
 
   const handleRemoveItem = useCallback((categoryId: string) => {
     setItems((prev) => prev.filter((item) => item.categoryId !== categoryId));
   }, []);
 
-  const handleToggleLock = useCallback((categoryId: string) => {
+  const handleAmountChange = useCallback((categoryId: string, nextAmount: number) => {
+    const sanitized = Math.max(0, Math.floor(Number(nextAmount ?? 0)));
     setItems((prev) =>
       prev.map((item) =>
         item.categoryId === categoryId
           ? {
               ...item,
-              locked: !item.locked,
+              amount: sanitized,
             }
           : item,
       ),
     );
   }, []);
 
-  const handleAmountChange = useCallback(
-    (categoryId: string, nextAmount: number) => {
-      const sanitized = Math.max(0, Math.floor(Number(nextAmount ?? 0)));
-      setItems((prev) =>
-        prev.map((item) =>
-          item.categoryId === categoryId
-            ? {
-                ...item,
-                amount: sanitized,
-                percent: computeItemPercent(sanitized, salaryAmount),
-              }
-            : item,
-        ),
-      );
-    },
-    [salaryAmount],
-  );
-
-  const handlePercentChange = useCallback(
-    (categoryId: string, nextPercent: number) => {
-      const sanitized = Math.max(0, Number(nextPercent ?? 0));
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.categoryId !== categoryId) return item;
-          const percent = roundPercent(sanitized);
-          const amount = Math.round((salaryAmount * percent) / 100);
-          return {
-            ...item,
-            amount,
-            percent,
-          };
-        }),
-      );
-    },
-    [salaryAmount],
-  );
+  const handleToggleCarryover = useCallback((categoryId: string, value: boolean) => {
+    setItems((prev) =>
+      prev.map((item) =>
+        item.categoryId === categoryId
+          ? {
+              ...item,
+              carryover: value,
+            }
+          : item,
+      ),
+    );
+  }, []);
 
   const handleAutoDistribute = useCallback(() => {
     if (!items.length) {
@@ -465,45 +484,26 @@ export default function SalarySimulationPage() {
       addToast('Masukkan nominal gaji terlebih dahulu.', 'error');
       return;
     }
-    const adjustable = items.filter((item) => !item.locked);
-    if (!adjustable.length) {
-      addToast('Tidak ada kategori yang bisa diatur (semua terkunci).', 'info');
-      return;
-    }
-    const lockedTotal = items
-      .filter((item) => item.locked)
-      .reduce((sum, item) => sum + item.amount, 0);
-    const available = Math.max(salaryAmount - lockedTotal, 0);
-
-    let weights = adjustable.map((item) => budgetMap.get(item.categoryId)?.amount_planned ?? 0);
-    const totalBudget = weights.reduce((sum, weight) => sum + weight, 0);
-    if (totalBudget === 0) {
-      weights = adjustable.map(() => 1);
-    }
-    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
     setItems((prev) => {
-      let remainder = available;
-      let weightIndex = 0;
-      return prev.map((item) => {
-        if (item.locked) {
-          return {
-            ...item,
-            percent: computeItemPercent(item.amount, salaryAmount),
-          };
+      if (!prev.length) return prev;
+      const weights = prev.map((item) => Number(budgetMap.get(item.categoryId)?.amount_planned ?? 0));
+      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+      const length = prev.length;
+      let remainder = salaryAmount;
+      return prev.map((item, index) => {
+        let share: number;
+        if (index === length - 1) {
+          share = remainder;
+        } else if (totalWeight > 0) {
+          const weight = weights[index] ?? 0;
+          share = Math.round((salaryAmount * weight) / (totalWeight || 1));
+        } else {
+          share = Math.floor(salaryAmount / length);
         }
-        const weight = totalWeight > 0 ? weights[weightIndex] ?? 0 : 0;
-        const share =
-          weightIndex === adjustable.length - 1 || totalWeight === 0
-            ? remainder
-            : Math.round((available * weight) / totalWeight);
         remainder = Math.max(0, remainder - share);
-        weightIndex += 1;
-        const percent = computeItemPercent(share, salaryAmount);
         return {
           ...item,
           amount: share,
-          percent,
         };
       });
     });
@@ -523,7 +523,7 @@ export default function SalarySimulationPage() {
             category_id: item.categoryId,
             period,
             amount_planned: item.amount,
-            carryover_enabled: false,
+            carryover_enabled: item.carryover,
             notes: existing?.notes ?? undefined,
           });
         }),
@@ -547,7 +547,7 @@ export default function SalarySimulationPage() {
       items: items.map((item) => ({
         categoryId: item.categoryId,
         allocationAmount: item.amount,
-        allocationPercent: item.percent,
+        allocationPercent: computeItemPercent(item.amount, salaryAmount),
       })),
     }),
     [title, salaryAmount, periodMonth, notes, items],
@@ -597,7 +597,7 @@ export default function SalarySimulationPage() {
       setPeriod(clone.period_month.slice(0, 7));
       setTitle(clone.title ?? '');
       setNotes(clone.notes ?? '');
-      setItems(sortItems(mapSimulationItems(clone.items, clone.salary_amount, categories)));
+      setItems(sortItems(mapSimulationItems(clone.items, clone.salary_amount, categories, budgetMap)));
       setConfirmApply(false);
       loadHistory();
     } catch (error) {
@@ -606,7 +606,7 @@ export default function SalarySimulationPage() {
     } finally {
       setDuplicating(false);
     }
-  }, [activeSimulationId, categories, addToast, loadHistory]);
+  }, [activeSimulationId, categories, addToast, loadHistory, budgetMap]);
 
   const handleReset = useCallback(() => {
     setSalaryAmount(0);
@@ -636,7 +636,9 @@ export default function SalarySimulationPage() {
         setPeriod(simulation.period_month.slice(0, 7));
         setTitle(simulation.title ?? '');
         setNotes(simulation.notes ?? '');
-        setItems(sortItems(mapSimulationItems(simulation.items, simulation.salary_amount, categories)));
+        setItems(
+          sortItems(mapSimulationItems(simulation.items, simulation.salary_amount, categories, budgetMap)),
+        );
         setConfirmApply(false);
         addToast('Simulasi dimuat.', 'success');
       } catch (error) {
@@ -644,7 +646,7 @@ export default function SalarySimulationPage() {
         addToast(message, 'error');
       }
     },
-    [user?.id, addToast, categories],
+    [user?.id, addToast, categories, budgetMap],
   );
 
   const handleDeleteSimulation = useCallback(
@@ -670,7 +672,10 @@ export default function SalarySimulationPage() {
     if (!salaryAmount || salaryAmount <= 0) return 'Masukkan nominal gaji untuk melihat ringkasan.';
     const remainingPercent = salaryAmount > 0 ? roundPercent((remainingSalary / salaryAmount) * 100) : 0;
     const highest = highestAllocation?.categoryName;
-    const highestPercent = highestAllocation ? formatPercent(highestAllocation.percent) : null;
+    const highestPercent =
+      highestAllocation && salaryAmount > 0
+        ? formatPercent(computeItemPercent(highestAllocation.amount, salaryAmount))
+        : null;
     const highestText = highest && highestPercent ? ` Alokasi tertinggi pada “${highest}” ${highestPercent}.` : '';
     const status = remainingSalary >= 0 ? '' : ' - over allocated';
     return `Sisa gaji ${formatCurrency(Math.abs(remainingSalary))} (${formatPercent(Math.abs(remainingPercent))})${status}.${highestText}`;
@@ -708,8 +713,8 @@ export default function SalarySimulationPage() {
       </PageHeader>
 
       <Section first>
-        <div className="card space-y-4">
-          <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="card space-y-6">
+          <header className="flex flex-col gap-4 border-b border-border/60 pb-4 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Setup Gaji &amp; Periode</h2>
               <p className="text-sm text-muted">Masukkan nominal gaji dan periode simulasi.</p>
@@ -719,6 +724,40 @@ export default function SalarySimulationPage() {
               Simpan untuk membuat riwayat dan bandingkan kapan pun.
             </div>
           </header>
+
+          <div className="flex flex-col gap-3 rounded-2xl bg-surface-alt/70 p-4 text-sm text-muted md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              {budgetsLoading ? (
+                <span className="inline-flex items-center gap-2 text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Memuat budget bulan ini...
+                </span>
+              ) : (
+                <>
+                  Budget bulan ini:
+                  <span className="font-semibold text-text">{formatCurrency(monthlyBudgetTotal)}</span>
+                </>
+              )}
+            </div>
+            {monthlyBudgetTotal > 0 ? (
+              <Link
+                to="/budgets"
+                className="inline-flex items-center gap-2 rounded-2xl border border-brand/50 px-4 py-2 text-sm font-semibold text-brand transition hover:border-brand hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
+                Bandingkan dengan budget bulan ini
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="inline-flex cursor-not-allowed items-center gap-2 rounded-2xl border border-border px-4 py-2 text-sm font-semibold text-muted"
+              >
+                Bandingkan dengan budget bulan ini
+                <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2">
             <CurrencyInput
               label="Nominal Gaji"
@@ -738,14 +777,14 @@ export default function SalarySimulationPage() {
                 className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 md:col-span-2">
               <label htmlFor="title" className="text-xs font-medium text-muted">
                 Judul Simulasi
               </label>
               <input
                 id="title"
                 type="text"
-                placeholder={`Simulasi Gajian ${toMonthLabel(period)}`}
+                placeholder={buildSimulationTitle(period)}
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
@@ -765,28 +804,6 @@ export default function SalarySimulationPage() {
               />
             </div>
           </div>
-          <div className="flex flex-col gap-2 rounded-2xl bg-surface-alt/70 p-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              {budgetsLoading ? (
-                <span className="inline-flex items-center gap-2 text-muted">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Memuat data budget bulan aktif...
-                </span>
-              ) : monthlyBudgetTotal > 0 ? (
-                <>
-                  Total budget bulan ini: <span className="font-semibold text-text">{formatCurrency(monthlyBudgetTotal)}</span>
-                </>
-              ) : (
-                'Belum ada budget bulan ini.'
-              )}
-            </div>
-            <Link
-              to="/budgets"
-              className="inline-flex items-center gap-2 text-sm font-semibold text-brand transition hover:underline"
-            >
-              Bandingkan dengan budget bulan ini
-              <RefreshCw className="h-4 w-4" />
-            </Link>
-          </div>
         </div>
       </Section>
 
@@ -795,7 +812,7 @@ export default function SalarySimulationPage() {
           <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Alokasi per Kategori</h2>
-              <p className="text-sm text-muted">Atur nominal atau persentase alokasi per kategori pengeluaran.</p>
+              <p className="text-sm text-muted">Atur nominal alokasi per kategori, persentase dihitung otomatis.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -885,16 +902,18 @@ export default function SalarySimulationPage() {
 
           {items.length ? (
             <div className="space-y-3">
-              <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
+              <div className="hidden grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto] items-center gap-3 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
                 <div>Kategori</div>
                 <div>Nominal (Rp)</div>
-                <div>Persentase (%)</div>
+                <div>Persentase</div>
+                <div>Carryover</div>
                 <div className="text-right">Aksi</div>
               </div>
               {items.map((item) => {
                 const budget = budgetMap.get(item.categoryId);
                 const plannedBudget = Number(budget?.amount_planned ?? 0);
                 const difference = item.amount - plannedBudget;
+                const percent = computeItemPercent(item.amount, salaryAmount);
                 const differenceClass = clsx(
                   difference === 0 && 'text-muted',
                   difference > 0 && 'text-amber-600 dark:text-amber-300',
@@ -903,9 +922,14 @@ export default function SalarySimulationPage() {
                 return (
                   <div
                     key={item.categoryId}
-                    className="grid gap-3 rounded-2xl border border-border/70 bg-surface-alt/80 p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)_auto]"
+                    className={clsx(
+                      'grid gap-3 rounded-2xl border p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto]',
+                      item.carryover
+                        ? 'border-emerald-300/60 bg-emerald-50/70 dark:border-emerald-400/40 dark:bg-emerald-500/10'
+                        : 'border-border/70 bg-surface-alt/80',
+                    )}
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="font-semibold">{item.categoryName}</div>
@@ -919,12 +943,10 @@ export default function SalarySimulationPage() {
                         ) : null}
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                        <span>Budget: {formatCurrency(plannedBudget)}</span>
-                        <span>
+                        <span className="tabular-nums">Budget: {formatCurrency(plannedBudget)}</span>
+                        <span className="tabular-nums">
                           Selisih:{' '}
-                          <span className={differenceClass}>
-                            {formatCurrency(difference)}
-                          </span>
+                          <span className={differenceClass}>{formatCurrency(difference)}</span>
                         </span>
                       </div>
                     </div>
@@ -936,29 +958,30 @@ export default function SalarySimulationPage() {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted">Persentase</label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          value={item.percent}
-                          onChange={(event) => handlePercentChange(item.categoryId, Number(event.target.value))}
-                          className="h-11 w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                          min={0}
-                          step={0.5}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleToggleLock(item.categoryId)}
-                          className={clsx(
-                            'inline-flex h-11 w-11 items-center justify-center rounded-2xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
-                            item.locked
-                              ? 'border-brand bg-brand/10 text-brand'
-                              : 'border-border bg-surface-alt text-muted hover:text-text',
-                          )}
-                          title={item.locked ? 'Buka kunci persentase' : 'Kunci persentase'}
+                      <span className="text-xs font-medium text-muted">Persentase</span>
+                      <div className="flex h-11 items-center rounded-2xl border border-border-subtle bg-surface-alt px-3 text-sm font-semibold text-text tabular-nums">
+                        {formatPercent(percent)}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-medium text-muted">Carryover</span>
+                      <div className="flex items-center gap-3">
+                        <label
+                          className="relative inline-flex h-6 w-11 cursor-pointer items-center"
+                          aria-label={`Atur carryover untuk ${item.categoryName}`}
                         >
-                          {item.locked ? <Lock className="h-4 w-4" /> : <Unlock className="h-4 w-4" />}
-                        </button>
+                          <input
+                            type="checkbox"
+                            checked={item.carryover}
+                            onChange={(event) => handleToggleCarryover(item.categoryId, event.target.checked)}
+                            className="peer sr-only"
+                          />
+                          <span className="absolute inset-0 rounded-full bg-border/60 transition peer-checked:bg-emerald-500/60" />
+                          <span className="relative ml-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5 dark:bg-zinc-900" />
+                        </label>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          {item.carryover ? 'Aktif' : 'Nonaktif'}
+                        </span>
                       </div>
                     </div>
                     <div className="flex items-start justify-end">
