@@ -1188,6 +1188,64 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
   };
 }
 
+function isUndefinedColumnError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error as { code?: string | null }).code === '42703',
+  );
+}
+
+function isMissingBudUpsert(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = (error as { code?: string | null }).code ?? null;
+  if (code === '404') return true;
+  const message = ((error as { message?: string | null }).message ?? '').toLowerCase();
+  return message.includes('bud_upsert') || message.includes('function bud_upsert');
+}
+
+async function fallbackUpsertMonthlyBudget(userId: string, input: UpsertBudgetInput): Promise<void> {
+  const periodMonth = toMonthStart(input.period);
+  const carryoverEnabled = Boolean(input.carryover_enabled);
+
+  const buildRow = (includeCarryover: boolean) => {
+    const row: Record<string, unknown> = {
+      user_id: userId,
+      category_id: input.category_id,
+      period_month: periodMonth,
+      planned: Number(input.amount_planned ?? 0),
+      carry_rule: carryoverEnabled ? 'carry-positive' : 'none',
+      note: input.notes ?? null,
+    };
+
+    if (includeCarryover) {
+      row.carryover_enabled = carryoverEnabled;
+    }
+
+    return row;
+  };
+
+  const performUpsert = (includeCarryover: boolean) =>
+    supabase
+      .from('budgets')
+      .upsert(buildRow(includeCarryover), { onConflict: 'user_id,period_month,category_key' })
+      .select('id')
+      .maybeSingle();
+
+  let includeCarryover = true;
+  let { error } = await performUpsert(includeCarryover);
+
+  if (error && includeCarryover && isUndefinedColumnError(error)) {
+    includeCarryover = false;
+    ({ error } = await performUpsert(includeCarryover));
+  }
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
@@ -1211,16 +1269,26 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
   };
 
   const { error } = await supabase.rpc('bud_upsert', payload);
-  if (error) {
-    if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
-      throw new Error('Silakan login untuk menyimpan anggaran');
-    }
-    const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
-    }
-    throw error;
+  if (!error) {
+    return;
   }
+
+  if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
+    throw new Error('Silakan login untuk menyimpan anggaran');
+  }
+
+  if (isMissingBudUpsert(error)) {
+    try {
+      await fallbackUpsertMonthlyBudget(userId, input);
+      return;
+    } catch (fallbackError) {
+      throw fallbackError instanceof Error
+        ? fallbackError
+        : new Error('Gagal menyimpan anggaran tanpa fungsi bud_upsert');
+    }
+  }
+
+  throw error;
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
