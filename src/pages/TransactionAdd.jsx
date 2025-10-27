@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -24,8 +24,7 @@ import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { useMoneyTalk } from '../context/MoneyTalkContext';
-import { listAccounts, listCategories } from '../lib/api';
-import { listCategoriesExpense } from '../lib/budgetApi';
+import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
 import {
   createTransactionTemplate,
@@ -34,6 +33,7 @@ import {
 } from '../lib/transactionTemplatesApi';
 import { supabase } from '../lib/supabase';
 import { findMoneyTalkKeywordMatch } from '../lib/moneyTalkIntents';
+import useCategories from '../hooks/useCategories';
 
 const TYPE_OPTIONS = [
   {
@@ -139,7 +139,6 @@ export default function TransactionAdd({ onAdd }) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
@@ -151,16 +150,43 @@ export default function TransactionAdd({ onAdd }) {
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
 
+  const categoryTypes = useMemo(() => {
+    if (type === 'transfer') {
+      return ['expense', 'income'];
+    }
+    return [type];
+  }, [type]);
+
+  const {
+    data: categoryData,
+    isLoading: categoriesLoading,
+    error: categoriesError,
+    refresh: refreshCategories,
+  } = useCategories(categoryTypes);
+
+  const categories = categoryData;
+
+  const previousTypeRef = useRef(type);
+
+  useEffect(() => {
+    const previousType = previousTypeRef.current;
+    if (previousType !== type) {
+      if (
+        (previousType === 'expense' || previousType === 'income') &&
+        (type === 'expense' || type === 'income')
+      ) {
+        void refreshCategories();
+      }
+      previousTypeRef.current = type;
+    }
+  }, [type, refreshCategories]);
+
   useEffect(() => {
     let active = true;
     async function loadMasterData() {
       setLoading(true);
       try {
-        const [accountRows, expenseRows, incomeRows] = await Promise.all([
-          listAccounts(),
-          listCategoriesExpense(),
-          listCategories('income'),
-        ]);
+        const accountRows = await listAccounts();
         if (!active) return;
         const orderedAccounts = Array.isArray(accountRows)
           ? accountRows.filter(Boolean)
@@ -169,11 +195,6 @@ export default function TransactionAdd({ onAdd }) {
         if (orderedAccounts.length) {
           setAccountId((prev) => prev || orderedAccounts[0].id);
         }
-        const combinedCategories = [
-          ...(expenseRows || []),
-          ...((incomeRows || []).filter(Boolean)),
-        ];
-        setCategories(combinedCategories);
       } catch (err) {
         addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
@@ -252,17 +273,6 @@ export default function TransactionAdd({ onAdd }) {
   const filteredCategories = useMemo(() => {
     return categoriesByType[type] || [];
   }, [categoriesByType, type]);
-
-  const categoryEmptyMessage = useMemo(() => {
-    if (type === 'transfer') return null;
-    const baseMessage = type === 'income' ? 'Belum ada kategori pemasukan' : 'Belum ada kategori pengeluaran';
-    const baseList = categoriesByType[type] || [];
-    if (!baseList.length) return baseMessage;
-    if (!filteredCategories.length) {
-      return baseMessage;
-    }
-    return null;
-  }, [type, categoriesByType, filteredCategories.length]);
 
   useEffect(() => {
     if (type === 'transfer') return;
@@ -836,9 +846,54 @@ export default function TransactionAdd({ onAdd }) {
                     </select>
                     {errors.category_id ? (
                       <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
-                    ) : categoryEmptyMessage ? (
-                      <p className="mt-1 text-xs text-muted">{categoryEmptyMessage}</p>
-                    ) : null}
+                    ) : categoriesError ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-destructive">
+                        <span>{categoriesError.message || 'Gagal memuat kategori.'}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void refreshCategories();
+                          }}
+                          className="rounded-lg border border-destructive px-2 py-1 text-xs font-medium transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive"
+                        >
+                          Coba lagi
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        {categoriesLoading ? (
+                          <p className="mt-1 flex items-center gap-2 text-xs text-muted">
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                            Memuat kategori...
+                          </p>
+                        ) : null}
+                        {!categoriesLoading && filteredCategories.length === 0 ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                            <span>
+                              {type === 'income'
+                                ? 'Belum ada kategori pemasukan.'
+                                : 'Belum ada kategori pengeluaran.'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => navigate('/categories')}
+                              className="rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-text transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                            >
+                              Tambah Kategori
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void refreshCategories();
+                              }}
+                              className="rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-text transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                            >
+                              Refresh
+                            </button>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                 ) : null}
               </div>
