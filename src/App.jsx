@@ -50,6 +50,11 @@ import {
   listCategories as apiListCategories,
 } from "./lib/api";
 import { removeTransaction as apiDelete } from "./lib/api-transactions";
+import {
+  clearCloudDataMeta,
+  markCloudDataFetched,
+  shouldFetchCloudData,
+} from "./lib/cloudCache";
 
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
@@ -93,6 +98,20 @@ const BRAND_PRESETS = {
   violet: { h: 262, s: 83, l: 67 },
   amber: { h: 38, s: 92, l: 50 },
   rose: { h: 347, s: 77, l: 60 },
+};
+
+const CLOUD_CACHE_KEYS = {
+  categories: "categories",
+  transactions: "transactions",
+  budgets: "budgets",
+  budgetStatus: "budget-status",
+};
+
+const CLOUD_FETCH_TTL = {
+  categories: 30 * 60 * 1000,
+  transactions: 5 * 60 * 1000,
+  budgets: 15 * 60 * 1000,
+  budgetStatus: 10 * 60 * 1000,
 };
 
 function normalizeBudgetRecord(budget, overrides = {}) {
@@ -187,7 +206,15 @@ function loadInitial() {
   }
 }
 
-function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
+function ProtectedAppContainer({
+  theme,
+  setTheme,
+  brand,
+  setBrand,
+  onRefreshCloud = null,
+  cloudRefreshing = false,
+  cloudRefreshDisabled = false,
+}) {
   const location = useLocation();
   const prefersReducedMotion = usePrefersReducedMotion();
   const hideNav = location.pathname.startsWith("/add");
@@ -234,7 +261,13 @@ function ProtectedAppContainer({ theme, setTheme, brand, setBrand }) {
           />
         ) : null
       }
-      topbar={<AppTopbar />}
+      topbar={
+        <AppTopbar
+          onRefreshCloud={onRefreshCloud}
+          refreshing={cloudRefreshing}
+          cloudRefreshDisabled={cloudRefreshDisabled}
+        />
+      }
     >
       <div className="flex min-h-full flex-col">
         <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
@@ -278,9 +311,11 @@ function AppShell({ prefs, setPrefs }) {
   const [sessionUser, setSessionUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
+  const [cloudRefreshPending, setCloudRefreshPending] = useState(false);
   const syncedUsersRef = useRef(new Set());
   const budgetRetryTimeoutRef = useRef(null);
   const budgetRetryVisibilityHandlerRef = useRef(null);
+  const lastCloudUserRef = useRef(null);
   const syncGuestData = useCallback(async (userId) => {
     if (!userId) return;
     if (syncedUsersRef.current.has(userId)) return;
@@ -293,6 +328,11 @@ function AppShell({ prefs, setPrefs }) {
     }
   }, []);
   const useCloud = mode === "online";
+  useEffect(() => {
+    if (!useCloud) {
+      clearCloudDataMeta();
+    }
+  }, [useCloud]);
   const [catMeta, setCatMeta] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("hematwoi:v3:catMeta")) || {};
@@ -335,6 +375,14 @@ function AppShell({ prefs, setPrefs }) {
     useChallenges(data.txs);
   const { speak } = useMoneyTalk();
   window.__hw_prefs = prefs;
+
+  useEffect(() => {
+    const currentId = sessionUser?.id ?? null;
+    if (lastCloudUserRef.current !== currentId) {
+      clearCloudDataMeta();
+      lastCloudUserRef.current = currentId;
+    }
+  }, [sessionUser]);
 
   const navigate = useNavigate();
 
@@ -656,8 +704,10 @@ function AppShell({ prefs, setPrefs }) {
           expense: expenseRows.map((r) => r.name),
         },
       }));
+      return true;
     } catch (e) {
       console.error("fetch categories failed", e);
+      return false;
     }
   }, []);
 
@@ -665,14 +715,16 @@ function AppShell({ prefs, setPrefs }) {
     try {
       const res = await listTransactions({ pageSize: 1000 });
       setData((d) => ({ ...d, txs: res.rows || [] }));
+      return true;
     } catch (e) {
       console.error("fetch transactions failed", e);
+      return false;
     }
   }, []);
 
   const fetchBudgetsCloud = useCallback(async () => {
     try {
-      if (!sessionUser) return;
+      if (!sessionUser) return false;
       const { data: rows, error } = await supabase
         .from("budgets")
         .select("id, month, amount_planned:planned, carryover_enabled, notes, category_id")
@@ -724,6 +776,7 @@ function AppShell({ prefs, setPrefs }) {
         })
         .filter(Boolean);
       setData((d) => ({ ...d, budgets: mapped }));
+      return true;
     } catch (e) {
       console.error("fetch budgets failed", e);
       const isAbortError = e?.name === "AbortError";
@@ -766,14 +819,15 @@ function AppShell({ prefs, setPrefs }) {
           budgetRetryVisibilityHandlerRef.current = handler;
           document.addEventListener("visibilitychange", handler);
         }
-        return;
+        return false;
       }
-      if (isAbortError) return;
+      if (isAbortError) return false;
       if (message && message.toLowerCase().includes("failed to fetch")) {
-        return;
+        return false;
       }
       const detail = message ? `: ${message}` : "";
       addToast(`Gagal memuat data anggaran${detail}`, "error");
+      return false;
     }
   }, [sessionUser, categoryNameById, addToast]);
 
@@ -797,7 +851,7 @@ function AppShell({ prefs, setPrefs }) {
   }, []);
 
   const fetchBudgetStatusCloud = useCallback(async () => {
-    if (!sessionUser) return;
+    if (!sessionUser) return false;
     const toNumber = (value) => {
       const parsed = Number.parseFloat(value ?? 0);
       return Number.isFinite(parsed) ? parsed : 0;
@@ -815,27 +869,139 @@ function AppShell({ prefs, setPrefs }) {
         pct: toNumber(row?.pct),
       }));
       setData((d) => ({ ...d, budgetStatus: mapped }));
+      return true;
     } catch (e) {
       console.error("fetch budget status failed", e);
       setData((d) => ({ ...d, budgetStatus: [] }));
+      return false;
     }
   }, [sessionUser]);
 
+  const hasCategoryData = useMemo(() => {
+    const income = Array.isArray(data.cat?.income) ? data.cat.income.length : 0;
+    const expense = Array.isArray(data.cat?.expense) ? data.cat.expense.length : 0;
+    return income + expense > 0;
+  }, [data.cat]);
+  const hasTransactionData = useMemo(() => data.txs.length > 0, [data.txs]);
+  const hasBudgetData = useMemo(() => data.budgets.length > 0, [data.budgets]);
+  const hasBudgetStatusData = useMemo(
+    () => data.budgetStatus.length > 0,
+    [data.budgetStatus]
+  );
+
+  const maybeFetchCloud = useCallback(
+    async (
+      key,
+      fetcher,
+      { hasData = false, ttl = 5 * 60 * 1000, force = false } = {}
+    ) => {
+      if (!force) {
+        if (
+          typeof document !== "undefined" &&
+          document.visibilityState === "hidden"
+        ) {
+          return false;
+        }
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          return false;
+        }
+        if (hasData && !shouldFetchCloudData(key, ttl)) {
+          return false;
+        }
+      }
+      const success = await fetcher();
+      if (success) {
+        markCloudDataFetched(key);
+      }
+      return success;
+    },
+    []
+  );
+
+  const refreshCloudData = useCallback(
+    async ({ force = false, showIndicator = false } = {}) => {
+      if (!useCloud || !sessionUser) return;
+      if (showIndicator) setCloudRefreshPending(true);
+      try {
+        if (
+          showIndicator &&
+          typeof navigator !== "undefined" &&
+          navigator.onLine === false
+        ) {
+          addToast(
+            "Tidak ada koneksi internet. Coba lagi setelah tersambung.",
+            "error"
+          );
+          return;
+        }
+        await maybeFetchCloud(CLOUD_CACHE_KEYS.categories, fetchCategoriesCloud, {
+          hasData: hasCategoryData,
+          ttl: CLOUD_FETCH_TTL.categories,
+          force,
+        });
+        await maybeFetchCloud(CLOUD_CACHE_KEYS.transactions, fetchTxsCloud, {
+          hasData: hasTransactionData,
+          ttl: CLOUD_FETCH_TTL.transactions,
+          force,
+        });
+        await maybeFetchCloud(CLOUD_CACHE_KEYS.budgets, fetchBudgetsCloud, {
+          hasData: hasBudgetData,
+          ttl: CLOUD_FETCH_TTL.budgets,
+          force,
+        });
+        await maybeFetchCloud(
+          CLOUD_CACHE_KEYS.budgetStatus,
+          fetchBudgetStatusCloud,
+          {
+            hasData: hasBudgetStatusData,
+            ttl: CLOUD_FETCH_TTL.budgetStatus,
+            force,
+          }
+        );
+      } finally {
+        if (showIndicator) setCloudRefreshPending(false);
+      }
+    },
+    [
+      useCloud,
+      sessionUser,
+      addToast,
+      hasCategoryData,
+      hasTransactionData,
+      hasBudgetData,
+      hasBudgetStatusData,
+      maybeFetchCloud,
+      fetchCategoriesCloud,
+      fetchTxsCloud,
+      fetchBudgetsCloud,
+      fetchBudgetStatusCloud,
+    ]
+  );
+
   useEffect(() => {
-    if (useCloud && sessionUser) {
-      fetchCategoriesCloud();
-      fetchTxsCloud();
-      fetchBudgetsCloud();
-      fetchBudgetStatusCloud();
-    }
-  }, [
-    useCloud,
-    sessionUser,
-    fetchCategoriesCloud,
-    fetchTxsCloud,
-    fetchBudgetsCloud,
-    fetchBudgetStatusCloud,
-  ]);
+    if (!useCloud || !sessionUser) return;
+    void refreshCloudData();
+  }, [useCloud, sessionUser, refreshCloudData]);
+
+  useEffect(() => {
+    if (!useCloud || !sessionUser) return;
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void refreshCloudData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [useCloud, sessionUser, refreshCloudData]);
+
+  useEffect(() => {
+    if (!useCloud || !sessionUser) return;
+    const handleOnline = () => {
+      void refreshCloudData();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [useCloud, sessionUser, refreshCloudData]);
 
   const triggerMoneyTalk = (tx) => {
     const category = tx.category;
@@ -1155,6 +1321,19 @@ function AppShell({ prefs, setPrefs }) {
                     setTheme={setTheme}
                     brand={brand}
                     setBrand={handleBrandChange}
+                    onRefreshCloud={
+                      useCloud && sessionUser
+                        ? () =>
+                            refreshCloudData({
+                              force: true,
+                              showIndicator: true,
+                            })
+                        : null
+                    }
+                    cloudRefreshing={cloudRefreshPending}
+                    cloudRefreshDisabled={
+                      !useCloud || !sessionUser || cloudRefreshPending
+                    }
                   />
                 }
               >
