@@ -40,11 +40,11 @@ export default function CurrencyInput({
           placeholder=" "
           aria-invalid={Boolean(error)}
           {...props}
-          className="peer min-h-[44px] w-full rounded-2xl border border-border-subtle bg-surface-alt px-3 pb-1 pt-4 text-right text-sm text-text tabular-nums transition-colors placeholder:text-transparent focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60"
+          className="peer min-h-[48px] w-full rounded-2xl border border-border-subtle bg-surface-alt px-4 pb-1 pt-4 text-right text-sm text-text tabular-nums transition-colors placeholder:text-transparent focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45 disabled:cursor-not-allowed disabled:opacity-60"
         />
         <label
           htmlFor={id}
-          className="pointer-events-none absolute left-3 top-2 text-xs font-medium text-muted transition-all peer-placeholder-shown:top-3 peer-placeholder-shown:text-sm peer-placeholder-shown:text-muted peer-focus:top-1.5 peer-focus:text-xs peer-focus:text-primary"
+          className="pointer-events-none absolute left-4 top-2 text-xs font-medium text-muted transition-all peer-placeholder-shown:top-3 peer-placeholder-shown:text-sm peer-placeholder-shown:text-muted peer-focus:top-1.5 peer-focus:text-xs peer-focus:text-primary"
         >
           {label}
         </label>
