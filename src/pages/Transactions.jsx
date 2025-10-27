@@ -33,6 +33,7 @@ import {
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
+import { supabase } from "../lib/supabase";
 
 const TYPE_LABELS = {
   income: "Pemasukan",
@@ -139,6 +140,8 @@ const TRANSACTION_DATE_FORMATTER =
         year: "numeric",
       })
     : null;
+
+const SESSION_READY_EVENTS = new Set(["SIGNED_IN", "INITIAL_SESSION", "TOKEN_REFRESHED"]);
 
 function formatTransactionDate(value) {
   if (!value) return "";
@@ -1105,7 +1108,6 @@ export default function Transactions() {
             open={Boolean(editTarget)}
             onClose={() => setEditTarget(null)}
             initialData={editTarget}
-            categories={categories}
             onSuccess={() => {
               refresh({ keepPage: true });
               setSelectedIds(new Set());
@@ -1406,56 +1408,294 @@ function getInitialNotesValue(data) {
   return legacyNote;
 }
 
-function TransactionFormDialog({ open, onClose, initialData, categories, onSuccess, addToast }) {
-  const isEdit = Boolean(initialData);
-  const [loading, setLoading] = useState(true);
+function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast }) {
+  const navigate = useNavigate();
+  const isEdit = Boolean(initialData?.id);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
+  const [transactionLoading, setTransactionLoading] = useState(false);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [loadError, setLoadError] = useState(null);
   const [type, setType] = useState(initialData?.type || "expense");
   const [amount, setAmount] = useState(() =>
     formatAmountDisplay(initialData?.amount ?? ""),
   );
   const [date, setDate] = useState(() => toDateInput(initialData?.date) || new Date().toISOString().slice(0, 10));
-  const [categoryId, setCategoryId] = useState(initialData?.category_id || "");
+  const [categoryId, setCategoryId] = useState(initialData?.category_id ? String(initialData.category_id) : "");
   const [title, setTitle] = useState(initialData?.title || "");
   const [notes, setNotes] = useState(() => getInitialNotesValue(initialData));
   const [accountId, setAccountId] = useState(initialData?.account_id || "");
   const [toAccountId, setToAccountId] = useState(initialData?.to_account_id || "");
   const [receiptUrl, setReceiptUrl] = useState(initialData?.receipt_url || "");
-  const initialMerchantId = initialData?.merchant_id ?? null;
+  const [merchantId, setMerchantId] = useState(initialData?.merchant_id ?? null);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
+  const [categoriesError, setCategoriesError] = useState(null);
+  const [categoryHint, setCategoryHint] = useState("");
+  const [lastCategoriesType, setLastCategoriesType] = useState(null);
+  const userIdRef = useRef(null);
+  const authSubscriptionRef = useRef(null);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      authSubscriptionRef.current?.unsubscribe?.();
+      authSubscriptionRef.current = null;
+    };
+  }, []);
+
+  const ensureSession = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        throw error;
+      }
+      const session = data?.session;
+      if (session?.user) {
+        userIdRef.current = session.user.id;
+        return session;
+      }
+      return await new Promise((resolve, reject) => {
+        const { data: subscriptionData, error: subscriptionError } = supabase.auth.onAuthStateChange(
+          (event, sessionEvent) => {
+            if (!SESSION_READY_EVENTS.has(event)) {
+              return;
+            }
+            if (!sessionEvent?.user) {
+              return;
+            }
+            subscriptionData.subscription.unsubscribe();
+            if (authSubscriptionRef.current === subscriptionData.subscription) {
+              authSubscriptionRef.current = null;
+            }
+            userIdRef.current = sessionEvent.user.id;
+            resolve(sessionEvent);
+          },
+        );
+        if (subscriptionError) {
+          subscriptionData?.subscription.unsubscribe();
+          if (authSubscriptionRef.current === subscriptionData?.subscription) {
+            authSubscriptionRef.current = null;
+          }
+          reject(subscriptionError);
+          return;
+        }
+        authSubscriptionRef.current = subscriptionData.subscription;
+      });
+    } catch (err) {
+      console.error("[edit:tx:get] session error", err);
+      throw err;
+    }
+  }, []);
+
+  const loadCategoriesForType = useCallback(
+    async (targetType, currentCategoryId, options = {}) => {
+      const { skipFallback = false, userIdOverride } = options;
+      const normalizedType =
+        targetType === "income" ? "income" : targetType === "transfer" ? "transfer" : "expense";
+      const normalizedId = currentCategoryId ? String(currentCategoryId) : "";
+      if (normalizedType === "transfer") {
+        if (!mountedRef.current) return;
+        setCategoriesError(null);
+        setCategoryOptions([]);
+        setCategoriesLoading(false);
+        setLastCategoriesType("transfer");
+        setCategoryHint("");
+        return;
+      }
+      setCategoriesLoading(true);
+      setCategoriesError(null);
+      try {
+        let userId = userIdOverride || userIdRef.current;
+        if (!userId) {
+          const session = await ensureSession();
+          userId = session?.user?.id ?? null;
+        }
+        if (!userId) {
+          throw new Error("Session tidak tersedia");
+        }
+        userIdRef.current = userId;
+        const { data, error } = await supabase
+          .from("categories")
+          .select("id,user_id,type,name,group_name,order_index")
+          .eq("user_id", userId)
+          .eq("type", normalizedType)
+          .order("order_index", { ascending: true, nullsFirst: true })
+          .order("name", { ascending: true });
+        if (error) {
+          throw error;
+        }
+        if (!mountedRef.current) {
+          return;
+        }
+        const baseOptions = (data ?? []).map((cat) => ({
+          ...cat,
+          id: String(cat.id),
+          user_id: cat.user_id ? String(cat.user_id) : "",
+          mismatch: false,
+        }));
+        setCategoryOptions(baseOptions);
+        setLastCategoriesType(normalizedType);
+        console.log("[edit:cats:list]", { type: normalizedType, count: baseOptions.length });
+        if (normalizedId) {
+          const exists = baseOptions.some((cat) => cat.id === normalizedId);
+          if (exists) {
+            setCategoryHint("");
+          }
+        }
+        if (normalizedId && !skipFallback) {
+          const exists = baseOptions.some((cat) => cat.id === normalizedId);
+          if (!exists) {
+            console.log("[edit:cats:fallback]", { type: normalizedType, categoryId: normalizedId });
+            const { data: fallbackData, error: fallbackError } = await supabase
+              .from("categories")
+              .select("id,user_id,type,name,group_name,order_index")
+              .eq("user_id", userId)
+              .eq("id", normalizedId)
+              .maybeSingle();
+            if (fallbackError) {
+              console.error("[edit:cats:fallback]", {
+                type: normalizedType,
+                categoryId: normalizedId,
+                error: fallbackError,
+              });
+            } else if (fallbackData) {
+              if (!mountedRef.current) {
+                return;
+              }
+              const fallbackOption = {
+                ...fallbackData,
+                id: String(fallbackData.id),
+                user_id: fallbackData.user_id ? String(fallbackData.user_id) : "",
+                mismatch: fallbackData.type !== normalizedType,
+              };
+              setCategoryOptions((prev) => {
+                const existsInPrev = prev.some((item) => item.id === fallbackOption.id);
+                if (existsInPrev) {
+                  return prev.map((item) => (item.id === fallbackOption.id ? { ...fallbackOption } : item));
+                }
+                return [...prev, fallbackOption];
+              });
+              if (fallbackOption.mismatch) {
+                setCategoryHint((prev) => prev || "Kategori ini tidak cocok dengan tipe transaksi saat ini.");
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[edit:cats:list]", { type: normalizedType, error: err });
+        if (!mountedRef.current) return;
+        const resolvedError = err instanceof Error ? err : new Error("Gagal memuat kategori");
+        setCategoryOptions([]);
+        setCategoriesError(resolvedError);
+      } finally {
+        if (mountedRef.current) {
+          setCategoriesLoading(false);
+        }
+      }
+    },
+    [ensureSession],
+  );
+
+  const loadTransactionData = useCallback(async () => {
+    if (!isEdit || !initialData?.id) {
+      return;
+    }
+    setLoadError(null);
+    setTransactionLoading(true);
+    const transactionId = String(initialData.id);
+    try {
+      const session = await ensureSession();
+      const userId = session?.user?.id ?? userIdRef.current;
+      if (!userId) {
+        throw new Error("Session tidak tersedia");
+      }
+      userIdRef.current = userId;
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("id,user_id,type,category_id,amount,date,title,notes,account_id,to_account_id,receipt_url,merchant_id")
+        .eq("id", transactionId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (error) {
+        throw error;
+      }
+      if (!data) {
+        throw new Error("Transaksi tidak ditemukan");
+      }
+      if (!mountedRef.current) {
+        return;
+      }
+      const normalizedCategoryId = data.category_id ? String(data.category_id) : "";
+      const normalizedType = data.type || "expense";
+      setType(normalizedType);
+      setAmount(formatAmountDisplay(data.amount ?? ""));
+      setDate(toDateInput(data.date) || new Date().toISOString().slice(0, 10));
+      setCategoryId(normalizedCategoryId);
+      setTitle(data.title || "");
+      setNotes(getInitialNotesValue(data));
+      setAccountId(data.account_id || "");
+      setToAccountId(data.to_account_id || "");
+      setReceiptUrl(data.receipt_url || "");
+      setMerchantId(data.merchant_id ?? null);
+      setCategoryHint("");
+      console.log("[edit:tx:get]", {
+        id: String(data.id),
+        type: normalizedType,
+        category_id: normalizedCategoryId || null,
+      });
+      console.log("[edit:select:value]", { type: normalizedType, value: normalizedCategoryId || "" });
+      await loadCategoriesForType(normalizedType, normalizedCategoryId, {
+        userIdOverride: userId,
+      });
+    } catch (err) {
+      console.error("[edit:tx:get]", { id: transactionId, error: err });
+      if (mountedRef.current) {
+        const resolvedError = err instanceof Error ? err : new Error("Gagal memuat transaksi");
+        setLoadError(resolvedError);
+      }
+    } finally {
+      if (mountedRef.current) {
+        setTransactionLoading(false);
+      }
+    }
+  }, [isEdit, initialData?.id, ensureSession, loadCategoriesForType]);
 
   useEffect(() => {
     if (!open) return;
-    setLoading(true);
+    let cancelled = false;
+    setAccountsLoading(true);
     listAccounts()
       .then((accountRows) => {
+        if (cancelled || !mountedRef.current) return;
         setAccounts(accountRows || []);
-        setLoading(false);
       })
       .catch((err) => {
+        if (cancelled || !mountedRef.current) return;
         console.error(err);
         addToast(err?.message || "Gagal memuat master data", "error");
-        setLoading(false);
+      })
+      .finally(() => {
+        if (cancelled || !mountedRef.current) return;
+        setAccountsLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [open, addToast]);
 
   useEffect(() => {
-    if (!open || !initialData) return;
-    setType(initialData.type || "expense");
-    setAmount(formatAmountDisplay(initialData.amount ?? ""));
-    setDate(toDateInput(initialData.date) || new Date().toISOString().slice(0, 10));
-    setCategoryId(initialData.category_id || "");
-    setTitle(initialData.title || "");
-    setNotes(getInitialNotesValue(initialData));
-    setAccountId(initialData.account_id || "");
-    setToAccountId(initialData.to_account_id || "");
-    setReceiptUrl(initialData.receipt_url || "");
-  }, [open, initialData]);
+    if (!open) return;
+    if (!isEdit) {
+      setLoadError(new Error("Data transaksi tidak ditemukan"));
+      return;
+    }
+    void loadTransactionData();
+  }, [open, isEdit, loadTransactionData]);
 
-  const categoryOptions = useMemo(() => {
-    return (categories || []).filter((cat) => cat.type === type);
-  }, [categories, type]);
-
+  const loading = accountsLoading || transactionLoading;
   const isTransfer = type === "transfer";
 
   useEffect(() => {
@@ -1463,6 +1703,58 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
       setToAccountId("");
     }
   }, [isTransfer]);
+
+  const handleTypeChange = useCallback(
+    (event) => {
+      const nextType = event.target.value;
+      setType(nextType);
+      if (nextType === "transfer") {
+        if (categoryId) {
+          setCategoryId("");
+          console.log("[edit:select:value]", { type: nextType, value: "" });
+        }
+        setCategoryHint("");
+        void loadCategoriesForType(nextType, "", { skipFallback: true });
+        return;
+      }
+      if (lastCategoriesType && lastCategoriesType !== nextType) {
+        if (categoryId) {
+          setCategoryId("");
+          console.log("[edit:select:value]", { type: nextType, value: "" });
+        }
+        setCategoryHint("Kategori sebelumnya tidak cocok dengan tipe ini.");
+        void loadCategoriesForType(nextType, "", { skipFallback: true });
+        return;
+      }
+      setCategoryHint("");
+      console.log("[edit:select:value]", { type: nextType, value: categoryId || "" });
+      void loadCategoriesForType(nextType, categoryId || "");
+    },
+    [categoryId, lastCategoriesType, loadCategoriesForType],
+  );
+
+  const handleCategoryChange = useCallback(
+    (event) => {
+      const nextValue = event.target.value || "";
+      setCategoryId(nextValue);
+      setCategoryHint("");
+      console.log("[edit:select:value]", { type, value: nextValue });
+    },
+    [type],
+  );
+
+  const handleRefreshCategories = useCallback(() => {
+    void loadCategoriesForType(type, categoryId || "");
+  }, [loadCategoriesForType, type, categoryId]);
+
+  const handleReloadTransaction = useCallback(() => {
+    void loadTransactionData();
+  }, [loadTransactionData]);
+
+  const handleNavigateToCategories = useCallback(() => {
+    onClose?.();
+    navigate("/categories");
+  }, [navigate, onClose]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -1505,7 +1797,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
         notes,
         account_id: accountId || null,
         to_account_id: isTransfer ? toAccountId || null : null,
-        merchant_id: initialMerchantId,
+        merchant_id: merchantId,
         receipt_url: receiptUrl || null,
       };
       await updateTransaction(initialData.id, payload);
@@ -1526,6 +1818,26 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
         <div className="flex items-center justify-center py-12 text-white/70">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
+      ) : loadError ? (
+        <div className="space-y-4 text-sm text-white/80">
+          <p>{loadError.message || "Gagal memuat transaksi. Coba muat ulang."}</p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleReloadTransaction}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
       ) : (
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1533,14 +1845,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
               <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Jenis</span>
               <select
                 value={type}
-                onChange={(event) => {
-                  const nextType = event.target.value;
-                  setType(nextType);
-                  const nextOptions = (categories || []).filter((cat) => cat.type === nextType);
-                  if (!nextOptions.some((cat) => cat.id === categoryId)) {
-                    setCategoryId(nextOptions[0]?.id || "");
-                  }
-                }}
+                onChange={handleTypeChange}
                 className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
               >
                 <option value="expense">Pengeluaran</option>
@@ -1568,21 +1873,51 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
               />
             </label>
             {!isTransfer && (
-              <label className="flex flex-col gap-2 text-sm">
+              <div className="flex flex-col gap-2 text-sm">
                 <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Kategori</span>
                 <select
                   value={categoryId}
-                  onChange={(event) => setCategoryId(event.target.value)}
-                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                  onChange={handleCategoryChange}
+                  disabled={categoriesLoading}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <option value="">Pilih kategori</option>
+                  <option value="">{categoriesLoading ? "Memuat kategori..." : "Pilih kategori"}</option>
                   {categoryOptions.map((cat) => (
                     <option key={cat.id} value={cat.id}>
                       {cat.name}
+                      {cat.mismatch ? " (tipe berbeda)" : ""}
                     </option>
                   ))}
                 </select>
-              </label>
+                {categoriesLoading ? (
+                  <span className="text-xs text-white/50">Memuat kategori...</span>
+                ) : null}
+                {categoriesError ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-amber-200">Gagal memuat kategori. Coba muat ulang.</p>
+                    <button
+                      type="button"
+                      onClick={handleRefreshCategories}
+                      className="inline-flex w-max items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                ) : null}
+                {!categoriesLoading && !categoriesError && categoryOptions.length === 0 ? (
+                  <div className="space-y-1 text-xs text-white/50">
+                    <p>Belum ada kategori untuk tipe ini.</p>
+                    <button
+                      type="button"
+                      onClick={handleNavigateToCategories}
+                      className="inline-flex w-max items-center justify-center rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-semibold text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                    >
+                      Tambah Kategori
+                    </button>
+                  </div>
+                ) : null}
+                {categoryHint ? <p className="text-xs text-amber-200">{categoryHint}</p> : null}
+              </div>
             )}
             {isTransfer ? (
               <>
