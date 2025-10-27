@@ -190,8 +190,17 @@ export default function AuthLogin() {
   return (
     <ErrorBoundary>
       <main className="min-h-screen w-full bg-surface text-text">
-        <div className="grid min-h-screen grid-cols-1 gap-y-10 lg:grid-cols-[0.44fr_0.56fr]">
-          <section className="flex flex-col justify-center px-6 py-12 sm:px-12 lg:px-16">
+        <div className="grid min-h-screen grid-cols-1 gap-y-10 lg:grid-cols-[0.56fr_0.44fr]">
+          <aside className="hidden flex-col justify-center px-6 pb-16 pt-0 sm:px-12 sm:pb-20 lg:order-1 lg:flex lg:px-16 lg:py-12">
+            <div className="flex w-full grow items-center justify-center">
+              <div
+                className="h-full w-full min-h-[320px] rounded-3xl border border-border-subtle bg-surface-alt"
+                aria-hidden="true"
+              />
+            </div>
+          </aside>
+
+          <section className="flex flex-col justify-center px-6 py-12 sm:px-12 lg:order-2 lg:px-16">
             <div className="mx-auto flex w-full max-w-md flex-col gap-10">
               <header className="space-y-3">
                 <div className="flex items-center gap-3">
@@ -263,6 +272,7 @@ export default function AuthLogin() {
                       name="identifier"
                       type="text"
                       autoComplete="username"
+                      autoFocus
                       required
                       value={form.identifier}
                       onChange={handleFieldChange('identifier')}
@@ -349,14 +359,6 @@ export default function AuthLogin() {
             </div>
           </section>
 
-          <aside className="hidden flex-col justify-center px-6 pb-16 pt-0 sm:px-12 sm:pb-20 lg:flex lg:px-16 lg:py-12">
-            <div className="flex w-full grow items-center justify-center">
-              <div
-                className="h-full w-full min-h-[320px] rounded-3xl border border-border-subtle bg-surface-alt"
-                aria-hidden="true"
-              />
-            </div>
-          </aside>
         </div>
       </main>
     </ErrorBoundary>
