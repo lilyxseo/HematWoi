@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
@@ -24,8 +24,7 @@ import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { useMoneyTalk } from '../context/MoneyTalkContext';
-import { listAccounts, listCategories } from '../lib/api';
-import { listCategoriesExpense } from '../lib/budgetApi';
+import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
 import {
   createTransactionTemplate,
@@ -34,6 +33,7 @@ import {
 } from '../lib/transactionTemplatesApi';
 import { supabase } from '../lib/supabase';
 import { findMoneyTalkKeywordMatch } from '../lib/moneyTalkIntents';
+import useCategories from '../hooks/useCategories';
 
 const TYPE_OPTIONS = [
   {
@@ -139,7 +139,6 @@ export default function TransactionAdd({ onAdd }) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState('');
@@ -151,16 +150,27 @@ export default function TransactionAdd({ onAdd }) {
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
 
+  const categoryTypes = useMemo(() => {
+    if (type === 'income' || type === 'expense') {
+      return [type];
+    }
+    return undefined;
+  }, [type]);
+
+  const {
+    data: categories,
+    isLoading: categoriesLoading,
+    error: categoriesError,
+    refresh: refreshCategories,
+  } = useCategories(categoryTypes);
+  const previousCategoryTypeRef = useRef(type);
+
   useEffect(() => {
     let active = true;
     async function loadMasterData() {
       setLoading(true);
       try {
-        const [accountRows, expenseRows, incomeRows] = await Promise.all([
-          listAccounts(),
-          listCategoriesExpense(),
-          listCategories('income'),
-        ]);
+        const accountRows = await listAccounts();
         if (!active) return;
         const orderedAccounts = Array.isArray(accountRows)
           ? accountRows.filter(Boolean)
@@ -169,11 +179,6 @@ export default function TransactionAdd({ onAdd }) {
         if (orderedAccounts.length) {
           setAccountId((prev) => prev || orderedAccounts[0].id);
         }
-        const combinedCategories = [
-          ...(expenseRows || []),
-          ...((incomeRows || []).filter(Boolean)),
-        ];
-        setCategories(combinedCategories);
       } catch (err) {
         addToast(err?.message || 'Gagal memuat master data', 'error');
       } finally {
@@ -213,6 +218,17 @@ export default function TransactionAdd({ onAdd }) {
   }, [type]);
 
   useEffect(() => {
+    if (type !== 'income' && type !== 'expense') {
+      previousCategoryTypeRef.current = type;
+      return;
+    }
+    if (previousCategoryTypeRef.current !== type) {
+      refreshCategories();
+    }
+    previousCategoryTypeRef.current = type;
+  }, [type, refreshCategories]);
+
+  useEffect(() => {
     if (type !== 'transfer') return;
     if (toAccountId && toAccountId === accountId) {
       setToAccountId('');
@@ -239,39 +255,22 @@ export default function TransactionAdd({ onAdd }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [navigate]);
 
-  const categoriesByType = useMemo(() => {
-    const grouped = { income: [], expense: [] };
-    categories.forEach((item) => {
-      const key = (item.type || 'expense').toLowerCase();
-      if (!grouped[key]) grouped[key] = [];
-      grouped[key].push(item);
-    });
-    return grouped;
-  }, [categories]);
-
-  const filteredCategories = useMemo(() => {
-    return categoriesByType[type] || [];
-  }, [categoriesByType, type]);
-
   const categoryEmptyMessage = useMemo(() => {
-    if (type === 'transfer') return null;
-    const baseMessage = type === 'income' ? 'Belum ada kategori pemasukan' : 'Belum ada kategori pengeluaran';
-    const baseList = categoriesByType[type] || [];
-    if (!baseList.length) return baseMessage;
-    if (!filteredCategories.length) {
-      return baseMessage;
+    if (type !== 'income' && type !== 'expense') return null;
+    if (categoriesLoading) return null;
+    if (!categories.length) {
+      return type === 'income' ? 'Belum ada kategori pemasukan' : 'Belum ada kategori pengeluaran';
     }
     return null;
-  }, [type, categoriesByType, filteredCategories.length]);
+  }, [type, categoriesLoading, categories.length]);
 
   useEffect(() => {
-    if (type === 'transfer') return;
-    const list = categoriesByType[type] || [];
-    if (!list.length) return;
-    if (!categoryId || !list.some((item) => item.id === categoryId)) {
-      setCategoryId(list[0].id);
+    if (type !== 'income' && type !== 'expense') return;
+    if (!categories.length) return;
+    if (!categoryId || !categories.some((item) => item.id === categoryId)) {
+      setCategoryId(categories[0].id);
     }
-  }, [categoriesByType, categoryId, type]);
+  }, [categories, categoryId, type]);
 
   const selectedAccount = accounts.find((item) => item.id === accountId);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
@@ -283,6 +282,7 @@ export default function TransactionAdd({ onAdd }) {
   );
 
   const isTransfer = type === 'transfer';
+  const showCategoryActions = !isTransfer && !categoriesLoading && categories.length === 0;
   const amountValue = parseAmount(amountInput);
   const trimmedTitle = title.trim();
   const trimmedNotes = notes.trim();
@@ -307,6 +307,10 @@ export default function TransactionAdd({ onAdd }) {
     ? 'Struk akan tersimpan bersama transaksi ini.'
     : 'Unggah struk untuk dokumentasi dan audit.';
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
+
+  const initialLoading =
+    loading ||
+    ((type === 'income' || type === 'expense') && categoriesLoading && categories.length === 0);
 
   const handleAmountChange = (event) => {
     const formatted = formatAmountInputValue(event.target.value);
@@ -612,7 +616,7 @@ export default function TransactionAdd({ onAdd }) {
     }
   };
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <Page>
         <Section first className="mx-auto max-w-3xl">
@@ -814,8 +818,13 @@ export default function TransactionAdd({ onAdd }) {
                 {!isTransfer ? (
                   <div>
                     <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                      <TagIcon className="h-4 w-4" aria-hidden="true" />
-                      Kategori
+                      <span className="flex items-center gap-2">
+                        <TagIcon className="h-4 w-4" aria-hidden="true" />
+                        Kategori
+                        {categoriesLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted" aria-hidden="true" />
+                        ) : null}
+                      </span>
                     </label>
                     <select
                       id="category"
@@ -825,10 +834,10 @@ export default function TransactionAdd({ onAdd }) {
                         setErrors((prev) => ({ ...prev, category_id: undefined }));
                       }}
                       className={INPUT_CLASS}
-                      disabled={filteredCategories.length === 0}
+                      disabled={categoriesLoading || categories.length === 0}
                     >
                       <option value="">Pilih kategori</option>
-                      {filteredCategories.map((category) => (
+                      {categories.map((category) => (
                         <option key={category.id} value={category.id}>
                           {category.name}
                         </option>
@@ -836,8 +845,35 @@ export default function TransactionAdd({ onAdd }) {
                     </select>
                     {errors.category_id ? (
                       <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
-                    ) : categoryEmptyMessage ? (
-                      <p className="mt-1 text-xs text-muted">{categoryEmptyMessage}</p>
+                    ) : categoriesError ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-destructive">
+                        <span>{categoriesError}</span>
+                        <button
+                          type="button"
+                          onClick={refreshCategories}
+                          className="font-medium underline"
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                    ) : showCategoryActions && categoryEmptyMessage ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                        <span>{categoryEmptyMessage}</span>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/categories')}
+                          className="font-medium text-primary underline"
+                        >
+                          Tambah Kategori
+                        </button>
+                        <button
+                          type="button"
+                          onClick={refreshCategories}
+                          className="font-medium text-primary underline"
+                        >
+                          Refresh
+                        </button>
+                      </div>
                     ) : null}
                   </div>
                 ) : null}
