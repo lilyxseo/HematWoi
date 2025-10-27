@@ -1406,12 +1406,20 @@ function getInitialNotesValue(data) {
   return legacyNote;
 }
 
+function normalizeTransactionType(value) {
+  const lower = typeof value === "string" ? value.toLowerCase() : "";
+  if (lower === "income" || lower === "expense" || lower === "transfer") {
+    return lower;
+  }
+  return "expense";
+}
+
 function TransactionFormDialog({ open, onClose, initialData, categories, onSuccess, addToast }) {
   const isEdit = Boolean(initialData);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
-  const [type, setType] = useState(initialData?.type || "expense");
+  const [type, setType] = useState(() => normalizeTransactionType(initialData?.type));
   const [amount, setAmount] = useState(() =>
     formatAmountDisplay(initialData?.amount ?? ""),
   );
@@ -1441,7 +1449,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
 
   useEffect(() => {
     if (!open || !initialData) return;
-    setType(initialData.type || "expense");
+    setType(normalizeTransactionType(initialData.type));
     setAmount(formatAmountDisplay(initialData.amount ?? ""));
     setDate(toDateInput(initialData.date) || new Date().toISOString().slice(0, 10));
     setCategoryId(initialData.category_id || "");
@@ -1534,7 +1542,7 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
               <select
                 value={type}
                 onChange={(event) => {
-                  const nextType = event.target.value;
+                  const nextType = normalizeTransactionType(event.target.value);
                   setType(nextType);
                   const nextOptions = (categories || []).filter((cat) => cat.type === nextType);
                   if (!nextOptions.some((cat) => cat.id === categoryId)) {
