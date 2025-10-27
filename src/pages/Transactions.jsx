@@ -1453,8 +1453,23 @@ function TransactionFormDialog({ open, onClose, initialData, categories, onSucce
   }, [open, initialData]);
 
   const categoryOptions = useMemo(() => {
-    return (categories || []).filter((cat) => cat.type === type);
-  }, [categories, type]);
+    const available = (categories || []).filter((cat) => cat.type === type);
+    if (!initialData?.category_id) {
+      return available;
+    }
+
+    const alreadyIncluded = available.some((cat) => cat.id === initialData.category_id);
+    if (alreadyIncluded) {
+      return available;
+    }
+
+    const matchingCategory = (categories || []).find((cat) => cat.id === initialData.category_id);
+    if (!matchingCategory) {
+      return available;
+    }
+
+    return [...available, matchingCategory];
+  }, [categories, type, initialData?.category_id]);
 
   const isTransfer = type === "transfer";
 
