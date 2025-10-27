@@ -523,7 +523,7 @@ export default function SalarySimulationPage() {
             category_id: item.categoryId,
             period,
             amount_planned: item.amount,
-            carryover_enabled: existing?.carryover_enabled ?? false,
+            carryover_enabled: false,
             notes: existing?.notes ?? undefined,
           });
         }),
