@@ -127,6 +127,23 @@ interface RawBudgetRow {
   categories?: RawBudgetCategory | null;
 }
 
+interface RawWeeklyBudgetRow {
+  id: string;
+  user_id: string;
+  category_id: string;
+  amount_planned?: number | string | null;
+  planned_amount?: number | string | null;
+  carryover_enabled?: boolean | null;
+  carryover?: boolean | null;
+  notes?: string | null;
+  note?: string | null;
+  week_start?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  category?: RawBudgetCategory | null;
+  categories?: RawBudgetCategory | null;
+}
+
 function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
   const amountCandidates = [
     parseBudgetNumeric(row.amount_planned),
@@ -174,6 +191,56 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
     carryover_enabled: resolvedCarry,
     notes: normalizedNotes,
     period_month: normalizePeriodMonth(row.period_month ?? row.period ?? row.month ?? null),
+    created_at: createdAt,
+    updated_at: updatedAt,
+    category,
+  };
+}
+
+function normalizeWeeklyBudgetRow(row: RawWeeklyBudgetRow): WeeklyBudgetRow {
+  const amountCandidates = [
+    parseBudgetNumeric(row.amount_planned),
+    parseBudgetNumeric(row.planned_amount),
+  ];
+  const resolvedAmount = amountCandidates.find((value) => value != null) ?? 0;
+
+  const carryCandidates: Array<boolean | null | undefined> = [
+    row.carryover_enabled,
+    row.carryover,
+  ];
+  const resolvedCarry = carryCandidates.find((value): value is boolean => typeof value === 'boolean') ?? false;
+
+  const noteValue = row.notes ?? row.note ?? null;
+  const normalizedNotes = noteValue != null ? String(noteValue) : null;
+
+  const rawCategory = row.category ?? row.categories ?? null;
+  let category: WeeklyBudgetRow['category'] = null;
+  if (rawCategory && (rawCategory.id || rawCategory.name)) {
+    const categoryIdValue = rawCategory.id ?? row.category_id ?? null;
+    if (categoryIdValue) {
+      category = {
+        id: String(categoryIdValue) as UUID,
+        name: String(rawCategory.name ?? ''),
+        type: (rawCategory.type ?? rawCategory.category_type ?? null) as 'income' | 'expense' | null,
+      };
+    }
+  }
+
+  const rawWeekStart = row.week_start ?? new Date().toISOString().slice(0, 10);
+  const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
+
+  const createdAt = row.created_at ? String(row.created_at) : new Date().toISOString();
+  const updatedAtBase = row.updated_at ?? row.created_at;
+  const updatedAt = updatedAtBase ? String(updatedAtBase) : createdAt;
+
+  return {
+    id: String(row.id) as UUID,
+    user_id: String(row.user_id) as UUID,
+    category_id: String(row.category_id) as UUID,
+    amount_planned: Number(resolvedAmount),
+    carryover_enabled: resolvedCarry,
+    notes: normalizedNotes,
+    week_start: normalizedWeekStart,
     created_at: createdAt,
     updated_at: updatedAt,
     category,
@@ -974,7 +1041,7 @@ function normalizeWeekStart(input: string): string {
   return getWeekStartForDate(parseIsoDate(input));
 }
 
-export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promise<void> {
+export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promise<WeeklyBudgetRow> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
 
@@ -988,46 +1055,39 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
   }
 
   const normalizedWeekStart = normalizeWeekStart(input.week_start);
-  const sharedPayload = {
-    category_id: input.category_id,
-    planned_amount: Number(input.amount_planned ?? 0),
-    week_start: normalizedWeekStart,
-    carryover_enabled: Boolean(input.carryover_enabled),
-    notes: input.notes ?? null,
+  const payload = {
+    p_category_id: input.category_id,
+    p_week_start: normalizedWeekStart,
+    p_planned_amount: Number(input.amount_planned ?? 0),
+    p_carryover_enabled: Boolean(input.carryover_enabled),
+    p_notes: input.notes ?? null,
   };
 
-  if (input.id) {
-    const { error } = await supabase
-      .from('budgets_weekly')
-      .update(sharedPayload)
-      .eq('user_id', userId)
-      .eq('id', input.id);
-    if (error) {
-      const errorCode = (error as { code?: string } | null)?.code;
-      if (errorCode === '23505') {
-        throw new Error('Anggaran untuk kategori dan minggu ini sudah ada');
-      }
-      throw error;
-    }
-    return;
-  }
-
-  const insertPayload = {
-    ...sharedPayload,
-    user_id: userId,
-  };
-
-  const { error } = await supabase
-    .from('budgets_weekly')
-    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' });
+  const { data, error } = await supabase.rpc('bud_weekly_upsert', payload);
 
   if (error) {
-    const errorCode = (error as { code?: string } | null)?.code;
-    if (errorCode === '23505') {
-      throw new Error('Anggaran untuk kategori dan minggu ini sudah ada');
+    console.error('[bud_upsert]', {
+      message: error.message,
+      details: (error as any)?.details,
+      hint: (error as any)?.hint,
+      function: 'bud_weekly_upsert',
+      payload,
+    });
+    if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
+      throw new Error('Silakan login untuk menyimpan anggaran');
     }
-    throw error;
+    const msg = (error.message || '').toLowerCase();
+    if (error.code === '404' || msg.includes('bud_weekly_upsert')) {
+      throw new Error('Fungsi bud_weekly_upsert belum tersedia, jalankan migrasi SQL di server');
+    }
+    throw new Error(error.message || 'Gagal menyimpan anggaran mingguan');
   }
+
+  if (!data) {
+    throw new Error('Tidak ada data yang dikembalikan dari bud_weekly_upsert');
+  }
+
+  return normalizeWeeklyBudgetRow(data as RawWeeklyBudgetRow);
 }
 
 export async function deleteWeeklyBudget(id: UUID): Promise<void> {
@@ -1188,7 +1248,7 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
   };
 }
 
-export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
+export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
 
@@ -1204,23 +1264,36 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<void> {
 
   const payload = {
     p_category_id: input.category_id,
-    p_amount_planned: Number(input.amount_planned ?? 0),
-    p_period_month: toMonthStart(input.period), // 'YYYY-MM-01'
+    p_month: toMonthStart(input.period),
+    p_amount: Number(input.amount_planned ?? 0),
     p_carryover_enabled: Boolean(input.carryover_enabled),
     p_notes: input.notes ?? null,
   };
 
-  const { error } = await supabase.rpc('bud_upsert', payload);
+  const { data, error } = await supabase.rpc('bud_monthly_upsert', payload);
   if (error) {
+    console.error('[bud_upsert]', {
+      message: error.message,
+      details: (error as any)?.details,
+      hint: (error as any)?.hint,
+      function: 'bud_monthly_upsert',
+      payload,
+    });
     if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
       throw new Error('Silakan login untuk menyimpan anggaran');
     }
     const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_upsert belum tersedia, jalankan migrasi SQL di server');
+    if (error.code === '404' || msg.includes('bud_monthly_upsert') || msg.includes('bud_upsert')) {
+      throw new Error('Fungsi bud_monthly_upsert belum tersedia, jalankan migrasi SQL di server');
     }
-    throw error;
+    throw new Error(error.message || 'Gagal menyimpan anggaran');
   }
+
+  if (!data) {
+    throw new Error('Tidak ada data yang dikembalikan dari bud_monthly_upsert');
+  }
+
+  return normalizeBudgetRow(data as RawBudgetRow);
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {

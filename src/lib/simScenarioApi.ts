@@ -13,7 +13,7 @@ import {
   toPeriod,
   toScenarioItemDelta,
 } from './simMath';
-import { upsertBudget, upsertWeeklyBudget } from './budgetApi';
+import { upsertBudget, upsertWeeklyBudget, type BudgetRow, type WeeklyBudgetRow } from './budgetApi';
 
 type UUID = string;
 
@@ -446,8 +446,8 @@ export async function applyScenario(
   });
 
   const period = baseline.period;
-  const monthlyUpdates: Array<Promise<void>> = [];
-  const weeklyUpdates: Array<Promise<void>> = [];
+  const monthlyUpdates: Array<Promise<BudgetRow>> = [];
+  const weeklyUpdates: Array<Promise<WeeklyBudgetRow>> = [];
   const baselineMap = new Map(baseline.categories.map((category) => [category.categoryId, category]));
 
   for (const category of simulation.categories) {
