@@ -83,8 +83,12 @@ export default function CalendarPage() {
   };
 
   const handleSelectDate = (dateKey: string) => {
-    setSelectedDate(dateKey);
-    setDetailOpen(true);
+    if (selectedDate === dateKey) {
+      setDetailOpen(true);
+    } else {
+      setSelectedDate(dateKey);
+      setDetailOpen(false);
+    }
   };
 
   const handleFiltersChange = (next: CalendarFilters) => {
@@ -121,34 +125,36 @@ export default function CalendarPage() {
                 Lihat ringkasan pengeluaran dan pemasukan per hari
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handlePrevMonth}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                aria-label="Bulan sebelumnya"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <div className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200">
-                {monthLabel}
+            <div className="flex items-center gap-3 sm:justify-end">
+              <div className="flex items-center gap-2 overflow-x-auto rounded-2xl border border-slate-800/80 bg-slate-900/60 px-2 py-1 no-scrollbar sm:px-3">
+                <button
+                  type="button"
+                  onClick={handlePrevMonth}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-950/60 text-slate-200 transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label="Bulan sebelumnya"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <div className="whitespace-nowrap rounded-xl bg-slate-950/60 px-3 py-1.5 text-xs font-semibold text-slate-200 sm:text-sm">
+                  {monthLabel}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNextMonth}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-950/60 text-slate-200 transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label="Bulan berikutnya"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToday}
+                  className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl border border-slate-700/80 bg-slate-950/60 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label="Kembali ke hari ini"
+                >
+                  Today
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleNextMonth}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                aria-label="Bulan berikutnya"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleToday}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                aria-label="Kembali ke hari ini"
-              >
-                Today
-              </button>
             </div>
           </header>
 
