@@ -90,8 +90,9 @@ export default function DayCell({
   const income = summary?.incomeTotal ?? 0;
   const count = summary?.count ?? 0;
 
+  const dateLabel = format(date, 'EEEE, dd MMMM yyyy', { locale: localeId });
   const ariaLabelParts = [
-    format(date, 'EEEE, dd MMMM yyyy', { locale: localeId }),
+    dateLabel,
     count > 0 ? `${count} transaksi` : 'Tidak ada transaksi',
   ];
   if (expense > 0) {
@@ -102,6 +103,7 @@ export default function DayCell({
   }
 
   const heatmapClass = getHeatmapClass(expense, p80, p95, maxExpense);
+  const mobileCountDisplay = count > 0 ? `${count} tx` : '—';
 
   return (
     <button
@@ -110,38 +112,44 @@ export default function DayCell({
       aria-pressed={isSelected}
       aria-label={ariaLabelParts.join(', ')}
       className={clsx(
-        'relative flex h-full min-h-[112px] w-full flex-col justify-between rounded-xl p-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
+        'relative flex h-12 w-full min-w-0 flex-col justify-between rounded-xl px-1.5 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] md:h-16 md:px-2',
         heatmapClass,
-        isSelected && 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-slate-950',
+        isSelected
+          ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-slate-950'
+          : 'ring-1 ring-slate-800',
         !isCurrentMonth && 'opacity-70',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-1">
         <span
           className={clsx(
-            'text-sm font-semibold text-slate-200 md:text-base',
+            'text-[10px] font-semibold text-slate-300 md:text-xs',
             isToday && 'text-[var(--accent)]',
           )}
         >
           {format(date, 'd', { locale: localeId })}
         </span>
-        {count > 0 ? (
-          <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100">
-            {count}
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-3 flex flex-col gap-1">
-        <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
-          {formatExpense(expense)}
+        <span className="absolute top-1 right-1 inline-flex min-h-[1.125rem] items-center justify-center rounded bg-slate-800/80 px-1 text-[10px] font-semibold text-slate-200">
+          {count}
         </span>
-        {income > 0 ? (
-          <span className="block truncate font-mono text-xs text-emerald-400 md:text-sm">
-            {formatIncome(income)}
+      </div>
+      <div className="flex flex-col justify-end">
+        <span
+          className="block md:hidden truncate text-[11px] font-semibold text-slate-200 leading-tight drop-shadow-[0_1px_0_rgba(0,0,0,0.3)]"
+          aria-label={`${dateLabel} memiliki ${count} transaksi`}
+        >
+          {mobileCountDisplay}
+        </span>
+        <div className="hidden md:flex md:items-center md:gap-2">
+          <span className="font-mono text-sm text-rose-400 leading-tight">
+            {formatExpense(expense)}
           </span>
-        ) : (
-          <span className="block truncate font-mono text-xs text-slate-400 md:text-sm">&nbsp;</span>
-        )}
+          {income > 0 ? (
+            <span className="font-mono text-xs text-emerald-400 opacity-80">
+              {formatIncome(income)}
+            </span>
+          ) : null}
+        </div>
       </div>
     </button>
   );
