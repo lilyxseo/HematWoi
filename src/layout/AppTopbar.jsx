@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogIn, LogOut, Menu, RefreshCcw, Settings, UserRound } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  LogIn,
+  LogOut,
+  Menu,
+  RefreshCcw,
+  Settings,
+  UserRound,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -120,6 +129,14 @@ export default function AppTopbar({
             <Menu className="h-5 w-5" />
           </button>
           <span className="text-base font-semibold text-text">HematWoi</span>
+          <button
+            type="button"
+            onClick={() => navigate("/calendar")}
+            className="hidden min-h-[44px] items-center gap-2 rounded-xl border border-border/80 bg-surface-1 px-3 py-2 text-sm font-medium text-text shadow-sm transition hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.98] sm:inline-flex"
+          >
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />
+            Kalender
+          </button>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           {onRefreshCloud ? (

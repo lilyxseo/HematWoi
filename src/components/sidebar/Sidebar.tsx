@@ -57,6 +57,25 @@ type SidebarMenuEntry = {
   category: string | null;
 };
 
+function ensureCalendarEntry(items: SidebarMenuEntry[]): SidebarMenuEntry[] {
+  const hasCalendar = items.some((item) => item.route === '/calendar');
+  if (hasCalendar) {
+    return items;
+  }
+  return [
+    ...items,
+    {
+      id: 'static-calendar',
+      title: 'Kalender',
+      route: '/calendar',
+      access_level: 'user',
+      icon_name: 'calendar-days',
+      position: Number.MAX_SAFE_INTEGER,
+      category: null,
+    },
+  ];
+}
+
 const MENU_STORAGE_PREFIX = "hw:sidebar-menu:";
 
 function getMenuStorageKey(role: 'guest' | 'user' | 'admin') {
@@ -282,13 +301,14 @@ export default function Sidebar({
   ];
 
   const menuSections = useMemo(() => {
-    if (menuItems.length === 0) {
+    const resolved = ensureCalendarEntry(menuItems);
+    if (resolved.length === 0) {
       return [] as { key: string; title: string; items: SidebarMenuEntry[] }[];
     }
 
     const groups = new Map<string, { key: string; title: string; items: SidebarMenuEntry[] }>();
 
-    for (const item of menuItems) {
+    for (const item of resolved) {
       const rawCategory = (item.category ?? '').trim();
       const key = rawCategory ? rawCategory.toLocaleLowerCase('id-ID') : '__default__';
       if (!groups.has(key)) {
