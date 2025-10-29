@@ -125,176 +125,172 @@ export default function DayDetailModal({
           <div className="fixed inset-0 bg-black/60" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-end justify-center px-4 py-6 text-center sm:items-center sm:p-6 lg:justify-end">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-200"
-              enterFrom="translate-y-8 opacity-0 sm:translate-y-0 sm:scale-95"
-              enterTo="translate-y-0 opacity-100 sm:scale-100"
-              leave="ease-in duration-150"
-              leaveFrom="opacity-100 sm:scale-100"
-              leaveTo="opacity-0 sm:translate-y-4 sm:scale-95"
-            >
-              <Dialog.Panel className="flex h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-left align-middle shadow-xl transition-all sm:h-[80vh] lg:mr-4 lg:h-[88vh]">
-                <div className="flex items-start justify-between border-b border-slate-800 px-4 py-4 sm:px-6">
-                  <div className="min-w-0">
-                    <Dialog.Title className="text-lg font-semibold text-slate-100">
-                      {formattedDate || 'Detail harian'}
-                    </Dialog.Title>
-                    <p className="mt-1 text-sm text-slate-400">
-                      {totals.count > 0
-                        ? `${totals.count} transaksi`
-                        : 'Tidak ada transaksi'}
-                    </p>
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-3 pb-6 sm:items-center sm:p-6">
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="translate-y-full opacity-0 sm:translate-y-0 sm:scale-95"
+            enterTo="translate-y-0 opacity-100 sm:scale-100"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100 sm:scale-100"
+            leaveTo="translate-y-full opacity-0 sm:translate-y-4 sm:scale-95"
+          >
+            <Dialog.Panel className="flex h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl border border-slate-800 bg-slate-950 text-left shadow-xl transition-all sm:h-auto sm:max-h-[80vh] sm:rounded-3xl">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-800 px-4 pb-3 pt-4 sm:px-6">
+                <div className="min-w-0">
+                  <Dialog.Title className="text-base font-semibold text-slate-100 sm:text-lg">
+                    {formattedDate || 'Detail harian'}
+                  </Dialog.Title>
+                  <p className="mt-1 text-xs text-slate-400 sm:text-sm">
+                    {totals.count > 0 ? `${totals.count} transaksi` : 'Tidak ada transaksi'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label="Tutup detail hari"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="border-b border-slate-800 px-4 py-3 sm:px-6">
+                <dl className="grid grid-cols-3 gap-2 text-[11px] sm:text-xs">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-2 py-2 text-center">
+                    <dt className="font-semibold uppercase tracking-wide text-slate-400">Expense</dt>
+                    <dd className="mt-1 font-mono text-rose-400">
+                      -{formatCurrency(totals.expense)}
+                    </dd>
                   </div>
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-300 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                    aria-label="Tutup detail hari"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-2 py-2 text-center">
+                    <dt className="font-semibold uppercase tracking-wide text-slate-400">Income</dt>
+                    <dd className="mt-1 font-mono text-emerald-400">
+                      +{formatCurrency(totals.income)}
+                    </dd>
+                  </div>
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-2 py-2 text-center">
+                    <dt className="font-semibold uppercase tracking-wide text-slate-400">Net</dt>
+                    <dd
+                      className={`mt-1 font-mono ${
+                        net >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {net >= 0 ? '+' : ''}
+                      {formatCurrency(net)}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
 
-                <div className="border-b border-slate-800 px-4 py-4 sm:px-6">
-                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Expense</dt>
-                      <dd className="mt-1 text-sm font-mono text-rose-400">
-                        -{formatCurrency(totals.expense)}
-                      </dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Income</dt>
-                      <dd className="mt-1 text-sm font-mono text-emerald-400">
-                        +{formatCurrency(totals.income)}
-                      </dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Net</dt>
-                      <dd
-                        className={`mt-1 text-sm font-mono ${
-                          net >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {net >= 0 ? '+' : ''}
-                        {formatCurrency(net)}
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-                  {dayQuery.isError ? (
-                    <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
-                      <p>Gagal memuat transaksi. Coba lagi?</p>
-                      <button
-                        type="button"
-                        onClick={() => dayQuery.refetch()}
-                        className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl border border-rose-500/40 bg-rose-500/20 px-4 font-semibold text-rose-100 transition hover:bg-rose-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
-                      >
-                        Muat ulang
-                      </button>
-                    </div>
-                  ) : isLoading ? (
-                    <div className="space-y-3">
-                      {Array.from({ length: 3 }).map((_, index) => (
-                        <div
-                          key={`skeleton-${index}`}
-                          className="h-24 animate-pulse rounded-2xl bg-slate-900/60"
-                        />
-                      ))}
-                    </div>
-                  ) : transactions.length === 0 ? (
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-center text-sm text-slate-400">
-                      Tidak ada transaksi
-                    </div>
-                  ) : (
-                    <ul className="flex flex-col gap-4">
-                      {transactions.map((tx) => {
-                        const categoryName = tx.category_id
-                          ? categoryMap.get(tx.category_id)?.name ?? 'Tanpa kategori'
-                          : 'Tanpa kategori';
-                        const accountName = tx.account_id
-                          ? accountMap.get(tx.account_id)?.name ?? 'Tanpa akun'
-                          : 'Tanpa akun';
-                        return (
-                          <li
-                            key={tx.id}
-                            className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="min-w-0 flex-1">
-                                <p className="text-sm font-semibold text-slate-100">
-                                  {tx.title?.trim() || 'Tanpa judul'}
+              <div className="max-h-[65vh] flex-1 overflow-y-auto px-4 py-4 sm:max-h-none sm:px-6">
+                {dayQuery.isError ? (
+                  <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
+                    <p>Gagal memuat transaksi. Coba lagi?</p>
+                    <button
+                      type="button"
+                      onClick={() => dayQuery.refetch()}
+                      className="mt-3 inline-flex h-10 items-center justify-center rounded-2xl border border-rose-500/40 bg-rose-500/20 px-4 font-semibold text-rose-100 transition hover:bg-rose-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300"
+                    >
+                      Muat ulang
+                    </button>
+                  </div>
+                ) : isLoading ? (
+                  <div className="space-y-3">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div
+                        key={`skeleton-${index}`}
+                        className="h-20 animate-pulse rounded-2xl bg-slate-900/60"
+                      />
+                    ))}
+                  </div>
+                ) : transactions.length === 0 ? (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-center text-sm text-slate-400">
+                    Tidak ada transaksi
+                  </div>
+                ) : (
+                  <ul className="flex flex-col gap-4">
+                    {transactions.map((tx) => {
+                      const categoryName = tx.category_id
+                        ? categoryMap.get(tx.category_id)?.name ?? 'Tanpa kategori'
+                        : 'Tanpa kategori';
+                      const accountName = tx.account_id
+                        ? accountMap.get(tx.account_id)?.name ?? 'Tanpa akun'
+                        : 'Tanpa akun';
+                      return (
+                        <li
+                          key={tx.id}
+                          className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-slate-100">
+                                {tx.title?.trim() || 'Tanpa judul'}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                {categoryName} • {accountName}
+                              </p>
+                              {tx.merchant_name ? (
+                                <p className="mt-1 text-xs text-slate-400">Merchant: {tx.merchant_name}</p>
+                              ) : null}
+                              {tx.notes ? (
+                                <p className="mt-2 text-sm text-slate-300">
+                                  {tx.notes}
                                 </p>
-                                <p className="mt-1 text-xs text-slate-400">
-                                  {categoryName} • {accountName}
-                                </p>
-                                {tx.merchant_name ? (
-                                  <p className="mt-1 text-xs text-slate-400">Merchant: {tx.merchant_name}</p>
-                                ) : null}
-                                {tx.notes ? (
-                                  <p className="mt-2 text-sm text-slate-300">
-                                    {tx.notes}
-                                  </p>
-                                ) : null}
-                              </div>
-                              <div className="flex flex-col items-end gap-2">
-                                <span
-                                  className={`font-mono text-sm ${
-                                    tx.type === 'expense' ? 'text-rose-400' : 'text-emerald-400'
-                                  }`}
+                              ) : null}
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              <span
+                                className={`font-mono text-sm ${
+                                  tx.type === 'expense' ? 'text-rose-400' : 'text-emerald-400'
+                                }`}
+                              >
+                                {tx.type === 'expense' ? '-' : '+'}
+                                {formatCurrency(tx.amount)}
+                              </span>
+                              <div className="flex flex-wrap justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleEdit(tx.id)}
+                                  className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                                  aria-label="Edit transaksi"
                                 >
-                                  {tx.type === 'expense' ? '-' : '+'}
-                                  {formatCurrency(tx.amount)}
-                                </span>
-                                <div className="flex flex-wrap justify-end gap-2">
+                                  <Pencil className="h-4 w-4" /> Edit
+                                </button>
+                                {tx.receipt_url ? (
                                   <button
                                     type="button"
-                                    onClick={() => handleEdit(tx.id)}
+                                    onClick={() => handleOpenReceipt(tx.receipt_url)}
                                     className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                                    aria-label="Edit transaksi"
+                                    aria-label="Lihat nota"
                                   >
-                                    <Pencil className="h-4 w-4" /> Edit
+                                    <ExternalLink className="h-4 w-4" /> Nota
                                   </button>
-                                  {tx.receipt_url ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenReceipt(tx.receipt_url)}
-                                      className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                                      aria-label="Lihat nota"
-                                    >
-                                      <ExternalLink className="h-4 w-4" /> Nota
-                                    </button>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(tx.id)}
-                                    disabled={deletingId === tx.id}
-                                    className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                    aria-label="Hapus transaksi"
-                                  >
-                                    <Trash2 className="h-4 w-4" /> Hapus
-                                  </button>
-                                </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(tx.id)}
+                                  disabled={deletingId === tx.id}
+                                  className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Hapus transaksi"
+                                >
+                                  <Trash2 className="h-4 w-4" /> Hapus
+                                </button>
                               </div>
                             </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
 
-                <div className="border-t border-slate-800 px-4 py-4 text-right text-xs text-slate-500 sm:px-6">
-                  Data ditarik sesuai filter aktif
-                </div>
-              </Dialog.Panel>
-            </Transition.Child>
-          </div>
+              <div className="border-t border-slate-800 px-4 py-3 text-right text-[11px] text-slate-500 sm:px-6 sm:text-xs">
+                Data ditarik sesuai filter aktif
+              </div>
+            </Dialog.Panel>
+          </Transition.Child>
         </div>
       </Dialog>
     </Transition>
