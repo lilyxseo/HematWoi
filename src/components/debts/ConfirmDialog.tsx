@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
 interface ConfirmDialogProps {
@@ -11,6 +11,7 @@ interface ConfirmDialogProps {
   loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  children?: ReactNode;
 }
 
 export default function ConfirmDialog({
@@ -23,6 +24,7 @@ export default function ConfirmDialog({
   loading,
   onConfirm,
   onCancel,
+  children,
 }: ConfirmDialogProps) {
   const confirmRef = useRef<HTMLButtonElement | null>(null);
 
@@ -49,9 +51,12 @@ export default function ConfirmDialog({
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
       <div className="w-full max-w-sm rounded-3xl border border-border/60 bg-surface-1/95 p-6 text-text shadow-xl backdrop-blur">
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold">{title}</h2>
-          {description ? <p className="text-sm text-muted">{description}</p> : null}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h2 className="text-lg font-semibold">{title}</h2>
+            {description ? <p className="text-sm text-muted">{description}</p> : null}
+          </div>
+          {children ? <div className="text-sm text-muted">{children}</div> : null}
         </div>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-end">
           <button

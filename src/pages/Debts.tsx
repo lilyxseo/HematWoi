@@ -7,17 +7,18 @@ import SummaryCards from '../components/debts/SummaryCards';
 import FilterBar, { DebtsFilterState } from '../components/debts/FilterBar';
 import DebtsGrid from '../components/debts/DebtsGrid';
 import DebtForm from '../components/debts/DebtForm';
-import PaymentDrawer from '../components/debts/PaymentDrawer';
+import PaymentDrawer, { type PaymentFormValues } from '../components/debts/PaymentDrawer';
 import ConfirmDialog from '../components/debts/ConfirmDialog';
 import { useToast } from '../context/ToastContext';
 import {
-  addPayment,
   createDebt,
+  createDebtPayment,
   deleteDebt,
-  deletePayment,
+  deleteDebtPayment,
   getDebt,
   listDebts,
   updateDebt,
+  updateDebtPayment,
   type DebtInput,
   type DebtPaymentRecord,
   type DebtRecord,
@@ -25,6 +26,7 @@ import {
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
 import { listAccounts, type AccountRecord } from '../lib/api';
+import { listCategories, type CategoryRecord } from '../lib/api-categories';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -73,6 +75,21 @@ function formatFilterDate(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return FILTER_DATE_FORMATTER.format(date);
+}
+
+function sortPayments(list: DebtPaymentRecord[]): DebtPaymentRecord[] {
+  return [...list].sort((a, b) => {
+    const dateA = a.date ? new Date(a.date).getTime() : new Date(a.created_at).getTime();
+    const dateB = b.date ? new Date(b.date).getTime() : new Date(b.created_at).getTime();
+    if (Number.isNaN(dateA) && Number.isNaN(dateB)) return 0;
+    if (Number.isNaN(dateA)) return 1;
+    if (Number.isNaN(dateB)) return -1;
+    if (dateA !== dateB) return dateB - dateA;
+    const createdA = new Date(a.created_at).getTime();
+    const createdB = new Date(b.created_at).getTime();
+    if (Number.isNaN(createdA) || Number.isNaN(createdB)) return 0;
+    return createdB - createdA;
+  });
 }
 
 function getSeriesStartDate(debt: DebtRecord): string {
@@ -143,13 +160,18 @@ export default function Debts() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
+  const [paymentMode, setPaymentMode] = useState<'create' | 'edit'>('create');
+  const [editingPayment, setEditingPayment] = useState<DebtPaymentRecord | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
+  const [deletePaymentRollback, setDeletePaymentRollback] = useState(true);
   const [seriesCursor, setSeriesCursor] = useState<Record<string, number>>({});
 
   const logError = useCallback((error: unknown, context: string) => {
@@ -187,6 +209,33 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    let active = true;
+    if (!canUseCloud) {
+      setCategories([]);
+      setCategoriesLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    setCategoriesLoading(true);
+    listCategories()
+      .then((rows) => {
+        if (!active) return;
+        setCategories(rows);
+      })
+      .catch((error) => {
+        logError(error, 'load categories');
+        addToast('Gagal memuat kategori transaksi.', 'error');
+      })
+      .finally(() => {
+        if (active) setCategoriesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [canUseCloud, addToast, logError]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
@@ -569,6 +618,9 @@ export default function Debts() {
       addToast('Masuk untuk mengelola pembayaran hutang.', 'error');
       return;
     }
+    setPaymentMode('create');
+    setEditingPayment(null);
+    setDeletePaymentRollback(true);
     setPaymentDebt(debt);
     setPaymentOpen(true);
     setPaymentLoading(true);
@@ -593,7 +645,7 @@ export default function Debts() {
         setPaymentDebt(detail.debt);
         setDebts((prev) => prev.map((item) => (item.id === detail.debt.id ? detail.debt : item)));
       }
-      setPaymentList(detail.payments);
+      setPaymentList(sortPayments(detail.payments));
     } catch (error) {
       logError(error, 'load payments');
       addToast('Gagal memuat pembayaran', 'error');
@@ -602,64 +654,82 @@ export default function Debts() {
     }
   };
 
-  const handlePaymentSubmit = async (input: {
-    amount: number;
-    date: string;
-    account_id: string;
-    notes?: string | null;
-  }) => {
+  const handlePaymentSubmit = async (input: PaymentFormValues) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
       return;
     }
     setPaymentSubmitting(true);
-    const tempId = `temp-payment-${Date.now()}`;
-    const selectedAccount = accounts.find((item) => item.id === input.account_id);
-    const optimisticPayment: DebtPaymentRecord = {
-      id: tempId,
-      debt_id: paymentDebt.id,
-      user_id: paymentDebt.user_id,
-      amount: input.amount,
-      date: toISO(input.date) ?? new Date().toISOString(),
-      notes: input.notes ?? null,
-      account_id: input.account_id,
-      account_name: selectedAccount?.name ?? null,
-      transaction_id: null,
-      created_at: new Date().toISOString(),
-    };
-    setPaymentList((prev) => [optimisticPayment, ...prev]);
-    const previousDebt = paymentDebt;
-    const updatedDebt: DebtRecord = {
-      ...paymentDebt,
-      paid_total: paymentDebt.paid_total + input.amount,
-      remaining: Math.max(paymentDebt.remaining - input.amount, 0),
-      status: computeStatus(paymentDebt.amount, paymentDebt.paid_total + input.amount, paymentDebt.due_date),
-    };
-    setPaymentDebt(updatedDebt);
-    setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
     try {
-      const result = await addPayment(paymentDebt.id, input);
+      const result = await createDebtPayment(paymentDebt.id, input);
       if (result.debt) {
-        setPaymentDebt(result.debt);
-        setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
+        const updatedDebt = result.debt;
+        setPaymentDebt(updatedDebt);
+        setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
       }
-      setPaymentList((prev) => [result.payment, ...prev.filter((payment) => payment.id !== tempId)]);
+      setPaymentList((prev) => sortPayments([result.payment, ...prev]));
       addToast('Pembayaran berhasil dicatat', 'success');
       await refreshData();
     } catch (error) {
-      logError(error, 'add payment');
-      setPaymentList((prev) => prev.filter((payment) => payment.id !== tempId));
-      setPaymentDebt(previousDebt);
-      setDebts((prev) => prev.map((item) => (item.id === previousDebt.id ? previousDebt : item)));
-      addToast('Gagal mencatat pembayaran', 'error');
+      logError(error, 'create payment');
+      const message = error instanceof Error ? error.message : 'Gagal mencatat pembayaran';
+      addToast(message, 'error');
     } finally {
       setPaymentSubmitting(false);
     }
   };
 
+  const handlePaymentUpdate = async (paymentId: string, input: PaymentFormValues) => {
+    if (!paymentDebt) return;
+    if (!canUseCloud) {
+      addToast('Masuk untuk memperbarui pembayaran hutang.', 'error');
+      return;
+    }
+    setPaymentSubmitting(true);
+    try {
+      const result = await updateDebtPayment(paymentId, input);
+      if (result.debt) {
+        const updatedDebt = result.debt;
+        setPaymentDebt(updatedDebt);
+        setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
+      }
+      setPaymentList((prev) =>
+        sortPayments(prev.map((payment) => (payment.id === paymentId ? result.payment : payment))),
+      );
+      setPaymentMode('create');
+      setEditingPayment(null);
+      addToast('Pembayaran diperbarui', 'success');
+      await refreshData();
+    } catch (error) {
+      logError(error, 'update payment');
+      const message = error instanceof Error ? error.message : 'Gagal memperbarui pembayaran';
+      addToast(message, 'error');
+    } finally {
+      setPaymentSubmitting(false);
+    }
+  };
+
+  const handleEditPayment = (payment: DebtPaymentRecord) => {
+    setPaymentMode('edit');
+    setEditingPayment(payment);
+  };
+
+  const handleCancelEdit = () => {
+    setPaymentMode('create');
+    setEditingPayment(null);
+  };
+
   const handleDeletePayment = (payment: DebtPaymentRecord) => {
     setPendingPaymentDelete(payment);
+    setDeletePaymentRollback(Boolean(payment.transaction_id));
+  };
+
+  const handleViewTransaction = (payment: DebtPaymentRecord) => {
+    if (!payment.transaction_id) return;
+    const url = `/transactions?tx=${encodeURIComponent(payment.transaction_id)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    addToast('Transaksi dibuka di tab baru.', 'info');
   };
 
   const confirmDeletePayment = async () => {
@@ -674,19 +744,26 @@ export default function Debts() {
     setPaymentList((prev) => prev.filter((item) => item.id !== payment.id));
     const backupDebt = paymentDebt;
     try {
-      const updated = await deletePayment(payment.id);
+      const updated = await deleteDebtPayment(payment.id, {
+        withRollback: deletePaymentRollback && Boolean(payment.transaction_id),
+      });
       if (updated) {
         setPaymentDebt(updated);
         setDebts((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      }
+      if (editingPayment?.id === payment.id) {
+        setPaymentMode('create');
+        setEditingPayment(null);
       }
       addToast('Pembayaran dihapus', 'success');
       await refreshData();
     } catch (error) {
       logError(error, 'delete payment');
-      setPaymentList((prev) => [payment, ...prev]);
+      setPaymentList((prev) => sortPayments([payment, ...prev]));
       setPaymentDebt(backupDebt);
       setDebts((prev) => prev.map((item) => (item.id === backupDebt.id ? backupDebt : item)));
-      addToast('Gagal menghapus pembayaran', 'error');
+      const message = error instanceof Error ? error.message : 'Gagal menghapus pembayaran';
+      addToast(message, 'error');
     } finally {
       setPaymentDeletingId(null);
       setPendingPaymentDelete(null);
@@ -699,6 +776,9 @@ export default function Debts() {
     setPaymentList([]);
     setPendingPaymentDelete(null);
     setPaymentDeletingId(null);
+    setPaymentMode('create');
+    setEditingPayment(null);
+    setDeletePaymentRollback(true);
   };
 
   const pageDescription = useMemo(
@@ -866,6 +946,7 @@ export default function Debts() {
 
       <PaymentDrawer
         open={paymentOpen}
+        mode={paymentMode}
         debt={paymentDebt}
         payments={paymentList}
         loading={paymentLoading}
@@ -873,9 +954,16 @@ export default function Debts() {
         deletingId={paymentDeletingId}
         accounts={accounts}
         accountsLoading={accountsLoading}
+        categories={categories}
+        categoriesLoading={categoriesLoading}
+        editingPayment={editingPayment}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
+        onUpdate={handlePaymentUpdate}
+        onEditPayment={handleEditPayment}
+        onCancelEdit={handleCancelEdit}
         onDeletePayment={handleDeletePayment}
+        onViewTransaction={handleViewTransaction}
       />
 
       <ConfirmDialog
@@ -904,7 +992,36 @@ export default function Debts() {
         onCancel={() => {
           if (!paymentDeletingId) setPendingPaymentDelete(null);
         }}
-      />
+      >
+        {pendingPaymentDelete?.transaction_id ? (
+          <div className="space-y-3 pt-2 text-left">
+            <label className="flex items-start gap-3 text-xs text-text">
+              <input
+                type="radio"
+                className="mt-1 h-4 w-4 text-brand focus:ring-brand"
+                checked={deletePaymentRollback}
+                onChange={() => setDeletePaymentRollback(true)}
+              />
+              <span>
+                Hapus juga transaksi terkait dan pulihkan saldo akun.
+                <span className="block text-muted">Saldo akun akan dikembalikan seperti sebelum pembayaran.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 text-xs text-text">
+              <input
+                type="radio"
+                className="mt-1 h-4 w-4 text-brand focus:ring-brand"
+                checked={!deletePaymentRollback}
+                onChange={() => setDeletePaymentRollback(false)}
+              />
+              <span>
+                Biarkan transaksi tetap ada.
+                <span className="block text-muted">Pembayaran dihapus, tetapi transaksi tetap tercatat.</span>
+              </span>
+            </label>
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </Page>
   );
 }
