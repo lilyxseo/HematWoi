@@ -132,16 +132,22 @@ export default function DayCell({
         ) : null}
       </div>
       <div className="mt-3 flex flex-col gap-1">
-        <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
-          {formatExpense(expense)}
-        </span>
-        {income > 0 ? (
-          <span className="block truncate font-mono text-xs text-emerald-400 md:text-sm">
-            {formatIncome(income)}
+        <div className="flex flex-col gap-1 md:hidden">
+          <span className="text-xs text-slate-400">Jumlah transaksi</span>
+          <span className="font-mono text-sm text-slate-100">{count > 0 ? count : 0}</span>
+        </div>
+        <div className="hidden flex-col gap-1 md:flex">
+          <span className="block truncate font-mono text-base text-rose-400">
+            {formatExpense(expense)}
           </span>
-        ) : (
-          <span className="block truncate font-mono text-xs text-slate-400 md:text-sm">&nbsp;</span>
-        )}
+          {income > 0 ? (
+            <span className="block truncate font-mono text-sm text-emerald-400">
+              {formatIncome(income)}
+            </span>
+          ) : (
+            <span className="block truncate font-mono text-sm text-slate-400">&nbsp;</span>
+          )}
+        </div>
       </div>
     </button>
   );
