@@ -337,10 +337,10 @@ export default function DebtsGrid({
                     type="button"
                     onClick={() => onAddPayment(debt)}
                     className="inline-flex w-full flex-1 items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-foreground transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                    aria-label="Catat pembayaran"
+                    aria-label={debt.type === 'receivable' ? 'Terima pembayaran' : 'Bayar hutang'}
                   >
                     <Wallet className="h-4 w-4" aria-hidden="true" />
-                    Catat pembayaran
+                    {debt.type === 'receivable' ? 'Terima' : 'Bayar'}
                   </button>
                 </div>
                 <div className="flex w-full flex-col gap-3 md:flex-row md:items-stretch md:justify-end md:gap-2 lg:w-auto lg:items-center">
