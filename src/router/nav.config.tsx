@@ -15,6 +15,7 @@ export type NavItem = {
 import {
   LayoutDashboard,
   BarChart3,
+  CalendarDays,
   ListChecks,
   Wallet,
   Flag,
@@ -42,6 +43,14 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Reports',
     path: '/reports',
     icon: <BarChart3 className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
+    title: 'Kalender',
+    path: '/calendar',
+    icon: <CalendarDays className="h-5 w-5" />,
     section: 'primary',
     inSidebar: true,
     protected: true,
