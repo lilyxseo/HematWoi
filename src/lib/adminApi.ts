@@ -47,6 +47,14 @@ export type ListUsersParams = {
 
 export type UpdateUserProfileInput = Partial<Pick<UserProfileRecord, 'role' | 'is_active'>>;
 
+export type CreateUserInput = {
+  email: string;
+  password: string;
+  username?: string | null;
+  role?: UserRole;
+  is_active?: boolean;
+};
+
 export type AppDescriptionSetting = {
   text: string;
   updated_at: string | null;
@@ -133,18 +141,6 @@ function mapSidebarRow(row: any): SidebarItemRecord {
     icon_name: normalizeIcon(row?.icon_name),
     position: sanitizeNumber(row?.position, 0),
     category: normalizeCategory(row?.category),
-  };
-}
-
-function mapUserRow(row: any): UserProfileRecord {
-  return {
-    id: String(row?.id ?? ''),
-    email: typeof row?.email === 'string' ? row.email : null,
-    username: typeof row?.username === 'string' ? row.username : null,
-    role: row?.role === 'admin' ? 'admin' : 'user',
-    is_active: sanitizeBoolean(row?.is_active, true),
-    created_at: row?.created_at ?? null,
-    updated_at: row?.updated_at ?? null,
   };
 }
 
@@ -329,55 +325,54 @@ export async function moveSidebarItem(
   }
 }
 
-function isUnknownColumnError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const code = 'code' in error ? String((error as { code?: string }).code) : '';
-  if (code === '42703') return true;
-  const message = 'message' in error ? String((error as { message?: string }).message ?? '').toLowerCase() : '';
-  return message.includes('column') && message.includes('email');
+type AdminUsersFunctionResponse<T> = { data: T } | { error: string };
+
+async function invokeAdminUsersFunction<T>(
+  action: string,
+  payload?: Record<string, unknown>
+): Promise<T> {
+  try {
+    const { data, error } = await supabase.functions.invoke<AdminUsersFunctionResponse<T>>('admin-users', {
+      body: { action, payload },
+    });
+
+    if (error) {
+      const fallbackMessage =
+        typeof data === 'object' && data && 'error' in data && typeof (data as { error?: unknown }).error === 'string'
+          ? (data as { error?: string }).error ?? 'Gagal memproses permintaan admin'
+          : 'Gagal memproses permintaan admin';
+      throw new Error(error.message || fallbackMessage);
+    }
+
+    if (!data || typeof data !== 'object') {
+      throw new Error('Respons server tidak valid');
+    }
+
+    if ('error' in data && data.error) {
+      const message = typeof data.error === 'string' ? data.error : 'Gagal memproses permintaan admin';
+      throw new Error(message);
+    }
+
+    if ('data' in data) {
+      return (data as { data: T }).data;
+    }
+
+    throw new Error('Respons server tidak valid');
+  } catch (err) {
+    if (err instanceof Error) {
+      throw err;
+    }
+    throw new Error('Gagal memproses permintaan admin');
+  }
 }
 
 export async function listUsers(params: ListUsersParams = {}): Promise<UserProfileRecord[]> {
   try {
-    const columns = 'id, email, username, role, is_active, created_at, updated_at';
-    const fallbackColumns = 'id, username, role, is_active, created_at, updated_at';
-
-    const buildQuery = (cols: string) => {
-      let query = supabase
-        .from('user_profiles')
-        .select(cols)
-        .order('created_at', { ascending: true });
-
-      const { query: search, role, status } = params;
-
-      if (search?.trim()) {
-        const keyword = `%${search.trim()}%`;
-        query = query.or(`username.ilike.${keyword},email.ilike.${keyword}`);
-      }
-
-      if (role && role !== 'all') {
-        query = query.eq('role', role);
-      }
-
-      if (status && status !== 'all') {
-        query = query.eq('is_active', status === 'active');
-      }
-
-      return query;
-    };
-
-    let { data, error } = await buildQuery(columns);
-
-    if (error && isUnknownColumnError(error)) {
-      ({ data, error } = await buildQuery(fallbackColumns));
-    }
-
-    if (error) throw error;
-
-    return (data ?? []).map((item) => mapUserRow(item));
+    return await invokeAdminUsersFunction<UserProfileRecord[]>('list', params);
   } catch (error) {
     console.error('[adminApi] listUsers failed', error);
-    throw new Error('Gagal memuat daftar pengguna');
+    const message = error instanceof Error ? error.message : 'Gagal memuat daftar pengguna';
+    throw new Error(message);
   }
 }
 
@@ -386,65 +381,39 @@ export async function updateUserProfile(
   updates: UpdateUserProfileInput
 ): Promise<UserProfileRecord> {
   try {
-    const currentResponse = await supabase
-      .from('user_profiles')
-      .select('id, role, is_active')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (currentResponse.error) throw currentResponse.error;
-
-    const current = currentResponse.data;
-    if (!current) {
-      throw new Error('Pengguna tidak ditemukan');
-    }
-
-    const currentRole: UserRole = current.role === 'admin' ? 'admin' : 'user';
-    const currentActive = sanitizeBoolean(current.is_active, true);
-
-    const nextRole = updates.role ?? currentRole;
-    const nextActive =
-      typeof updates.is_active === 'boolean' ? updates.is_active : currentActive;
-
-    if (currentRole === 'admin' && (!nextActive || nextRole !== 'admin')) {
-      const { data: adminData, error: adminError } = await supabase
-        .from('user_profiles')
-        .select('id, role, is_active')
-        .eq('role', 'admin')
-        .neq('id', id);
-
-      if (adminError) throw adminError;
-
-      const activeAdmins = (adminData ?? []).filter((item) => sanitizeBoolean(item.is_active, true));
-
-      if (activeAdmins.length === 0) {
-        throw new Error('Tidak dapat menonaktifkan admin terakhir');
-      }
-    }
-
-    const payload: Record<string, unknown> = {};
-
-    if (updates.role === 'admin' || updates.role === 'user') {
-      payload.role = updates.role;
-    }
-
-    if (typeof updates.is_active === 'boolean') {
-      payload.is_active = updates.is_active;
-    }
-
-    const response = await supabase
-      .from('user_profiles')
-      .update(payload)
-      .eq('id', id)
-      .select('id, email, username, role, is_active, created_at, updated_at')
-      .single();
-
-    const data = ensureResponse(response);
-    return mapUserRow(data);
+    return await invokeAdminUsersFunction<UserProfileRecord>('update', { id, updates });
   } catch (error) {
     console.error('[adminApi] updateUserProfile failed', error);
     const message = error instanceof Error ? error.message : 'Gagal memperbarui pengguna';
-    throw new Error(message || 'Gagal memperbarui pengguna');
+    throw new Error(message);
+  }
+}
+
+export async function createUser(payload: CreateUserInput): Promise<UserProfileRecord> {
+  try {
+    const body = {
+      email: payload.email,
+      password: payload.password,
+      username: payload.username ?? null,
+      role: payload.role ?? 'user',
+      is_active: typeof payload.is_active === 'boolean' ? payload.is_active : true,
+    };
+
+    return await invokeAdminUsersFunction<UserProfileRecord>('create', body);
+  } catch (error) {
+    console.error('[adminApi] createUser failed', error);
+    const message = error instanceof Error ? error.message : 'Gagal membuat pengguna baru';
+    throw new Error(message);
+  }
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  try {
+    await invokeAdminUsersFunction<{ success: boolean }>('delete', { id });
+  } catch (error) {
+    console.error('[adminApi] deleteUser failed', error);
+    const message = error instanceof Error ? error.message : 'Gagal menghapus pengguna';
+    throw new Error(message);
   }
 }
 
