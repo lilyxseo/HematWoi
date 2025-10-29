@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, Plus, BarChart3, Settings, Flag } from "lucide-react";
+import { Home, Plus, BarChart3, Settings, Flag, CalendarDays } from "lucide-react";
 
 export default function BottomNav() {
   const base =
@@ -11,6 +11,10 @@ export default function BottomNav() {
         <NavLink to="/" end className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
           <Home className="h-5 w-5" />
           <span>Dashboard</span>
+        </NavLink>
+        <NavLink to="/calendar" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
+          <CalendarDays className="h-5 w-5" />
+          <span>Kalender</span>
         </NavLink>
         <NavLink to="/transaction/add" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
           <Plus className="h-5 w-5" />

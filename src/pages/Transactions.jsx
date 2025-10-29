@@ -266,6 +266,18 @@ export default function Transactions() {
   }, [location, navigate, page, pageSize]);
 
   useEffect(() => {
+    const editId = location.state?.editTransactionId;
+    if (!editId) return;
+    setEditTarget({ id: editId });
+    const { editTransactionId: _ignoredEdit, ...rest } = location.state || {};
+    const nextState = Object.keys(rest).length ? rest : null;
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: nextState },
+    );
+  }, [location, navigate]);
+
+  useEffect(() => {
     setSearchTerm(filter.search);
   }, [filter.search]);
 
