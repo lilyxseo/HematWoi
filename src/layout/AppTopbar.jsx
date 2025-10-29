@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogIn, LogOut, Menu, RefreshCcw, Settings, UserRound } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import {
+  Bell,
+  CalendarDays,
+  LogIn,
+  LogOut,
+  Menu,
+  RefreshCcw,
+  Settings,
+  UserRound,
+} from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import clsx from "clsx";
 import { supabase } from "../lib/supabase";
 
 function getDisplayName(user) {
@@ -23,7 +33,10 @@ export default function AppTopbar({
   const dropdownRef = useRef(null);
   const profileButtonRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const isAuthenticated = Boolean(user);
+
+  const calendarActive = location.pathname.startsWith("/calendar");
 
   const handleRefreshClick = () => {
     if (!onRefreshCloud || cloudRefreshDisabled) return;
@@ -120,6 +133,17 @@ export default function AppTopbar({
             <Menu className="h-5 w-5" />
           </button>
           <span className="text-base font-semibold text-text">HematWoi</span>
+          <Link
+            to="/calendar"
+            className={clsx(
+              "hidden items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition sm:inline-flex",
+              calendarActive
+                ? "border-brand/50 bg-brand/15 text-brand"
+                : "border-border/70 bg-surface-1 text-text hover:bg-surface-2",
+            )}
+          >
+            <CalendarDays className="h-4 w-4" /> Kalender
+          </Link>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           {onRefreshCloud ? (

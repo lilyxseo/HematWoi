@@ -63,6 +63,37 @@ function getMenuStorageKey(role: 'guest' | 'user' | 'admin') {
   return `${MENU_STORAGE_PREFIX}${role}`;
 }
 
+const CALENDAR_STATIC_ITEM: SidebarMenuEntry = {
+  id: 'calendar-static',
+  title: 'Kalender',
+  route: '/calendar',
+  access_level: 'user',
+  icon_name: 'calendar-days',
+  position: 999,
+  category: null,
+};
+
+function ensureCalendarItem(items: SidebarMenuEntry[]): SidebarMenuEntry[] {
+  if (items.some((item) => item.route === '/calendar')) {
+    return items;
+  }
+  const next = [...items];
+  const insertIndex = next.findIndex((item) => item.route === '/reports');
+  const calendarItem = {
+    ...CALENDAR_STATIC_ITEM,
+    position:
+      insertIndex >= 0 && Number.isFinite(next[insertIndex]?.position)
+        ? (next[insertIndex]?.position ?? 0) + 0.1
+        : CALENDAR_STATIC_ITEM.position,
+  };
+  if (insertIndex >= 0) {
+    next.splice(insertIndex + 1, 0, calendarItem);
+  } else {
+    next.push(calendarItem);
+  }
+  return next;
+}
+
 function loadCachedMenu(role: 'guest' | 'user' | 'admin'): SidebarMenuEntry[] | null {
   if (typeof window === "undefined" || !("localStorage" in window)) {
     return null;
@@ -73,7 +104,7 @@ function loadCachedMenu(role: 'guest' | 'user' | 'admin'): SidebarMenuEntry[] | 
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    return parsed.filter((item): item is SidebarMenuEntry => {
+    const normalized = parsed.filter((item): item is SidebarMenuEntry => {
       return (
         item &&
         typeof item === "object" &&
@@ -86,6 +117,7 @@ function loadCachedMenu(role: 'guest' | 'user' | 'admin'): SidebarMenuEntry[] | 
         (typeof item.category === "string" || item.category === null)
       );
     });
+    return ensureCalendarItem(normalized);
   } catch (error) {
     console.warn("Gagal membaca cache menu sidebar", error);
     return null;
@@ -250,8 +282,9 @@ export default function Sidebar({
                 : String(row.category),
         }));
 
-        setMenuItems(normalized);
-        saveCachedMenu(role, normalized);
+        const withCalendar = ensureCalendarItem(normalized);
+        setMenuItems(withCalendar);
+        saveCachedMenu(role, withCalendar);
       } catch (error) {
         if (!cancelled) {
           setMenuItems([]);
