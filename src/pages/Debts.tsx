@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import clsx from 'clsx';
 import { ChevronDown, Download, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/debts/SummaryCards';
@@ -9,12 +10,14 @@ import DebtsGrid from '../components/debts/DebtsGrid';
 import DebtForm from '../components/debts/DebtForm';
 import PaymentDrawer from '../components/debts/PaymentDrawer';
 import ConfirmDialog from '../components/debts/ConfirmDialog';
+import PaymentDeleteDialog from '../components/debts/PaymentDeleteDialog';
 import { useToast } from '../context/ToastContext';
 import {
-  addPayment,
   createDebt,
+  createDebtPayment,
+  createDebtPaymentWithTransaction,
   deleteDebt,
-  deletePayment,
+  deleteDebtPayment,
   getDebt,
   listDebts,
   updateDebt,
@@ -25,6 +28,7 @@ import {
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
 import { listAccounts, type AccountRecord } from '../lib/api';
+import { listCategories, type CategoryRecord } from '../lib/api-categories';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -43,8 +47,9 @@ function toISO(date: string | null | undefined) {
   return d.toISOString();
 }
 
-function computeStatus(amount: number, paid: number, dueDate: string | null) {
-  if (paid + 0.0001 >= amount) return 'paid' as const;
+function computeStatus(amount: number, paid: number, dueDate: string | null, markAsPaid = true) {
+  if (markAsPaid && paid + 0.0001 >= amount) return 'paid' as const;
+  if (!markAsPaid && paid + 0.0001 >= amount) return 'ongoing' as const;
   if (dueDate) {
     const due = new Date(dueDate);
     if (!Number.isNaN(due.getTime()) && due.getTime() < Date.now()) {
@@ -119,6 +124,7 @@ export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
   const canUseCloud = Boolean(user?.id);
+  const navigate = useNavigate();
   const [filters, setFilters] = useState<DebtsFilterState>(INITIAL_FILTERS);
   const [debts, setDebts] = useState<DebtRecord[]>([]);
   const [summary, setSummary] = useState<DebtSummary | null>(null);
@@ -145,11 +151,14 @@ export default function Debts() {
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [pendingPaymentDelete, setPendingPaymentDelete] = useState<DebtPaymentRecord | null>(null);
+  const [deleteWithRollback, setDeleteWithRollback] = useState(true);
   const [seriesCursor, setSeriesCursor] = useState<Record<string, number>>({});
 
   const logError = useCallback((error: unknown, context: string) => {
@@ -573,6 +582,7 @@ export default function Debts() {
     setPaymentOpen(true);
     setPaymentLoading(true);
     setAccountsLoading(true);
+    setCategoriesLoading(true);
     if (user?.id) {
       listAccounts(user.id)
         .then((rows) => setAccounts(rows))
@@ -583,9 +593,20 @@ export default function Debts() {
         .finally(() => {
           setAccountsLoading(false);
         });
+      listCategories()
+        .then((rows) => setCategories(rows))
+        .catch((error) => {
+          logError(error, 'load categories');
+          addToast('Gagal memuat kategori transaksi.', 'error');
+        })
+        .finally(() => {
+          setCategoriesLoading(false);
+        });
     } else {
       setAccounts([]);
       setAccountsLoading(false);
+      setCategories([]);
+      setCategoriesLoading(false);
     }
     try {
       const detail = await getDebt(debt.id);
@@ -605,8 +626,12 @@ export default function Debts() {
   const handlePaymentSubmit = async (input: {
     amount: number;
     date: string;
-    account_id: string;
     notes?: string | null;
+    recordTransaction: boolean;
+    accountId?: string;
+    categoryId?: string | null;
+    markAsPaid: boolean;
+    allowOverpay: boolean;
   }) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
@@ -615,7 +640,8 @@ export default function Debts() {
     }
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
-    const selectedAccount = accounts.find((item) => item.id === input.account_id);
+    const selectedAccount = input.accountId ? accounts.find((item) => item.id === input.accountId) : undefined;
+    const selectedCategory = input.categoryId ? categories.find((item) => item.id === input.categoryId) : undefined;
     const optimisticPayment: DebtPaymentRecord = {
       id: tempId,
       debt_id: paymentDebt.id,
@@ -623,9 +649,14 @@ export default function Debts() {
       amount: input.amount,
       date: toISO(input.date) ?? new Date().toISOString(),
       notes: input.notes ?? null,
-      account_id: input.account_id,
-      account_name: selectedAccount?.name ?? null,
-      transaction_id: null,
+      account_id: input.recordTransaction ? input.accountId ?? null : null,
+      account_name: input.recordTransaction ? selectedAccount?.name ?? null : null,
+      transaction_id: input.recordTransaction ? 'pending-transaction' : null,
+      transaction_type: input.recordTransaction ? (paymentDebt.type === 'receivable' ? 'income' : 'expense') : null,
+      transaction_category_id: input.recordTransaction ? input.categoryId ?? null : null,
+      transaction_category_name: input.recordTransaction ? selectedCategory?.name ?? null : null,
+      transaction_title: null,
+      transaction_notes: null,
       created_at: new Date().toISOString(),
     };
     setPaymentList((prev) => [optimisticPayment, ...prev]);
@@ -634,12 +665,33 @@ export default function Debts() {
       ...paymentDebt,
       paid_total: paymentDebt.paid_total + input.amount,
       remaining: Math.max(paymentDebt.remaining - input.amount, 0),
-      status: computeStatus(paymentDebt.amount, paymentDebt.paid_total + input.amount, paymentDebt.due_date),
+      status: computeStatus(
+        paymentDebt.amount,
+        paymentDebt.paid_total + input.amount,
+        paymentDebt.due_date,
+        input.markAsPaid,
+      ),
     };
     setPaymentDebt(updatedDebt);
     setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
     try {
-      const result = await addPayment(paymentDebt.id, input);
+      const result = input.recordTransaction && input.accountId
+        ? await createDebtPaymentWithTransaction(paymentDebt.id, {
+            amount: input.amount,
+            date: input.date,
+            notes: input.notes ?? null,
+            account_id: input.accountId,
+            category_id: input.categoryId ?? undefined,
+            markAsPaid: input.markAsPaid,
+            allowOverpay: input.allowOverpay,
+          })
+        : await createDebtPayment(paymentDebt.id, {
+            amount: input.amount,
+            date: input.date,
+            notes: input.notes ?? null,
+            markAsPaid: input.markAsPaid,
+            allowOverpay: input.allowOverpay,
+          });
       if (result.debt) {
         setPaymentDebt(result.debt);
         setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
@@ -659,7 +711,13 @@ export default function Debts() {
   };
 
   const handleDeletePayment = (payment: DebtPaymentRecord) => {
+    setDeleteWithRollback(Boolean(payment.transaction_id));
     setPendingPaymentDelete(payment);
+  };
+
+  const handleViewTransaction = (transactionId: string) => {
+    if (!transactionId) return;
+    navigate(`/transactions?highlight=${transactionId}`);
   };
 
   const confirmDeletePayment = async () => {
@@ -674,7 +732,10 @@ export default function Debts() {
     setPaymentList((prev) => prev.filter((item) => item.id !== payment.id));
     const backupDebt = paymentDebt;
     try {
-      const updated = await deletePayment(payment.id);
+      const updated = await deleteDebtPayment({
+        id: payment.id,
+        withRollback: deleteWithRollback && Boolean(payment.transaction_id),
+      });
       if (updated) {
         setPaymentDebt(updated);
         setDebts((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
@@ -690,6 +751,7 @@ export default function Debts() {
     } finally {
       setPaymentDeletingId(null);
       setPendingPaymentDelete(null);
+      setDeleteWithRollback(true);
     }
   };
 
@@ -699,6 +761,7 @@ export default function Debts() {
     setPaymentList([]);
     setPendingPaymentDelete(null);
     setPaymentDeletingId(null);
+    setDeleteWithRollback(true);
   };
 
   const pageDescription = useMemo(
@@ -873,9 +936,12 @@ export default function Debts() {
         deletingId={paymentDeletingId}
         accounts={accounts}
         accountsLoading={accountsLoading}
+        categories={categories}
+        categoriesLoading={categoriesLoading}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}
+        onViewTransaction={handleViewTransaction}
       />
 
       <ConfirmDialog
@@ -892,17 +958,18 @@ export default function Debts() {
         }}
       />
 
-      <ConfirmDialog
+      <PaymentDeleteDialog
         open={Boolean(pendingPaymentDelete)}
-        title="Hapus pembayaran?"
-        description="Pembayaran akan dihapus dari riwayat dan perhitungan total akan diperbarui."
-        destructive
         loading={Boolean(paymentDeletingId)}
-        confirmLabel="Hapus"
-        cancelLabel="Batal"
+        hasTransaction={Boolean(pendingPaymentDelete?.transaction_id)}
+        withRollback={deleteWithRollback}
+        onChangeRollback={setDeleteWithRollback}
         onConfirm={confirmDeletePayment}
         onCancel={() => {
-          if (!paymentDeletingId) setPendingPaymentDelete(null);
+          if (!paymentDeletingId) {
+            setPendingPaymentDelete(null);
+            setDeleteWithRollback(true);
+          }
         }}
       />
     </Page>

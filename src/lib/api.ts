@@ -10,6 +10,7 @@ export interface AccountRecord {
   currency: string;
   created_at: string | null;
   sort_order: number | null;
+  balance?: number | null;
   user_id?: string;
 }
 
@@ -48,6 +49,18 @@ function normalizeCurrency(value: unknown): string {
   return 'IDR';
 }
 
+function parseBalance(value: unknown): number | null {
+  if (typeof value === 'number') {
+    if (Number.isFinite(value)) return value;
+    return null;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
 function normalizeAccount(row: Record<string, any>): AccountRecord {
   return {
     id: String(row.id),
@@ -69,8 +82,33 @@ function normalizeAccount(row: Record<string, any>): AccountRecord {
       return null;
     })(),
     user_id: row.user_id ? String(row.user_id) : undefined,
+    balance: parseBalance(row.balance ?? row.current_balance ?? row.initial_balance ?? null),
   };
 }
+
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const maybeCode = (error as { code?: unknown }).code;
+  const maybeMessage = (error as { message?: unknown }).message;
+  if (typeof maybeMessage === 'string') {
+    const normalized = maybeMessage.toLowerCase();
+    if (
+      normalized.includes(column.toLowerCase()) &&
+      (normalized.includes('does not exist') || normalized.includes('could not find'))
+    ) {
+      return true;
+    }
+  }
+  if (maybeCode === '42703' || maybeCode === 'PGRST204') {
+    if (typeof maybeMessage === 'string') {
+      return maybeMessage.toLowerCase().includes(column.toLowerCase());
+    }
+    return true;
+  }
+  return false;
+}
+
+let accountBalanceSupported: boolean | undefined;
 
 type KnownError = Partial<Pick<PostgrestError, 'code' | 'message' | 'details'>>;
 
@@ -97,17 +135,28 @@ function toUserMessage(error: unknown, fallback: string): string {
 }
 
 export async function listAccounts(userId: string): Promise<AccountRecord[]> {
+  const selectColumns =
+    accountBalanceSupported === false
+      ? 'id,name,type,currency,created_at,user_id,sort_order'
+      : 'id,name,type,currency,created_at,user_id,sort_order,balance';
+
   const { data, error } = await supabase
     .from('accounts')
-    .select('id,name,type,currency,created_at,user_id,sort_order')
+    .select(selectColumns)
     .eq('user_id', userId)
     .order('sort_order', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: true })
     .order('name', { ascending: true });
 
   if (error) {
+    if (isMissingColumnError(error, 'balance')) {
+      accountBalanceSupported = false;
+      return listAccounts(userId);
+    }
     throw new Error(toUserMessage(error, 'Gagal memuat akun.'));
   }
+
+  accountBalanceSupported = accountBalanceSupported ?? true;
 
   return (data ?? []).map((row) => normalizeAccount(row));
 }

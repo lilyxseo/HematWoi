@@ -37,7 +37,7 @@ async function readPostgrestError(response, fallbackMessage) {
   try {
     const body = await response.json();
     if (body?.message) message = body.message;
-  } catch (_error) {
+  } catch {
     // ignore JSON parse errors from PostgREST error responses
   }
   const err = new Error(message);
