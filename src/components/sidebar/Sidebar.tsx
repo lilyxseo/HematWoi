@@ -57,6 +57,27 @@ type SidebarMenuEntry = {
   category: string | null;
 };
 
+function ensureCalendarLink(items: SidebarMenuEntry[]): SidebarMenuEntry[] {
+  const exists = items.some((item) => item.route === '/calendar');
+  if (exists) {
+    return items;
+  }
+  const maxPosition = items.reduce(
+    (acc, item) => (Number.isFinite(item.position) ? Math.max(acc, item.position) : acc),
+    0,
+  );
+  const calendarItem: SidebarMenuEntry = {
+    id: 'calendar',
+    title: 'Kalender',
+    route: '/calendar',
+    access_level: 'user',
+    icon_name: 'calendar',
+    position: maxPosition + 1,
+    category: null,
+  };
+  return [...items, calendarItem];
+}
+
 const MENU_STORAGE_PREFIX = "hw:sidebar-menu:";
 
 function getMenuStorageKey(role: 'guest' | 'user' | 'admin') {
@@ -282,13 +303,16 @@ export default function Sidebar({
   ];
 
   const menuSections = useMemo(() => {
-    if (menuItems.length === 0) {
+    const ensuredItems = ensureCalendarLink(menuItems);
+    if (ensuredItems.length === 0) {
       return [] as { key: string; title: string; items: SidebarMenuEntry[] }[];
     }
 
+    const sortedItems = [...ensuredItems].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+
     const groups = new Map<string, { key: string; title: string; items: SidebarMenuEntry[] }>();
 
-    for (const item of menuItems) {
+    for (const item of sortedItems) {
       const rawCategory = (item.category ?? '').trim();
       const key = rawCategory ? rawCategory.toLocaleLowerCase('id-ID') : '__default__';
       if (!groups.has(key)) {

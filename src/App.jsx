@@ -33,6 +33,7 @@ import AuthLogin from "./pages/AuthLogin";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
+import CalendarPage from "./pages/CalendarPage";
 import useChallenges from "./hooks/useChallenges.js";
 import usePrefersReducedMotion from "./hooks/usePrefersReducedMotion.js";
 import AuthGuard from "./components/AuthGuard";
@@ -1368,6 +1369,7 @@ function AppShell({ prefs, setPrefs }) {
                     />
                   }
                 />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route
                   path="budgets"

@@ -36,6 +36,7 @@
     "@tanstack/react-virtual": "^3.13.12",
     "canvas-confetti": "^1.9.3",
     "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
     "localforage": "^1.10.0",
