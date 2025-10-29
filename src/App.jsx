@@ -20,6 +20,7 @@ import Budgets from "./pages/Budgets";
 import SalarySimulationPage from "./pages/budgets/simulation/salary/SalarySimulationPage";
 import DebtsPage from "./pages/Debts";
 import Categories from "./pages/Categories";
+import CalendarPage from "./pages/CalendarPage";
 import DataPage from "./pages/DataPage";
 import TransactionAdd from "./pages/TransactionAdd";
 import Subscriptions from "./pages/Subscriptions";
@@ -1368,6 +1369,7 @@ function AppShell({ prefs, setPrefs }) {
                     />
                   }
                 />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route path="reports" element={<ReportsPage />} />
                 <Route
                   path="budgets"
