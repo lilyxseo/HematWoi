@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import type { DaySummary } from '../../lib/calendarApi';
+import formatIDShort from '../../lib/formatIDShort';
 
 const expenseFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
@@ -90,6 +91,18 @@ export default function DayCell({
   const income = summary?.incomeTotal ?? 0;
   const count = summary?.count ?? 0;
 
+  let mobileAmountDisplay = '—';
+  let mobileAmountClass = 'text-slate-400';
+
+  if (expense > 0) {
+    mobileAmountDisplay = formatIDShort(-expense);
+    mobileAmountClass = 'text-rose-400';
+  } else if (income > 0) {
+    const incomeShort = formatIDShort(income);
+    mobileAmountDisplay = incomeShort.startsWith('-') ? incomeShort : `+${incomeShort}`;
+    mobileAmountClass = 'text-emerald-400';
+  }
+
   const ariaLabelParts = [
     format(date, 'EEEE, dd MMMM yyyy', { locale: localeId }),
     count > 0 ? `${count} transaksi` : 'Tidak ada transaksi',
@@ -131,17 +144,27 @@ export default function DayCell({
           </span>
         ) : null}
       </div>
-      <div className="mt-3 flex flex-col gap-1">
-        <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
-          {formatExpense(expense)}
+      <div className="mt-3 flex min-w-0 flex-col gap-1">
+        <span
+          className={clsx(
+            'block truncate font-mono text-[11px] leading-tight md:hidden',
+            mobileAmountClass,
+          )}
+        >
+          {mobileAmountDisplay}
         </span>
-        {income > 0 ? (
-          <span className="block truncate font-mono text-xs text-emerald-400 md:text-sm">
-            {formatIncome(income)}
+        <div className="hidden min-w-0 flex-col gap-1 md:flex">
+          <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
+            {formatExpense(expense)}
           </span>
-        ) : (
-          <span className="block truncate font-mono text-xs text-slate-400 md:text-sm">&nbsp;</span>
-        )}
+          {income > 0 ? (
+            <span className="block truncate font-mono text-xs text-emerald-400 md:text-sm">
+              {formatIncome(income)}
+            </span>
+          ) : (
+            <span className="block truncate font-mono text-xs text-slate-400 md:text-sm">&nbsp;</span>
+          )}
+        </div>
       </div>
     </button>
   );
