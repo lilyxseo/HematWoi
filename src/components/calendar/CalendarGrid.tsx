@@ -46,19 +46,23 @@ export default function CalendarGrid({
 
   return (
     <div className="relative">
-      <div className="grid grid-cols-7 gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400 md:gap-3">
+      <div className="grid grid-cols-7 gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 md:gap-2">
         {(weekdayLabels ?? ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']).map((label) => (
           <div key={label} className="px-1 py-1 text-center">
             {label}
           </div>
         ))}
       </div>
-      <div className="mt-2 grid grid-cols-7 gap-2 md:gap-3" role="grid">
+      <div className="mt-2 grid grid-cols-7 gap-1.5 md:gap-2" role="grid">
         {weeks.map((week, rowIndex) => (
           <div key={`week-${rowIndex}`} className="contents">
             {week.map((day) => {
               const key = format(day, DATE_KEY_FORMAT);
               const summary = summaries[key];
+              const expenseTotal = summary?.expenseTotal ?? 0;
+              const incomeTotal = summary?.incomeTotal ?? 0;
+              const txCount = summary?.count ?? 0;
+              const heatmapLevel = getHeatmapClass(expenseTotal, p80, p95, maxExpense);
               const isCurrentMonth = isSameMonth(day, month);
               const selected = selectedDateObj ? isSameDay(day, selectedDateObj) : false;
               const today = isToday(day);
@@ -66,13 +70,14 @@ export default function CalendarGrid({
                 <div key={key} role="gridcell" className="min-w-0">
                   <DayCell
                     date={day}
-                    summary={summary}
+                    dateISO={key}
+                    expenseTotal={expenseTotal}
+                    incomeTotal={incomeTotal}
+                    txCount={txCount}
+                    heatmapLevel={heatmapLevel}
                     isCurrentMonth={isCurrentMonth}
                     isSelected={selected}
                     isToday={today}
-                    p80={p80}
-                    p95={p95}
-                    maxExpense={maxExpense}
                     onSelect={(next) => onSelectDate(format(next, DATE_KEY_FORMAT))}
                   />
                 </div>
@@ -90,4 +95,40 @@ export default function CalendarGrid({
       ) : null}
     </div>
   );
+}
+
+function getHeatmapClass(
+  expense: number,
+  p80: number,
+  p95: number,
+  maxExpense: number,
+): string {
+  if (expense <= 0) {
+    return 'bg-slate-900';
+  }
+
+  if (p95 > 0 && expense > p95) {
+    return 'bg-rose-900/70';
+  }
+
+  const base = p80 > 0 ? p80 : maxExpense > 0 ? maxExpense : expense;
+  if (base <= 0) {
+    return 'bg-slate-900';
+  }
+
+  const ratio = expense / base;
+
+  if (ratio >= 1) {
+    return 'bg-rose-900/50';
+  }
+  if (ratio >= 0.75) {
+    return 'bg-rose-900/50';
+  }
+  if (ratio >= 0.5) {
+    return 'bg-rose-900/30';
+  }
+  if (ratio >= 0.25) {
+    return 'bg-slate-900/80';
+  }
+  return 'bg-slate-900';
 }
