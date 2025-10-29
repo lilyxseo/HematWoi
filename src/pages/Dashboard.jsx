@@ -48,7 +48,7 @@ export default function Dashboard({ stats, txs }) {
 
   useEffect(() => {
     refresh({ start: periodStart, end: periodEnd }, periodPreset);
-  }, [periodStart, periodEnd, periodPreset, refresh]);
+  }, [periodStart, periodEnd, periodPreset, refresh, txs]);
 
   const handlePeriodChange = (range, preset) => {
     setPeriodRange(range);
