@@ -33,6 +33,7 @@ import AuthLogin from "./pages/AuthLogin";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
+import CalendarPage from "./pages/CalendarPage";
 import useChallenges from "./hooks/useChallenges.js";
 import usePrefersReducedMotion from "./hooks/usePrefersReducedMotion.js";
 import AuthGuard from "./components/AuthGuard";
@@ -1396,6 +1397,7 @@ function AppShell({ prefs, setPrefs }) {
                   element={<Categories cat={data.cat} onSave={saveCategories} />}
                 />
                 <Route path="wishlist" element={<WishlistPage />} />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route path="accounts" element={<AccountsPage />} />
                 <Route
                   path="subscriptions"
