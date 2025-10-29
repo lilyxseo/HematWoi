@@ -266,6 +266,24 @@ export default function Transactions() {
   }, [location, navigate, page, pageSize]);
 
   useEffect(() => {
+    const targetId = location.state?.editTransactionId;
+    if (!targetId) {
+      return;
+    }
+    const item = itemsById.get(targetId);
+    if (!item) {
+      return;
+    }
+    setEditTarget(item);
+    const { editTransactionId: _ignoredEdit, ...rest } = location.state || {};
+    const nextState = Object.keys(rest).length ? rest : null;
+    navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: nextState },
+    );
+  }, [itemsById, location, navigate]);
+
+  useEffect(() => {
     setSearchTerm(filter.search);
   }, [filter.search]);
 

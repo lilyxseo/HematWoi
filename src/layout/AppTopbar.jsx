@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogIn, LogOut, Menu, RefreshCcw, Settings, UserRound } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Bell, Calendar, LogIn, LogOut, Menu, RefreshCcw, Settings, UserRound } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 function getDisplayName(user) {
@@ -122,6 +122,12 @@ export default function AppTopbar({
           <span className="text-base font-semibold text-text">HematWoi</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            to="/calendar"
+            className="hidden items-center gap-2 rounded-2xl border border-border/70 bg-surface-1 px-3 py-2 text-sm font-medium text-text transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95 sm:inline-flex"
+          >
+            <Calendar className="h-4 w-4" /> Kalender
+          </Link>
           {onRefreshCloud ? (
             <button
               type="button"
