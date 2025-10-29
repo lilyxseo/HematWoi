@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogIn, LogOut, Menu, RefreshCcw, Settings, UserRound } from "lucide-react";
+import { Bell, CalendarDays, LogIn, LogOut, Menu, RefreshCcw, Settings, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
@@ -139,6 +139,14 @@ export default function AppTopbar({
               />
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => navigate("/calendar")}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-surface-1 text-text transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95"
+            aria-label="Buka kalender"
+          >
+            <CalendarDays className="h-5 w-5" />
+          </button>
           <button
             type="button"
             className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-surface-1 text-text transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95"
