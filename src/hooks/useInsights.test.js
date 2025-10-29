@@ -80,6 +80,19 @@ describe("aggregateInsights", () => {
     expect(res.topSpends.map((t) => t.amount)).toEqual([400, 300, 200]);
   });
 
+  it("ignores deleted transactions", () => {
+    const deletedTxs = [
+      { id: 20, date: "2024-06-05", type: "expense", amount: 100, deleted_at: "2024-06-06" },
+      { id: 21, date: "2024-06-05", type: "expense", amount: 250, deleted: true },
+      { id: 22, date: "2024-06-05", type: "expense", amount: 150 },
+    ];
+
+    const res = aggregateInsights(deletedTxs);
+
+    expect(res.kpis.expense).toBe(150);
+    expect(res.topSpends.map((t) => t.id)).toEqual([22]);
+  });
+
   it("uses Jakarta month boundaries", () => {
     const originalDate = new Date("2024-06-15T00:00:00.000Z");
     vi.setSystemTime(new Date("2024-06-01T00:30:00.000Z"));
