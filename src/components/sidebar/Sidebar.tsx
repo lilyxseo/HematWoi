@@ -57,6 +57,16 @@ type SidebarMenuEntry = {
   category: string | null;
 };
 
+const CALENDAR_FALLBACK: SidebarMenuEntry = {
+  id: 'local-calendar',
+  title: 'Kalender',
+  route: '/calendar',
+  access_level: 'user',
+  icon_name: 'calendar',
+  position: 900,
+  category: null,
+};
+
 const MENU_STORAGE_PREFIX = "hw:sidebar-menu:";
 
 function getMenuStorageKey(role: 'guest' | 'user' | 'admin') {
@@ -128,6 +138,26 @@ function normalizeSidebarRoute(path: string): string {
   return collapsed;
 }
 
+function ensureCalendarItem(
+  items: SidebarMenuEntry[],
+  role: 'guest' | 'user' | 'admin',
+): SidebarMenuEntry[] {
+  if (role === 'guest') {
+    return items;
+  }
+  if (items.some((item) => item.route === '/calendar')) {
+    return items;
+  }
+  const maxPosition = items.reduce((acc, item) => Math.max(acc, item.position ?? 0), 0);
+  return [
+    ...items,
+    {
+      ...CALENDAR_FALLBACK,
+      position: maxPosition + 1,
+    },
+  ];
+}
+
 export default function Sidebar({
   collapsed,
   onToggle,
@@ -194,7 +224,7 @@ export default function Sidebar({
 
         setMenuLoading(shouldShowLoader);
         if (cached && !cancelled) {
-          setMenuItems(cached);
+          setMenuItems(ensureCalendarItem(cached, role));
         }
 
         let query = supabase
@@ -250,8 +280,9 @@ export default function Sidebar({
                 : String(row.category),
         }));
 
-        setMenuItems(normalized);
-        saveCachedMenu(role, normalized);
+        const enriched = ensureCalendarItem(normalized, role);
+        setMenuItems(enriched);
+        saveCachedMenu(role, enriched);
       } catch (error) {
         if (!cancelled) {
           setMenuItems([]);

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
 import {
   AlertTriangle,
@@ -179,6 +179,7 @@ export default function Transactions() {
   const online = useNetworkStatus();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState(queryItems);
   const [optimisticItems, setOptimisticItems] = useState(() => []);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -399,6 +400,21 @@ export default function Transactions() {
     }
     return map;
   }, [items]);
+
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId) {
+      return;
+    }
+    const target = itemsById.get(editId);
+    if (!target) {
+      return;
+    }
+    setEditTarget(target);
+    const next = new URLSearchParams(searchParams);
+    next.delete('edit');
+    setSearchParams(next, { replace: true });
+  }, [itemsById, searchParams, setSearchParams]);
 
   useEffect(() => {
     setSelectedIds((prev) => {
