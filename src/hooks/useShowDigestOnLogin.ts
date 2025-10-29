@@ -30,9 +30,6 @@ export interface DigestTransactionLike {
   type?: string | null;
   date?: string | null;
   category?: string | null;
-  deleted_at?: string | boolean | null;
-  deletedAt?: string | boolean | null;
-  deleted?: string | boolean | null;
 }
 
 export interface DigestUpcomingItem {
@@ -138,29 +135,6 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function isDeletedFlag(value: unknown): boolean {
-  if (value === null || value === undefined) {
-    return false;
-  }
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (
-      normalized === '' ||
-      normalized === '0' ||
-      normalized === 'false' ||
-      normalized === 'null' ||
-      normalized === 'undefined'
-    ) {
-      return false;
-    }
-    return true;
-  }
-  return Boolean(value);
-}
-
 function loadUpcomingSubscriptions(): DigestUpcomingItem[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -209,11 +183,6 @@ function buildDigestData(
   const dateCache = new Map<string, string | null>();
 
   for (const tx of transactions ?? []) {
-    const deletedRaw = tx?.deleted_at ?? tx?.deletedAt ?? tx?.deleted ?? null;
-    if (isDeletedFlag(deletedRaw)) {
-      continue;
-    }
-
     const rawDate = tx?.date ?? null;
     let dateKey: string | null = null;
 
