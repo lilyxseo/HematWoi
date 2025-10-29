@@ -46,14 +46,14 @@ export default function CalendarGrid({
 
   return (
     <div className="relative">
-      <div className="grid grid-cols-7 gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400 md:gap-3">
+      <div className="grid grid-cols-7 gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 md:gap-2">
         {(weekdayLabels ?? ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']).map((label) => (
           <div key={label} className="px-1 py-1 text-center">
             {label}
           </div>
         ))}
       </div>
-      <div className="mt-2 grid grid-cols-7 gap-2 md:gap-3" role="grid">
+      <div className="mt-2 grid grid-cols-7 gap-1.5 md:gap-2" role="grid">
         {weeks.map((week, rowIndex) => (
           <div key={`week-${rowIndex}`} className="contents">
             {week.map((day) => {

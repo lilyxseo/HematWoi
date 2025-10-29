@@ -90,8 +90,10 @@ export default function DayCell({
   const income = summary?.incomeTotal ?? 0;
   const count = summary?.count ?? 0;
 
+  const dateLabel = format(date, 'EEEE, dd MMMM yyyy', { locale: localeId });
+
   const ariaLabelParts = [
-    format(date, 'EEEE, dd MMMM yyyy', { locale: localeId }),
+    dateLabel,
     count > 0 ? `${count} transaksi` : 'Tidak ada transaksi',
   ];
   if (expense > 0) {
@@ -110,38 +112,48 @@ export default function DayCell({
       aria-pressed={isSelected}
       aria-label={ariaLabelParts.join(', ')}
       className={clsx(
-        'relative flex h-full min-h-[112px] w-full flex-col justify-between rounded-xl p-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
+        'relative flex h-12 min-w-0 flex-col justify-between gap-1 rounded-xl px-1.5 py-1 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:h-16 md:gap-1.5 md:px-2',
         heatmapClass,
-        isSelected && 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-slate-950',
+        isSelected
+          ? 'ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-slate-950'
+          : 'ring-1 ring-slate-800',
         !isCurrentMonth && 'opacity-70',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-start justify-between pr-4">
         <span
           className={clsx(
-            'text-sm font-semibold text-slate-200 md:text-base',
+            'text-[10px] font-semibold text-slate-300 md:text-xs',
             isToday && 'text-[var(--accent)]',
           )}
         >
           {format(date, 'd', { locale: localeId })}
         </span>
-        {count > 0 ? (
-          <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100">
-            {count}
-          </span>
-        ) : null}
       </div>
-      <div className="mt-3 flex flex-col gap-1">
-        <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
+
+      <span
+        className="absolute top-1 right-1 inline-flex min-h-4 min-w-[1.25rem] items-center justify-center rounded bg-slate-800/80 px-1 text-[10px] font-semibold text-slate-200"
+        aria-hidden="true"
+      >
+        {count > 0 ? count : 0}
+      </span>
+
+      <span
+        className="block truncate text-[11px] font-semibold leading-tight text-slate-200 drop-shadow-[0_1px_0_rgba(0,0,0,0.3)] md:hidden"
+        aria-label={`${dateLabel} memiliki ${count > 0 ? `${count} transaksi` : 'tidak ada transaksi'}`}
+      >
+        {count > 0 ? `${count} tx` : '—'}
+      </span>
+
+      <div className="hidden md:flex md:items-center md:gap-2">
+        <span className="truncate font-mono text-sm leading-tight text-rose-400">
           {formatExpense(expense)}
         </span>
         {income > 0 ? (
-          <span className="block truncate font-mono text-xs text-emerald-400 md:text-sm">
+          <span className="truncate font-mono text-xs leading-tight text-emerald-400 opacity-80">
             {formatIncome(income)}
           </span>
-        ) : (
-          <span className="block truncate font-mono text-xs text-slate-400 md:text-sm">&nbsp;</span>
-        )}
+        ) : null}
       </div>
     </button>
   );
