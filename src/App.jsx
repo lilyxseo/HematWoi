@@ -29,6 +29,7 @@ import GoalsPage from "./pages/Goals";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
+import CalendarPage from "./pages/CalendarPage";
 import AuthLogin from "./pages/AuthLogin";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
@@ -1369,6 +1370,7 @@ function AppShell({ prefs, setPrefs }) {
                   }
                 />
                 <Route path="reports" element={<ReportsPage />} />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route
                   path="budgets"
                   element={<Budgets currentMonth={currentMonth} />}
