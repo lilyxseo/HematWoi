@@ -21,6 +21,7 @@ export interface DebtRecord {
   paid_total: number;
   remaining: number;
   status: DebtStatus;
+  paid_at: string | null;
   notes: string | null;
   tenor_months: number;
   tenor_sequence: number;
@@ -81,15 +82,23 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
   status?: DebtStatus;
 }
 
-export interface PaymentInput {
+export interface DebtPaymentPayload {
   amount: number;
   date: string;
-  account_id: string;
   notes?: string | null;
+  account_id?: string | null;
+  category_id?: string | null;
+  recordTransaction?: boolean;
+  markAsPaid?: boolean;
+  allowOverpay?: boolean;
+}
+
+export interface DebtPaymentUpdatePayload extends DebtPaymentPayload {
+  recordTransaction?: boolean;
 }
 
 const DEBT_SELECT_COLUMNS =
-  'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,tenor_months,tenor_sequence,created_at,updated_at';
+  'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,paid_at,notes,tenor_months,tenor_sequence,created_at,updated_at';
 
 function logDevError(error: unknown) {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -204,6 +213,7 @@ function mapDebtRow(row: Record<string, any>): DebtRecord {
     paid_total: paidTotal,
     remaining,
     status: row.status as DebtStatus,
+    paid_at: row.paid_at ?? null,
     notes: row.notes ?? null,
     tenor_months: tenorMonths,
     tenor_sequence: Math.min(tenorSequence, tenorMonths),
@@ -246,7 +256,11 @@ function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
   };
 }
 
-async function recalculateDebtAggregates(debtId: string, userId: string): Promise<DebtRecord | null> {
+async function recalculateDebtAggregates(
+  debtId: string,
+  userId: string,
+  options?: { overrideStatus?: DebtStatus; paidAt?: string | null },
+): Promise<DebtRecord | null> {
   const { data: debtRow, error: debtError } = await supabase
     .from('debts')
     .select(DEBT_SELECT_COLUMNS)
@@ -268,13 +282,22 @@ async function recalculateDebtAggregates(debtId: string, userId: string): Promis
   if (paymentsError) throw paymentsError;
 
   const paidTotal = (paymentsRows ?? []).reduce((sum, item) => sum + safeNumber(item.amount), 0);
-  const status = evaluateStatus(safeNumber(debtRow.amount), paidTotal, debtRow.due_date ?? null);
+  const evaluatedStatus = evaluateStatus(safeNumber(debtRow.amount), paidTotal, debtRow.due_date ?? null);
+  const status = options?.overrideStatus ?? evaluatedStatus;
+  const previousPaidAt = debtRow.paid_at ?? null;
+  const nextPaidAt =
+    options && Object.prototype.hasOwnProperty.call(options, 'paidAt')
+      ? options.paidAt ?? null
+      : status === 'paid'
+      ? previousPaidAt
+      : null;
 
   const { data: updated, error: updateError } = await supabase
     .from('debts')
     .update({
       paid_total: paidTotal.toFixed(2),
       status,
+      paid_at: nextPaidAt,
     })
     .eq('id', debtId)
     .eq('user_id', userId)
@@ -284,7 +307,7 @@ async function recalculateDebtAggregates(debtId: string, userId: string): Promis
   if (updateError) {
     throw updateError;
   }
-  if (!updated) return mapDebtRow({ ...debtRow, paid_total: paidTotal, status });
+  if (!updated) return mapDebtRow({ ...debtRow, paid_total: paidTotal, status, paid_at: nextPaidAt ?? null });
   return mapDebtRow(updated);
 }
 
@@ -689,79 +712,202 @@ export async function deleteDebt(id: string): Promise<void> {
   }
 }
 
-export async function addPayment(
+interface DebtPaymentContext {
+  userId: string;
+  debt: Record<string, any>;
+  amount: number;
+  isoDate: string;
+  notes: string | null;
+}
+
+async function createLinkedTransaction({
+  userId,
+  debt,
+  amount,
+  isoDate,
+  notes,
+  accountId,
+  categoryId,
+}: DebtPaymentContext & { accountId: string; categoryId?: string | null }): Promise<string | null> {
+  const isReceivable = debt.type === 'receivable';
+  const transactionType = isReceivable ? 'income' : 'expense';
+  const partyName = typeof debt.party_name === 'string' ? debt.party_name.trim() : '';
+  const debtTitle = typeof debt.title === 'string' ? debt.title.trim() : '';
+  const transactionTitle = debtTitle
+    ? debtTitle
+    : isReceivable
+    ? `Pelunasan piutang${partyName ? ` - ${partyName}` : ''}`
+    : `Pembayaran hutang${partyName ? ` - ${partyName}` : ''}`;
+
+  const transactionDate = isoDate.slice(0, 10);
+
+  const payload: Record<string, unknown> = {
+    user_id: userId,
+    type: transactionType,
+    amount: amount.toFixed(2),
+    date: transactionDate,
+    account_id: accountId,
+    title: transactionTitle,
+    notes,
+  };
+
+  if (categoryId) {
+    payload.category_id = categoryId;
+  }
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .insert(payload)
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
+function normalizeNotes(notes?: string | null): string | null {
+  if (typeof notes !== 'string') return null;
+  const trimmed = notes.trim();
+  return trimmed ? trimmed : null;
+}
+
+async function ensureDebt(debtId: string, userId: string) {
+  const debtRow = await fetchDebtById(debtId, userId);
+  if (!debtRow) {
+    throw new Error('Hutang tidak ditemukan.');
+  }
+  return debtRow;
+}
+
+function resolveMarkAsPaid(markAsPaid: boolean | undefined): boolean {
+  return markAsPaid !== false;
+}
+
+function computeRemainingAfter(debt: Record<string, any>, amount: number, excludeAmount = 0): {
+  before: number;
+  after: number;
+  totalPaid: number;
+} {
+  const baseAmount = safeNumber(debt.amount);
+  const paidTotal = safeNumber(debt.paid_total);
+  const before = Math.max(baseAmount - (paidTotal - excludeAmount), 0);
+  const after = Math.max(baseAmount - (paidTotal - excludeAmount + amount), -Number.MAX_VALUE);
+  return {
+    before,
+    after,
+    totalPaid: paidTotal - excludeAmount + amount,
+  };
+}
+
+async function recalcAfterChange(
   debtId: string,
-  payload: PaymentInput
+  userId: string,
+  options?: { overrideStatus?: DebtStatus; paidAt?: string | null },
+): Promise<DebtRecord | null> {
+  return recalculateDebtAggregates(debtId, userId, options);
+}
+
+async function updatePaymentRow(
+  id: string,
+  updates: Record<string, unknown>,
+  userId: string,
+): Promise<DebtPaymentRecord> {
+  const { data, error } = await supabase
+    .from('debt_payments')
+    .update(updates)
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select('*, account:account_id (id, name)')
+    .single();
+  if (error) throw error;
+  return mapPaymentRow(data);
+}
+
+function toCurrency(amount: number): string {
+  return amount.toFixed(2);
+}
+
+async function fetchPaymentById(paymentId: string, userId: string) {
+  const { data, error } = await supabase
+    .from('debt_payments')
+    .select('*, account:account_id (id, name)')
+    .eq('id', paymentId)
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    throw new Error('Pembayaran tidak ditemukan.');
+  }
+  return data;
+}
+
+export async function createDebtPayment(
+  debtId: string,
+  payload: DebtPaymentPayload,
 ): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
 {
   try {
     const userId = await getUserId();
-    const debtRow = await fetchDebtById(debtId, userId);
-    if (!debtRow) {
-      throw new Error('Hutang tidak ditemukan.');
-    }
+    const debtRow = await ensureDebt(debtId, userId);
 
-    const accountId = typeof payload.account_id === 'string' ? payload.account_id.trim() : '';
-    if (!accountId) {
-      throw new Error('Pilih akun sumber pembayaran.');
-    }
-
-    const amount = Math.max(0, payload.amount);
+    const rawAmount = Number(payload.amount);
+    const amount = Number.isFinite(rawAmount) ? Math.max(0, rawAmount) : Number.NaN;
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error('Nominal pembayaran tidak valid.');
     }
 
     const isoDate = toISODate(payload.date) ?? new Date().toISOString();
-    const transactionDate = isoDate.slice(0, 10);
-    const isReceivable = debtRow.type === 'receivable';
-    const transactionType = isReceivable ? 'income' : 'expense';
-    const trimmedNotes = payload.notes?.trim() ? payload.notes.trim() : null;
-    const partyName = typeof debtRow.party_name === 'string' ? debtRow.party_name.trim() : '';
-    const debtTitle = typeof debtRow.title === 'string' ? debtRow.title.trim() : '';
-    const transactionTitle = debtTitle
-      ? debtTitle
-      : isReceivable
-      ? `Pelunasan piutang${partyName ? ` - ${partyName}` : ''}`
-      : `Pembayaran hutang${partyName ? ` - ${partyName}` : ''}`;
+    const notes = normalizeNotes(payload.notes);
+    const { before, after, totalPaid } = computeRemainingAfter(debtRow, amount);
 
-    let transactionId: string | null = null;
-    try {
-      const { data: transactionData, error: transactionError } = await supabase
-        .from('transactions')
-        .insert({
-          user_id: userId,
-          type: transactionType,
-          amount: amount.toFixed(2),
-          date: transactionDate,
-          account_id: accountId,
-          title: transactionTitle,
-          notes: trimmedNotes,
-        })
-        .select('id')
-        .single();
-      if (transactionError) throw transactionError;
-      transactionId = transactionData?.id ?? null;
-    } catch (transactionError) {
-      throw transactionError instanceof Error
-        ? transactionError
-        : new Error('Gagal membuat transaksi untuk pembayaran hutang.');
+    if (after < -0.009 && payload.allowOverpay !== true) {
+      throw new Error('Nominal melebihi sisa tagihan. Aktifkan opsi overpay untuk melanjutkan.');
     }
 
-    const insertPayload = {
+    const shouldRecordTransaction = payload.recordTransaction !== false;
+    const accountId =
+      typeof payload.account_id === 'string' && payload.account_id.trim()
+        ? payload.account_id.trim()
+        : null;
+    if (shouldRecordTransaction && !accountId) {
+      throw new Error('Pilih akun untuk mencatat transaksi.');
+    }
+
+    let transactionId: string | null = null;
+    if (shouldRecordTransaction && accountId) {
+      transactionId = await createLinkedTransaction({
+        userId,
+        debt: debtRow,
+        amount,
+        isoDate,
+        notes,
+        accountId,
+        categoryId: payload.category_id ?? null,
+      }).catch((error) => {
+        throw error instanceof Error
+          ? error
+          : new Error('Gagal membuat transaksi untuk pembayaran hutang.');
+      });
+    }
+
+    const insertPayload: Record<string, unknown> = {
       debt_id: debtId,
       user_id: userId,
-      amount: amount.toFixed(2),
+      amount: toCurrency(amount),
       date: isoDate,
-      notes: trimmedNotes,
-      account_id: accountId,
+      notes,
       transaction_id: transactionId,
     };
+
+    if (accountId) {
+      insertPayload.account_id = accountId;
+    }
 
     const { data, error } = await supabase
       .from('debt_payments')
       .insert([insertPayload])
       .select('*, account:account_id (id, name)')
       .single();
+
     if (error) {
       if (transactionId) {
         await supabase
@@ -773,7 +919,33 @@ export async function addPayment(
       throw error;
     }
 
-    const updatedDebt = await recalculateDebtAggregates(debtId, userId);
+    const markAsPaid = resolveMarkAsPaid(payload.markAsPaid);
+    const remainingAfter = Math.max(after, 0);
+    let overrideStatus: DebtStatus | undefined;
+    let recalculationOptions: { overrideStatus: DebtStatus; paidAt?: string | null } | undefined;
+    if (remainingAfter <= 0) {
+      if (markAsPaid) {
+        overrideStatus = 'paid';
+        recalculationOptions = { overrideStatus, paidAt: isoDate };
+      } else {
+        overrideStatus = 'ongoing';
+        recalculationOptions = { overrideStatus, paidAt: null };
+      }
+    }
+
+    const updatedDebt = await recalcAfterChange(debtId, userId, recalculationOptions);
+
+    if (updatedDebt) {
+      updatedDebt.paid_total = totalPaid;
+      updatedDebt.remaining = remainingAfter;
+      if (overrideStatus === 'paid') {
+        updatedDebt.status = 'paid';
+        updatedDebt.paid_at = isoDate;
+      } else if (overrideStatus === 'ongoing') {
+        updatedDebt.status = 'ongoing';
+        updatedDebt.paid_at = null;
+      }
+    }
 
     return {
       debt: updatedDebt,
@@ -784,7 +956,146 @@ export async function addPayment(
   }
 }
 
-export async function deletePayment(paymentId: string): Promise<DebtRecord | null> {
+export async function createDebtPaymentWithTransaction(
+  debtId: string,
+  payload: DebtPaymentPayload,
+): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
+{
+  return createDebtPayment(debtId, { ...payload, recordTransaction: true });
+}
+
+export async function updateDebtPayment(
+  paymentId: string,
+  payload: DebtPaymentUpdatePayload,
+): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
+{
+  try {
+    const userId = await getUserId();
+    const paymentRow = await fetchPaymentById(paymentId, userId);
+    const debtId = String(paymentRow.debt_id);
+    const debtRow = await ensureDebt(debtId, userId);
+
+    const originalAmount = safeNumber(paymentRow.amount);
+    const rawAmount = Number(payload.amount);
+    const amount = Number.isFinite(rawAmount) ? Math.max(0, rawAmount) : Number.NaN;
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error('Nominal pembayaran tidak valid.');
+    }
+
+    const isoDate = toISODate(payload.date) ?? new Date().toISOString();
+    const notes = normalizeNotes(payload.notes);
+    const { before, after, totalPaid } = computeRemainingAfter(debtRow, amount, originalAmount);
+
+    if (after < -0.009 && payload.allowOverpay !== true) {
+      throw new Error('Nominal melebihi sisa tagihan. Aktifkan opsi overpay untuk melanjutkan.');
+    }
+
+    const shouldRecordTransaction = payload.recordTransaction ?? Boolean(paymentRow.transaction_id);
+    const accountIdInput =
+      typeof payload.account_id === 'string' && payload.account_id.trim()
+        ? payload.account_id.trim()
+        : null;
+    const accountId = shouldRecordTransaction
+      ? accountIdInput ?? (paymentRow.account_id ? String(paymentRow.account_id) : null)
+      : accountIdInput;
+
+    if (shouldRecordTransaction && !accountId) {
+      throw new Error('Pilih akun untuk mencatat transaksi.');
+    }
+
+    let transactionId: string | null = paymentRow.transaction_id ? String(paymentRow.transaction_id) : null;
+
+    if (shouldRecordTransaction) {
+      if (transactionId) {
+        const { error: updateError } = await supabase
+          .from('transactions')
+          .update({
+            amount: toCurrency(amount),
+            date: isoDate.slice(0, 10),
+            account_id: accountId,
+            notes,
+            ...(payload.category_id ? { category_id: payload.category_id } : {}),
+          })
+          .eq('id', transactionId)
+          .eq('user_id', userId);
+        if (updateError) throw updateError;
+      } else if (accountId) {
+        transactionId = await createLinkedTransaction({
+          userId,
+          debt: debtRow,
+          amount,
+          isoDate,
+          notes,
+          accountId,
+          categoryId: payload.category_id ?? null,
+        }).catch((error) => {
+          throw error instanceof Error
+            ? error
+            : new Error('Gagal membuat transaksi untuk pembayaran hutang.');
+        });
+      }
+    } else if (transactionId) {
+      await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', transactionId)
+        .eq('user_id', userId);
+      transactionId = null;
+    }
+
+    const updates: Record<string, unknown> = {
+      amount: toCurrency(amount),
+      date: isoDate,
+      notes,
+      transaction_id: transactionId,
+    };
+
+    if (accountId) {
+      updates.account_id = accountId;
+    } else if (shouldRecordTransaction === false) {
+      updates.account_id = null;
+    }
+
+    const payment = await updatePaymentRow(paymentId, updates, userId);
+
+    const markAsPaid = resolveMarkAsPaid(payload.markAsPaid);
+    const remainingAfter = Math.max(after, 0);
+    let overrideStatus: DebtStatus | undefined;
+    let recalculationOptions: { overrideStatus: DebtStatus; paidAt?: string | null } | undefined;
+    if (remainingAfter <= 0) {
+      if (markAsPaid) {
+        overrideStatus = 'paid';
+        recalculationOptions = { overrideStatus, paidAt: isoDate };
+      } else {
+        overrideStatus = 'ongoing';
+        recalculationOptions = { overrideStatus, paidAt: null };
+      }
+    }
+
+    const updatedDebt = await recalcAfterChange(debtId, userId, recalculationOptions);
+
+    if (updatedDebt) {
+      updatedDebt.paid_total = totalPaid;
+      updatedDebt.remaining = remainingAfter;
+      if (overrideStatus === 'paid') {
+        updatedDebt.status = 'paid';
+        updatedDebt.paid_at = isoDate;
+      } else if (overrideStatus === 'ongoing') {
+        updatedDebt.status = 'ongoing';
+        updatedDebt.paid_at = null;
+      }
+    }
+
+    return { debt: updatedDebt, payment };
+  } catch (error) {
+    return handleError(error, 'Gagal memperbarui pembayaran');
+  }
+}
+
+export async function deleteDebtPayment(
+  paymentId: string,
+  { withRollback }: { withRollback?: boolean } = {},
+): Promise<DebtRecord | null> {
   try {
     const userId = await getUserId();
     const { data: paymentRow, error: fetchError } = await supabase
@@ -805,7 +1116,7 @@ export async function deletePayment(paymentId: string): Promise<DebtRecord | nul
       .eq('user_id', userId);
     if (error) throw error;
 
-    if (paymentRow.transaction_id) {
+    if (withRollback && paymentRow.transaction_id) {
       try {
         await supabase
           .from('transactions')
@@ -817,9 +1128,21 @@ export async function deletePayment(paymentId: string): Promise<DebtRecord | nul
       }
     }
 
-    const updatedDebt = await recalculateDebtAggregates(paymentRow.debt_id, userId);
+    const updatedDebt = await recalcAfterChange(paymentRow.debt_id, userId);
     return updatedDebt;
   } catch (error) {
     return handleError(error, 'Gagal menghapus pembayaran');
   }
+}
+
+export async function addPayment(
+  debtId: string,
+  payload: DebtPaymentPayload,
+): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
+{
+  return createDebtPaymentWithTransaction(debtId, payload);
+}
+
+export async function deletePayment(paymentId: string): Promise<DebtRecord | null> {
+  return deleteDebtPayment(paymentId, { withRollback: true });
 }
