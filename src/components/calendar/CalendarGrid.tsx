@@ -46,19 +46,22 @@ export default function CalendarGrid({
 
   return (
     <div className="relative">
-      <div className="grid grid-cols-7 gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400 md:gap-3">
-        {(weekdayLabels ?? ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']).map((label) => (
-          <div key={label} className="px-1 py-1 text-center">
-            {label}
-          </div>
-        ))}
+      <div className="px-3">
+        <div className="grid grid-cols-7 gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 sm:text-xs md:gap-2">
+          {(weekdayLabels ?? ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min']).map((label) => (
+            <div key={label} className="px-1 text-center">
+              {label}
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="mt-2 grid grid-cols-7 gap-2 md:gap-3" role="grid">
-        {weeks.map((week, rowIndex) => (
-          <div key={`week-${rowIndex}`} className="contents">
-            {week.map((day) => {
-              const key = format(day, DATE_KEY_FORMAT);
-              const summary = summaries[key];
+      <div className="mt-2 px-3">
+        <div className="grid grid-cols-7 gap-1.5 md:gap-2" role="grid">
+          {weeks.map((week, rowIndex) => (
+            <div key={`week-${rowIndex}`} className="contents">
+              {week.map((day) => {
+                const key = format(day, DATE_KEY_FORMAT);
+                const summary = summaries[key];
               const isCurrentMonth = isSameMonth(day, month);
               const selected = selectedDateObj ? isSameDay(day, selectedDateObj) : false;
               const today = isToday(day);
@@ -80,6 +83,7 @@ export default function CalendarGrid({
             })}
           </div>
         ))}
+        </div>
       </div>
       {isLoading ? (
         <div className="pointer-events-none absolute inset-0 rounded-2xl border border-slate-800/80 bg-slate-950/70 backdrop-blur-sm">
