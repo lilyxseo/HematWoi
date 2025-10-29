@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { findUpcoming, loadSubscriptions } from '../lib/subscriptions';
+import { isTransactionDeleted } from '../lib/transactionUtils';
 
 const TIMEZONE = 'Asia/Jakarta';
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
@@ -30,6 +31,9 @@ export interface DigestTransactionLike {
   type?: string | null;
   date?: string | null;
   category?: string | null;
+  deleted_at?: string | boolean | null;
+  deletedAt?: string | boolean | null;
+  deleted?: string | boolean | null;
 }
 
 export interface DigestUpcomingItem {
@@ -183,6 +187,10 @@ function buildDigestData(
   const dateCache = new Map<string, string | null>();
 
   for (const tx of transactions ?? []) {
+    if (isTransactionDeleted(tx)) {
+      continue;
+    }
+
     const rawDate = tx?.date ?? null;
     let dateKey: string | null = null;
 

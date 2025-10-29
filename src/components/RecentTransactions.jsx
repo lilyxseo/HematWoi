@@ -3,6 +3,7 @@ import { ArrowDownLeft, ArrowRightLeft, ArrowUpRight, Clock } from "lucide-react
 import clsx from "clsx";
 import Segmented from "./ui/Segmented";
 import Card, { CardBody, CardHeader } from "./Card";
+import { isTransactionDeleted } from "../lib/transactionUtils";
 
 function formatCurrency(n = 0) {
   return new Intl.NumberFormat("id-ID", {
@@ -46,9 +47,14 @@ export default function RecentTransactions({ txs = [] }) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
 
+  const activeTxs = useMemo(
+    () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
+    [txs],
+  );
+
   const filtered = useMemo(() => {
     const now = new Date();
-    return txs
+    return activeTxs
       .filter((t) => {
         const d = new Date(t.date);
         const diff = (now - d) / (1000 * 60 * 60 * 24);
@@ -57,7 +63,7 @@ export default function RecentTransactions({ txs = [] }) {
         return diff < 30;
       })
       .sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [txs, period]);
+  }, [activeTxs, period]);
 
   useEffect(() => {
     setPage(1);

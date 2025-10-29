@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { isTransactionDeleted } from "../lib/transactionUtils";
 
 const JAKARTA_TIMEZONE = "Asia/Jakarta";
 
@@ -43,6 +44,9 @@ function getCurrentJakartaMonthIndex(baseDate = new Date()) {
 }
 
 export function aggregateInsights(txs = [], baseDate = new Date()) {
+  const activeTxs = Array.isArray(txs)
+    ? txs.filter((tx) => !isTransactionDeleted(tx))
+    : [];
   const currentMonthIndex = getCurrentJakartaMonthIndex(baseDate);
   if (currentMonthIndex == null) {
     return { kpis: { income: 0, expense: 0, net: 0, avgDaily: 0 }, trend: [], categories: [], topSpends: [] };
@@ -50,7 +54,7 @@ export function aggregateInsights(txs = [], baseDate = new Date()) {
 
   const currentMonthKey = getJakartaMonthKey(baseDate);
 
-  const monthTx = txs.filter((t) => getJakartaMonthKey(t.date) === currentMonthKey);
+  const monthTx = activeTxs.filter((t) => getJakartaMonthKey(t.date) === currentMonthKey);
   const income = monthTx
     .filter((t) => t.type === "income")
     .reduce((s, t) => s + Number(t.amount || 0), 0);
@@ -66,7 +70,7 @@ export function aggregateInsights(txs = [], baseDate = new Date()) {
   const trendMap = new Map();
   const oldestMonthIndex = currentMonthIndex - 5;
 
-  for (const t of txs) {
+  for (const t of activeTxs) {
     const parts = getJakartaDateParts(t.date);
     if (!parts) continue;
     if (t.type !== "income" && t.type !== "expense") continue;
@@ -128,12 +132,16 @@ export function aggregateInsights(txs = [], baseDate = new Date()) {
 const cache = new Map();
 
 export default function useInsights(txs = []) {
-  const key = txs.map((t) => `${t.id || t.date}-${t.amount}-${t.type}`).join("|");
+  const sanitizedTxs = useMemo(
+    () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
+    [txs],
+  );
+  const key = sanitizedTxs.map((t) => `${t.id || t.date}-${t.amount}-${t.type}`).join("|");
   return useMemo(() => {
     if (cache.has(key)) return cache.get(key);
-    const data = aggregateInsights(txs);
+    const data = aggregateInsights(sanitizedTxs);
     cache.set(key, data);
     return data;
-  }, [key, txs]);
+  }, [key, sanitizedTxs]);
 }
 

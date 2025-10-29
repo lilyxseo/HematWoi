@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QuickActions from "../components/QuickActions";
 import SectionHeader from "../components/SectionHeader";
 import CategoryDonut from "../components/CategoryDonut";
@@ -15,6 +15,7 @@ import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighlightedBudgets";
 import FinancialInsights from "../components/dashboard/FinancialInsights";
+import { isTransactionDeleted } from "../lib/transactionUtils";
 
 const DEFAULT_PRESET = "month";
 
@@ -41,6 +42,11 @@ export default function Dashboard({ stats, txs }) {
   } = balances;
   const { start: periodStart, end: periodEnd } = periodRange;
 
+  const visibleTxs = useMemo(
+    () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
+    [txs],
+  );
+
   const digest = useShowDigestOnLogin({
     transactions: txs,
     balanceHint: stats?.balance ?? null,
@@ -48,14 +54,14 @@ export default function Dashboard({ stats, txs }) {
 
   useEffect(() => {
     refresh({ start: periodStart, end: periodEnd }, periodPreset);
-  }, [periodStart, periodEnd, periodPreset, refresh]);
+  }, [periodStart, periodEnd, periodPreset, refresh, txs]);
 
   const handlePeriodChange = (range, preset) => {
     setPeriodRange(range);
     setPeriodPreset(preset);
   };
 
-  const insights = useInsights(txs);
+  const insights = useInsights(visibleTxs);
 
   return (
     <>
@@ -127,7 +133,7 @@ export default function Dashboard({ stats, txs }) {
               data={insights.topSpends}
               onSelect={(t) => EventBus.emit("tx:open", t)}
             />
-            <RecentTransactions txs={txs} />
+            <RecentTransactions txs={visibleTxs} />
           </div>
         </section>
       </div>
