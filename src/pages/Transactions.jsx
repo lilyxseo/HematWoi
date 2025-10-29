@@ -266,6 +266,68 @@ export default function Transactions() {
   }, [location, navigate, page, pageSize]);
 
   useEffect(() => {
+    const editIdRaw = location.state?.editTransactionId;
+    if (!editIdRaw) {
+      return undefined;
+    }
+
+    const editId = String(editIdRaw);
+
+    const clearEditState = () => {
+      const { editTransactionId: _ignoredEdit, ...rest } = location.state || {};
+      const nextState = Object.keys(rest).length ? rest : null;
+      navigate(
+        { pathname: location.pathname, search: location.search },
+        { replace: true, state: nextState },
+      );
+    };
+
+    const existing = itemsById.get(editId);
+    if (existing) {
+      setEditTarget(existing);
+      clearEditState();
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select(
+            'id, user_id, date, type, amount, title, notes, category_id, account_id, to_account_id, merchant_id, receipt_url',
+          )
+          .eq('id', editId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!cancelled && data) {
+          setEditTarget({
+            ...data,
+            id: data.id,
+            user_id: data.user_id,
+            category_id: data.category_id,
+            account_id: data.account_id,
+            to_account_id: data.to_account_id,
+            merchant_id: data.merchant_id,
+            receipt_url: data.receipt_url,
+          });
+        }
+      } catch (error) {
+        console.error('[transactions] gagal memuat transaksi untuk edit', error);
+      } finally {
+        if (!cancelled) {
+          clearEditState();
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [itemsById, location, navigate]);
+
+  useEffect(() => {
     setSearchTerm(filter.search);
   }, [filter.search]);
 
