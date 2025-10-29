@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { Loader2, Pencil, RotateCcw, Trash2 } from "lucide-react";
-import { ChangeEvent, ReactNode } from "react";
+import { ChangeEvent, ReactNode, useEffect, useRef } from "react";
 import CategoryDot from "./CategoryDot";
 
 interface TransactionRowData {
@@ -49,6 +49,7 @@ interface TransactionsTableProps {
   deleteDisabled?: boolean;
   repeatLoadingIds?: Set<string>;
   emptyState: ReactNode;
+  highlightId?: string | null;
 }
 
 const AMOUNT_CLASS: Record<string, string> = {
@@ -83,8 +84,42 @@ export default function TransactionsTable({
   deleteDisabled = false,
   repeatLoadingIds,
   emptyState,
+  highlightId,
 }: TransactionsTableProps) {
   const isInitialLoading = loading && items.length === 0;
+
+  const highlightRowRef = useRef<HTMLTableRowElement | null>(null);
+  const highlightScrolledRef = useRef(false);
+
+  useEffect(() => {
+    highlightScrolledRef.current = false;
+  }, [highlightId]);
+
+  useEffect(() => {
+    if (!highlightId) {
+      highlightRowRef.current = null;
+      highlightScrolledRef.current = false;
+      return;
+    }
+
+    if (!highlightRowRef.current) {
+      highlightScrolledRef.current = false;
+      return;
+    }
+
+    if (highlightScrolledRef.current) return;
+
+    if (typeof window === "undefined") return;
+
+    highlightScrolledRef.current = true;
+
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    highlightRowRef.current.scrollIntoView({
+      block: "center",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+    });
+  }, [highlightId, items]);
 
   const displayStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const displayEnd = total === 0 ? 0 : Math.min((page - 1) * pageSize + items.length, total);
@@ -194,9 +229,13 @@ export default function TransactionsTable({
                     return (
                       <tr
                         key={item.id}
+                        ref={item.id === highlightId ? (node) => { highlightRowRef.current = node; } : undefined}
+                        data-highlighted={item.id === highlightId || undefined}
                         className={clsx(
-                          "transition-colors hover:bg-slate-900/40",
+                          "group relative transition-colors hover:bg-slate-900/40",
                           selected && "bg-[var(--accent)]/5",
+                          item.id === highlightId &&
+                            "bg-[var(--accent)]/15 text-slate-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]",
                         )}
                       >
                         <td className="px-4 py-4 align-middle">

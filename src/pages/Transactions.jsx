@@ -179,6 +179,13 @@ export default function Transactions() {
   const online = useNetworkStatus();
   const navigate = useNavigate();
   const location = useLocation();
+  const highlightId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const value = params.get("highlight");
+    if (!value) return null;
+    const trimmed = value.trim();
+    return trimmed === "" ? null : trimmed;
+  }, [location.search]);
   const [items, setItems] = useState(queryItems);
   const [optimisticItems, setOptimisticItems] = useState(() => []);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -1016,6 +1023,7 @@ export default function Transactions() {
               onOpenAdd={handleNavigateToAdd}
             />
           }
+          highlightId={highlightId}
         />
         <TransactionsCardList
           items={visibleItems}
@@ -1043,6 +1051,7 @@ export default function Transactions() {
               onOpenAdd={handleNavigateToAdd}
             />
           }
+          highlightId={highlightId}
         />
 
         {confirmState && (
