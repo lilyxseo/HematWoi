@@ -250,6 +250,18 @@ export default function Sidebar({
                 : String(row.category),
         }));
 
+        if (!normalized.some((item) => item.route === '/calendar')) {
+          normalized.splice(1, 0, {
+            id: 'calendar-local',
+            title: 'Kalender',
+            route: '/calendar',
+            access_level: 'user',
+            icon_name: 'calendar',
+            position: (normalized[0]?.position ?? 0) + 1,
+            category: null,
+          });
+        }
+
         setMenuItems(normalized);
         saveCachedMenu(role, normalized);
       } catch (error) {
