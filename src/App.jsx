@@ -29,6 +29,7 @@ import GoalsPage from "./pages/Goals";
 import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
+import CalendarPage from "./pages/CalendarPage";
 import AuthLogin from "./pages/AuthLogin";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
@@ -1396,6 +1397,7 @@ function AppShell({ prefs, setPrefs }) {
                   element={<Categories cat={data.cat} onSave={saveCategories} />}
                 />
                 <Route path="wishlist" element={<WishlistPage />} />
+                <Route path="calendar" element={<CalendarPage />} />
                 <Route path="accounts" element={<AccountsPage />} />
                 <Route
                   path="subscriptions"
