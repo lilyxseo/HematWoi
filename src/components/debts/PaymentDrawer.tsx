@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Info, Wallet, X } from 'lucide-react';
 import type { DebtPaymentRecord, DebtRecord } from '../../lib/api-debts';
 import PaymentsList from './PaymentsList';
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll';
 import type { AccountRecord } from '../../lib/api';
+import type { CategoryRecord } from '../../lib/api-categories';
 
 const currencyFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
@@ -36,38 +37,67 @@ const todayIso = () => {
   return now.toISOString().slice(0, 10);
 };
 
+const OVERPAY_TOLERANCE = 0.0001;
+
+type TransactionType = 'income' | 'expense';
+
+const TYPE_SUMMARY: Record<DebtRecord['type'], { title: string; transaction: TransactionType }> = {
+  debt: { title: 'Hutang', transaction: 'expense' },
+  receivable: { title: 'Piutang', transaction: 'income' },
+};
+
+interface PaymentFormPayload {
+  amount: number;
+  date: string;
+  notes?: string | null;
+  includeTransaction: boolean;
+  accountId?: string | null;
+  categoryId?: string | null;
+  markAsPaid: boolean;
+  allowOverpay: boolean;
+}
+
 interface PaymentDrawerProps {
   open: boolean;
   debt: DebtRecord | null;
   payments: DebtPaymentRecord[];
   accounts: AccountRecord[];
+  categories: CategoryRecord[];
   loading?: boolean;
   submitting?: boolean;
   deletingId?: string | null;
   accountsLoading?: boolean;
+  categoriesLoading?: boolean;
   onClose: () => void;
-  onSubmit: (payload: { amount: number; date: string; account_id: string; notes?: string | null }) => Promise<void> | void;
+  onSubmit: (payload: PaymentFormPayload) => Promise<void> | void;
   onDeletePayment: (payment: DebtPaymentRecord) => void;
+  onViewTransaction?: (transactionId: string) => void;
 }
-
 export default function PaymentDrawer({
   open,
   debt,
   payments,
   accounts,
+  categories,
   loading,
   submitting,
   deletingId,
   accountsLoading,
+  categoriesLoading,
   onClose,
   onSubmit,
   onDeletePayment,
+  onViewTransaction,
 }: PaymentDrawerProps) {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(todayIso());
   const [notes, setNotes] = useState('');
+  const [includeTransaction, setIncludeTransaction] = useState(true);
+  const [markAsPaid, setMarkAsPaid] = useState(true);
+  const [allowOverpay, setAllowOverpay] = useState(false);
   const [accountId, setAccountId] = useState('');
-  const [errors, setErrors] = useState<{ amount?: string; date?: string; account?: string }>({});
+  const [categoryId, setCategoryId] = useState('');
+  const [errors, setErrors] = useState<{ amount?: string; date?: string; account?: string; category?: string }>({});
   const panelRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -118,13 +148,39 @@ export default function PaymentDrawer({
       setAmount('');
       setDate(todayIso());
       setNotes('');
-      setAccountId('');
+      setIncludeTransaction(true);
+      setMarkAsPaid(true);
+      setAllowOverpay(false);
       setErrors({});
     }
   }, [open, debt?.id]);
 
+  const transactionType: TransactionType = useMemo(() => {
+    if (!debt) return 'expense';
+    return TYPE_SUMMARY[debt.type]?.transaction ?? 'expense';
+  }, [debt]);
+
+  const filteredCategories = useMemo(
+    () => categories.filter((category) => category.type === transactionType),
+    [categories, transactionType],
+  );
+
+  const defaultCategoryId = useMemo(() => {
+    if (!filteredCategories.length) return '';
+    const targetName = transactionType === 'income' ? 'piutang' : 'hutang';
+    const directMatch = filteredCategories.find(
+      (category) => category.name.trim().toLowerCase() === targetName,
+    );
+    if (directMatch) return directMatch.id;
+    return filteredCategories[0]?.id ?? '';
+  }, [filteredCategories, transactionType]);
+
   useEffect(() => {
     if (!open) return;
+    if (!includeTransaction) {
+      setAccountId('');
+      return;
+    }
     if (!accounts.length) {
       setAccountId('');
       return;
@@ -135,7 +191,24 @@ export default function PaymentDrawer({
       }
       return accounts[0]?.id ?? '';
     });
-  }, [open, accounts]);
+  }, [open, includeTransaction, accounts]);
+
+  useEffect(() => {
+    if (!open || !includeTransaction) {
+      setCategoryId('');
+      return;
+    }
+    if (!filteredCategories.length) {
+      setCategoryId('');
+      return;
+    }
+    setCategoryId((prev) => {
+      if (prev && filteredCategories.some((category) => category.id === prev)) {
+        return prev;
+      }
+      return defaultCategoryId;
+    });
+  }, [open, includeTransaction, filteredCategories, defaultCategoryId]);
 
   useEffect(() => {
     if (open) {
@@ -143,10 +216,20 @@ export default function PaymentDrawer({
     }
   }, [open]);
 
-  const remainingLabel = useMemo(() => {
-    if (!debt) return currencyFormatter.format(0);
-    return currencyFormatter.format(Math.max(0, debt.remaining));
+  const remainingBefore = useMemo(() => {
+    if (!debt) return 0;
+    return Math.max(0, debt.remaining);
   }, [debt]);
+
+  const parsedAmount = useMemo(() => parseDecimal(amount), [amount]);
+  const overpay = Number.isFinite(parsedAmount) && parsedAmount - remainingBefore > OVERPAY_TOLERANCE;
+  const remainingAfter = useMemo(() => {
+    if (!Number.isFinite(parsedAmount)) return remainingBefore;
+    return Math.max(0, remainingBefore - Math.max(parsedAmount, 0));
+  }, [parsedAmount, remainingBefore]);
+
+  const remainingLabel = useMemo(() => currencyFormatter.format(Math.max(0, remainingBefore)), [remainingBefore]);
+  const remainingAfterLabel = useMemo(() => currencyFormatter.format(Math.max(0, remainingAfter)), [remainingAfter]);
 
   const totalPaidLabel = useMemo(() => {
     if (!debt) return currencyFormatter.format(0);
@@ -160,28 +243,46 @@ export default function PaymentDrawer({
     return `${current}/${total}`;
   }, [debt]);
 
-  const isSubmitDisabled = Boolean(submitting) || Boolean(accountsLoading) || !accountId;
+  const isSubmitDisabled = useMemo(() => {
+    if (submitting) return true;
+    if (includeTransaction) {
+      if (accountsLoading) return true;
+      if (!accountId) return true;
+      if (filteredCategories.length > 0 && !categoryId) return true;
+    }
+    return false;
+  }, [submitting, includeTransaction, accountsLoading, accountId, filteredCategories, categoryId]);
 
+  const transactionTypeLabel = transactionType === 'income' ? 'Pemasukan' : 'Pengeluaran';
+  const TransactionIcon = transactionType === 'income' ? ArrowUpRight : ArrowDownLeft;
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const parsedAmount = parseDecimal(amount);
+    const parsed = parseDecimal(amount);
     const trimmedDate = date?.trim() ?? '';
-    const nextErrors: { amount?: string; date?: string; account?: string } = {};
+    const nextErrors: { amount?: string; date?: string; account?: string; category?: string } = {};
 
-    if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (Number.isNaN(parsed) || parsed <= 0) {
       nextErrors.amount = 'Masukkan nominal lebih dari 0.';
     }
 
-    const parsedDate = trimmedDate ? new Date(trimmedDate) : null;
-    if (!parsedDate || Number.isNaN(parsedDate.getTime())) {
+    if (!trimmedDate || Number.isNaN(new Date(trimmedDate).getTime())) {
       nextErrors.date = 'Pilih tanggal pembayaran yang valid.';
     }
 
-    if (!accountId) {
-      nextErrors.account = accountsLoading ? 'Sedang memuat daftar akun…' : 'Pilih akun sumber pembayaran.';
+    if (!allowOverpay && overpay) {
+      nextErrors.amount = 'Nominal melebihi sisa hutang/piutang.';
     }
 
-    if (nextErrors.amount || nextErrors.date || nextErrors.account) {
+    if (includeTransaction) {
+      if (!accountId) {
+        nextErrors.account = accountsLoading ? 'Sedang memuat daftar akun…' : 'Pilih akun untuk mencatat transaksi.';
+      }
+      if (filteredCategories.length > 0 && !categoryId) {
+        nextErrors.category = 'Pilih kategori transaksi.';
+      }
+    }
+
+    if (nextErrors.amount || nextErrors.date || nextErrors.account || nextErrors.category) {
       setErrors(nextErrors);
       return;
     }
@@ -190,13 +291,18 @@ export default function PaymentDrawer({
 
     try {
       await onSubmit({
-        amount: parsedAmount,
+        amount: parsed,
         date: trimmedDate || todayIso(),
-        account_id: accountId,
         notes: notes.trim() ? notes.trim() : null,
+        includeTransaction,
+        accountId: includeTransaction ? accountId || null : null,
+        categoryId: includeTransaction ? categoryId || null : null,
+        markAsPaid,
+        allowOverpay,
       });
       setAmount('');
       setNotes('');
+      setAllowOverpay(false);
     } catch (submitError) {
       if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
         // eslint-disable-next-line no-console
@@ -214,7 +320,7 @@ export default function PaymentDrawer({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className="relative z-[1] flex max-h-[min(92vh,760px)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border/60 bg-surface-1/95 shadow-2xl backdrop-blur"
+        className="relative z-[1] flex max-h-[min(92vh,780px)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-border/60 bg-surface-1/95 shadow-2xl backdrop-blur"
       >
         <header className="flex flex-shrink-0 items-start justify-between gap-4 border-b border-border-subtle bg-surface px-5 py-4 sm:px-6 sm:py-5">
           <div className="min-w-0">
@@ -260,7 +366,7 @@ export default function PaymentDrawer({
               </div>
             </section>
 
-            <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
+            <form id="payment-form" onSubmit={handleSubmit} className="space-y-5">
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
                 <label htmlFor="payment-amount" className="form-label">
                   Nominal pembayaran
@@ -282,42 +388,38 @@ export default function PaymentDrawer({
                   className="input text-right tabular-nums"
                 />
                 {errors.amount ? <span className="form-error">{errors.amount}</span> : null}
-              </div>
-
-              <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
-                <label htmlFor="payment-account" className="form-label">
-                  Akun sumber dana
-                </label>
-                <select
-                  id="payment-account"
-                  value={accountId}
-                  onChange={(event) => {
-                    setAccountId(event.target.value);
-                    if (errors.account) {
-                      setErrors((prev) => ({ ...prev, account: undefined }));
-                    }
-                  }}
-                  className="input"
-                  disabled={Boolean(accountsLoading) || accounts.length === 0}
-                >
-                  {accountsLoading ? (
-                    <option value="">Memuat akun…</option>
-                  ) : (
-                    <>
-                      <option value="">Pilih akun</option>
-                      {accounts.map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.name}
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
-                {errors.account ? <span className="form-error">{errors.account}</span> : null}
-                {!accountsLoading && accounts.length === 0 ? (
-                  <span className="text-xs text-muted">
-                    Belum ada akun. Tambahkan akun baru melalui menu Akun.
-                  </span>
+                {!allowOverpay && overpay ? (
+                  <div className="flex items-start gap-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    <Info className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
+                    <div className="space-y-1">
+                      <p>Nominal melebihi sisa hutang/piutang. Aktifkan opsi di bawah bila tetap ingin melanjutkan.</p>
+                      <label className="inline-flex items-center gap-2 font-medium text-amber-100">
+                        <input
+                          type="checkbox"
+                          checked={allowOverpay}
+                          onChange={(event) => {
+                            setAllowOverpay(event.target.checked);
+                            if (errors.amount) {
+                              setErrors((prev) => ({ ...prev, amount: undefined }));
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-border-subtle bg-surface text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                        />
+                        Izinkan kelebihan bayar
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
+                {allowOverpay && overpay ? (
+                  <label className="inline-flex items-center gap-2 text-xs font-medium text-muted">
+                    <input
+                      type="checkbox"
+                      checked={allowOverpay}
+                      onChange={(event) => setAllowOverpay(event.target.checked)}
+                      className="h-4 w-4 rounded border-border-subtle bg-surface text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    />
+                    Izinkan kelebihan bayar
+                  </label>
                 ) : null}
               </div>
 
@@ -342,16 +444,144 @@ export default function PaymentDrawer({
 
               <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
                 <label htmlFor="payment-notes" className="form-label">
-                  Catatan
+                  Metode / Referensi (opsional)
                 </label>
                 <textarea
                   id="payment-notes"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
                   rows={3}
-                  placeholder="Catatan (opsional)"
+                  placeholder="Contoh: Transfer BCA, Bukti #123"
                   className="form-control"
                 />
+              </div>
+
+              <div className="rounded-3xl border border-border-subtle bg-surface-alt/80 p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Opsi Transaksi</p>
+                    <p className="text-sm text-muted">Catat transaksi sekaligus untuk memperbarui saldo akun otomatis.</p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-text">
+                    <input
+                      type="checkbox"
+                      checked={includeTransaction}
+                      onChange={(event) => {
+                        setIncludeTransaction(event.target.checked);
+                        setErrors((prev) => ({ ...prev, account: undefined, category: undefined }));
+                      }}
+                      className="h-4 w-4 rounded border-border-subtle bg-surface text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    />
+                    Catat juga transaksi & update saldo akun
+                  </label>
+                </div>
+
+                {includeTransaction ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="flex items-center gap-3 rounded-2xl border border-border-subtle bg-surface px-3 py-2 text-sm text-text">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-brand">
+                        <TransactionIcon className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Tipe transaksi</p>
+                        <p className="font-semibold text-text">{transactionTypeLabel}</p>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                      <label htmlFor="payment-account" className="form-label inline-flex items-center gap-2">
+                        <Wallet className="h-4 w-4 text-muted" aria-hidden="true" /> Akun sumber dana
+                      </label>
+                      <select
+                        id="payment-account"
+                        value={accountId}
+                        onChange={(event) => {
+                          setAccountId(event.target.value);
+                          if (errors.account) {
+                            setErrors((prev) => ({ ...prev, account: undefined }));
+                          }
+                        }}
+                        className="input"
+                        disabled={Boolean(accountsLoading) || accounts.length === 0}
+                      >
+                        {accountsLoading ? (
+                          <option value="">Memuat akun…</option>
+                        ) : (
+                          <>
+                            <option value="">Pilih akun</option>
+                            {accounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </>
+                        )}
+                      </select>
+                      {errors.account ? <span className="form-error">{errors.account}</span> : null}
+                      {!accountsLoading && accounts.length === 0 ? (
+                        <span className="text-xs text-muted">Belum ada akun. Tambahkan akun baru melalui menu Akun.</span>
+                      ) : null}
+                    </div>
+
+                    <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                      <label htmlFor="payment-category" className="form-label">
+                        Kategori transaksi
+                      </label>
+                      <select
+                        id="payment-category"
+                        value={categoryId}
+                        onChange={(event) => {
+                          setCategoryId(event.target.value);
+                          if (errors.category) {
+                            setErrors((prev) => ({ ...prev, category: undefined }));
+                          }
+                        }}
+                        className="input"
+                        disabled={filteredCategories.length === 0}
+                      >
+                        {filteredCategories.length === 0 ? (
+                          <option value="">
+                            {categoriesLoading ? 'Memuat kategori…' : 'Tidak ada kategori tersedia'}
+                          </option>
+                        ) : (
+                          filteredCategories.map((category) => (
+                            <option key={category.id} value={category.id}>
+                              {category.name}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                      {errors.category ? <span className="form-error">{errors.category}</span> : null}
+                      {filteredCategories.length === 0 ? (
+                        <span className="text-xs text-muted">
+                          Tambahkan kategori {transactionType === 'income' ? 'pemasukan' : 'pengeluaran'} terlebih dahulu jika diperlukan.
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-4 rounded-2xl border border-border-subtle/60 bg-surface px-3 py-2 text-xs text-muted">
+                    Transaksi tidak akan dibuat. Saldo akun tidak berubah otomatis.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-border-subtle bg-surface-alt/80 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa setelah pembayaran</p>
+                    <p className="mt-1 text-lg font-semibold text-text tabular-nums">{remainingAfterLabel}</p>
+                  </div>
+                  <label className="inline-flex items-center gap-2 text-sm font-medium text-text">
+                    <input
+                      type="checkbox"
+                      checked={markAsPaid}
+                      onChange={(event) => setMarkAsPaid(event.target.checked)}
+                      className="h-4 w-4 rounded border-border-subtle bg-surface text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                    />
+                    Tandai sebagai lunas jika sisa = 0
+                  </label>
+                </div>
               </div>
             </form>
 
@@ -361,18 +591,19 @@ export default function PaymentDrawer({
                   Memuat riwayat pembayaran…
                 </p>
               ) : (
-                <PaymentsList payments={payments} onDelete={onDeletePayment} deletingId={deletingId} />
+                <PaymentsList
+                  payments={payments}
+                  onDelete={onDeletePayment}
+                  deletingId={deletingId}
+                  onViewTransaction={onViewTransaction}
+                />
               )}
             </section>
           </div>
         </div>
 
         <footer className="flex flex-shrink-0 flex-wrap items-center justify-end gap-3 border-t border-border-subtle bg-surface px-5 py-4 sm:px-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn btn-secondary w-full sm:w-auto"
-          >
+          <button type="button" onClick={onClose} className="btn btn-secondary w-full sm:w-auto">
             Tutup
           </button>
           <button

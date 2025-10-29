@@ -81,20 +81,44 @@ export interface DebtUpdateInput extends Partial<DebtInput> {
   status?: DebtStatus;
 }
 
-export interface PaymentInput {
+export interface DebtPaymentBaseInput {
   amount: number;
   date: string;
-  account_id: string;
   notes?: string | null;
+  markAsPaid?: boolean;
+  allowOverpay?: boolean;
+}
+
+export interface DebtPaymentWithTransactionInput extends DebtPaymentBaseInput {
+  account_id: string;
+  category_id?: string | null;
+}
+
+export interface CreateDebtPaymentOptions extends DebtPaymentBaseInput {}
+
+export interface CreateDebtPaymentWithTransactionOptions extends DebtPaymentWithTransactionInput {}
+
+export interface DeleteDebtPaymentOptions {
+  id: string;
+  withRollback?: boolean;
+}
+
+export interface DebtPaymentMutationResult {
+  debt: DebtRecord | null;
+  payment: DebtPaymentRecord;
 }
 
 const DEBT_SELECT_COLUMNS =
   'id,user_id,type,party_name,title,date,due_date,amount,rate_percent,paid_total,status,notes,tenor_months,tenor_sequence,created_at,updated_at';
 
-function logDevError(error: unknown) {
+function logDevError(error: unknown, context?: string) {
   if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
     // eslint-disable-next-line no-console
-    console.error('[HW] debts-api', error);
+    if (context) {
+      console.error(`[HW] debts-api:${context}`, error);
+    } else {
+      console.error('[HW] debts-api', error);
+    }
   }
 }
 
@@ -244,6 +268,143 @@ function mapPaymentRow(row: Record<string, any>): DebtPaymentRecord {
     transaction_id: row.transaction_id ? String(row.transaction_id) : null,
     created_at: row.created_at ?? new Date().toISOString(),
   };
+}
+
+async function adjustAccountBalance(accountId: string, userId: string, delta: number): Promise<void> {
+  if (!accountId || !Number.isFinite(delta) || Math.abs(delta) < 0.000001) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('*')
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) {
+    throw new Error('Akun tidak ditemukan.');
+  }
+
+  const balanceKey = ['balance', 'current_balance', 'initial_balance'].find((key) =>
+    Object.prototype.hasOwnProperty.call(data, key),
+  );
+
+  if (!balanceKey) {
+    return;
+  }
+
+  const currentBalance = safeNumber((data as Record<string, unknown>)[balanceKey]);
+  const nextBalance = Number((currentBalance + delta).toFixed(2));
+  const payload: Record<string, unknown> = {
+    [balanceKey]: nextBalance,
+  };
+
+  const { error: updateError } = await supabase
+    .from('accounts')
+    .update(payload)
+    .eq('id', accountId)
+    .eq('user_id', userId);
+
+  if (updateError) throw updateError;
+}
+
+async function applyDebtStatusOverride(
+  debtId: string,
+  userId: string,
+  status: DebtStatus,
+): Promise<DebtRecord | null> {
+  const { data, error } = await supabase
+    .from('debts')
+    .update({ status })
+    .eq('id', debtId)
+    .eq('user_id', userId)
+    .select(DEBT_SELECT_COLUMNS)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapDebtRow(data) : null;
+}
+
+function getRemainingBeforePayment(debtRow: Record<string, any>): number {
+  return Math.max(0, safeNumber(debtRow.amount) - safeNumber(debtRow.paid_total));
+}
+
+interface CommitDebtPaymentParams {
+  debtId: string;
+  userId: string;
+  amount: number;
+  isoDate: string;
+  notes: string | null;
+  accountId?: string | null;
+  transactionId?: string | null;
+  markAsPaid: boolean;
+  remainingBefore: number;
+}
+
+async function commitDebtPayment(params: CommitDebtPaymentParams): Promise<DebtPaymentMutationResult> {
+  const { debtId, userId, amount, isoDate, notes, accountId, transactionId, markAsPaid, remainingBefore } = params;
+
+  const insertPayload: Record<string, any> = {
+    debt_id: debtId,
+    user_id: userId,
+    amount: amount.toFixed(2),
+    date: isoDate,
+    notes,
+  };
+
+  if (accountId) {
+    insertPayload.account_id = accountId;
+  }
+  if (transactionId) {
+    insertPayload.transaction_id = transactionId;
+  }
+
+  let insertedPaymentId: string | null = null;
+
+  try {
+    const { data, error } = await supabase
+      .from('debt_payments')
+      .insert([insertPayload])
+      .select('*, account:account_id (id, name)')
+      .single();
+
+    if (error) throw error;
+
+    insertedPaymentId = data?.id ? String(data.id) : null;
+    const payment = mapPaymentRow(data);
+
+    let resolvedDebt = await recalculateDebtAggregates(debtId, userId);
+    const remainingAfter = resolvedDebt ? resolvedDebt.remaining : Math.max(0, remainingBefore - amount);
+    const isSettled = remainingAfter <= 0.0001;
+
+    if (resolvedDebt) {
+      if (markAsPaid && isSettled && resolvedDebt.status !== 'paid') {
+        resolvedDebt = (await applyDebtStatusOverride(debtId, userId, 'paid')) ?? resolvedDebt;
+      } else if (!markAsPaid && isSettled && resolvedDebt.status === 'paid') {
+        resolvedDebt = (await applyDebtStatusOverride(debtId, userId, 'ongoing')) ?? resolvedDebt;
+      }
+    }
+
+    return {
+      debt: resolvedDebt,
+      payment,
+    };
+  } catch (error) {
+    if (insertedPaymentId) {
+      try {
+        await supabase
+          .from('debt_payments')
+          .delete()
+          .eq('id', insertedPaymentId)
+          .eq('user_id', userId);
+      } catch (cleanupError) {
+        logDevError(cleanupError, 'commitDebtPayment:cleanup');
+      }
+    }
+    throw error;
+  }
 }
 
 async function recalculateDebtAggregates(debtId: string, userId: string): Promise<DebtRecord | null> {
@@ -689,11 +850,51 @@ export async function deleteDebt(id: string): Promise<void> {
   }
 }
 
-export async function addPayment(
+export async function createDebtPayment(
   debtId: string,
-  payload: PaymentInput
-): Promise<{ debt: DebtRecord | null; payment: DebtPaymentRecord }>
-{
+  payload: CreateDebtPaymentOptions,
+): Promise<DebtPaymentMutationResult> {
+  try {
+    const userId = await getUserId();
+    const debtRow = await fetchDebtById(debtId, userId);
+    if (!debtRow) {
+      throw new Error('Hutang tidak ditemukan.');
+    }
+
+    const rawAmount = Number(payload.amount);
+    if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
+      throw new Error('Nominal pembayaran tidak valid.');
+    }
+
+    const normalizedAmount = Number(Math.max(0, rawAmount).toFixed(2));
+    const remainingBefore = getRemainingBeforePayment(debtRow);
+    const allowOverpay = Boolean(payload.allowOverpay);
+    if (!allowOverpay && normalizedAmount - remainingBefore > 0.0001) {
+      throw new Error('Nominal melebihi sisa tagihan.');
+    }
+
+    const isoDate = toISODate(payload.date) ?? new Date().toISOString();
+    const trimmedNotes = payload.notes?.trim() ? payload.notes.trim() : null;
+    const markAsPaid = payload.markAsPaid !== false;
+
+    return await commitDebtPayment({
+      debtId,
+      userId,
+      amount: normalizedAmount,
+      isoDate,
+      notes: trimmedNotes,
+      markAsPaid,
+      remainingBefore,
+    });
+  } catch (error) {
+    return handleError(error, 'Gagal menambahkan pembayaran');
+  }
+}
+
+export async function createDebtPaymentWithTransaction(
+  debtId: string,
+  payload: CreateDebtPaymentWithTransactionOptions,
+): Promise<DebtPaymentMutationResult> {
   try {
     const userId = await getUserId();
     const debtRow = await fetchDebtById(debtId, userId);
@@ -703,96 +904,127 @@ export async function addPayment(
 
     const accountId = typeof payload.account_id === 'string' ? payload.account_id.trim() : '';
     if (!accountId) {
-      throw new Error('Pilih akun sumber pembayaran.');
+      throw new Error('Pilih akun untuk mencatat transaksi.');
     }
 
-    const amount = Math.max(0, payload.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const rawAmount = Number(payload.amount);
+    if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
       throw new Error('Nominal pembayaran tidak valid.');
     }
 
+    const normalizedAmount = Number(Math.max(0, rawAmount).toFixed(2));
+    const remainingBefore = getRemainingBeforePayment(debtRow);
+    const allowOverpay = Boolean(payload.allowOverpay);
+    if (!allowOverpay && normalizedAmount - remainingBefore > 0.0001) {
+      throw new Error('Nominal melebihi sisa tagihan.');
+    }
+
     const isoDate = toISODate(payload.date) ?? new Date().toISOString();
-    const transactionDate = isoDate.slice(0, 10);
+    const trimmedNotes = payload.notes?.trim() ? payload.notes.trim() : null;
+    const markAsPaid = payload.markAsPaid !== false;
+
     const isReceivable = debtRow.type === 'receivable';
     const transactionType = isReceivable ? 'income' : 'expense';
-    const trimmedNotes = payload.notes?.trim() ? payload.notes.trim() : null;
+    const categoryId = payload.category_id ? String(payload.category_id) : null;
+
+    if (transactionType === 'expense' && !categoryId) {
+      throw new Error('Pilih kategori transaksi untuk pembayaran hutang.');
+    }
+
     const partyName = typeof debtRow.party_name === 'string' ? debtRow.party_name.trim() : '';
     const debtTitle = typeof debtRow.title === 'string' ? debtRow.title.trim() : '';
+    const baseLabel = isReceivable ? 'Penerimaan piutang' : 'Pembayaran hutang';
     const transactionTitle = debtTitle
-      ? debtTitle
-      : isReceivable
-      ? `Pelunasan piutang${partyName ? ` - ${partyName}` : ''}`
-      : `Pembayaran hutang${partyName ? ` - ${partyName}` : ''}`;
+      ? `${baseLabel} • ${debtTitle}`
+      : partyName
+      ? `${baseLabel} • ${partyName}`
+      : baseLabel;
 
+    const transactionDate = isoDate.slice(0, 10);
     let transactionId: string | null = null;
+    const balanceDelta = transactionType === 'expense' ? -normalizedAmount : normalizedAmount;
+
     try {
       const { data: transactionData, error: transactionError } = await supabase
         .from('transactions')
         .insert({
           user_id: userId,
           type: transactionType,
-          amount: amount.toFixed(2),
+          amount: normalizedAmount.toFixed(2),
           date: transactionDate,
           account_id: accountId,
+          category_id: categoryId,
           title: transactionTitle,
           notes: trimmedNotes,
         })
         .select('id')
         .single();
+
       if (transactionError) throw transactionError;
       transactionId = transactionData?.id ?? null;
-    } catch (transactionError) {
-      throw transactionError instanceof Error
-        ? transactionError
-        : new Error('Gagal membuat transaksi untuk pembayaran hutang.');
-    }
 
-    const insertPayload = {
-      debt_id: debtId,
-      user_id: userId,
-      amount: amount.toFixed(2),
-      date: isoDate,
-      notes: trimmedNotes,
-      account_id: accountId,
-      transaction_id: transactionId,
-    };
-
-    const { data, error } = await supabase
-      .from('debt_payments')
-      .insert([insertPayload])
-      .select('*, account:account_id (id, name)')
-      .single();
-    if (error) {
-      if (transactionId) {
-        await supabase
-          .from('transactions')
-          .delete()
-          .eq('id', transactionId)
-          .eq('user_id', userId);
+      try {
+        await adjustAccountBalance(accountId, userId, balanceDelta);
+      } catch (balanceError) {
+        if (transactionId) {
+          await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', transactionId)
+            .eq('user_id', userId);
+        }
+        throw balanceError;
       }
-      throw error;
+
+      try {
+        return await commitDebtPayment({
+          debtId,
+          userId,
+          amount: normalizedAmount,
+          isoDate,
+          notes: trimmedNotes,
+          accountId,
+          transactionId,
+          markAsPaid,
+          remainingBefore,
+        });
+      } catch (commitError) {
+        if (transactionId) {
+          await supabase
+            .from('transactions')
+            .delete()
+            .eq('id', transactionId)
+            .eq('user_id', userId);
+        }
+        try {
+          await adjustAccountBalance(accountId, userId, -balanceDelta);
+        } catch (rollbackError) {
+          logDevError(rollbackError, 'createDebtPaymentWithTransaction:rollback');
+        }
+        throw commitError;
+      }
+    } catch (error) {
+      if (error instanceof Error) {
+        throw error.message ? error : new Error('Gagal membuat transaksi untuk pembayaran hutang.');
+      }
+      throw new Error('Gagal membuat transaksi untuk pembayaran hutang.');
     }
-
-    const updatedDebt = await recalculateDebtAggregates(debtId, userId);
-
-    return {
-      debt: updatedDebt,
-      payment: mapPaymentRow(data),
-    };
   } catch (error) {
     return handleError(error, 'Gagal menambahkan pembayaran');
   }
 }
 
-export async function deletePayment(paymentId: string): Promise<DebtRecord | null> {
+export async function deleteDebtPayment(options: DeleteDebtPaymentOptions): Promise<DebtRecord | null> {
   try {
+    const { id, withRollback } = options;
     const userId = await getUserId();
     const { data: paymentRow, error: fetchError } = await supabase
       .from('debt_payments')
-      .select('debt_id, transaction_id')
-      .eq('id', paymentId)
+      .select('id, debt_id, amount, transaction_id, account_id')
+      .eq('id', id)
       .eq('user_id', userId)
       .maybeSingle();
+
     if (fetchError) throw fetchError;
     if (!paymentRow) {
       throw new Error('Pembayaran tidak ditemukan');
@@ -801,23 +1033,30 @@ export async function deletePayment(paymentId: string): Promise<DebtRecord | nul
     const { error } = await supabase
       .from('debt_payments')
       .delete()
-      .eq('id', paymentId)
+      .eq('id', id)
       .eq('user_id', userId);
     if (error) throw error;
 
-    if (paymentRow.transaction_id) {
+    const amountValue = safeNumber(paymentRow.amount);
+    const debtRow = await fetchDebtById(String(paymentRow.debt_id), userId);
+    const isReceivable = debtRow?.type === 'receivable';
+
+    if (withRollback && paymentRow.transaction_id && paymentRow.account_id) {
       try {
         await supabase
           .from('transactions')
           .delete()
           .eq('id', paymentRow.transaction_id)
           .eq('user_id', userId);
+
+        const delta = isReceivable ? -amountValue : amountValue;
+        await adjustAccountBalance(String(paymentRow.account_id), userId, delta);
       } catch (cleanupError) {
-        logDevError(cleanupError, 'deletePayment:cleanupTransaction');
+        logDevError(cleanupError, 'deleteDebtPayment:rollback');
       }
     }
 
-    const updatedDebt = await recalculateDebtAggregates(paymentRow.debt_id, userId);
+    const updatedDebt = await recalculateDebtAggregates(String(paymentRow.debt_id), userId);
     return updatedDebt;
   } catch (error) {
     return handleError(error, 'Gagal menghapus pembayaran');

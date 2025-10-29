@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import clsx from 'clsx';
 import { ChevronDown, Download, Plus } from 'lucide-react';
 import Page from '../layout/Page';
@@ -9,12 +10,14 @@ import DebtsGrid from '../components/debts/DebtsGrid';
 import DebtForm from '../components/debts/DebtForm';
 import PaymentDrawer from '../components/debts/PaymentDrawer';
 import ConfirmDialog from '../components/debts/ConfirmDialog';
+import PaymentDeleteDialog from '../components/debts/PaymentDeleteDialog';
 import { useToast } from '../context/ToastContext';
 import {
-  addPayment,
   createDebt,
+  createDebtPayment,
+  createDebtPaymentWithTransaction,
   deleteDebt,
-  deletePayment,
+  deleteDebtPayment,
   getDebt,
   listDebts,
   updateDebt,
@@ -25,6 +28,7 @@ import {
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
 import { listAccounts, type AccountRecord } from '../lib/api';
+import { listCategories, type CategoryRecord } from '../lib/api-categories';
 
 const INITIAL_FILTERS: DebtsFilterState = {
   q: '',
@@ -118,6 +122,7 @@ function getTenorSeriesKey(debt: DebtRecord): string {
 export default function Debts() {
   const { addToast } = useToast();
   const { user, loading: userLoading } = useSupabaseUser();
+  const navigate = useNavigate();
   const canUseCloud = Boolean(user?.id);
   const [filters, setFilters] = useState<DebtsFilterState>(INITIAL_FILTERS);
   const [debts, setDebts] = useState<DebtRecord[]>([]);
@@ -145,6 +150,8 @@ export default function Debts() {
   const [paymentDeletingId, setPaymentDeletingId] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
+  const [categories, setCategories] = useState<CategoryRecord[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(false);
 
   const [pendingDelete, setPendingDelete] = useState<DebtRecord | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -187,6 +194,32 @@ export default function Debts() {
       active = false;
     };
   }, [filters, addToast, logError, canUseCloud]);
+
+  useEffect(() => {
+    if (!canUseCloud || !user?.id) {
+      setCategories([]);
+      setCategoriesLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCategoriesLoading(true);
+    listCategories()
+      .then((rows) => {
+        if (cancelled) return;
+        setCategories(rows);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        logError(error, 'load categories');
+        addToast('Gagal memuat kategori transaksi.', 'error');
+      })
+      .finally(() => {
+        if (!cancelled) setCategoriesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canUseCloud, user?.id, addToast, logError]);
 
   const refreshData = useCallback(async () => {
     if (!canUseCloud) {
@@ -605,17 +638,30 @@ export default function Debts() {
   const handlePaymentSubmit = async (input: {
     amount: number;
     date: string;
-    account_id: string;
     notes?: string | null;
+    includeTransaction: boolean;
+    accountId?: string | null;
+    categoryId?: string | null;
+    markAsPaid: boolean;
+    allowOverpay: boolean;
   }) => {
     if (!paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
       return;
     }
+
+    const includeTransaction = Boolean(input.includeTransaction && input.accountId);
+    const accountId = includeTransaction ? String(input.accountId ?? '') : '';
+
+    if (includeTransaction && !accountId) {
+      addToast('Pilih akun untuk mencatat transaksi.', 'error');
+      return;
+    }
+
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
-    const selectedAccount = accounts.find((item) => item.id === input.account_id);
+    const selectedAccount = includeTransaction ? accounts.find((item) => item.id === accountId) : undefined;
     const optimisticPayment: DebtPaymentRecord = {
       id: tempId,
       debt_id: paymentDebt.id,
@@ -623,26 +669,51 @@ export default function Debts() {
       amount: input.amount,
       date: toISO(input.date) ?? new Date().toISOString(),
       notes: input.notes ?? null,
-      account_id: input.account_id,
-      account_name: selectedAccount?.name ?? null,
+      account_id: includeTransaction ? accountId : null,
+      account_name: includeTransaction ? selectedAccount?.name ?? null : null,
       transaction_id: null,
       created_at: new Date().toISOString(),
     };
     setPaymentList((prev) => [optimisticPayment, ...prev]);
     const previousDebt = paymentDebt;
+    const optimisticRemaining = Math.max(paymentDebt.remaining - input.amount, 0);
+    let optimisticStatus = computeStatus(paymentDebt.amount, paymentDebt.paid_total + input.amount, paymentDebt.due_date);
+    if (!input.markAsPaid && optimisticRemaining <= 0.0001) {
+      optimisticStatus = 'ongoing';
+    } else if (input.markAsPaid && optimisticRemaining <= 0.0001) {
+      optimisticStatus = 'paid';
+    }
     const updatedDebt: DebtRecord = {
       ...paymentDebt,
       paid_total: paymentDebt.paid_total + input.amount,
-      remaining: Math.max(paymentDebt.remaining - input.amount, 0),
-      status: computeStatus(paymentDebt.amount, paymentDebt.paid_total + input.amount, paymentDebt.due_date),
+      remaining: optimisticRemaining,
+      status: optimisticStatus,
     };
     setPaymentDebt(updatedDebt);
     setDebts((prev) => prev.map((item) => (item.id === updatedDebt.id ? updatedDebt : item)));
+
     try {
-      const result = await addPayment(paymentDebt.id, input);
+      const result = includeTransaction
+        ? await createDebtPaymentWithTransaction(paymentDebt.id, {
+            amount: input.amount,
+            date: input.date,
+            notes: input.notes ?? null,
+            account_id: accountId,
+            category_id: input.categoryId ?? null,
+            markAsPaid: input.markAsPaid,
+            allowOverpay: input.allowOverpay,
+          })
+        : await createDebtPayment(paymentDebt.id, {
+            amount: input.amount,
+            date: input.date,
+            notes: input.notes ?? null,
+            markAsPaid: input.markAsPaid,
+            allowOverpay: input.allowOverpay,
+          });
       if (result.debt) {
-        setPaymentDebt(result.debt);
-        setDebts((prev) => prev.map((item) => (item.id === result.debt.id ? result.debt : item)));
+        const resolvedDebt = result.debt;
+        setPaymentDebt(resolvedDebt);
+        setDebts((prev) => prev.map((item) => (item.id === resolvedDebt.id ? resolvedDebt : item)));
       }
       setPaymentList((prev) => [result.payment, ...prev.filter((payment) => payment.id !== tempId)]);
       addToast('Pembayaran berhasil dicatat', 'success');
@@ -662,7 +733,7 @@ export default function Debts() {
     setPendingPaymentDelete(payment);
   };
 
-  const confirmDeletePayment = async () => {
+  const confirmDeletePayment = async (withRollback: boolean) => {
     if (!pendingPaymentDelete || !paymentDebt) return;
     if (!canUseCloud) {
       addToast('Masuk untuk menghapus pembayaran hutang.', 'error');
@@ -674,12 +745,12 @@ export default function Debts() {
     setPaymentList((prev) => prev.filter((item) => item.id !== payment.id));
     const backupDebt = paymentDebt;
     try {
-      const updated = await deletePayment(payment.id);
+      const updated = await deleteDebtPayment({ id: payment.id, withRollback });
       if (updated) {
         setPaymentDebt(updated);
         setDebts((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       }
-      addToast('Pembayaran dihapus', 'success');
+      addToast(withRollback ? 'Pembayaran dan transaksi dihapus' : 'Pembayaran dihapus', 'success');
       await refreshData();
     } catch (error) {
       logError(error, 'delete payment');
@@ -699,6 +770,11 @@ export default function Debts() {
     setPaymentList([]);
     setPendingPaymentDelete(null);
     setPaymentDeletingId(null);
+  };
+
+  const handleViewTransaction = (transactionId: string) => {
+    handleClosePayment();
+    navigate(`/transactions?transactionId=${transactionId}`);
   };
 
   const pageDescription = useMemo(
@@ -873,9 +949,12 @@ export default function Debts() {
         deletingId={paymentDeletingId}
         accounts={accounts}
         accountsLoading={accountsLoading}
+        categories={categories}
+        categoriesLoading={categoriesLoading}
         onClose={handleClosePayment}
         onSubmit={handlePaymentSubmit}
         onDeletePayment={handleDeletePayment}
+        onViewTransaction={handleViewTransaction}
       />
 
       <ConfirmDialog
@@ -892,15 +971,11 @@ export default function Debts() {
         }}
       />
 
-      <ConfirmDialog
+      <PaymentDeleteDialog
         open={Boolean(pendingPaymentDelete)}
-        title="Hapus pembayaran?"
-        description="Pembayaran akan dihapus dari riwayat dan perhitungan total akan diperbarui."
-        destructive
+        payment={pendingPaymentDelete}
         loading={Boolean(paymentDeletingId)}
-        confirmLabel="Hapus"
-        cancelLabel="Batal"
-        onConfirm={confirmDeletePayment}
+        onDelete={confirmDeletePayment}
         onCancel={() => {
           if (!paymentDeletingId) setPendingPaymentDelete(null);
         }}
