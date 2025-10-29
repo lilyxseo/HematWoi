@@ -90,6 +90,9 @@ export default function DayCell({
   const income = summary?.incomeTotal ?? 0;
   const count = summary?.count ?? 0;
 
+  const transactionLabel =
+    count > 0 ? `Jumlah transaksi: ${count}` : 'Tidak ada transaksi';
+
   const ariaLabelParts = [
     format(date, 'EEEE, dd MMMM yyyy', { locale: localeId }),
     count > 0 ? `${count} transaksi` : 'Tidak ada transaksi',
@@ -132,15 +135,18 @@ export default function DayCell({
         ) : null}
       </div>
       <div className="mt-3 flex flex-col gap-1">
-        <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
+        <span className="block truncate font-mono text-sm text-slate-200 md:hidden">
+          {transactionLabel}
+        </span>
+        <span className="hidden truncate font-mono text-sm text-rose-400 md:block md:text-base">
           {formatExpense(expense)}
         </span>
         {income > 0 ? (
-          <span className="block truncate font-mono text-xs text-emerald-400 md:text-sm">
+          <span className="hidden truncate font-mono text-xs text-emerald-400 md:block md:text-sm">
             {formatIncome(income)}
           </span>
         ) : (
-          <span className="block truncate font-mono text-xs text-slate-400 md:text-sm">&nbsp;</span>
+          <span className="hidden truncate font-mono text-xs text-slate-400 md:block md:text-sm">&nbsp;</span>
         )}
       </div>
     </button>
