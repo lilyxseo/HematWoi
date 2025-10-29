@@ -10,7 +10,7 @@ import {
   Trash2,
   Wallet2,
 } from "lucide-react";
-import { ChangeEvent, ReactNode } from "react";
+import { ChangeEvent, ReactNode, useEffect, useRef } from "react";
 import CategoryDot from "./CategoryDot";
 
 interface TransactionRowData {
@@ -54,6 +54,7 @@ interface TransactionsCardListProps {
   deleteDisabled?: boolean;
   repeatLoadingIds?: Set<string>;
   emptyState: ReactNode;
+  highlightId?: string | null;
 }
 
 const TYPE_META: Record<
@@ -102,12 +103,46 @@ export default function TransactionsCardList({
   deleteDisabled = false,
   repeatLoadingIds,
   emptyState,
+  highlightId,
 }: TransactionsCardListProps) {
   const isInitialLoading = loading && items.length === 0;
   const displayStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const displayEnd = total === 0 ? 0 : Math.min((page - 1) * pageSize + items.length, total);
   const hasNext = page * pageSize < total;
   const hasPrev = page > 1;
+
+  const highlightCardRef = useRef<HTMLElement | null>(null);
+  const highlightScrolledRef = useRef(false);
+
+  useEffect(() => {
+    highlightScrolledRef.current = false;
+  }, [highlightId]);
+
+  useEffect(() => {
+    if (!highlightId) {
+      highlightCardRef.current = null;
+      highlightScrolledRef.current = false;
+      return;
+    }
+
+    if (!highlightCardRef.current) {
+      highlightScrolledRef.current = false;
+      return;
+    }
+
+    if (highlightScrolledRef.current) return;
+
+    if (typeof window === "undefined") return;
+
+    highlightScrolledRef.current = true;
+
+    const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    highlightCardRef.current.scrollIntoView({
+      block: "center",
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+    });
+  }, [highlightId, items]);
 
   if (error && !items.length) {
     return (
@@ -154,9 +189,13 @@ export default function TransactionsCardList({
               return (
                 <article
                   key={item.id}
+                  ref={item.id === highlightId ? (node) => { highlightCardRef.current = node; } : undefined}
+                  data-highlighted={item.id === highlightId || undefined}
                   className={clsx(
                     "relative overflow-hidden rounded-3xl border border-white/5 bg-slate-900/80 p-4 shadow-lg shadow-slate-950/40 ring-1 ring-slate-800 transition hover:border-white/10",
                     selected && "ring-2 ring-[var(--accent)]/60",
+                    item.id === highlightId &&
+                      "bg-[var(--accent)]/15 ring-2 ring-[var(--accent)]/55",
                   )}
                 >
                   <div className="pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full bg-gradient-to-br from-white/10 via-white/0 to-transparent blur-2xl" />
