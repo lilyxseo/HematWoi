@@ -1,5 +1,6 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
+import clsx from 'clsx';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
@@ -125,24 +126,24 @@ export default function DayDetailModal({
           <div className="fixed inset-0 bg-black/60" />
         </Transition.Child>
 
-        <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-end justify-center px-4 py-6 text-center sm:items-center sm:p-6 lg:justify-end">
-            <Transition.Child
-              as={Fragment}
-              enter="ease-out duration-200"
-              enterFrom="translate-y-8 opacity-0 sm:translate-y-0 sm:scale-95"
-              enterTo="translate-y-0 opacity-100 sm:scale-100"
-              leave="ease-in duration-150"
-              leaveFrom="opacity-100 sm:scale-100"
-              leaveTo="opacity-0 sm:translate-y-4 sm:scale-95"
-            >
-              <Dialog.Panel className="flex h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-left align-middle shadow-xl transition-all sm:h-[80vh] lg:mr-4 lg:h-[88vh]">
-                <div className="flex items-start justify-between border-b border-slate-800 px-4 py-4 sm:px-6">
+        <div className="fixed inset-0 flex flex-col justify-end px-4 py-4 sm:px-6 md:items-center md:justify-center">
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-200"
+            enterFrom="translate-y-full opacity-0 md:translate-y-0 md:scale-95"
+            enterTo="translate-y-0 opacity-100 md:scale-100"
+            leave="ease-in duration-150"
+            leaveFrom="opacity-100 md:scale-100"
+            leaveTo="translate-y-full opacity-0 md:translate-y-4 md:scale-95"
+          >
+            <Dialog.Panel className="flex h-[calc(100vh-5rem)] w-full max-w-full flex-col overflow-hidden rounded-t-3xl border border-slate-800 bg-slate-950 text-left shadow-2xl transition-all md:h-[80vh] md:max-w-2xl md:rounded-3xl">
+              <div className="border-b border-slate-800 px-4 pb-3 pt-4 sm:px-6">
+                <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <Dialog.Title className="text-lg font-semibold text-slate-100">
+                    <Dialog.Title className="text-base font-semibold text-slate-100">
                       {formattedDate || 'Detail harian'}
                     </Dialog.Title>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="mt-1 text-xs text-slate-400">
                       {totals.count > 0
                         ? `${totals.count} transaksi`
                         : 'Tidak ada transaksi'}
@@ -157,36 +158,23 @@ export default function DayDetailModal({
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-
-                <div className="border-b border-slate-800 px-4 py-4 sm:px-6">
-                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Expense</dt>
-                      <dd className="mt-1 text-sm font-mono text-rose-400">
-                        -{formatCurrency(totals.expense)}
-                      </dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Income</dt>
-                      <dd className="mt-1 text-sm font-mono text-emerald-400">
-                        +{formatCurrency(totals.income)}
-                      </dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Net</dt>
-                      <dd
-                        className={`mt-1 text-sm font-mono ${
-                          net >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {net >= 0 ? '+' : ''}
-                        {formatCurrency(net)}
-                      </dd>
-                    </div>
-                  </dl>
+                <div className="mt-4 flex items-center justify-between gap-3 text-[11px] font-mono leading-tight sm:text-xs">
+                  <span className="font-mono text-rose-400">-{formatCurrency(totals.expense)}</span>
+                  <span className="font-mono text-emerald-400">+{formatCurrency(totals.income)}</span>
+                  <span
+                    className={clsx(
+                      'font-mono text-xs font-semibold',
+                      net >= 0 ? 'text-emerald-400' : 'text-rose-400',
+                    )}
+                  >
+                    {net >= 0 ? '+' : ''}
+                    {formatCurrency(net)}
+                  </span>
                 </div>
+              </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+              <div className="flex-1 overflow-hidden">
+                <div className="no-scrollbar max-h-[65vh] overflow-y-auto px-4 py-4 sm:px-6 md:max-h-[60vh]">
                   {dayQuery.isError ? (
                     <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
                       <p>Gagal memuat transaksi. Coba lagi?</p>
@@ -203,7 +191,7 @@ export default function DayDetailModal({
                       {Array.from({ length: 3 }).map((_, index) => (
                         <div
                           key={`skeleton-${index}`}
-                          className="h-24 animate-pulse rounded-2xl bg-slate-900/60"
+                          className="h-20 animate-pulse rounded-2xl bg-slate-900/60"
                         />
                       ))}
                     </div>
@@ -288,13 +276,13 @@ export default function DayDetailModal({
                     </ul>
                   )}
                 </div>
+              </div>
 
-                <div className="border-t border-slate-800 px-4 py-4 text-right text-xs text-slate-500 sm:px-6">
-                  Data ditarik sesuai filter aktif
-                </div>
-              </Dialog.Panel>
-            </Transition.Child>
-          </div>
+              <div className="border-t border-slate-800 px-4 py-3 text-right text-xs text-slate-500 sm:px-6">
+                Data ditarik sesuai filter aktif
+              </div>
+            </Dialog.Panel>
+          </Transition.Child>
         </div>
       </Dialog>
     </Transition>
