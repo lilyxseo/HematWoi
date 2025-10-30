@@ -17,6 +17,7 @@ export {
   IconArrowUp as ArrowUp,
   IconArrowUpCircle as ArrowUpCircle,
   IconArrowUpRight as ArrowUpRight,
+  IconArrowsUpDown as ArrowsUpDown,
   IconBell as Bell,
   IconBookmarkPlus as BookmarkPlus,
   IconCalendar as Calendar,
