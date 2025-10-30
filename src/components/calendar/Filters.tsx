@@ -1,6 +1,15 @@
-import { Fragment, useMemo } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type { CSSProperties } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
-import { Check, ChevronDown, RotateCcw } from 'lucide-react';
+import { Check, ChevronDown, ArrowDownRight, RotateCcw, ArrowLeftRight } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { CalendarFilters } from '../../lib/calendarApi';
 import type { CategoryRecord } from '../../lib/api-categories';
 import type { AccountRecord } from '../../lib/api';
@@ -15,9 +24,13 @@ interface FiltersProps {
   loadingAccounts?: boolean;
 }
 
-const typeOptions: { value: CalendarFilters['type']; label: string; description: string }[] = [
-  { value: 'expense', label: 'Expense saja', description: 'Hanya tampilkan pengeluaran' },
-  { value: 'expense-income', label: 'Expense + Income', description: 'Tampilkan pengeluaran dan pemasukan' },
+const typeOptions: {
+  value: CalendarFilters['type'];
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { value: 'expense', label: 'Expense', icon: ArrowDownRight },
+  { value: 'expense-income', label: 'All', icon: ArrowLeftRight },
 ];
 
 export default function Filters({
@@ -29,9 +42,49 @@ export default function Filters({
   loadingCategories = false,
   loadingAccounts = false,
 }: FiltersProps) {
+  const segmentedRef = useRef<HTMLDivElement | null>(null);
+  const buttonRefs = useRef<Record<CalendarFilters['type'], HTMLButtonElement | null>>({
+    expense: null,
+    'expense-income': null,
+  });
+  const [indicatorStyle, setIndicatorStyle] = useState<CSSProperties>(() => ({
+    opacity: 0,
+    transform: 'translateX(0px)',
+    width: '0px',
+  }));
+
   const sortedCategories = useMemo(() => {
-    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id')); 
+    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id'));
   }, [categories]);
+
+  const updateIndicator = useCallback(() => {
+    const container = segmentedRef.current;
+    const activeButton = buttonRefs.current[value.type];
+    if (!container || !activeButton) {
+      setIndicatorStyle({ opacity: 0, transform: 'translateX(0px)', width: '0px' });
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const buttonRect = activeButton.getBoundingClientRect();
+
+    setIndicatorStyle({
+      opacity: 1,
+      transform: `translateX(${buttonRect.left - containerRect.left}px)`,
+      width: `${buttonRect.width}px`,
+    });
+  }, [value.type]);
+
+  useEffect(() => {
+    updateIndicator();
+  }, [updateIndicator]);
+
+  useEffect(() => {
+    window.addEventListener('resize', updateIndicator);
+    return () => {
+      window.removeEventListener('resize', updateIndicator);
+    };
+  }, [updateIndicator]);
 
   const handleTypeChange = (type: CalendarFilters['type']) => {
     onChange({ ...value, type });
@@ -84,28 +137,41 @@ export default function Filters({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe transaksi</span>
-            <div className="inline-flex rounded-2xl border border-slate-700 bg-slate-900 p-1 text-sm">
-              {typeOptions.map((option) => {
-                const isActive = value.type === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => handleTypeChange(option.value)}
-                    className={
-                      'flex-1 rounded-2xl px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] '
-                      + (isActive
-                        ? 'bg-[var(--accent)]/20 text-slate-100'
-                        : 'text-slate-300 hover:bg-slate-800')
-                    }
-                    aria-pressed={isActive}
-                    aria-label={option.description}
-                  >
-                    <span className="block text-sm font-semibold">{option.label}</span>
-                    <span className="mt-1 block text-xs text-slate-400">{option.description}</span>
-                  </button>
-                );
-              })}
+            <div className="relative">
+              <div
+                ref={segmentedRef}
+                className="relative flex w-full justify-between gap-1 rounded-full bg-slate-800/60 px-2 py-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:w-fit sm:px-1 sm:py-1"
+              >
+                <span
+                  className="pointer-events-none absolute inset-y-1 left-0 z-0 rounded-full bg-[var(--accent)] shadow-md transition-[transform,width,opacity] duration-300 ease-in-out"
+                  style={indicatorStyle}
+                  aria-hidden="true"
+                />
+                {typeOptions.map((option) => {
+                  const isActive = value.type === option.value;
+                  const Icon = option.icon;
+                  return (
+                    <button
+                      key={option.value}
+                      ref={(node) => {
+                        buttonRefs.current[option.value] = node;
+                      }}
+                      type="button"
+                      onClick={() => handleTypeChange(option.value)}
+                      className={
+                        'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:flex-none'
+                        + (isActive
+                          ? ' text-white drop-shadow-sm'
+                          : ' text-slate-300 hover:text-slate-100')
+                      }
+                      aria-pressed={isActive}
+                    >
+                      <Icon className="h-4 w-4 opacity-70" aria-hidden="true" />
+                      <span>{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
           <div className="flex min-w-0 flex-col gap-2">

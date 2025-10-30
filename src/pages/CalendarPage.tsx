@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
@@ -15,6 +15,7 @@ import { useMonthAggregates } from '../hooks/useMonthAggregates';
 import { listCategories, type CategoryRecord } from '../lib/api-categories';
 import { listAccounts, type AccountRecord } from '../lib/api';
 import { getCurrentUserId } from '../lib/session';
+import { useSearchParams } from 'react-router-dom';
 
 const DEFAULT_FILTERS: CalendarFilters = {
   type: 'expense-income',
@@ -33,8 +34,18 @@ function createDefaultFilters(): CalendarFilters {
 }
 
 export default function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [filters, setFilters] = useState<CalendarFilters>(() => createDefaultFilters());
+  const [filters, setFilters] = useState<CalendarFilters>(() => {
+    const initialFilters = createDefaultFilters();
+    const typeParam = searchParams.get('t');
+    if (typeParam === 'expense') {
+      initialFilters.type = 'expense';
+    } else if (typeParam === 'all') {
+      initialFilters.type = 'expense-income';
+    }
+    return initialFilters;
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -88,11 +99,22 @@ export default function CalendarPage() {
   };
 
   const handleFiltersChange = (next: CalendarFilters) => {
-    setFilters({ ...next, categoryIds: [...next.categoryIds] });
+    const nextFilters = { ...next, categoryIds: [...next.categoryIds] };
+    setFilters(nextFilters);
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('t', nextFilters.type === 'expense' ? 'expense' : 'all');
+      return params;
+    });
   };
 
   const resetFilters = () => {
     setFilters(createDefaultFilters());
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      params.set('t', 'all');
+      return params;
+    });
   };
 
   const daySummaries = monthQuery.data?.daySummaries ?? {};
@@ -109,6 +131,17 @@ export default function CalendarPage() {
 
   const categories = categoriesQuery.data ?? [];
   const accounts = accountsQuery.data ?? [];
+
+  useEffect(() => {
+    const typeParam = searchParams.get('t');
+    const nextType = typeParam === 'expense' ? 'expense' : 'expense-income';
+    setFilters((prev) => {
+      if (prev.type === nextType) {
+        return prev;
+      }
+      return { ...prev, type: nextType };
+    });
+  }, [searchParams]);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
