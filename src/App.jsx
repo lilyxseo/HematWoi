@@ -1399,7 +1399,12 @@ function AppShell({ prefs, setPrefs }) {
     return { income, expense, balance: income - expense };
   }, [filtered]);
 
-  useWidgetAutoSync(data.txs, prefs.currency);
+  useWidgetAutoSync({
+    transactions: data.txs,
+    currency: prefs.currency,
+    budgets: data.budgets,
+    goals: data.goals,
+  });
 
   return (
     <CategoryProvider catMeta={catMeta}>

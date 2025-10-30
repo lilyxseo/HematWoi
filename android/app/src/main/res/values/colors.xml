@@ -10,4 +10,11 @@
     <color name="widget_badge_bg">#374151</color>
     <color name="widget_button_bg">#2563EB</color>
     <color name="widget_button_tint">#FFFFFFFF</color>
+    <color name="widget_budget_accent">#F59E0B</color>
+    <color name="widget_goal_accent">#8B5CF6</color>
+    <color name="widget_stats_accent">#22D3EE</color>
+    <color name="widget_heat_level_0">#1F2937</color>
+    <color name="widget_heat_level_1">#374151</color>
+    <color name="widget_heat_level_2">#F97316</color>
+    <color name="widget_heat_level_3">#EF4444</color>
 </resources>

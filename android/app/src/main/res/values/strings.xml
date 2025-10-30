@@ -9,4 +9,14 @@
     <string name="widget_today_prefix">Hari ini · %1$s</string>
     <string name="widget_updated_prefix">%1$s lalu</string>
     <string name="widget_transactions_count">%1$d tx</string>
+    <string name="widget_budget_total_value">Total Budget: %1$s</string>
+    <string name="widget_budget_spent_value">Terpakai: %1$s</string>
+    <string name="widget_budget_remaining_value">Sisa: %1$s</string>
+    <string name="widget_budget_remaining_badge">Sisa %1$d%%</string>
+    <string name="widget_goal_target_value">Target: %1$s</string>
+    <string name="widget_goal_saved_value">Terkumpul: %1$s</string>
+    <string name="widget_goal_percentage_value">%1$d%%</string>
+    <string name="widget_stats_income_value">Income: %1$s</string>
+    <string name="widget_stats_expense_value">Expense: %1$s</string>
+    <string name="widget_stats_net_value">Net: %1$s</string>
 </resources>
