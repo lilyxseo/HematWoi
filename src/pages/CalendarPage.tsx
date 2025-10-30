@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import CalendarGrid from '../components/calendar/CalendarGrid';
 import Filters from '../components/calendar/Filters';
 import MonthSummary from '../components/calendar/MonthSummary';
@@ -17,7 +18,7 @@ import { listAccounts, type AccountRecord } from '../lib/api';
 import { getCurrentUserId } from '../lib/session';
 
 const DEFAULT_FILTERS: CalendarFilters = {
-  type: 'expense-income',
+  type: 'all',
   categoryIds: [],
   accountId: null,
   minAmount: null,
@@ -25,18 +26,47 @@ const DEFAULT_FILTERS: CalendarFilters = {
   search: '',
 };
 
-function createDefaultFilters(): CalendarFilters {
+function createDefaultFilters(
+  initialType: CalendarFilters['type'] = DEFAULT_FILTERS.type,
+): CalendarFilters {
   return {
     ...DEFAULT_FILTERS,
+    type: initialType,
     categoryIds: [],
   };
 }
 
 export default function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const typeFromQuery = useMemo<CalendarFilters['type']>(() => {
+    return searchParams.get('t') === 'expense' ? 'expense' : 'all';
+  }, [searchParams]);
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [filters, setFilters] = useState<CalendarFilters>(() => createDefaultFilters());
+  const [filters, setFilters] = useState<CalendarFilters>(() =>
+    createDefaultFilters(typeFromQuery),
+  );
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  useEffect(() => {
+    setFilters((prev) => {
+      if (prev.type === typeFromQuery) {
+        return prev;
+      }
+      return { ...prev, type: typeFromQuery };
+    });
+  }, [typeFromQuery]);
+
+  useEffect(() => {
+    const desired = filters.type === 'expense' ? 'expense' : 'all';
+    const current = searchParams.get('t') ?? 'all';
+    if (current === desired) {
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.set('t', desired);
+    setSearchParams(next, { replace: true });
+  }, [filters.type, searchParams, setSearchParams]);
 
   const normalizedFilters = useMemo(
     () => normalizeCalendarFilters(filters),
@@ -160,6 +190,7 @@ export default function CalendarPage() {
             accounts={accounts}
             loadingCategories={categoriesQuery.isLoading}
             loadingAccounts={accountsQuery.isLoading}
+            typeFilterBusy={monthQuery.isFetching}
           />
 
           {monthQuery.isError ? (
