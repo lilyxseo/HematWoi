@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import CalendarGrid from '../components/calendar/CalendarGrid';
 import Filters from '../components/calendar/Filters';
 import MonthSummary from '../components/calendar/MonthSummary';
@@ -33,10 +34,31 @@ function createDefaultFilters(): CalendarFilters {
 }
 
 export default function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [filters, setFilters] = useState<CalendarFilters>(() => createDefaultFilters());
+  const [filters, setFilters] = useState<CalendarFilters>(() => {
+    const defaults = createDefaultFilters();
+    const typeParam = searchParams.get('t');
+    if (typeParam === 'expense') {
+      defaults.type = 'expense';
+    } else if (typeParam === 'all') {
+      defaults.type = 'expense-income';
+    }
+    return defaults;
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+
+  useEffect(() => {
+    const typeParam = searchParams.get('t');
+    const nextType: CalendarFilters['type'] = typeParam === 'expense' ? 'expense' : 'expense-income';
+    setFilters((prev) => {
+      if (prev.type === nextType) {
+        return prev;
+      }
+      return { ...prev, type: nextType };
+    });
+  }, [searchParams]);
 
   const normalizedFilters = useMemo(
     () => normalizeCalendarFilters(filters),
@@ -89,10 +111,19 @@ export default function CalendarPage() {
 
   const handleFiltersChange = (next: CalendarFilters) => {
     setFilters({ ...next, categoryIds: [...next.categoryIds] });
+
+    if (next.type !== filters.type) {
+      const params = new URLSearchParams(searchParams);
+      params.set('t', next.type === 'expense' ? 'expense' : 'all');
+      setSearchParams(params, { replace: true });
+    }
   };
 
   const resetFilters = () => {
     setFilters(createDefaultFilters());
+    const params = new URLSearchParams(searchParams);
+    params.set('t', 'all');
+    setSearchParams(params, { replace: true });
   };
 
   const daySummaries = monthQuery.data?.daySummaries ?? {};
@@ -160,6 +191,7 @@ export default function CalendarPage() {
             accounts={accounts}
             loadingCategories={categoriesQuery.isLoading}
             loadingAccounts={accountsQuery.isLoading}
+            isBusy={monthQuery.isFetching}
           />
 
           {monthQuery.isError ? (
