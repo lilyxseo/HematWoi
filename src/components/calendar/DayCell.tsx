@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import type { DaySummary } from '../../lib/calendarApi';
+import { formatIDShort } from '../../lib/formatIDShort';
 
 const expenseFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
@@ -102,8 +103,27 @@ export default function DayCell({
   }
 
   const heatmapClass = getHeatmapClass(expense, p80, p95, maxExpense);
-  const mobileCountDisplay = count > 0 ? `${count} tx` : '—';
-  const mobileAriaLabel = `${dateLabel} memiliki ${count > 0 ? `${count} transaksi` : 'tidak ada transaksi'}`;
+  const mobileDisplay = (() => {
+    if (expense > 0) {
+      return {
+        text: `-${formatIDShort(expense)}`,
+        className: 'text-rose-400',
+        ariaLabel: `Pengeluaran ${expenseFormatter.format(expense)}`,
+      };
+    }
+    if (income > 0) {
+      return {
+        text: `+${formatIDShort(income)}`,
+        className: 'text-emerald-400',
+        ariaLabel: `Pemasukan ${incomeFormatter.format(income)}`,
+      };
+    }
+    return {
+      text: '—',
+      className: 'text-slate-400',
+      ariaLabel: 'Tidak ada transaksi',
+    };
+  })();
 
   return (
     <button
@@ -134,10 +154,13 @@ export default function DayCell({
       </div>
       <div className="flex flex-col justify-end gap-1">
         <span
-          className="block truncate text-[11px] font-semibold leading-tight text-slate-200 drop-shadow-[0_1px_0_rgba(0,0,0,0.3)] md:hidden"
-          aria-label={mobileAriaLabel}
+          className={clsx(
+            'block md:hidden text-[11px] font-mono leading-tight truncate',
+            mobileDisplay.className,
+          )}
+          aria-label={`${dateLabel}, ${mobileDisplay.ariaLabel}`}
         >
-          {mobileCountDisplay}
+          {mobileDisplay.text}
         </span>
         <div className="hidden md:flex md:items-center md:gap-2">
           <span className="font-mono text-rose-400 text-sm leading-tight">
