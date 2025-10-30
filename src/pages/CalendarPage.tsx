@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import CalendarGrid from '../components/calendar/CalendarGrid';
 import Filters from '../components/calendar/Filters';
 import MonthSummary from '../components/calendar/MonthSummary';
@@ -33,6 +34,7 @@ function createDefaultFilters(): CalendarFilters {
 }
 
 export default function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
   const [filters, setFilters] = useState<CalendarFilters>(() => createDefaultFilters());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -90,6 +92,35 @@ export default function CalendarPage() {
   const handleFiltersChange = (next: CalendarFilters) => {
     setFilters({ ...next, categoryIds: [...next.categoryIds] });
   };
+
+  useEffect(() => {
+    const paramValue = searchParams.get('t');
+    const nextType: CalendarFilters['type'] =
+      paramValue === 'expense'
+        ? 'expense'
+        : paramValue === 'all' || paramValue === 'expense-income'
+          ? 'expense-income'
+          : 'expense-income';
+
+    setFilters((prev) => {
+      if (prev.type === nextType) return prev;
+      return { ...prev, type: nextType };
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        const desiredValue = filters.type === 'expense' ? 'expense' : 'all';
+        const current = next.get('t');
+        if (current === desiredValue) return prev;
+        next.set('t', desiredValue);
+        return next;
+      },
+      { replace: true },
+    );
+  }, [filters.type, setSearchParams]);
 
   const resetFilters = () => {
     setFilters(createDefaultFilters());
