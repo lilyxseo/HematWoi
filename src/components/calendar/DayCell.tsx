@@ -17,6 +17,11 @@ const incomeFormatter = new Intl.NumberFormat('id-ID', {
   notation: 'compact',
 });
 
+const compactExpenseFormatter = new Intl.NumberFormat('id-ID', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
 interface DayCellProps {
   date: Date;
   summary?: DaySummary;
@@ -75,6 +80,14 @@ function formatIncome(value: number): string {
   return `+${incomeFormatter.format(Math.abs(value))}`;
 }
 
+function formatCompactExpense(value: number): string | null {
+  if (!value || value <= 0) return null;
+  const formatted = compactExpenseFormatter
+    .format(Math.abs(value))
+    .replace(/\s+/g, '');
+  return `-${formatted}`;
+}
+
 export default function DayCell({
   date,
   summary,
@@ -89,6 +102,8 @@ export default function DayCell({
   const expense = summary?.expenseTotal ?? 0;
   const income = summary?.incomeTotal ?? 0;
   const count = summary?.count ?? 0;
+  const compactExpense = formatCompactExpense(expense);
+  const showBadges = Boolean(compactExpense) || count > 0;
 
   const ariaLabelParts = [
     format(date, 'EEEE, dd MMMM yyyy', { locale: localeId }),
@@ -125,10 +140,24 @@ export default function DayCell({
         >
           {format(date, 'd', { locale: localeId })}
         </span>
-        {count > 0 ? (
-          <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100">
-            {count}
-          </span>
+        {showBadges ? (
+          <div className="flex items-center gap-2">
+            {compactExpense ? (
+              <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100 md:hidden">
+                {compactExpense}
+              </span>
+            ) : null}
+            {!compactExpense && count > 0 ? (
+              <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100 md:hidden">
+                —
+              </span>
+            ) : null}
+            {count > 0 ? (
+              <span className="hidden min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100 md:inline-flex">
+                {count}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <div className="mt-3 flex flex-col gap-1">
