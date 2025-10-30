@@ -4,7 +4,7 @@ import { getCurrentUserId } from './session';
 
 const DATE_FORMAT = 'yyyy-MM-dd';
 
-export type CalendarTypeFilter = 'expense' | 'expense-income';
+export type CalendarTypeFilter = 'expense' | 'all';
 
 export interface CalendarFilters {
   type: CalendarTypeFilter;
@@ -69,7 +69,7 @@ function formatDate(value: Date): string {
 }
 
 export function normalizeCalendarFilters(filters: CalendarFilters): NormalizedCalendarFilters {
-  const type: CalendarTypeFilter = filters.type === 'expense-income' ? 'expense-income' : 'expense';
+  const type: CalendarTypeFilter = filters.type === 'expense' ? 'expense' : 'all';
   const categorySet = new Set(
     (filters.categoryIds ?? [])
       .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -104,7 +104,7 @@ export function normalizeCalendarFilters(filters: CalendarFilters): NormalizedCa
   const search = (filters.search ?? '').toString().trim().slice(0, 120);
 
   const types: ('expense' | 'income')[] =
-    type === 'expense-income' ? ['expense', 'income'] : ['expense'];
+    type === 'all' ? ['expense', 'income'] : ['expense'];
 
   return {
     type,
