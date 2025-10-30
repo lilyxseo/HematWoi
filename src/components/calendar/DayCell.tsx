@@ -3,18 +3,16 @@ import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import type { DaySummary } from '../../lib/calendarApi';
 
-const expenseFormatter = new Intl.NumberFormat('id-ID', {
+const currencyFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
   currency: 'IDR',
   maximumFractionDigits: 0,
-  notation: 'compact',
 });
 
-const incomeFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
+const compactAmountFormatter = new Intl.NumberFormat('id-ID', {
   notation: 'compact',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
 });
 
 interface DayCellProps {
@@ -65,14 +63,18 @@ function getHeatmapClass(
   return 'bg-slate-900';
 }
 
+function formatCompactAmount(value: number): string {
+  return compactAmountFormatter.format(value).replace(/\s+/g, '');
+}
+
 function formatExpense(value: number): string {
   if (!value) return '—';
-  return `-${expenseFormatter.format(Math.abs(value))}`;
+  return `-${formatCompactAmount(Math.abs(value))}`;
 }
 
 function formatIncome(value: number): string {
   if (!value) return '';
-  return `+${incomeFormatter.format(Math.abs(value))}`;
+  return `+${formatCompactAmount(Math.abs(value))}`;
 }
 
 export default function DayCell({
@@ -95,13 +97,18 @@ export default function DayCell({
     count > 0 ? `${count} transaksi` : 'Tidak ada transaksi',
   ];
   if (expense > 0) {
-    ariaLabelParts.push(`Pengeluaran ${expenseFormatter.format(expense)}`);
+    ariaLabelParts.push(`Pengeluaran ${currencyFormatter.format(expense)}`);
   }
   if (income > 0) {
-    ariaLabelParts.push(`Pemasukan ${incomeFormatter.format(income)}`);
+    ariaLabelParts.push(`Pemasukan ${currencyFormatter.format(income)}`);
   }
 
   const heatmapClass = getHeatmapClass(expense, p80, p95, maxExpense);
+
+  const expenseDisplay = formatExpense(expense);
+  const incomeDisplay = formatIncome(income);
+  const showCount = count > 0;
+  const showMobileExpenseBadge = showCount;
 
   return (
     <button
@@ -125,19 +132,36 @@ export default function DayCell({
         >
           {format(date, 'd', { locale: localeId })}
         </span>
-        {count > 0 ? (
-          <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100">
-            {count}
-          </span>
+        {showCount ? (
+          <div className="flex items-center gap-2">
+            {showMobileExpenseBadge ? (
+              <span
+                className={clsx(
+                  'inline-flex min-h-5 min-w-[3.25rem] items-center justify-center rounded-full bg-slate-800 px-2 text-xs font-semibold md:hidden',
+                  expense > 0 ? 'text-rose-300' : 'text-slate-200',
+                )}
+              >
+                {expenseDisplay}
+              </span>
+            ) : null}
+            <span className="hidden min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100 md:inline-flex">
+              {count}
+            </span>
+          </div>
         ) : null}
       </div>
       <div className="mt-3 flex flex-col gap-1">
-        <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
-          {formatExpense(expense)}
+        <span
+          className={clsx(
+            'block truncate font-mono text-sm text-rose-400 md:text-base',
+            showCount ? 'hidden md:block' : undefined,
+          )}
+        >
+          {expenseDisplay}
         </span>
         {income > 0 ? (
           <span className="block truncate font-mono text-xs text-emerald-400 md:text-sm">
-            {formatIncome(income)}
+            {incomeDisplay}
           </span>
         ) : (
           <span className="block truncate font-mono text-xs text-slate-400 md:text-sm">&nbsp;</span>
