@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import CalendarGrid from '../components/calendar/CalendarGrid';
 import Filters from '../components/calendar/Filters';
 import MonthSummary from '../components/calendar/MonthSummary';
@@ -17,7 +18,7 @@ import { listAccounts, type AccountRecord } from '../lib/api';
 import { getCurrentUserId } from '../lib/session';
 
 const DEFAULT_FILTERS: CalendarFilters = {
-  type: 'expense-income',
+  type: 'all',
   categoryIds: [],
   accountId: null,
   minAmount: null,
@@ -34,7 +35,15 @@ function createDefaultFilters(): CalendarFilters {
 
 export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [filters, setFilters] = useState<CalendarFilters>(() => createDefaultFilters());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [filters, setFilters] = useState<CalendarFilters>(() => {
+    const initial = createDefaultFilters();
+    const typeParam = searchParams.get('t');
+    if (typeParam === 'expense' || typeParam === 'all') {
+      initial.type = typeParam;
+    }
+    return initial;
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -89,10 +98,23 @@ export default function CalendarPage() {
 
   const handleFiltersChange = (next: CalendarFilters) => {
     setFilters({ ...next, categoryIds: [...next.categoryIds] });
+    if (next.type !== filters.type) {
+      const nextParams = new URLSearchParams(searchParams);
+      if (next.type === DEFAULT_FILTERS.type) {
+        nextParams.delete('t');
+      } else {
+        nextParams.set('t', next.type);
+      }
+      setSearchParams(nextParams, { replace: true });
+    }
   };
 
   const resetFilters = () => {
-    setFilters(createDefaultFilters());
+    const defaults = createDefaultFilters();
+    setFilters(defaults);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('t');
+    setSearchParams(nextParams, { replace: true });
   };
 
   const daySummaries = monthQuery.data?.daySummaries ?? {};
@@ -109,6 +131,14 @@ export default function CalendarPage() {
 
   const categories = categoriesQuery.data ?? [];
   const accounts = accountsQuery.data ?? [];
+
+  useEffect(() => {
+    const typeParam = searchParams.get('t');
+    const normalized = typeParam === 'expense' || typeParam === 'all' ? typeParam : DEFAULT_FILTERS.type;
+    if (normalized !== filters.type) {
+      setFilters((prev) => ({ ...prev, type: normalized }));
+    }
+  }, [filters.type, searchParams, setFilters]);
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -160,6 +190,7 @@ export default function CalendarPage() {
             accounts={accounts}
             loadingCategories={categoriesQuery.isLoading}
             loadingAccounts={accountsQuery.isLoading}
+            filtersBusy={monthQuery.isFetching}
           />
 
           {monthQuery.isError ? (
