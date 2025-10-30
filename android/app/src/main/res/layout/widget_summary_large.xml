@@ -3,52 +3,33 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_widget_card">
+    android:background="@drawable/bg_widget_card"
+    android:padding="16dp">
 
     <LinearLayout
         android:id="@+id/widget_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:layout_toStartOf="@+id/widget_add_button"
         android:orientation="vertical"
-        android:gravity="center_vertical"
-        android:layout_marginEnd="64dp">
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widget_header"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hari ini · —"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:baselineAligned="false">
-
-            <TextView
-                android:id="@+id/widget_header"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Hari ini"
-                android:textColor="@color/widget_text_primary"
-                android:textSize="14sp"
-                android:textStyle="bold"
-                android:maxLines="1"
-                android:ellipsize="end" />
-
-            <TextView
-                android:id="@+id/widget_updated_at"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="-"
-                android:textColor="@color/widget_text_secondary"
-                android:textSize="12sp"
-                android:maxLines="1"
-                android:ellipsize="end" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
             android:layout_marginTop="12dp"
+            android:orientation="horizontal"
             android:baselineAligned="false">
 
             <LinearLayout
@@ -61,18 +42,19 @@
                     android:id="@+id/widget_expense_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Pengeluaran"
+                    android:text="Expense"
+                    android:textAllCaps="true"
+                    android:letterSpacing="0.02"
                     android:textColor="@color/widget_text_secondary"
-                    android:textSize="12sp"
-                    android:maxLines="1" />
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/widget_expense_value"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="-"
+                    android:text="—"
                     android:textColor="@color/widget_expense"
-                    android:textSize="22sp"
+                    android:textSize="26sp"
                     android:typeface="monospace"
                     android:maxLines="1"
                     android:ellipsize="end" />
@@ -89,18 +71,19 @@
                     android:id="@+id/widget_income_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Pemasukan"
+                    android:text="Income"
+                    android:textAllCaps="true"
+                    android:letterSpacing="0.02"
                     android:textColor="@color/widget_text_secondary"
-                    android:textSize="12sp"
-                    android:maxLines="1" />
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/widget_income_value"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="-"
+                    android:text="—"
                     android:textColor="@color/widget_income"
-                    android:textSize="22sp"
+                    android:textSize="26sp"
                     android:typeface="monospace"
                     android:maxLines="1"
                     android:ellipsize="end" />
@@ -110,10 +93,10 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:layout_marginTop="12dp"
-            android:baselineAligned="false">
+            android:baselineAligned="false"
+            android:gravity="center_vertical">
 
             <LinearLayout
                 android:layout_width="0dp"
@@ -125,18 +108,19 @@
                     android:id="@+id/widget_net_label"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Selisih"
+                    android:text="Net"
+                    android:textAllCaps="true"
+                    android:letterSpacing="0.02"
                     android:textColor="@color/widget_text_secondary"
-                    android:textSize="12sp"
-                    android:maxLines="1" />
+                    android:textSize="12sp" />
 
                 <TextView
                     android:id="@+id/widget_net_value"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="-"
+                    android:text="—"
                     android:textColor="@color/widget_net"
-                    android:textSize="18sp"
+                    android:textSize="22sp"
                     android:typeface="monospace"
                     android:maxLines="1"
                     android:ellipsize="end" />
@@ -148,10 +132,15 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
                 android:background="@drawable/bg_widget_badge"
-                android:text="0 tx"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="5dp"
+                android:paddingBottom="5dp"
+                android:text="—"
                 android:textColor="@color/widget_text_primary"
                 android:textSize="12sp"
-                android:maxLines="1" />
+                android:maxLines="1"
+                android:ellipsize="end" />
         </LinearLayout>
     </LinearLayout>
 
@@ -159,14 +148,13 @@
         android:id="@+id/widget_add_button"
         android:layout_width="44dp"
         android:layout_height="44dp"
-        android:layout_alignParentBottom="true"
         android:layout_alignParentEnd="true"
+        android:layout_alignParentBottom="true"
         android:background="@drawable/bg_widget_button"
         android:contentDescription="@string/widget_add_transaction"
-        android:padding="10dp"
+        android:padding="12dp"
         android:scaleType="centerInside"
         android:src="@drawable/ic_widget_add"
-        android:tint="@color/widget_button_tint"
-        android:layout_margin="12dp" />
+        android:tint="@color/widget_button_tint" />
 
 </RelativeLayout>

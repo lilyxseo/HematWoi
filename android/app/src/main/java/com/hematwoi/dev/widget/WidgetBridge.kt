@@ -1,13 +1,10 @@
 package com.hematwoi.dev.widget
 
-import android.content.Intent
-import android.net.Uri
 import android.util.Log
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
-import com.getcapacitor.annotation.CapacitorPlugin
 import com.getcapacitor.PluginMethod
-import java.lang.Exception
+import com.getcapacitor.annotation.CapacitorPlugin
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.max
@@ -25,7 +22,7 @@ class WidgetBridge : Plugin() {
         try {
             val summary = parseSummary(call)
             WidgetStorage.save(context, summary)
-            WidgetUpdater.updateAll(context, summary)
+            WidgetUpdater.updateAll(context)
             WidgetRefreshWorker.schedule(context)
             call.resolve()
         } catch (error: Exception) {
@@ -39,28 +36,6 @@ class WidgetBridge : Plugin() {
         WidgetUpdater.updateAll(context)
         WidgetRefreshWorker.schedule(context)
         call.resolve()
-    }
-
-    @PluginMethod
-    fun openRoute(call: PluginCall) {
-        val route = call.getString("route")?.takeIf { it.isNotBlank() }
-            ?: run {
-                call.reject("route is required")
-                return
-            }
-        val sanitizedRoute = if (route.startsWith("/")) route else "/$route"
-        val uri = Uri.parse("app://hematwoi$sanitizedRoute")
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            setPackage(context.packageName)
-        }
-        runCatching { context.startActivity(intent) }
-            .onSuccess { call.resolve() }
-            .onFailure { error ->
-                Log.e(TAG, "Failed to open route $route", error)
-                val exception = if (error is Exception) error else Exception(error)
-                call.reject("Failed to open route", exception)
-            }
     }
 
     private fun parseSummary(call: PluginCall): WidgetSummary {
@@ -93,7 +68,7 @@ class WidgetBridge : Plugin() {
             expenseToday = safeExpense,
             netToday = netValue,
             countTxToday = safeCount,
-            updatedAt = updatedAt
+            updatedAt = max(0L, updatedAt)
         )
     }
 
