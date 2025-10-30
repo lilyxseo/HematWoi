@@ -1,6 +1,14 @@
-import { Fragment, useMemo } from 'react';
+import { Fragment, useMemo, useRef } from 'react';
+import type { KeyboardEvent } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
-import { Check, ChevronDown, RotateCcw } from 'lucide-react';
+import {
+  ArrowDownLeft,
+  ArrowsUpDown,
+  Check,
+  ChevronDown,
+  RotateCcw,
+  type LucideIcon,
+} from 'lucide-react';
 import type { CalendarFilters } from '../../lib/calendarApi';
 import type { CategoryRecord } from '../../lib/api-categories';
 import type { AccountRecord } from '../../lib/api';
@@ -13,11 +21,20 @@ interface FiltersProps {
   accounts: AccountRecord[];
   loadingCategories?: boolean;
   loadingAccounts?: boolean;
+  isBusy?: boolean;
 }
 
-const typeOptions: { value: CalendarFilters['type']; label: string; description: string }[] = [
-  { value: 'expense', label: 'Expense saja', description: 'Hanya tampilkan pengeluaran' },
-  { value: 'expense-income', label: 'Expense + Income', description: 'Tampilkan pengeluaran dan pemasukan' },
+const typeOptions: {
+  value: CalendarFilters['type'];
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { value: 'expense', label: 'Expense', icon: ArrowDownLeft },
+  {
+    value: 'expense-income',
+    label: 'Exp+Inc',
+    icon: ArrowsUpDown,
+  },
 ];
 
 export default function Filters({
@@ -28,13 +45,31 @@ export default function Filters({
   accounts,
   loadingCategories = false,
   loadingAccounts = false,
+  isBusy = false,
 }: FiltersProps) {
   const sortedCategories = useMemo(() => {
-    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id')); 
+    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id'));
   }, [categories]);
+
+  const typeRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const handleTypeChange = (type: CalendarFilters['type']) => {
     onChange({ ...value, type });
+  };
+
+  const handleTypeKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (isBusy) return;
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+      return;
+    }
+
+    event.preventDefault();
+
+    const delta = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
+    const nextIndex = (index + delta + typeOptions.length) % typeOptions.length;
+    const nextOption = typeOptions[nextIndex];
+    handleTypeChange(nextOption.value);
+    typeRefs.current[nextIndex]?.focus();
   };
 
   const handleCategoriesChange = (selected: string[]) => {
@@ -83,26 +118,42 @@ export default function Filters({
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe transaksi</span>
-            <div className="inline-flex rounded-2xl border border-slate-700 bg-slate-900 p-1 text-sm">
-              {typeOptions.map((option) => {
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Tipe
+            </span>
+            <div
+              role="radiogroup"
+              aria-label="Filter tipe transaksi"
+              aria-disabled={isBusy}
+              className={`flex flex-wrap justify-center gap-2 rounded-full bg-slate-900/50 p-1 ring-1 ring-slate-700/60 sm:justify-start${
+                isBusy ? ' cursor-wait opacity-90' : ''
+              }`}
+            >
+              {typeOptions.map((option, index) => {
                 const isActive = value.type === option.value;
+                const Icon = option.icon;
                 return (
                   <button
                     key={option.value}
+                    ref={(node) => {
+                      typeRefs.current[index] = node;
+                    }}
                     type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    aria-label={option.label}
+                    tabIndex={isActive ? 0 : -1}
+                    disabled={isBusy}
+                    onKeyDown={(event) => handleTypeKeyDown(event, index)}
                     onClick={() => handleTypeChange(option.value)}
-                    className={
-                      'flex-1 rounded-2xl px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] '
-                      + (isActive
-                        ? 'bg-[var(--accent)]/20 text-slate-100'
-                        : 'text-slate-300 hover:bg-slate-800')
-                    }
-                    aria-pressed={isActive}
-                    aria-label={option.description}
+                    className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium transition md:px-4 ${
+                      isActive
+                        ? 'bg-[var(--accent)]/15 text-[var(--accent)] ring-1 ring-[var(--accent)]'
+                        : 'text-slate-300 ring-1 ring-slate-700/60 hover:bg-slate-800/60'
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-wait`}
                   >
-                    <span className="block text-sm font-semibold">{option.label}</span>
-                    <span className="mt-1 block text-xs text-slate-400">{option.description}</span>
+                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{option.label}</span>
                   </button>
                 );
               })}
