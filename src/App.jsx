@@ -36,6 +36,7 @@ import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
 import useChallenges from "./hooks/useChallenges.js";
 import usePrefersReducedMotion from "./hooks/usePrefersReducedMotion.js";
+import { useWidgetAutoSync } from "./hooks/useWidgetAutoSync";
 import AuthGuard from "./components/AuthGuard";
 import AdminGuard from "./components/AdminGuard";
 import { DataProvider } from "./context/DataContext";
@@ -70,6 +71,7 @@ import AuthCallback from "./pages/AuthCallback";
 import MobileGoogleCallback from "./routes/MobileGoogleCallback";
 import {
   isNativePlatform,
+  registerNativeDeepLinkHandler,
   setNativeBrandPreference,
   setNativeLastUserPreference,
   setNativeThemePreference,
@@ -401,6 +403,36 @@ function AppShell({ prefs, setPrefs }) {
     });
     return unregister;
   }, [navigate, addToast]);
+
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    const unregister = registerNativeDeepLinkHandler(async (url) => {
+      if (!url) return false;
+      let parsed;
+      try {
+        parsed = new URL(url);
+      } catch (error) {
+        console.warn('[widget] Invalid deeplink url', error);
+        return false;
+      }
+      if (parsed.protocol !== 'app:' || parsed.hostname !== 'hematwoi') {
+        return false;
+      }
+      const path = parsed.pathname || '/';
+      if (path === '/calendar') {
+        const date = parsed.searchParams.get('d');
+        const target = date ? `/calendar?d=${encodeURIComponent(date)}` : '/calendar';
+        navigate(target, { replace: false });
+        return true;
+      }
+      if (path === '/transactions/new') {
+        navigate('/transaction/add', { replace: false });
+        return true;
+      }
+      return false;
+    });
+    return unregister;
+  }, [navigate]);
 
 
   const handleProfileSyncError = useCallback(
@@ -1305,6 +1337,8 @@ function AppShell({ prefs, setPrefs }) {
     return { income, expense, balance: income - expense };
   }, [filtered]);
 
+  useWidgetAutoSync(data.txs, prefs.currency);
+
   return (
     <CategoryProvider catMeta={catMeta}>
       <BootGate>
@@ -1419,6 +1453,10 @@ function AppShell({ prefs, setPrefs }) {
                 />
                 <Route
                   path="transaction/add"
+                  element={<TransactionAdd onAdd={addTx} />}
+                />
+                <Route
+                  path="transactions/new"
                   element={<TransactionAdd onAdd={addTx} />}
                 />
                 <Route

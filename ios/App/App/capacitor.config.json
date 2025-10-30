@@ -1,5 +1,5 @@
 {
-	"appId": "com.hematwoi.app",
+      "appId": "com.hematwoi.dev",
 	"appName": "HematWoi",
 	"webDir": "dist",
 	"bundledWebRuntime": false,

@@ -2,6 +2,11 @@
 <resources>
     <string name="app_name">HematWoi</string>
     <string name="title_activity_main">HematWoi</string>
-    <string name="package_name">com.hematwoi.app</string>
-    <string name="custom_url_scheme">com.hematwoi.app</string>
+    <string name="package_name">com.hematwoi.dev</string>
+    <string name="custom_url_scheme">com.hematwoi.dev</string>
+    <string name="widget_summary_description">Ringkasan transaksi hari ini</string>
+    <string name="widget_add_transaction">Tambah transaksi</string>
+    <string name="widget_today_prefix">Hari ini · %1$s</string>
+    <string name="widget_updated_prefix">%1$s lalu</string>
+    <string name="widget_transactions_count">%1$d tx</string>
 </resources>
