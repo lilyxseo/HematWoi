@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
   CalendarDays,
@@ -135,7 +135,13 @@ export default function BudgetsPage() {
   const monthly = useBudgets(period);
   const weekly = useWeeklyBudgets(period);
 
+  const categoriesFetchStarted = useRef(false);
+
   useEffect(() => {
+    if (categoriesFetchStarted.current) {
+      return;
+    }
+    categoriesFetchStarted.current = true;
     let active = true;
     setCategoriesLoading(true);
     listCategoriesExpense()
