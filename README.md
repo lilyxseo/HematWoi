@@ -206,7 +206,7 @@ menulis nilai ke `capacitor.config.ts` dan berkas native.
 
 ### Konfigurasi Google Sign-In
 
-- Android: tempel `SHA-1/SHA-256` dan package `com.hematwoi.app` di Google Cloud.
+- Android: tempel `SHA-1/SHA-256` dan package `com.hematwoi.dev` di Google Cloud.
 - iOS: ambil nilai **Reversed client ID** dari Google Cloud dan isi variabel
   `GOOGLE_REVERSED_CLIENT_ID` di Xcode (tersimpan pada `Info.plist`).
 - Supabase: tambahkan redirect URL `hematwoi://auth/callback` dan

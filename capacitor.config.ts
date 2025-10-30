@@ -10,7 +10,7 @@ const androidClientId =
   process.env.GOOGLE_ANDROID_CLIENT_ID ?? process.env.VITE_GOOGLE_ANDROID_CLIENT_ID;
 
 const config: CapacitorConfig = {
-  appId: 'com.hematwoi.app',
+  appId: 'com.hematwoi.dev',
   appName: 'HematWoi',
   webDir: 'dist',
   bundledWebRuntime: false,
