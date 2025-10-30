@@ -17,6 +17,15 @@ const incomeFormatter = new Intl.NumberFormat('id-ID', {
   notation: 'compact',
 });
 
+const compactDisplayFormatter = new Intl.NumberFormat('id-ID', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+function formatCompactDisplay(value: number): string {
+  return compactDisplayFormatter.format(value).replace(/\s+/g, '');
+}
+
 interface DayCellProps {
   date: Date;
   summary?: DaySummary;
@@ -67,12 +76,12 @@ function getHeatmapClass(
 
 function formatExpense(value: number): string {
   if (!value) return '—';
-  return `-${expenseFormatter.format(Math.abs(value))}`;
+  return `-${formatCompactDisplay(Math.abs(value))}`;
 }
 
 function formatIncome(value: number): string {
   if (!value) return '';
-  return `+${incomeFormatter.format(Math.abs(value))}`;
+  return `+${formatCompactDisplay(Math.abs(value))}`;
 }
 
 export default function DayCell({
