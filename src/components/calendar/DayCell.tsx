@@ -68,7 +68,7 @@ function getHeatmapClass(
 
 function formatExpense(value: number): string {
   if (!value) return '—';
-  return `-${expenseFormatter.format(Math.abs(value))}`;
+  return expenseFormatter.format(Math.abs(value));
 }
 
 function formatIncome(value: number): string {
@@ -106,7 +106,7 @@ export default function DayCell({
   const mobileDisplay = (() => {
     if (expense > 0) {
       return {
-        text: `-${formatIDShort(expense)}`,
+        text: formatIDShort(expense),
         className: 'text-rose-400',
         ariaLabel: `Pengeluaran ${expenseFormatter.format(expense)}`,
       };
