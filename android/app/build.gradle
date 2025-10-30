@@ -18,11 +18,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_7
-        targetCompatibility JavaVersion.VERSION_1_7
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
     buildTypes {
         release {
@@ -52,6 +52,10 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+kotlin {
+    jvmToolchain(17)
+}
 
 try {
     def servicesJSON = file('google-services.json')

@@ -6,7 +6,8 @@ import android.util.Log
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.annotation.CapacitorPlugin
-import com.getcapacitor.annotation.PluginMethod
+import com.getcapacitor.PluginMethod
+import java.lang.Exception
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlin.math.max
@@ -57,7 +58,8 @@ class WidgetBridge : Plugin() {
             .onSuccess { call.resolve() }
             .onFailure { error ->
                 Log.e(TAG, "Failed to open route $route", error)
-                call.reject("Failed to open route", error)
+                val exception = if (error is Exception) error else Exception(error)
+                call.reject("Failed to open route", exception)
             }
     }
 

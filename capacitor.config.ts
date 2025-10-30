@@ -13,7 +13,6 @@ const config: CapacitorConfig = {
   appId: 'com.hematwoi.dev',
   appName: 'HematWoi',
   webDir: 'dist',
-  bundledWebRuntime: false,
   server: {
     url: 'https://hemat-woi.me',
     cleartext: true,
