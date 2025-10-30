@@ -1,6 +1,12 @@
 import { Fragment, useMemo } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
-import { Check, ChevronDown, RotateCcw } from 'lucide-react';
+import {
+  ArrowsUpDown,
+  Check,
+  ChevronDown,
+  MinusCircle,
+  RotateCcw,
+} from 'lucide-react';
 import type { CalendarFilters } from '../../lib/calendarApi';
 import type { CategoryRecord } from '../../lib/api-categories';
 import type { AccountRecord } from '../../lib/api';
@@ -15,9 +21,24 @@ interface FiltersProps {
   loadingAccounts?: boolean;
 }
 
-const typeOptions: { value: CalendarFilters['type']; label: string; description: string }[] = [
-  { value: 'expense', label: 'Expense saja', description: 'Hanya tampilkan pengeluaran' },
-  { value: 'expense-income', label: 'Expense + Income', description: 'Tampilkan pengeluaran dan pemasukan' },
+const typeOptions: {
+  value: CalendarFilters['type'];
+  label: string;
+  description: string;
+  icon: typeof MinusCircle;
+}[] = [
+  {
+    value: 'expense',
+    label: 'Expense',
+    description: 'Hanya tampilkan pengeluaran',
+    icon: MinusCircle,
+  },
+  {
+    value: 'expense-income',
+    label: 'All',
+    description: 'Tampilkan pengeluaran dan pemasukan',
+    icon: ArrowsUpDown,
+  },
 ];
 
 export default function Filters({
@@ -30,12 +51,17 @@ export default function Filters({
   loadingAccounts = false,
 }: FiltersProps) {
   const sortedCategories = useMemo(() => {
-    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id')); 
+    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id'));
   }, [categories]);
 
   const handleTypeChange = (type: CalendarFilters['type']) => {
     onChange({ ...value, type });
   };
+
+  const activeTypeIndex = Math.max(
+    0,
+    typeOptions.findIndex((option) => option.value === value.type),
+  );
 
   const handleCategoriesChange = (selected: string[]) => {
     onChange({ ...value, categoryIds: selected });
@@ -84,28 +110,38 @@ export default function Filters({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe transaksi</span>
-            <div className="inline-flex rounded-2xl border border-slate-700 bg-slate-900 p-1 text-sm">
+            <div className="relative flex w-full justify-between gap-1 rounded-full bg-slate-800/60 p-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:w-fit sm:justify-start">
               {typeOptions.map((option) => {
                 const isActive = value.type === option.value;
+                const Icon = option.icon;
                 return (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => handleTypeChange(option.value)}
                     className={
-                      'flex-1 rounded-2xl px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] '
+                      'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-1.5 text-center text-sm font-medium transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] '
                       + (isActive
-                        ? 'bg-[var(--accent)]/20 text-slate-100'
-                        : 'text-slate-300 hover:bg-slate-800')
+                        ? 'text-white'
+                        : 'text-slate-300 hover:text-slate-100')
                     }
                     aria-pressed={isActive}
                     aria-label={option.description}
                   >
-                    <span className="block text-sm font-semibold">{option.label}</span>
-                    <span className="mt-1 block text-xs text-slate-400">{option.description}</span>
+                    <Icon className="h-4 w-4 opacity-70" aria-hidden="true" />
+                    <span>{option.label}</span>
+                    <span className="sr-only">{option.description}</span>
                   </button>
                 );
               })}
+              <div
+                className="pointer-events-none absolute inset-y-1 left-1 rounded-full bg-[var(--accent)]/90 shadow-md transition-transform duration-300 ease-in-out"
+                style={{
+                  width: 'calc((100% - 0.25rem) / 2)',
+                  transform: `translateX(calc(${activeTypeIndex} * (100% + 0.25rem)))`,
+                }}
+                aria-hidden="true"
+              />
             </div>
           </div>
           <div className="flex min-w-0 flex-col gap-2">
