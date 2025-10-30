@@ -10,6 +10,16 @@ const expenseFormatter = new Intl.NumberFormat('id-ID', {
   notation: 'compact',
 });
 
+const compactNumberFormatter = new Intl.NumberFormat('id-ID', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+});
+
+const integerFormatter = new Intl.NumberFormat('id-ID', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
 const incomeFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
   currency: 'IDR',
@@ -67,7 +77,26 @@ function getHeatmapClass(
 
 function formatExpense(value: number): string {
   if (!value) return '—';
-  return `-${expenseFormatter.format(Math.abs(value))}`;
+
+  const abs = Math.abs(value);
+
+  const withSuffix = (() => {
+    if (abs >= 1_000_000_000_000) {
+      return `${compactNumberFormatter.format(abs / 1_000_000_000_000)}T`;
+    }
+    if (abs >= 1_000_000_000) {
+      return `${compactNumberFormatter.format(abs / 1_000_000_000)}M`;
+    }
+    if (abs >= 1_000_000) {
+      return `${compactNumberFormatter.format(abs / 1_000_000)}jt`;
+    }
+    if (abs >= 1_000) {
+      return `${compactNumberFormatter.format(abs / 1_000)}rb`;
+    }
+    return integerFormatter.format(abs);
+  })();
+
+  return `-${withSuffix}`;
 }
 
 function formatIncome(value: number): string {
