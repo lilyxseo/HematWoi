@@ -85,6 +85,7 @@ export {
 export {
   IconArrowBarToDown as ArrowDownToLine,
   IconArrowsLeftRight as ArrowRightLeft,
+  IconArrowsUpDown as ArrowsUpDown,
   IconArrowBarToUp as ArrowUpFromLine,
   IconCashBanknote as Banknote,
   IconChartBar as BarChart3,
@@ -120,6 +121,7 @@ export {
   IconNotebook as NotebookPen,
   IconChartPie as PieChart,
   IconPigMoney as PiggyBank,
+  IconCircleMinus as MinusCircle,
   IconCirclePlus as PlusCircle,
   IconRefresh as RefreshCcw,
   IconRefresh as RefreshCw,
