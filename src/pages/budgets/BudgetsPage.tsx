@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
   CalendarDays,
@@ -131,12 +131,18 @@ export default function BudgetsPage() {
   const [highlightSelections, setHighlightSelections] = useState<HighlightBudgetSelection[]>([]);
   const [highlightLoading, setHighlightLoading] = useState(true);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string | null>(null);
+  const categoriesFetchedRef = useRef(false);
 
   const monthly = useBudgets(period);
   const weekly = useWeeklyBudgets(period);
 
   useEffect(() => {
     let active = true;
+    if (categoriesFetchedRef.current) {
+      return;
+    }
+
+    categoriesFetchedRef.current = true;
     setCategoriesLoading(true);
     listCategoriesExpense()
       .then((data) => {
@@ -144,6 +150,7 @@ export default function BudgetsPage() {
         setCategories(data);
       })
       .catch((err) => {
+        categoriesFetchedRef.current = false;
         if (!active) return;
         const message = err instanceof Error ? err.message : 'Gagal memuat kategori';
         addToast(message, 'error');
