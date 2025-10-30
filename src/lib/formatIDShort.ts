@@ -1,9 +1,3 @@
-const numberFormatter = new Intl.NumberFormat('id-ID', {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-  useGrouping: false,
-});
-
 export function formatIDShort(amount: number): string {
   const absValue = Math.abs(amount);
 
@@ -18,16 +12,55 @@ export function formatIDShort(amount: number): string {
     return '0';
   }
 
-  for (const threshold of thresholds) {
+  for (let i = 0; i < thresholds.length; i += 1) {
+    const threshold = thresholds[i];
     if (absValue >= threshold.value) {
-      const scaled = Math.floor((absValue / threshold.value) * 100) / 100;
-      return `${formatWithComma(scaled)}${threshold.suffix}`;
+      const scaled = absValue / threshold.value;
+      const rounded = roundToThreeDigits(scaled);
+
+      if (rounded >= 1000 && i > 0) {
+        const higherThreshold = thresholds[i - 1];
+        const higherScaled = absValue / higherThreshold.value;
+        const higherRounded = roundToThreeDigits(higherScaled);
+        return `${formatRounded(higherRounded)}${higherThreshold.suffix}`;
+      }
+
+      return `${formatRounded(rounded)}${threshold.suffix}`;
     }
   }
 
-  return formatWithComma(Math.floor(absValue * 100) / 100);
+  return formatRounded(roundToThreeDigits(absValue));
 }
 
-function formatWithComma(value: number): string {
-  return numberFormatter.format(value);
+const numberFormatter = new Intl.NumberFormat('id-ID', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+});
+
+function roundToThreeDigits(value: number): number {
+  if (value === 0) {
+    return 0;
+  }
+
+  const integerDigits = Math.floor(value).toString().length;
+
+  if (integerDigits >= 3) {
+    return Math.round(value);
+  }
+
+  const decimalPlaces = integerDigits === 2 ? 1 : 2;
+  const factor = 10 ** decimalPlaces;
+  const rounded = Math.round(value * factor) / factor;
+
+  if (rounded >= 10 ** integerDigits && integerDigits < 3) {
+    return roundToThreeDigits(rounded);
+  }
+
+  return rounded;
+}
+
+function formatRounded(value: number): string {
+  const formatted = numberFormatter.format(value);
+  return formatted.replace(/,(?:0|00)$/, '');
 }
