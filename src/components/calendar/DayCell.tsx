@@ -17,6 +17,13 @@ const incomeFormatter = new Intl.NumberFormat('id-ID', {
   notation: 'compact',
 });
 
+const mobileExpenseFormatter = new Intl.NumberFormat('id-ID', {
+  style: 'currency',
+  currency: 'IDR',
+  maximumFractionDigits: 1,
+  notation: 'compact',
+});
+
 interface DayCellProps {
   date: Date;
   summary?: DaySummary;
@@ -75,6 +82,17 @@ function formatIncome(value: number): string {
   return `+${incomeFormatter.format(Math.abs(value))}`;
 }
 
+function formatMobileExpense(value: number): string {
+  if (!value) return '—';
+  const formatted = mobileExpenseFormatter
+    .format(Math.abs(value))
+    .replace(/\s+/g, '')
+    .replace(/^Rp/, '')
+    .replace(/,0(?=[A-Za-z])/g, '')
+    .toLowerCase();
+  return `-${formatted}`;
+}
+
 export default function DayCell({
   date,
   summary,
@@ -89,6 +107,8 @@ export default function DayCell({
   const expense = summary?.expenseTotal ?? 0;
   const income = summary?.incomeTotal ?? 0;
   const count = summary?.count ?? 0;
+  const showMobileExpenseBadge = expense > 0 || count > 0;
+  const mobileExpenseLabel = formatMobileExpense(expense);
 
   const ariaLabelParts = [
     format(date, 'EEEE, dd MMMM yyyy', { locale: localeId }),
@@ -126,8 +146,13 @@ export default function DayCell({
           {format(date, 'd', { locale: localeId })}
         </span>
         {count > 0 ? (
-          <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100">
+          <span className="hidden min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100 md:inline-flex">
             {count}
+          </span>
+        ) : null}
+        {showMobileExpenseBadge ? (
+          <span className="inline-flex min-h-5 min-w-[2.5rem] items-center justify-center rounded-full bg-slate-800 px-2 text-xs font-semibold text-rose-300 md:hidden">
+            {mobileExpenseLabel}
           </span>
         ) : null}
       </div>
