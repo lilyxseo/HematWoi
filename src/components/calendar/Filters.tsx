@@ -1,6 +1,13 @@
 import { Fragment, useMemo } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
-import { Check, ChevronDown, RotateCcw } from 'lucide-react';
+import {
+  ArrowsUpDown,
+  Check,
+  ChevronDown,
+  MinusCircle,
+  RotateCcw,
+  type LucideIcon,
+} from 'lucide-react';
 import type { CalendarFilters } from '../../lib/calendarApi';
 import type { CategoryRecord } from '../../lib/api-categories';
 import type { AccountRecord } from '../../lib/api';
@@ -15,9 +22,9 @@ interface FiltersProps {
   loadingAccounts?: boolean;
 }
 
-const typeOptions: { value: CalendarFilters['type']; label: string; description: string }[] = [
-  { value: 'expense', label: 'Expense saja', description: 'Hanya tampilkan pengeluaran' },
-  { value: 'expense-income', label: 'Expense + Income', description: 'Tampilkan pengeluaran dan pemasukan' },
+const typeOptions: { value: CalendarFilters['type']; label: string; icon: LucideIcon }[] = [
+  { value: 'expense', label: 'Expense', icon: MinusCircle },
+  { value: 'expense-income', label: 'All', icon: ArrowsUpDown },
 ];
 
 export default function Filters({
@@ -30,8 +37,17 @@ export default function Filters({
   loadingAccounts = false,
 }: FiltersProps) {
   const sortedCategories = useMemo(() => {
-    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id')); 
+    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id'));
   }, [categories]);
+
+  const typeGap = 4;
+  const typePadding = 4;
+  const activeTypeIndex = Math.max(
+    typeOptions.findIndex((option) => option.value === value.type),
+    0,
+  );
+  const typeHighlightWidth = `calc((100% - ${2 * typePadding}px - ${(typeOptions.length - 1) * typeGap}px) / ${typeOptions.length})`;
+  const typeHighlightOffset = `calc(${activeTypeIndex} * (${typeHighlightWidth} + ${typeGap}px))`;
 
   const handleTypeChange = (type: CalendarFilters['type']) => {
     onChange({ ...value, type });
@@ -84,25 +100,33 @@ export default function Filters({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe transaksi</span>
-            <div className="inline-flex rounded-2xl border border-slate-700 bg-slate-900 p-1 text-sm">
+            <div className="relative flex w-full items-center justify-between gap-1 rounded-full bg-slate-800/60 p-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:w-fit sm:justify-start">
+              <span
+                className="pointer-events-none absolute inset-y-1 left-1 rounded-full bg-[var(--accent)] shadow-md transition-all duration-300 ease-in-out"
+                style={{
+                  width: typeHighlightWidth,
+                  transform: `translateX(${typeHighlightOffset})`,
+                }}
+                aria-hidden="true"
+              />
               {typeOptions.map((option) => {
                 const isActive = value.type === option.value;
+                const Icon = option.icon;
                 return (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => handleTypeChange(option.value)}
                     className={
-                      'flex-1 rounded-2xl px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] '
+                      'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 ease-in-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]'
                       + (isActive
-                        ? 'bg-[var(--accent)]/20 text-slate-100'
-                        : 'text-slate-300 hover:bg-slate-800')
+                        ? ' text-white'
+                        : ' text-slate-300 hover:text-slate-100')
                     }
                     aria-pressed={isActive}
-                    aria-label={option.description}
                   >
-                    <span className="block text-sm font-semibold">{option.label}</span>
-                    <span className="mt-1 block text-xs text-slate-400">{option.description}</span>
+                    <Icon className="h-4 w-4 opacity-70" aria-hidden="true" />
+                    <span>{option.label}</span>
                   </button>
                 );
               })}

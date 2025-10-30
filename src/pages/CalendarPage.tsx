@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import CalendarGrid from '../components/calendar/CalendarGrid';
 import Filters from '../components/calendar/Filters';
 import MonthSummary from '../components/calendar/MonthSummary';
@@ -33,8 +34,18 @@ function createDefaultFilters(): CalendarFilters {
 }
 
 export default function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const typeParam = searchParams.get('t');
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [filters, setFilters] = useState<CalendarFilters>(() => createDefaultFilters());
+  const [filters, setFilters] = useState<CalendarFilters>(() => {
+    const initial = createDefaultFilters();
+    if (typeParam === 'expense') {
+      initial.type = 'expense';
+    } else if (typeParam === 'all') {
+      initial.type = 'expense-income';
+    }
+    return initial;
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -94,6 +105,31 @@ export default function CalendarPage() {
   const resetFilters = () => {
     setFilters(createDefaultFilters());
   };
+
+  useEffect(() => {
+    const nextType =
+      typeParam === 'expense'
+        ? 'expense'
+        : typeParam === 'all'
+          ? 'expense-income'
+          : 'expense-income';
+    setFilters((prev) => {
+      if (prev.type === nextType) {
+        return prev;
+      }
+      return { ...prev, type: nextType };
+    });
+  }, [typeParam]);
+
+  useEffect(() => {
+    const nextParam = filters.type === 'expense' ? 'expense' : 'all';
+    if (typeParam === nextParam) {
+      return;
+    }
+    const params = new URLSearchParams(searchParams);
+    params.set('t', nextParam);
+    setSearchParams(params, { replace: true });
+  }, [filters.type, typeParam, searchParams, setSearchParams]);
 
   const daySummaries = monthQuery.data?.daySummaries ?? {};
   const stats = monthQuery.data?.stats ?? { p80: 0, p95: 0, maxExpense: 0 };
