@@ -10,6 +10,11 @@ const expenseFormatter = new Intl.NumberFormat('id-ID', {
   notation: 'compact',
 });
 
+const compactExpenseFormatter = new Intl.NumberFormat('id-ID', {
+  maximumFractionDigits: 1,
+  notation: 'compact',
+});
+
 const incomeFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
   currency: 'IDR',
@@ -75,6 +80,14 @@ function formatIncome(value: number): string {
   return `+${incomeFormatter.format(Math.abs(value))}`;
 }
 
+function formatCompactExpense(value: number): string {
+  if (!value) return '—';
+  const formatted = compactExpenseFormatter
+    .format(Math.abs(value))
+    .replace(/\s+/g, '');
+  return `-${formatted}`;
+}
+
 export default function DayCell({
   date,
   summary,
@@ -125,11 +138,22 @@ export default function DayCell({
         >
           {format(date, 'd', { locale: localeId })}
         </span>
-        {count > 0 ? (
-          <span className="inline-flex min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100">
-            {count}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {expense > 0 ? (
+            <span className="inline-flex min-h-5 min-w-[2.25rem] items-center justify-center rounded-full bg-slate-800 px-1 font-mono text-xs font-semibold text-rose-200 md:hidden">
+              {formatCompactExpense(expense)}
+            </span>
+          ) : count > 0 ? (
+            <span className="inline-flex min-h-5 min-w-[2.25rem] items-center justify-center rounded-full bg-slate-800 px-1 font-mono text-xs font-semibold text-slate-300 md:hidden">
+              —
+            </span>
+          ) : null}
+          {count > 0 ? (
+            <span className="hidden min-h-5 min-w-[1.75rem] items-center justify-center rounded-full bg-slate-800 px-1 text-xs font-semibold text-slate-100 md:inline-flex">
+              {count}
+            </span>
+          ) : null}
+        </div>
       </div>
       <div className="mt-3 flex flex-col gap-1">
         <span className="block truncate font-mono text-sm text-rose-400 md:text-base">
