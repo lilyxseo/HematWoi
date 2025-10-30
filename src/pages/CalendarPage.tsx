@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { addMonths, format, startOfMonth } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import CalendarGrid from '../components/calendar/CalendarGrid';
 import Filters from '../components/calendar/Filters';
 import MonthSummary from '../components/calendar/MonthSummary';
@@ -33,10 +34,25 @@ function createDefaultFilters(): CalendarFilters {
 }
 
 export default function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
-  const [filters, setFilters] = useState<CalendarFilters>(() => createDefaultFilters());
+  const [filters, setFilters] = useState<CalendarFilters>(() => {
+    const initial = createDefaultFilters();
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const typeParam = params.get('t');
+      if (typeParam === 'expense') {
+        initial.type = 'expense';
+      } else if (typeParam === 'all') {
+        initial.type = 'expense-income';
+      }
+    }
+    return initial;
+  });
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const isSyncingFiltersToQuery = useRef(false);
 
   const normalizedFilters = useMemo(
     () => normalizeCalendarFilters(filters),
@@ -90,6 +106,40 @@ export default function CalendarPage() {
   const handleFiltersChange = (next: CalendarFilters) => {
     setFilters({ ...next, categoryIds: [...next.categoryIds] });
   };
+
+  useEffect(() => {
+    const nextValue = filters.type === 'expense' ? 'expense' : 'all';
+    if (searchParams.get('t') === nextValue) {
+      return;
+    }
+    isSyncingFiltersToQuery.current = true;
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('t', nextValue);
+    setSearchParams(nextParams, { replace: true });
+  }, [filters.type, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const typeParam = searchParams.get('t');
+    const nextType =
+      typeParam === 'expense'
+        ? 'expense'
+        : typeParam === 'all'
+          ? 'expense-income'
+          : null;
+    if (!nextType) {
+      return;
+    }
+    if (isSyncingFiltersToQuery.current) {
+      isSyncingFiltersToQuery.current = false;
+      return;
+    }
+    setFilters((prev) => {
+      if (prev.type === nextType) {
+        return prev;
+      }
+      return { ...prev, type: nextType };
+    });
+  }, [searchParams]);
 
   const resetFilters = () => {
     setFilters(createDefaultFilters());
@@ -160,6 +210,7 @@ export default function CalendarPage() {
             accounts={accounts}
             loadingCategories={categoriesQuery.isLoading}
             loadingAccounts={accountsQuery.isLoading}
+            typeLoading={monthQuery.isFetching}
           />
 
           {monthQuery.isError ? (
