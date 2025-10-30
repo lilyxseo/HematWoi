@@ -14,8 +14,10 @@ const config: CapacitorConfig = {
   appName: 'HematWoi',
   webDir: 'dist',
   server: {
-    url: 'https://hemat-woi.me',
-    cleartext: true,
+    url: 'https://www.hemat-woi.me',
+    androidScheme: 'https',
+    cleartext: false,
+    allowNavigation: ['*.hemat-woi.me', '*.vercel.app'],
   },
   plugins: {
     SplashScreen: {

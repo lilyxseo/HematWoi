@@ -6,104 +6,107 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
-import android.view.View
 import android.widget.RemoteViews
 import com.hematwoi.dev.R
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.max
 
 object WidgetUpdater {
-    private const val TAG = "WidgetUpdater"
+    private const val PLACEHOLDER = "—"
     private const val REQUEST_OPEN_CALENDAR = 1001
     private const val REQUEST_OPEN_NEW_TX = 1002
-    private val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM", Locale("id", "ID"))
+    private val dateFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("d MMM", Locale("id", "ID"))
 
-    fun updateAll(context: Context, summaryOverride: WidgetSummary? = null) {
-        val appWidgetManager = AppWidgetManager.getInstance(context)
+    fun updateAll(context: Context) {
+        val manager = AppWidgetManager.getInstance(context)
         val component = ComponentName(context, SummaryWidgetProvider::class.java)
-        val appWidgetIds = appWidgetManager.getAppWidgetIds(component)
-        if (appWidgetIds.isEmpty()) {
-            Log.d(TAG, "No widget instances to update")
+        val widgetIds = manager.getAppWidgetIds(component)
+        if (widgetIds.isEmpty()) {
             return
         }
-        val summary = summaryOverride ?: WidgetStorage.load(context)
-        for (appWidgetId in appWidgetIds) {
-            updateWidget(context, appWidgetManager, appWidgetId, summary)
+        val summary = WidgetStorage.load(context)
+        for (appWidgetId in widgetIds) {
+            updateWidget(context, manager, appWidgetId, summary)
         }
     }
 
     fun updateWidget(
         context: Context,
-        appWidgetManager: AppWidgetManager,
+        manager: AppWidgetManager,
         appWidgetId: Int,
         summary: WidgetSummary
     ) {
-        val layoutId = selectLayout(appWidgetManager, appWidgetId)
+        val layoutId = selectLayout(manager, appWidgetId)
         val views = RemoteViews(context.packageName, layoutId)
 
         val date = runCatching { LocalDate.parse(summary.dateIso) }.getOrElse {
             LocalDate.now(JAKARTA_ZONE)
         }
-        val formattedDate = date.format(dateFormatter)
-        val header = context.getString(R.string.widget_today_prefix, formattedDate)
+        val header = context.getString(R.string.widget_today_prefix, date.format(dateFormatter))
         views.setTextViewText(R.id.widget_header, header)
 
-        val updatedLabel = formatRelativeTime(summary.updatedAt)
-        if (updatedLabel != null) {
-            val subtitle = if (updatedLabel == "baru") {
-                updatedLabel
-            } else {
-                context.getString(R.string.widget_updated_prefix, updatedLabel)
-            }
-            views.setTextViewText(R.id.widget_updated_at, subtitle)
-            views.setViewVisibility(R.id.widget_updated_at, View.VISIBLE)
-        } else {
-            views.setViewVisibility(R.id.widget_updated_at, View.GONE)
-        }
-
+        val hasData = summary.updatedAt > 0
         views.setTextViewText(
             R.id.widget_expense_value,
-            MoneyFormatter.format(-summary.expenseToday, summary.currency)
+            formatAmount(summary.expenseToday, hasData)
         )
         views.setTextViewText(
             R.id.widget_income_value,
-            MoneyFormatter.format(summary.incomeToday, summary.currency)
+            formatAmount(summary.incomeToday, hasData)
         )
         views.setTextViewText(
             R.id.widget_net_value,
-            MoneyFormatter.format(summary.netToday, summary.currency, showPlusForPositive = true)
+            formatNet(summary.netToday, hasData)
         )
-
-        val countLabel = context.getString(R.string.widget_transactions_count, summary.countTxToday)
-        views.setTextViewText(R.id.widget_transaction_count, countLabel)
+        views.setTextViewText(
+            R.id.widget_transaction_count,
+            formatCount(context, summary.countTxToday, hasData)
+        )
         views.setContentDescription(
             R.id.widget_add_button,
             context.getString(R.string.widget_add_transaction)
         )
 
-        val dateQuery = summary.dateIso
+        val dateQuery = date.format(DateTimeFormatter.ISO_DATE)
         val calendarIntent = createDeepLink(context, "calendar?d=$dateQuery", REQUEST_OPEN_CALENDAR)
         val newTxIntent = createDeepLink(context, "transactions/new", REQUEST_OPEN_NEW_TX)
         views.setOnClickPendingIntent(R.id.widget_root, calendarIntent)
         views.setOnClickPendingIntent(R.id.widget_content, calendarIntent)
         views.setOnClickPendingIntent(R.id.widget_add_button, newTxIntent)
 
-        appWidgetManager.updateAppWidget(appWidgetId, views)
+        manager.updateAppWidget(appWidgetId, views)
     }
 
-    private fun selectLayout(appWidgetManager: AppWidgetManager, appWidgetId: Int): Int {
-        val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+    private fun selectLayout(manager: AppWidgetManager, appWidgetId: Int): Int {
+        val options = manager.getAppWidgetOptions(appWidgetId)
         val minWidth = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) ?: 0
         val minHeight = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) ?: 0
-        val threshold = 180 // dp threshold for switching to large layout
+        val threshold = 180
         return if (minWidth >= threshold || minHeight >= threshold) {
             R.layout.widget_summary_large
         } else {
             R.layout.widget_summary
         }
+    }
+
+    private fun formatAmount(value: Long, hasData: Boolean): String {
+        if (!hasData) return PLACEHOLDER
+        if (value == 0L) return "0"
+        return MoneyFormatter.formatIDShort(value)
+    }
+
+    private fun formatNet(value: Long, hasData: Boolean): String {
+        if (!hasData) return PLACEHOLDER
+        if (value == 0L) return "0"
+        val base = MoneyFormatter.formatIDShort(value)
+        return if (value > 0) "+$base" else base
+    }
+
+    private fun formatCount(context: Context, count: Int, hasData: Boolean): String {
+        if (!hasData) return PLACEHOLDER
+        return context.getString(R.string.widget_transactions_count, count)
     }
 
     private fun createDeepLink(context: Context, route: String, requestCode: Int): PendingIntent {
@@ -115,18 +118,5 @@ object WidgetUpdater {
         }
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         return PendingIntent.getActivity(context, requestCode, intent, flags)
-    }
-
-    private fun formatRelativeTime(updatedAt: Long): String? {
-        if (updatedAt <= 0) return null
-        val now = System.currentTimeMillis()
-        val diff = max(0L, now - updatedAt)
-        if (diff < 60_000L) return "baru"
-        val minutes = diff / 60_000L
-        if (minutes < 60) return "${minutes}m"
-        val hours = diff / 3_600_000L
-        if (hours < 24) return "${hours}j"
-        val days = diff / 86_400_000L
-        return "${days}h"
     }
 }

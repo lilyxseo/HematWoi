@@ -14,7 +14,6 @@ export type WidgetSummaryPayload = {
 type WidgetBridgePlugin = {
   setWidgetData(options: WidgetSummaryPayload): Promise<void>;
   refresh(): Promise<void>;
-  openRoute(options: { route: string }): Promise<void>;
 };
 
 const WidgetBridge = registerPlugin<WidgetBridgePlugin>('WidgetBridge', {
@@ -23,9 +22,6 @@ const WidgetBridge = registerPlugin<WidgetBridgePlugin>('WidgetBridge', {
       return undefined;
     },
     async refresh() {
-      return undefined;
-    },
-    async openRoute() {
       return undefined;
     },
   }),
@@ -47,15 +43,6 @@ export async function refreshTodayWidget(): Promise<void> {
     await WidgetBridge.refresh();
   } catch (error) {
     console.warn('[widget] Failed to refresh widget', error);
-  }
-}
-
-export async function openWidgetRoute(route: string): Promise<void> {
-  if (!isNativePlatform() || !isAndroid()) return;
-  try {
-    await WidgetBridge.openRoute({ route });
-  } catch (error) {
-    console.warn('[widget] Failed to open widget route', error);
   }
 }
 

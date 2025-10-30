@@ -9,12 +9,13 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private const val PREF_NAME = "widget_summary_cache"
-private const val PREF_KEY = "widget_summary_json"
+private const val PREF_NAME = "widget_summary"
+private const val PREF_KEY = "widget_summary.json"
 private const val TAG = "WidgetData"
 
 val JAKARTA_ZONE: ZoneId = ZoneId.of("Asia/Jakarta")
 private val ISO_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
 data class WidgetSummary(
     val dateIso: String,
     val currency: String,
@@ -76,7 +77,7 @@ object WidgetStorage {
             val currency = json.optString("currency").ifBlank { "IDR" }
             val income = json.optLong("incomeToday")
             val expense = json.optLong("expenseToday")
-            val net = json.optLong("netToday", income - expense)
+            val net = if (json.has("netToday")) json.optLong("netToday") else income - expense
             val count = json.optInt("countTxToday")
             val updated = json.optLong("updatedAt")
             WidgetSummary(
@@ -84,7 +85,7 @@ object WidgetStorage {
                 currency = currency,
                 incomeToday = income,
                 expenseToday = expense,
-                netToday = if (json.has("netToday")) net else income - expense,
+                netToday = net,
                 countTxToday = if (count < 0) 0 else count,
                 updatedAt = updated
             )

@@ -69,6 +69,7 @@ import MoneyTalkProvider, {
 import { ModeProvider, useMode } from "./hooks/useMode";
 import AuthCallback from "./pages/AuthCallback";
 import MobileGoogleCallback from "./routes/MobileGoogleCallback";
+import { App as CapacitorApp } from "@capacitor/app";
 import {
   isNativePlatform,
   registerNativeDeepLinkHandler,
@@ -80,6 +81,38 @@ import { registerNativeAuthDeeplinkHandler } from "./lib/native-auth";
 
 const uid = () =>
   globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+
+function isAllowedInternalHost(hostname) {
+  if (!hostname) return false;
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "hemat-woi.me" ||
+    normalized === "www.hemat-woi.me" ||
+    normalized.endsWith(".hemat-woi.me") ||
+    normalized.endsWith(".vercel.app")
+  );
+}
+
+function resolveInternalRouteFromUrl(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const protocol = parsed.protocol.toLowerCase();
+    const hostname = parsed.hostname?.toLowerCase() ?? "";
+    const path = parsed.pathname || "/";
+    const search = parsed.search || "";
+    const route = (path.startsWith("/") ? path : `/${path}`) + search;
+    if (protocol === "app:" && hostname === "hematwoi") {
+      return route;
+    }
+    if (protocol === "https:" && isAllowedInternalHost(hostname)) {
+      return route;
+    }
+  } catch (error) {
+    console.warn("[deeplink] Failed to parse url", error);
+  }
+  return null;
+}
 
 const defaultCategories = {
   income: ["Gaji", "Bonus", "Lainnya"],
@@ -432,6 +465,35 @@ function AppShell({ prefs, setPrefs }) {
       return false;
     });
     return unregister;
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!isNativePlatform()) return;
+    let listener;
+    const register = async () => {
+      try {
+        listener = await CapacitorApp.addListener('appUrlOpen', ({ url }) => {
+          const route = resolveInternalRouteFromUrl(url);
+          if (!route) return;
+          navigate(route, { replace: false });
+        });
+      } catch (error) {
+        console.error('[deeplink] Failed to register appUrlOpen listener', error);
+      }
+    };
+    void register();
+    return () => {
+      if (listener && typeof listener.remove === 'function') {
+        try {
+          const removal = listener.remove();
+          if (removal && typeof removal.catch === 'function') {
+            removal.catch(() => {});
+          }
+        } catch (error) {
+          console.warn('[deeplink] Failed to remove appUrlOpen listener', error);
+        }
+      }
+    };
   }, [navigate]);
 
 
