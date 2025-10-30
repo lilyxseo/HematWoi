@@ -1,6 +1,14 @@
 import { Fragment, useMemo } from 'react';
+import type { CSSProperties } from 'react';
 import { Listbox, Transition } from '@headlessui/react';
-import { Check, ChevronDown, RotateCcw } from 'lucide-react';
+import {
+  ArrowsUpDown,
+  Check,
+  ChevronDown,
+  MinusCircle,
+  RotateCcw,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import type { CalendarFilters } from '../../lib/calendarApi';
 import type { CategoryRecord } from '../../lib/api-categories';
 import type { AccountRecord } from '../../lib/api';
@@ -15,9 +23,13 @@ interface FiltersProps {
   loadingAccounts?: boolean;
 }
 
-const typeOptions: { value: CalendarFilters['type']; label: string; description: string }[] = [
-  { value: 'expense', label: 'Expense saja', description: 'Hanya tampilkan pengeluaran' },
-  { value: 'expense-income', label: 'Expense + Income', description: 'Tampilkan pengeluaran dan pemasukan' },
+const typeOptions: {
+  value: CalendarFilters['type'];
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { value: 'expense', label: 'Expense', icon: MinusCircle },
+  { value: 'all', label: 'All', icon: ArrowsUpDown },
 ];
 
 export default function Filters({
@@ -30,8 +42,22 @@ export default function Filters({
   loadingAccounts = false,
 }: FiltersProps) {
   const sortedCategories = useMemo(() => {
-    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id')); 
+    return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id'));
   }, [categories]);
+
+  const activeTypeIndex = Math.max(
+    0,
+    typeOptions.findIndex((option) => option.value === value.type),
+  );
+  const gapRem = 0.25;
+  const gapTotalRem = gapRem * (typeOptions.length - 1);
+  const indicatorStyles: CSSProperties = {
+    width: `calc((100% - ${gapTotalRem}rem) / ${typeOptions.length})`,
+    left:
+      activeTypeIndex <= 0
+        ? '0px'
+        : `calc(${activeTypeIndex} * ((100% - ${gapTotalRem}rem) / ${typeOptions.length}) + ${activeTypeIndex} * ${gapRem}rem)`,
+  };
 
   const handleTypeChange = (type: CalendarFilters['type']) => {
     onChange({ ...value, type });
@@ -83,26 +109,32 @@ export default function Filters({
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe transaksi</span>
-            <div className="inline-flex rounded-2xl border border-slate-700 bg-slate-900 p-1 text-sm">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Tipe transaksi
+            </span>
+            <div className="relative flex w-full items-center justify-between gap-1 rounded-full bg-slate-800/60 px-2 py-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:w-fit sm:justify-start">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-1 z-0 rounded-full bg-[var(--accent)] shadow-[0_12px_30px_-18px_rgba(56,189,248,0.8)] transition-all duration-300 ease-in-out"
+                style={indicatorStyles}
+              />
               {typeOptions.map((option) => {
+                const Icon = option.icon;
                 const isActive = value.type === option.value;
                 return (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => handleTypeChange(option.value)}
-                    className={
-                      'flex-1 rounded-2xl px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] '
-                      + (isActive
-                        ? 'bg-[var(--accent)]/20 text-slate-100'
-                        : 'text-slate-300 hover:bg-slate-800')
-                    }
+                    className={`relative z-10 flex flex-1 items-center justify-center gap-1 rounded-full px-3 py-1.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:flex-none sm:px-4 ${
+                      isActive
+                        ? 'text-white drop-shadow-[0_6px_16px_rgba(15,118,110,0.45)]'
+                        : 'text-slate-300 hover:text-slate-100'
+                    }`}
                     aria-pressed={isActive}
-                    aria-label={option.description}
                   >
-                    <span className="block text-sm font-semibold">{option.label}</span>
-                    <span className="mt-1 block text-xs text-slate-400">{option.description}</span>
+                    <Icon className="h-4 w-4 opacity-70" aria-hidden="true" />
+                    <span className="tracking-wide sm:tracking-normal">{option.label}</span>
                   </button>
                 );
               })}
