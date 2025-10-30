@@ -27,4 +27,4 @@ include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../node_modules/.pnpm/@capacitor+status-bar@6.0.2_@capacitor+core@6.2.1/node_modules/@capacitor/status-bar/android')
 
 include ':codetrix-studio-capacitor-google-auth'
-project(':codetrix-studio-capacitor-google-auth').projectDir = new File('../node_modules/.pnpm/@codetrix-studio+capacitor-_45b9f0b4f95dc17c55478828a271525d/node_modules/@codetrix-studio/capacitor-google-auth/android')
+project(':codetrix-studio-capacitor-google-auth').projectDir = new File('../node_modules/.pnpm/@codetrix-studio+capacitor-google-auth@3.3.6_@capacitor+core@6.2.1/node_modules/@codetrix-studio/capacitor-google-auth/android')
