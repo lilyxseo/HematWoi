@@ -3,18 +3,16 @@ import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import type { DaySummary } from '../../lib/calendarApi';
 
-const expenseFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
+const compactFormatter = new Intl.NumberFormat('id-ID', {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
   notation: 'compact',
 });
 
-const incomeFormatter = new Intl.NumberFormat('id-ID', {
+const currencyFormatter = new Intl.NumberFormat('id-ID', {
   style: 'currency',
   currency: 'IDR',
   maximumFractionDigits: 0,
-  notation: 'compact',
 });
 
 interface DayCellProps {
@@ -65,14 +63,18 @@ function getHeatmapClass(
   return 'bg-slate-900';
 }
 
+function formatCompactValue(value: number): string {
+  return compactFormatter.format(Math.abs(value)).replace(/\s+/g, '');
+}
+
 function formatExpense(value: number): string {
   if (!value) return '—';
-  return `-${expenseFormatter.format(Math.abs(value))}`;
+  return `-${formatCompactValue(value)}`;
 }
 
 function formatIncome(value: number): string {
   if (!value) return '';
-  return `+${incomeFormatter.format(Math.abs(value))}`;
+  return `+${formatCompactValue(value)}`;
 }
 
 export default function DayCell({
@@ -95,10 +97,10 @@ export default function DayCell({
     count > 0 ? `${count} transaksi` : 'Tidak ada transaksi',
   ];
   if (expense > 0) {
-    ariaLabelParts.push(`Pengeluaran ${expenseFormatter.format(expense)}`);
+    ariaLabelParts.push(`Pengeluaran ${currencyFormatter.format(expense)}`);
   }
   if (income > 0) {
-    ariaLabelParts.push(`Pemasukan ${incomeFormatter.format(income)}`);
+    ariaLabelParts.push(`Pemasukan ${currencyFormatter.format(income)}`);
   }
 
   const heatmapClass = getHeatmapClass(expense, p80, p95, maxExpense);
