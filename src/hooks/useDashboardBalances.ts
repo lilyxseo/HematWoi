@@ -91,11 +91,18 @@ function loadGuestStorage(): GuestStorage | null {
   }
 }
 
-function computeGuestMetrics(range: DashboardRange, preset?: PeriodPreset): MetricsState {
-  const storage = loadGuestStorage()
-  const txs = Array.isArray(storage?.txs)
-    ? (storage?.txs as Array<Record<string, any>>)
-    : []
+function computeGuestMetrics(
+  range: DashboardRange,
+  preset?: PeriodPreset,
+  overrideTransactions?: Array<Record<string, any>> | null,
+): MetricsState {
+  const storage =
+    overrideTransactions == null ? loadGuestStorage() : (null as GuestStorage | null)
+  const txs = Array.isArray(overrideTransactions)
+    ? overrideTransactions
+    : Array.isArray(storage?.txs)
+      ? (storage?.txs as Array<Record<string, any>>)
+      : []
   const normalized: TransactionRow[] = []
   const accountIds = new Set<string>()
 
@@ -117,6 +124,9 @@ function computeGuestMetrics(range: DashboardRange, preset?: PeriodPreset): Metr
           ? row.created_at
           : null
     if (!rawDate) return
+    const deletedAt =
+      typeof row?.deleted_at === "string" && row.deleted_at ? row.deleted_at : null
+    if (deletedAt) return
     const date = rawDate.slice(0, 10)
     const accountId = ensureAccount(
       typeof row?.account_id === "string" && row.account_id ? row.account_id : null,
@@ -445,7 +455,15 @@ function mapError(error: PostgrestError | Error): Error {
   return new Error(error.message)
 }
 
-export function useDashboardBalances({ start, end }: DashboardRange, preset?: PeriodPreset) {
+type UseDashboardBalancesOptions = {
+  guestTransactions?: Array<Record<string, any>> | null
+}
+
+export function useDashboardBalances(
+  { start, end }: DashboardRange,
+  preset?: PeriodPreset,
+  options?: UseDashboardBalancesOptions,
+) {
   const [metrics, setMetrics] = useState<MetricsState>(INITIAL_STATE)
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<Error | null>(null)
@@ -453,6 +471,7 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
   const mountedRef = useRef(true)
 
   const range = useMemo(() => sanitizeRange({ start, end }), [start, end])
+  const guestTransactions = options?.guestTransactions ?? null
 
   const refresh = useCallback(
     async (overrideRange?: DashboardRange, overridePreset?: PeriodPreset) => {
@@ -463,7 +482,7 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
       setError(null)
 
       const applyGuestMetrics = () => {
-        const fallback = computeGuestMetrics(currentRange, currentPreset)
+        const fallback = computeGuestMetrics(currentRange, currentPreset, guestTransactions)
         if (!mountedRef.current || requestId !== requestIdRef.current) return false
         setMetrics(fallback)
         setError(null)
@@ -532,7 +551,7 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
         setLoading(false)
       }
     },
-    [preset, range],
+    [preset, range, guestTransactions],
   )
 
   useEffect(() => {
