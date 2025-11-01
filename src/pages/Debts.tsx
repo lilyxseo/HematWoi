@@ -66,6 +66,12 @@ function formatCurrency(value: number) {
   }).format(Math.max(0, value));
 }
 
+function isValidUuid(value: string | null | undefined): boolean {
+  if (typeof value !== 'string') return false;
+  const uuidPattern = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/;
+  return uuidPattern.test(value.trim());
+}
+
 const FILTER_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
   day: 'numeric',
   month: 'long',
@@ -602,6 +608,10 @@ export default function Debts() {
       addToast('Masuk untuk mengelola pembayaran hutang.', 'error');
       return;
     }
+    if (!isValidUuid(debt.id)) {
+      addToast('Hutang belum tersimpan. Tunggu beberapa saat lalu coba lagi.', 'error');
+      return;
+    }
     setPaymentDebt(debt);
     setPaymentOpen(true);
     setPaymentLoading(true);
@@ -650,8 +660,12 @@ export default function Debts() {
       addToast('Masuk untuk mencatat pembayaran hutang.', 'error');
       return;
     }
+    if (!isValidUuid(paymentDebt.id)) {
+      addToast('Hutang belum tersimpan. Tunggu beberapa saat lalu coba lagi.', 'error');
+      return;
+    }
 
-    const includeTransaction = Boolean(input.includeTransaction && input.accountId);
+    const includeTransaction = Boolean(input.includeTransaction);
     const accountId = includeTransaction ? String(input.accountId ?? '') : '';
 
     if (includeTransaction && !accountId) {
@@ -699,7 +713,7 @@ export default function Debts() {
             date: input.date,
             notes: input.notes ?? null,
             account_id: accountId,
-            category_id: input.categoryId ?? null,
+            category_id: input.categoryId && input.categoryId.trim() ? input.categoryId : null,
             markAsPaid: input.markAsPaid,
             allowOverpay: input.allowOverpay,
           })
@@ -723,7 +737,8 @@ export default function Debts() {
       setPaymentList((prev) => prev.filter((payment) => payment.id !== tempId));
       setPaymentDebt(previousDebt);
       setDebts((prev) => prev.map((item) => (item.id === previousDebt.id ? previousDebt : item)));
-      addToast('Gagal mencatat pembayaran', 'error');
+      const message = error instanceof Error && error.message ? error.message : 'Gagal mencatat pembayaran';
+      addToast(message, 'error');
     } finally {
       setPaymentSubmitting(false);
     }
