@@ -29,8 +29,8 @@ const typeOptions: {
   label: string;
   icon: LucideIcon;
 }[] = [
-  { value: 'expense', label: 'Expense', icon: ArrowDownRight },
-  { value: 'expense-income', label: 'All', icon: ArrowLeftRight },
+  { value: 'expense', label: 'pengeluaran', icon: ArrowDownRight },
+  { value: 'expense-income', label: 'hutang', icon: ArrowLeftRight },
 ];
 
 export default function Filters({
