@@ -651,11 +651,23 @@ export default function Debts() {
       return;
     }
 
-    const includeTransaction = Boolean(input.includeTransaction && input.accountId);
+    const isReceivable = paymentDebt.type === 'receivable';
+    const requiredCategoryType = isReceivable ? 'income' : 'expense';
+    const hasCategoryForType = categories.some((item) => item.type === requiredCategoryType);
+    const includeTransaction = Boolean(
+      input.includeTransaction &&
+        input.accountId &&
+        (isReceivable || !hasCategoryForType || input.categoryId),
+    );
     const accountId = includeTransaction ? String(input.accountId ?? '') : '';
+    const categoryId = includeTransaction ? String(input.categoryId ?? '') : '';
 
-    if (includeTransaction && !accountId) {
+    if (input.includeTransaction && !input.accountId) {
       addToast('Pilih akun untuk mencatat transaksi.', 'error');
+      return;
+    }
+    if (input.includeTransaction && !isReceivable && hasCategoryForType && !categoryId) {
+      addToast('Pilih kategori transaksi.', 'error');
       return;
     }
 
@@ -699,7 +711,7 @@ export default function Debts() {
             date: input.date,
             notes: input.notes ?? null,
             account_id: accountId,
-            category_id: input.categoryId ?? null,
+            category_id: categoryId || null,
             markAsPaid: input.markAsPaid,
             allowOverpay: input.allowOverpay,
           })
