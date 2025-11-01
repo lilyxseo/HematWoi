@@ -167,10 +167,14 @@ export default function PaymentDrawer({
 
   const defaultCategoryId = useMemo(() => {
     if (!filteredCategories.length) return '';
-    const targetName = transactionType === 'income' ? 'piutang' : 'hutang';
-    const directMatch = filteredCategories.find(
-      (category) => category.name.trim().toLowerCase() === targetName,
-    );
+    const targetKeywords = transactionType === 'income' ? ['piutang'] : ['hutang'];
+    const directMatch = filteredCategories.find((category) => {
+      const normalizedName = category.name
+        .normalize('NFKC')
+        .trim()
+        .toLowerCase();
+      return targetKeywords.some((keyword) => normalizedName.includes(keyword));
+    });
     if (directMatch) return directMatch.id;
     return filteredCategories[0]?.id ?? '';
   }, [filteredCategories, transactionType]);
