@@ -33,6 +33,7 @@ export function serializeCalendarFilters(
 ): string {
   return [
     filters.type,
+    filters.mode,
     filters.accountId ?? '',
     filters.minAmount ?? '',
     filters.maxAmount ?? '',

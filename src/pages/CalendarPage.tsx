@@ -18,7 +18,7 @@ import { getCurrentUserId } from '../lib/session';
 import { useSearchParams } from 'react-router-dom';
 
 const DEFAULT_FILTERS: CalendarFilters = {
-  type: 'expense-income',
+  type: 'expense',
   categoryIds: [],
   accountId: null,
   minAmount: null,
@@ -39,10 +39,10 @@ export default function CalendarPage() {
   const [filters, setFilters] = useState<CalendarFilters>(() => {
     const initialFilters = createDefaultFilters();
     const typeParam = searchParams.get('t');
-    if (typeParam === 'expense') {
+    if (typeParam === 'debt' || typeParam === 'all') {
+      initialFilters.type = 'debt';
+    } else {
       initialFilters.type = 'expense';
-    } else if (typeParam === 'all') {
-      initialFilters.type = 'expense-income';
     }
     return initialFilters;
   });
@@ -73,6 +73,10 @@ export default function CalendarPage() {
   const monthQuery = useMonthAggregates(currentMonth, normalizedFilters);
 
   const monthLabel = format(currentMonth, 'MMMM yyyy', { locale: localeId });
+  const headerDescription =
+    normalizedFilters.mode === 'debts'
+      ? 'Lihat jadwal hutang jatuh tempo per hari'
+      : 'Lihat ringkasan pengeluaran dan pemasukan per hari';
 
   const handlePrevMonth = () => {
     setCurrentMonth((prev) => startOfMonth(addMonths(prev, -1)));
@@ -103,7 +107,7 @@ export default function CalendarPage() {
     setFilters(nextFilters);
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
-      params.set('t', nextFilters.type === 'expense' ? 'expense' : 'all');
+      params.set('t', nextFilters.type);
       return params;
     });
   };
@@ -112,7 +116,7 @@ export default function CalendarPage() {
     setFilters(createDefaultFilters());
     setSearchParams((prev) => {
       const params = new URLSearchParams(prev);
-      params.set('t', 'all');
+      params.set('t', 'expense');
       return params;
     });
   };
@@ -126,6 +130,10 @@ export default function CalendarPage() {
     previousExpense: 0,
     momExpenseChange: null,
   };
+  const totalItems = Object.values(daySummaries).reduce(
+    (acc, summary) => acc + (summary?.count ?? 0),
+    0,
+  );
 
   const isGridLoading = monthQuery.isLoading || monthQuery.isFetching;
 
@@ -134,7 +142,7 @@ export default function CalendarPage() {
 
   useEffect(() => {
     const typeParam = searchParams.get('t');
-    const nextType = typeParam === 'expense' ? 'expense' : 'expense-income';
+    const nextType = typeParam === 'debt' || typeParam === 'all' ? 'debt' : 'expense';
     setFilters((prev) => {
       if (prev.type === nextType) {
         return prev;
@@ -150,9 +158,7 @@ export default function CalendarPage() {
           <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold text-slate-100">Kalender</h1>
-              <p className="mt-1 text-sm text-slate-400">
-                Lihat ringkasan pengeluaran dan pemasukan per hari
-              </p>
+              <p className="mt-1 text-sm text-slate-400">{headerDescription}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -217,6 +223,7 @@ export default function CalendarPage() {
             maxExpense={stats.maxExpense}
             onSelectDate={handleSelectDate}
             isLoading={isGridLoading}
+            mode={normalizedFilters.mode}
           />
         </div>
 
@@ -229,6 +236,8 @@ export default function CalendarPage() {
             previousExpense={totals.previousExpense}
             momExpenseChange={totals.momExpenseChange}
             isLoading={monthQuery.isFetching}
+            mode={normalizedFilters.mode}
+            itemCount={totalItems}
           />
         </div>
       </div>

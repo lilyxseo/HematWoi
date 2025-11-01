@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import type { DaySummary } from '../../lib/calendarApi';
+import type { CalendarMode, DaySummary } from '../../lib/calendarApi';
 import { formatIDShort } from '../../lib/formatIDShort';
 
 const expenseFormatter = new Intl.NumberFormat('id-ID', {
@@ -28,6 +28,7 @@ interface DayCellProps {
   p95: number;
   maxExpense: number;
   onSelect: (date: Date) => void;
+  mode: CalendarMode;
 }
 
 function getHeatmapClass(
@@ -86,19 +87,30 @@ export default function DayCell({
   p95,
   maxExpense,
   onSelect,
+  mode,
 }: DayCellProps) {
   const expense = summary?.expenseTotal ?? 0;
   const income = summary?.incomeTotal ?? 0;
   const count = summary?.count ?? 0;
+  const effectiveMode = summary?.mode ?? mode;
+  const isDebtMode = effectiveMode === 'debts';
 
   const dateLabel = format(date, 'EEEE, dd MMMM yyyy', { locale: localeId });
-  const countLabel = count > 0 ? `${count} transaksi` : 'Tidak ada transaksi';
+  const countLabel = count > 0
+    ? `${count} ${isDebtMode ? 'hutang' : 'transaksi'}`
+    : isDebtMode
+    ? 'Tidak ada hutang'
+    : 'Tidak ada transaksi';
 
   const ariaLabelParts = [dateLabel, countLabel];
   if (expense > 0) {
-    ariaLabelParts.push(`Pengeluaran ${expenseFormatter.format(expense)}`);
+    ariaLabelParts.push(
+      isDebtMode
+        ? `Total hutang ${expenseFormatter.format(expense)}`
+        : `Pengeluaran ${expenseFormatter.format(expense)}`,
+    );
   }
-  if (income > 0) {
+  if (!isDebtMode && income > 0) {
     ariaLabelParts.push(`Pemasukan ${incomeFormatter.format(income)}`);
   }
 
@@ -107,11 +119,13 @@ export default function DayCell({
     if (expense > 0) {
       return {
         text: formatIDShort(expense),
-        className: 'text-rose-400',
-        ariaLabel: `Pengeluaran ${expenseFormatter.format(expense)}`,
+        className: isDebtMode ? 'text-amber-300' : 'text-rose-400',
+        ariaLabel: isDebtMode
+          ? `Total hutang ${expenseFormatter.format(expense)}`
+          : `Pengeluaran ${expenseFormatter.format(expense)}`,
       };
     }
-    if (income > 0) {
+    if (!isDebtMode && income > 0) {
       return {
         text: `+${formatIDShort(income)}`,
         className: 'text-emerald-400',
@@ -121,7 +135,7 @@ export default function DayCell({
     return {
       text: '—',
       className: 'text-slate-400',
-      ariaLabel: 'Tidak ada transaksi',
+      ariaLabel: isDebtMode ? 'Tidak ada hutang' : 'Tidak ada transaksi',
     };
   })();
 
@@ -163,10 +177,15 @@ export default function DayCell({
           {mobileDisplay.text}
         </span>
         <div className="hidden md:flex md:items-center md:gap-2">
-          <span className="font-mono text-rose-400 text-sm leading-tight">
+          <span
+            className={clsx(
+              'font-mono text-sm leading-tight',
+              isDebtMode ? 'text-amber-300' : 'text-rose-400',
+            )}
+          >
             {formatExpense(expense)}
           </span>
-          {income > 0 ? (
+          {!isDebtMode && income > 0 ? (
             <span className="font-mono text-emerald-400 text-xs opacity-80">
               {formatIncome(income)}
             </span>

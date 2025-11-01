@@ -5,7 +5,11 @@ import { id as localeId } from 'date-fns/locale';
 import { ExternalLink, Pencil, Trash2, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useDayTransactions } from '../../hooks/useDayTransactions';
-import type { NormalizedCalendarFilters } from '../../lib/calendarApi';
+import type {
+  CalendarDebtRow,
+  CalendarItemRow,
+  NormalizedCalendarFilters,
+} from '../../lib/calendarApi';
 import type { CategoryRecord } from '../../lib/api-categories';
 import type { AccountRecord } from '../../lib/api';
 import { formatCurrency } from '../../lib/format';
@@ -20,6 +24,10 @@ interface DayDetailModalProps {
   accounts: AccountRecord[];
   onClose: () => void;
   onDeleted: () => void;
+}
+
+function isDebtItem(item: CalendarItemRow): item is CalendarDebtRow {
+  return item.kind === 'debt';
 }
 
 export default function DayDetailModal({
@@ -53,25 +61,31 @@ export default function DayDetailModal({
 
   const dayQuery = useDayTransactions(date, filters, open);
 
-  const transactions = dayQuery.data ?? [];
+  const items = dayQuery.data ?? [];
   const isLoading = dayQuery.isLoading || dayQuery.isFetching;
+  const isDebtMode = filters.mode === 'debts';
 
   const totals = useMemo(() => {
-    return transactions.reduce(
-      (acc, tx) => {
-        if (tx.type === 'expense') {
-          acc.expense += tx.amount;
-        } else if (tx.type === 'income') {
-          acc.income += tx.amount;
+    return (items as CalendarItemRow[]).reduce(
+      (acc, item) => {
+        if (item.kind === 'transaction') {
+          if (item.type === 'expense') {
+            acc.expense += item.amount;
+          } else if (item.type === 'income') {
+            acc.income += item.amount;
+          }
+        } else if (isDebtItem(item)) {
+          acc.debt += item.amount;
         }
         acc.count += 1;
         return acc;
       },
-      { expense: 0, income: 0, count: 0 },
+      { expense: 0, income: 0, debt: 0, count: 0 },
     );
-  }, [transactions]);
+  }, [items]);
 
   const net = totals.income - totals.expense;
+  const debtTotal = totals.debt;
 
   const handleDelete = async (id: string) => {
     if (!id || deletingId) return;
@@ -104,6 +118,12 @@ export default function DayDetailModal({
   const handleOpenReceipt = (url: string | null) => {
     if (!url) return;
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleViewDebt = (id: string) => {
+    if (!id) return;
+    onClose();
+    navigate(`/debts?focus=${id}`);
   };
 
   const formattedDate = date
@@ -144,7 +164,9 @@ export default function DayDetailModal({
                     </Dialog.Title>
                     <p className="mt-1 text-sm text-slate-400">
                       {totals.count > 0
-                        ? `${totals.count} transaksi`
+                        ? `${totals.count} ${isDebtMode ? 'hutang' : 'transaksi'}`
+                        : isDebtMode
+                        ? 'Tidak ada hutang'
                         : 'Tidak ada transaksi'}
                     </p>
                   </div>
@@ -159,37 +181,56 @@ export default function DayDetailModal({
                 </div>
 
                 <div className="border-b border-slate-800 px-4 py-4 sm:px-6">
-                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Expense</dt>
-                      <dd className="mt-1 text-sm font-mono text-rose-400">
-                        -{formatCurrency(totals.expense)}
-                      </dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Income</dt>
-                      <dd className="mt-1 text-sm font-mono text-emerald-400">
-                        +{formatCurrency(totals.income)}
-                      </dd>
-                    </div>
-                    <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Net</dt>
-                      <dd
-                        className={`mt-1 text-sm font-mono ${
-                          net >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                        }`}
-                      >
-                        {net >= 0 ? '+' : ''}
-                        {formatCurrency(net)}
-                      </dd>
-                    </div>
-                  </dl>
+                  {isDebtMode ? (
+                    <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Total hutang
+                        </dt>
+                        <dd className="mt-1 text-sm font-mono text-amber-300">
+                          -{formatCurrency(debtTotal)}
+                        </dd>
+                      </div>
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Jumlah hutang
+                        </dt>
+                        <dd className="mt-1 text-sm font-semibold text-slate-100">{totals.count}</dd>
+                      </div>
+                    </dl>
+                  ) : (
+                    <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Expense</dt>
+                        <dd className="mt-1 text-sm font-mono text-rose-400">
+                          -{formatCurrency(totals.expense)}
+                        </dd>
+                      </div>
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Income</dt>
+                        <dd className="mt-1 text-sm font-mono text-emerald-400">
+                          +{formatCurrency(totals.income)}
+                        </dd>
+                      </div>
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-3">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">Net</dt>
+                        <dd
+                          className={`mt-1 text-sm font-mono ${
+                            net >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          }`}
+                        >
+                          {net >= 0 ? '+' : ''}
+                          {formatCurrency(net)}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
                   {dayQuery.isError ? (
                     <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-200">
-                      <p>Gagal memuat transaksi. Coba lagi?</p>
+                      <p>Gagal memuat data. Coba lagi?</p>
                       <button
                         type="button"
                         onClick={() => dayQuery.refetch()}
@@ -207,79 +248,139 @@ export default function DayDetailModal({
                         />
                       ))}
                     </div>
-                  ) : transactions.length === 0 ? (
+                  ) : items.length === 0 ? (
                     <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 text-center text-sm text-slate-400">
-                      Tidak ada transaksi
+                      {isDebtMode ? 'Tidak ada hutang' : 'Tidak ada transaksi'}
                     </div>
                   ) : (
                     <ul className="flex flex-col gap-4">
-                      {transactions.map((tx) => {
-                        const categoryName = tx.category_id
-                          ? categoryMap.get(tx.category_id)?.name ?? 'Tanpa kategori'
-                          : 'Tanpa kategori';
-                        const accountName = tx.account_id
-                          ? accountMap.get(tx.account_id)?.name ?? 'Tanpa akun'
-                          : 'Tanpa akun';
+                      {items.map((item) => {
+                        if (!isDebtItem(item)) {
+                          const categoryName = item.category_id
+                            ? categoryMap.get(item.category_id)?.name ?? 'Tanpa kategori'
+                            : 'Tanpa kategori';
+                          const accountName = item.account_id
+                            ? accountMap.get(item.account_id)?.name ?? 'Tanpa akun'
+                            : 'Tanpa akun';
+                          return (
+                            <li
+                              key={item.id}
+                              className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-semibold text-slate-100">
+                                    {item.title?.trim() || 'Tanpa judul'}
+                                  </p>
+                                  <p className="mt-1 text-xs text-slate-400">
+                                    {categoryName} • {accountName}
+                                  </p>
+                                  {item.merchant_name ? (
+                                    <p className="mt-1 text-xs text-slate-400">Merchant: {item.merchant_name}</p>
+                                  ) : null}
+                                  {item.notes ? (
+                                    <p className="mt-2 text-sm text-slate-300">
+                                      {item.notes}
+                                    </p>
+                                  ) : null}
+                                </div>
+                                <div className="flex flex-col items-end gap-2">
+                                  <span
+                                    className={`font-mono text-sm ${
+                                      item.type === 'expense' ? 'text-rose-400' : 'text-emerald-400'
+                                    }`}
+                                  >
+                                    {item.type === 'expense' ? '-' : '+'}
+                                    {formatCurrency(item.amount)}
+                                  </span>
+                                  <div className="flex flex-wrap justify-end gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEdit(item.id)}
+                                      className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                                      aria-label="Edit transaksi"
+                                    >
+                                      <Pencil className="h-4 w-4" /> Edit
+                                    </button>
+                                    {item.receipt_url ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenReceipt(item.receipt_url)}
+                                        className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                                        aria-label="Lihat nota"
+                                      >
+                                        <ExternalLink className="h-4 w-4" /> Nota
+                                      </button>
+                                    ) : null}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDelete(item.id)}
+                                      disabled={deletingId === item.id}
+                                      className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                      aria-label="Hapus transaksi"
+                                    >
+                                      <Trash2 className="h-4 w-4" /> Hapus
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </li>
+                          );
+                        }
+
+                        const dueDateLabel = item.due_date
+                          ? format(new Date(item.due_date), 'dd MMMM yyyy', { locale: localeId })
+                          : 'Tanpa jatuh tempo';
+                        const statusLabel =
+                          item.status === 'overdue'
+                            ? 'Terlambat'
+                            : item.status === 'paid'
+                            ? 'Lunas'
+                            : 'Berjalan';
+                        const statusClass =
+                          item.status === 'overdue'
+                            ? 'bg-rose-500/10 text-rose-200 border border-rose-500/40'
+                            : item.status === 'paid'
+                            ? 'bg-emerald-500/10 text-emerald-200 border border-emerald-500/40'
+                            : 'bg-amber-500/10 text-amber-200 border border-amber-500/40';
+                        const debtTypeLabel = item.debt_type === 'receivable' ? 'Piutang' : 'Hutang';
                         return (
                           <li
-                            key={tx.id}
+                            key={item.id}
                             className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4"
                           >
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-slate-100">
-                                  {tx.title?.trim() || 'Tanpa judul'}
+                                  {item.title?.trim() || 'Tanpa judul'}
                                 </p>
                                 <p className="mt-1 text-xs text-slate-400">
-                                  {categoryName} • {accountName}
+                                  {debtTypeLabel} • {item.party_name || 'Tanpa pihak'}
                                 </p>
-                                {tx.merchant_name ? (
-                                  <p className="mt-1 text-xs text-slate-400">Merchant: {tx.merchant_name}</p>
-                                ) : null}
-                                {tx.notes ? (
-                                  <p className="mt-2 text-sm text-slate-300">
-                                    {tx.notes}
-                                  </p>
+                                <p className="mt-1 text-xs text-slate-400">Jatuh tempo: {dueDateLabel}</p>
+                                <span
+                                  className={`mt-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass}`}
+                                >
+                                  {statusLabel}
+                                </span>
+                                {item.notes ? (
+                                  <p className="mt-3 text-sm text-slate-300">{item.notes}</p>
                                 ) : null}
                               </div>
                               <div className="flex flex-col items-end gap-2">
-                                <span
-                                  className={`font-mono text-sm ${
-                                    tx.type === 'expense' ? 'text-rose-400' : 'text-emerald-400'
-                                  }`}
-                                >
-                                  {tx.type === 'expense' ? '-' : '+'}
-                                  {formatCurrency(tx.amount)}
+                                <span className="font-mono text-sm text-amber-300">
+                                  Sisa {formatCurrency(item.amount)}
                                 </span>
-                                <div className="flex flex-wrap justify-end gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleEdit(tx.id)}
-                                    className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                                    aria-label="Edit transaksi"
-                                  >
-                                    <Pencil className="h-4 w-4" /> Edit
-                                  </button>
-                                  {tx.receipt_url ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenReceipt(tx.receipt_url)}
-                                      className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-100 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                                      aria-label="Lihat nota"
-                                    >
-                                      <ExternalLink className="h-4 w-4" /> Nota
-                                    </button>
-                                  ) : null}
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(tx.id)}
-                                    disabled={deletingId === tx.id}
-                                    className="inline-flex h-9 items-center justify-center gap-1 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                    aria-label="Hapus transaksi"
-                                  >
-                                    <Trash2 className="h-4 w-4" /> Hapus
-                                  </button>
-                                </div>
+                                <span className="text-xs text-slate-400">
+                                  Total {formatCurrency(item.original_amount)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewDebt(item.id)}
+                                  className="inline-flex items-center gap-1 rounded-2xl border border-slate-700 bg-slate-900 px-3 py-1 text-xs font-semibold text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                                >
+                                  Kelola hutang
+                                </button>
                               </div>
                             </div>
                           </li>
