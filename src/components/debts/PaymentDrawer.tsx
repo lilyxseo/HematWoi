@@ -167,11 +167,26 @@ export default function PaymentDrawer({
 
   const defaultCategoryId = useMemo(() => {
     if (!filteredCategories.length) return '';
-    const targetName = transactionType === 'income' ? 'piutang' : 'hutang';
-    const directMatch = filteredCategories.find(
-      (category) => category.name.trim().toLowerCase() === targetName,
-    );
+
+    const normalizedTargets =
+      transactionType === 'income'
+        ? ['penerimaan piutang', 'terima piutang', 'piutang']
+        : ['pembayaran hutang', 'bayar hutang', 'hutang'];
+
+    const directMatch = filteredCategories.find((category) => {
+      const normalizedName = category.name.trim().toLowerCase();
+      return normalizedTargets.includes(normalizedName);
+    });
+
     if (directMatch) return directMatch.id;
+
+    const partialMatch = filteredCategories.find((category) => {
+      const normalizedName = category.name.trim().toLowerCase();
+      return normalizedTargets.some((target) => normalizedName.includes(target));
+    });
+
+    if (partialMatch) return partialMatch.id;
+
     return filteredCategories[0]?.id ?? '';
   }, [filteredCategories, transactionType]);
 
