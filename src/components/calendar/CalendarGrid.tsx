@@ -1,7 +1,7 @@
 import { addDays, eachDayOfInterval, endOfMonth, endOfWeek, format, isSameDay, isSameMonth, isToday, startOfMonth, startOfWeek } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import DayCell from './DayCell';
-import type { DaySummary } from '../../lib/calendarApi';
+import type { CalendarMode, DaySummary } from '../../lib/calendarApi';
 
 interface CalendarGridProps {
   month: Date;
@@ -12,6 +12,7 @@ interface CalendarGridProps {
   maxExpense: number;
   onSelectDate: (date: string) => void;
   isLoading?: boolean;
+  mode: CalendarMode;
 }
 
 const DATE_KEY_FORMAT = 'yyyy-MM-dd';
@@ -25,6 +26,7 @@ export default function CalendarGrid({
   maxExpense,
   onSelectDate,
   isLoading = false,
+  mode,
 }: CalendarGridProps) {
   const start = startOfWeek(startOfMonth(month), { weekStartsOn: 1 });
   const end = endOfWeek(endOfMonth(month), { weekStartsOn: 1 });
@@ -74,6 +76,7 @@ export default function CalendarGrid({
                     p95={p95}
                     maxExpense={maxExpense}
                     onSelect={(next) => onSelectDate(format(next, DATE_KEY_FORMAT))}
+                    mode={mode}
                   />
                 </div>
               );

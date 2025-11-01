@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { TrendingDown, TrendingUp } from 'lucide-react';
 import { formatCurrency } from '../../lib/format';
+import type { CalendarMode } from '../../lib/calendarApi';
 
 interface MonthSummaryProps {
   month: Date;
@@ -12,6 +13,8 @@ interface MonthSummaryProps {
   previousExpense: number;
   momExpenseChange: number | null;
   isLoading?: boolean;
+  mode: CalendarMode;
+  itemCount: number;
 }
 
 const percentFormatter = new Intl.NumberFormat('id-ID', {
@@ -26,6 +29,8 @@ export default function MonthSummary({
   previousExpense,
   momExpenseChange,
   isLoading = false,
+  mode,
+  itemCount,
 }: MonthSummaryProps) {
   const monthLabel = format(month, 'MMMM yyyy', { locale: localeId });
 
@@ -42,6 +47,39 @@ export default function MonthSummary({
     }
     return { label: `Turun ${value}% dari bulan lalu`, tone: 'down' as const };
   }, [momExpenseChange]);
+
+  if (mode === 'debts') {
+    return (
+      <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm sm:p-6">
+        <header className="flex flex-col gap-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Ringkasan Hutang Bulan Ini</p>
+          <h2 className="text-lg font-semibold text-slate-100">{monthLabel}</h2>
+        </header>
+        <div className="mt-6 space-y-4">
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="flex items-center justify-between text-sm text-slate-300">
+              <span>Total hutang jatuh tempo</span>
+              <span className="font-mono text-amber-300">-{formatCurrency(expense)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm text-slate-300">
+              <span>Jumlah hutang</span>
+              <span className="font-semibold text-slate-100">{itemCount}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm text-slate-300">
+              <span>Periode sebelumnya</span>
+              <span className="font-mono text-slate-200">-{formatCurrency(previousExpense)}</span>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400">
+            Menampilkan hutang berstatus berjalan atau terlambat berdasarkan tanggal jatuh tempo.
+          </p>
+        </div>
+        {isLoading ? (
+          <div className="mt-4 text-xs text-slate-500">Memuat ringkasan...</div>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-3xl border border-slate-800 bg-slate-950/80 p-4 shadow-sm sm:p-6">

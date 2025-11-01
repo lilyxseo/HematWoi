@@ -1,10 +1,12 @@
 import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import type { DebtStatus, DebtType } from './api-debts';
 
 const DATE_FORMAT = 'yyyy-MM-dd';
 
-export type CalendarTypeFilter = 'expense' | 'expense-income';
+export type CalendarTypeFilter = 'expense' | 'debt';
+export type CalendarMode = 'transactions' | 'debts';
 
 export interface CalendarFilters {
   type: CalendarTypeFilter;
@@ -17,6 +19,7 @@ export interface CalendarFilters {
 
 export interface NormalizedCalendarFilters {
   type: CalendarTypeFilter;
+  mode: CalendarMode;
   types: ('expense' | 'income')[];
   categoryIds: string[];
   accountId: string | null;
@@ -30,6 +33,7 @@ export interface DaySummary {
   expenseTotal: number;
   incomeTotal: number;
   count: number;
+  mode: CalendarMode;
 }
 
 export interface MonthAggregatesData {
@@ -50,13 +54,18 @@ export interface MonthAggregatesData {
   };
 }
 
-export interface CalendarTransactionRow {
+interface CalendarBaseRow {
   id: string;
   date: string;
-  type: 'income' | 'expense';
   amount: number;
   title: string | null;
   notes: string | null;
+  kind: 'transaction' | 'debt';
+}
+
+export interface CalendarTransactionRow extends CalendarBaseRow {
+  kind: 'transaction';
+  type: 'income' | 'expense';
   category_id: string | null;
   account_id: string | null;
   merchant_id: string | null;
@@ -64,12 +73,25 @@ export interface CalendarTransactionRow {
   merchant_name: string | null;
 }
 
+export interface CalendarDebtRow extends CalendarBaseRow {
+  kind: 'debt';
+  type: 'debt';
+  debt_type: DebtType;
+  status: DebtStatus;
+  due_date: string | null;
+  party_name: string;
+  original_amount: number;
+  paid_total: number;
+}
+
+export type CalendarItemRow = CalendarTransactionRow | CalendarDebtRow;
+
 function formatDate(value: Date): string {
   return format(value, DATE_FORMAT);
 }
 
 export function normalizeCalendarFilters(filters: CalendarFilters): NormalizedCalendarFilters {
-  const type: CalendarTypeFilter = filters.type === 'expense-income' ? 'expense-income' : 'expense';
+  const type: CalendarTypeFilter = filters.type === 'debt' ? 'debt' : 'expense';
   const categorySet = new Set(
     (filters.categoryIds ?? [])
       .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -103,11 +125,14 @@ export function normalizeCalendarFilters(filters: CalendarFilters): NormalizedCa
 
   const search = (filters.search ?? '').toString().trim().slice(0, 120);
 
+  const mode: CalendarMode = type === 'debt' ? 'debts' : 'transactions';
+
   const types: ('expense' | 'income')[] =
-    type === 'expense-income' ? ['expense', 'income'] : ['expense'];
+    mode === 'transactions' ? (type === 'expense' ? ['expense'] : ['expense']) : [];
 
   return {
     type,
+    mode,
     types,
     categoryIds,
     accountId,
@@ -158,6 +183,7 @@ function mapTransaction(row: Record<string, any>): CalendarTransactionRow {
   return {
     id: String(row.id),
     date: String(row.date ?? '').slice(0, 10),
+    kind: 'transaction',
     type: row.type === 'income' ? 'income' : 'expense',
     amount: Number.parseFloat(row.amount ?? 0) || 0,
     title: row.title ?? null,
@@ -170,6 +196,37 @@ function mapTransaction(row: Record<string, any>): CalendarTransactionRow {
       merchant && typeof merchant === 'object'
         ? merchant.name ?? null
         : row.merchant_name ?? null,
+  };
+}
+
+function mapDebt(row: Record<string, any>): CalendarDebtRow | null {
+  const amount = Number.parseFloat(row.amount ?? 0) || 0;
+  const paidTotal = Number.parseFloat(row.paid_total ?? 0) || 0;
+  const remaining = Math.max(0, amount - paidTotal);
+  const due = row.due_date ? new Date(row.due_date) : null;
+  const fallbackDate = row.date ? new Date(row.date) : null;
+  const effectiveDate = due && !Number.isNaN(due.getTime())
+    ? due
+    : fallbackDate && !Number.isNaN(fallbackDate.getTime())
+    ? fallbackDate
+    : null;
+  if (!effectiveDate) {
+    return null;
+  }
+  return {
+    id: String(row.id),
+    date: formatDate(effectiveDate),
+    kind: 'debt',
+    type: 'debt',
+    amount: remaining,
+    title: row.title ?? null,
+    notes: row.notes ?? null,
+    debt_type: (row.type as DebtType) ?? 'debt',
+    status: (row.status as DebtStatus) ?? 'ongoing',
+    due_date: row.due_date ?? null,
+    party_name: row.party_name ?? '',
+    original_amount: amount,
+    paid_total: paidTotal,
   };
 }
 
@@ -193,6 +250,10 @@ export async function fetchMonthAggregates(
   const userId = await getCurrentUserId();
   if (!userId) {
     throw new Error('Anda harus masuk untuk melihat kalender.');
+  }
+
+  if (filters.mode === 'debts') {
+    return fetchMonthDebtAggregates(month, userId);
   }
 
   const monthStart = startOfMonth(month);
@@ -236,6 +297,7 @@ export async function fetchMonthAggregates(
         expenseTotal: 0,
         incomeTotal: 0,
         count: 0,
+        mode: 'transactions',
       };
     summary.count += 1;
     if (row.type === 'expense') {
@@ -314,13 +376,125 @@ export async function fetchMonthAggregates(
   };
 }
 
+async function fetchMonthDebtAggregates(
+  month: Date,
+  userId: string,
+): Promise<MonthAggregatesData> {
+  const monthStart = startOfMonth(month);
+  const monthEnd = endOfMonth(month);
+  const startStr = formatDate(monthStart);
+  const endStr = formatDate(monthEnd);
+  const rangeStart = `${startStr}T00:00:00Z`;
+  const rangeEnd = `${endStr}T23:59:59Z`;
+
+  const { data, error } = await supabase
+    .from('debts')
+    .select('id, type, party_name, title, date, due_date, amount, paid_total, status, notes')
+    .eq('user_id', userId)
+    .in('status', ['ongoing', 'overdue'])
+    .or(
+      `and(due_date.gte.${rangeStart},due_date.lte.${rangeEnd}),and(due_date.is.null,date.gte.${rangeStart},date.lte.${rangeEnd})`,
+    )
+    .order('due_date', { ascending: true, nullsLast: false })
+    .order('date', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || 'Gagal memuat hutang bulan ini.');
+  }
+
+  const rows = (data ?? [])
+    .map(mapDebt)
+    .filter((row): row is CalendarDebtRow => row != null);
+
+  const daySummaries: Record<string, DaySummary> = {};
+  let totalDebt = 0;
+
+  for (const row of rows) {
+    const key = row.date;
+    if (!key) continue;
+    const summary =
+      daySummaries[key] ?? {
+        date: key,
+        expenseTotal: 0,
+        incomeTotal: 0,
+        count: 0,
+        mode: 'debts',
+      };
+    summary.count += 1;
+    summary.expenseTotal += row.amount;
+    daySummaries[key] = summary;
+    totalDebt += row.amount;
+  }
+
+  const dailyDebtValues = Object.values(daySummaries)
+    .map((item) => item.expenseTotal)
+    .filter((value) => value > 0);
+
+  const maxExpense = dailyDebtValues.length ? Math.max(...dailyDebtValues) : 0;
+  const p80 = computePercentile(dailyDebtValues, 0.8);
+  const p95 = computePercentile(dailyDebtValues, 0.95);
+
+  let previousExpense = 0;
+  try {
+    const prevStart = startOfMonth(subMonths(monthStart, 1));
+    const prevEnd = endOfMonth(subMonths(monthStart, 1));
+    const prevStartStr = formatDate(prevStart);
+    const prevEndStr = formatDate(prevEnd);
+    const prevRangeStart = `${prevStartStr}T00:00:00Z`;
+    const prevRangeEnd = `${prevEndStr}T23:59:59Z`;
+
+    const { data: prevRows, error: prevError } = await supabase
+      .from('debts')
+      .select('amount, paid_total, due_date, date')
+      .eq('user_id', userId)
+      .in('status', ['ongoing', 'overdue'])
+      .or(
+        `and(due_date.gte.${prevRangeStart},due_date.lte.${prevRangeEnd}),and(due_date.is.null,date.gte.${prevRangeStart},date.lte.${prevRangeEnd})`,
+      );
+
+    if (prevError) throw prevError;
+
+    previousExpense = (prevRows ?? []).reduce((acc, row) => {
+      const amount = Number.parseFloat(row?.amount ?? 0) || 0;
+      const paid = Number.parseFloat(row?.paid_total ?? 0) || 0;
+      return acc + Math.max(0, amount - paid);
+    }, 0);
+  } catch (prevError) {
+    console.warn('[calendar] Failed to fetch previous month debt totals', prevError);
+    previousExpense = 0;
+  }
+
+  return {
+    monthStart: startStr,
+    monthEnd: endStr,
+    daySummaries,
+    totals: {
+      expense: totalDebt,
+      income: 0,
+      net: -totalDebt,
+      previousExpense,
+      momExpenseChange: null,
+    },
+    stats: {
+      p80,
+      p95,
+      maxExpense,
+    },
+  };
+}
+
 export async function fetchDayTransactions(
   date: string,
   filters: NormalizedCalendarFilters,
-): Promise<CalendarTransactionRow[]> {
+): Promise<CalendarItemRow[]> {
   const userId = await getCurrentUserId();
   if (!userId) {
     throw new Error('Anda harus masuk untuk melihat detail transaksi.');
+  }
+
+  if (filters.mode === 'debts') {
+    return fetchDayDebts(date, userId);
   }
 
   const normalizedDate = date.slice(0, 10);
@@ -345,4 +519,30 @@ export async function fetchDayTransactions(
   }
 
   return (data ?? []).map(mapTransaction);
+}
+
+async function fetchDayDebts(date: string, userId: string): Promise<CalendarDebtRow[]> {
+  const normalizedDate = date.slice(0, 10);
+  const dayStart = `${normalizedDate}T00:00:00Z`;
+  const dayEnd = `${normalizedDate}T23:59:59Z`;
+
+  const { data, error } = await supabase
+    .from('debts')
+    .select('id, type, party_name, title, date, due_date, amount, paid_total, status, notes')
+    .eq('user_id', userId)
+    .in('status', ['ongoing', 'overdue'])
+    .or(
+      `and(due_date.gte.${dayStart},due_date.lte.${dayEnd}),and(due_date.is.null,date.gte.${dayStart},date.lte.${dayEnd})`,
+    )
+    .order('due_date', { ascending: true, nullsLast: false })
+    .order('date', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || 'Gagal memuat hutang harian.');
+  }
+
+  return (data ?? [])
+    .map(mapDebt)
+    .filter((row): row is CalendarDebtRow => row != null);
 }
