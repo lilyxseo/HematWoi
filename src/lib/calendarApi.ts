@@ -391,6 +391,7 @@ async function fetchMonthDebtAggregates(
     .from('debts')
     .select('id, type, party_name, title, date, due_date, amount, paid_total, status, notes')
     .eq('user_id', userId)
+    .eq('type', 'debt')
     .in('status', ['ongoing', 'overdue'])
     .or(
       `and(due_date.gte.${rangeStart},due_date.lte.${rangeEnd}),and(due_date.is.null,date.gte.${rangeStart},date.lte.${rangeEnd})`,
@@ -448,6 +449,7 @@ async function fetchMonthDebtAggregates(
       .from('debts')
       .select('amount, paid_total, due_date, date')
       .eq('user_id', userId)
+      .eq('type', 'debt')
       .in('status', ['ongoing', 'overdue'])
       .or(
         `and(due_date.gte.${prevRangeStart},due_date.lte.${prevRangeEnd}),and(due_date.is.null,date.gte.${prevRangeStart},date.lte.${prevRangeEnd})`,
@@ -530,6 +532,7 @@ async function fetchDayDebts(date: string, userId: string): Promise<CalendarDebt
     .from('debts')
     .select('id, type, party_name, title, date, due_date, amount, paid_total, status, notes')
     .eq('user_id', userId)
+    .eq('type', 'debt')
     .in('status', ['ongoing', 'overdue'])
     .or(
       `and(due_date.gte.${dayStart},due_date.lte.${dayEnd}),and(due_date.is.null,date.gte.${dayStart},date.lte.${dayEnd})`,
