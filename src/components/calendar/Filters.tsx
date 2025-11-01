@@ -29,8 +29,8 @@ const typeOptions: {
   label: string;
   icon: LucideIcon;
 }[] = [
-  { value: 'expense', label: 'Expense', icon: ArrowDownRight },
-  { value: 'expense-income', label: 'All', icon: ArrowLeftRight },
+  { value: 'expense', label: 'pengeluaran', icon: ArrowDownRight },
+  { value: 'debt', label: 'hutang', icon: ArrowLeftRight },
 ];
 
 export default function Filters({
@@ -45,7 +45,7 @@ export default function Filters({
   const segmentedRef = useRef<HTMLDivElement | null>(null);
   const buttonRefs = useRef<Record<CalendarFilters['type'], HTMLButtonElement | null>>({
     expense: null,
-    'expense-income': null,
+    debt: null,
   });
   const [indicatorStyle, setIndicatorStyle] = useState<CSSProperties>(() => ({
     opacity: 0,
@@ -87,6 +87,19 @@ export default function Filters({
   }, [updateIndicator]);
 
   const handleTypeChange = (type: CalendarFilters['type']) => {
+    if (type === value.type) return;
+    if (type === 'debt') {
+      onChange({
+        ...value,
+        type,
+        categoryIds: [],
+        accountId: null,
+        minAmount: null,
+        maxAmount: null,
+        search: '',
+      });
+      return;
+    }
     onChange({ ...value, type });
   };
 
@@ -120,6 +133,8 @@ export default function Filters({
     onChange({ ...value, search: next });
   };
 
+  const isDebtFilter = value.type === 'debt';
+
   return (
     <section aria-label="Filter kalender" className="rounded-3xl border border-slate-800 bg-slate-950/70 p-4 shadow-sm">
       <div className="flex flex-col gap-4">
@@ -136,7 +151,7 @@ export default function Filters({
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <div className="flex min-w-0 flex-col gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe transaksi</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe kalender</span>
             <div className="relative">
               <div
                 ref={segmentedRef}
@@ -176,15 +191,28 @@ export default function Filters({
           </div>
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Kategori</span>
-            <Listbox value={value.categoryIds} onChange={handleCategoriesChange} multiple>
+            <Listbox
+              value={value.categoryIds}
+              onChange={handleCategoriesChange}
+              multiple
+              disabled={isDebtFilter}
+            >
               <div className="relative">
-                <Listbox.Button className="flex h-11 w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-900 px-3 text-left text-sm font-medium text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+                <Listbox.Button
+                  className={
+                    'flex h-11 w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-900 px-3 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]'
+                    + (isDebtFilter ? ' cursor-not-allowed text-slate-500 opacity-60' : ' text-slate-200')
+                  }
+                  aria-disabled={isDebtFilter}
+                >
                   <span className="truncate">
-                    {loadingCategories
-                      ? 'Memuat kategori...'
-                      : value.categoryIds.length === 0
-                        ? 'Semua kategori'
-                        : `${value.categoryIds.length} kategori`}
+                    {isDebtFilter
+                      ? 'Tidak tersedia untuk hutang'
+                      : loadingCategories
+                        ? 'Memuat kategori...'
+                        : value.categoryIds.length === 0
+                          ? 'Semua kategori'
+                          : `${value.categoryIds.length} kategori`}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 text-slate-400" aria-hidden="true" />
                 </Listbox.Button>
@@ -231,15 +259,23 @@ export default function Filters({
           </div>
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Akun</span>
-            <Listbox value={value.accountId} onChange={handleAccountChange}>
+            <Listbox value={value.accountId} onChange={handleAccountChange} disabled={isDebtFilter}>
               <div className="relative">
-                <Listbox.Button className="flex h-11 w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-900 px-3 text-left text-sm font-medium text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]">
+                <Listbox.Button
+                  className={
+                    'flex h-11 w-full items-center justify-between rounded-2xl border border-slate-700 bg-slate-900 px-3 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]'
+                    + (isDebtFilter ? ' cursor-not-allowed text-slate-500 opacity-60' : ' text-slate-200')
+                  }
+                  aria-disabled={isDebtFilter}
+                >
                   <span className="truncate">
-                    {loadingAccounts
-                      ? 'Memuat akun...'
-                      : value.accountId
-                        ? accounts.find((acc) => acc.id === value.accountId)?.name ?? 'Tidak ditemukan'
-                        : 'Semua akun'}
+                    {isDebtFilter
+                      ? 'Tidak tersedia untuk hutang'
+                      : loadingAccounts
+                        ? 'Memuat akun...'
+                        : value.accountId
+                          ? accounts.find((acc) => acc.id === value.accountId)?.name ?? 'Tidak ditemukan'
+                          : 'Semua akun'}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 text-slate-400" aria-hidden="true" />
                 </Listbox.Button>
@@ -305,7 +341,10 @@ export default function Filters({
                   value={value.minAmount ?? ''}
                   onChange={(event) => handleMinAmountChange(event.target.value)}
                   placeholder="0"
-                  className="mt-1 h-11 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  disabled={isDebtFilter}
+                  className={`mt-1 h-11 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                    isDebtFilter ? 'cursor-not-allowed text-slate-500 opacity-60' : 'text-slate-200'
+                  }`}
                 />
               </label>
               <label className="flex flex-col">
@@ -316,7 +355,10 @@ export default function Filters({
                   value={value.maxAmount ?? ''}
                   onChange={(event) => handleMaxAmountChange(event.target.value)}
                   placeholder="0"
-                  className="mt-1 h-11 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  disabled={isDebtFilter}
+                  className={`mt-1 h-11 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                    isDebtFilter ? 'cursor-not-allowed text-slate-500 opacity-60' : 'text-slate-200'
+                  }`}
                 />
               </label>
             </div>
@@ -328,7 +370,10 @@ export default function Filters({
               value={value.search}
               onChange={(event) => handleSearchChange(event.target.value)}
               placeholder="Cari judul, catatan, atau merchant"
-              className="h-11 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+              disabled={isDebtFilter}
+              className={`h-11 rounded-2xl border border-slate-700 bg-slate-900 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                isDebtFilter ? 'cursor-not-allowed text-slate-500 opacity-60' : 'text-slate-200'
+              }`}
             />
           </div>
         </div>
