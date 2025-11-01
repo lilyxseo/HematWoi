@@ -37,7 +37,7 @@ const INITIAL_FILTERS: DebtsFilterState = {
   dateField: 'due_date',
   dateFrom: null,
   dateTo: null,
-  sort: 'newest',
+  sort: 'due_soon',
 };
 
 function toISO(date: string | null | undefined) {

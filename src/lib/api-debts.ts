@@ -545,7 +545,7 @@ export async function listDebts(filters: DebtFilters = {}): Promise<ListDebtsRes
       dateField = 'created_at',
       dateFrom,
       dateTo,
-      sort = 'newest',
+      sort = 'due_soon',
     } = filters;
 
     let query = supabase
@@ -600,10 +600,48 @@ export async function listDebts(filters: DebtFilters = {}): Promise<ListDebtsRes
     const { data, error } = await query;
     if (error) throw error;
 
+    const mappedItems = (data ?? []).map(mapDebtRow);
+    let items = mappedItems;
+
+    if (sort === 'due_soon') {
+      const statusPriority: Record<DebtStatus, number> = {
+        overdue: 0,
+        ongoing: 1,
+        paid: 2,
+      };
+
+      const toDueTime = (value: string | null) => {
+        if (!value) return Number.POSITIVE_INFINITY;
+        const parsed = new Date(value);
+        const time = parsed.getTime();
+        return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+      };
+
+      const toCreatedTime = (value: string | null) => {
+        if (!value) return 0;
+        const parsed = new Date(value);
+        const time = parsed.getTime();
+        return Number.isNaN(time) ? 0 : time;
+      };
+
+      items = [...mappedItems].sort((a, b) => {
+        const statusDiff = statusPriority[a.status] - statusPriority[b.status];
+        if (statusDiff !== 0) return statusDiff;
+
+        const dueDiff = toDueTime(a.due_date) - toDueTime(b.due_date);
+        if (dueDiff !== 0) return dueDiff;
+
+        const createdDiff = toCreatedTime(b.created_at) - toCreatedTime(a.created_at);
+        if (createdDiff !== 0) return createdDiff;
+
+        return a.id.localeCompare(b.id);
+      });
+    }
+
     const summary = await buildSummary(userId);
 
     return {
-      items: (data ?? []).map(mapDebtRow),
+      items,
       summary,
     };
   } catch (error) {
