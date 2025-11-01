@@ -651,11 +651,16 @@ export default function Debts() {
       return;
     }
 
-    const includeTransaction = Boolean(input.includeTransaction && input.accountId);
-    const accountId = includeTransaction ? String(input.accountId ?? '') : '';
+    const includeTransaction = Boolean(input.includeTransaction);
+    const accountId = includeTransaction ? String(input.accountId ?? '').trim() : '';
 
     if (includeTransaction && !accountId) {
       addToast('Pilih akun untuk mencatat transaksi.', 'error');
+      return;
+    }
+
+    if (includeTransaction && paymentDebt.type === 'debt' && !input.categoryId) {
+      addToast('Pilih kategori transaksi.', 'error');
       return;
     }
 
@@ -699,7 +704,7 @@ export default function Debts() {
             date: input.date,
             notes: input.notes ?? null,
             account_id: accountId,
-            category_id: input.categoryId ?? null,
+            category_id: includeTransaction ? input.categoryId ?? null : null,
             markAsPaid: input.markAsPaid,
             allowOverpay: input.allowOverpay,
           })
