@@ -132,7 +132,7 @@ export default function DayDetailModal({
 
   return (
     <Transition show={open} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
+      <Dialog as="div" className="relative z-[120]" onClose={onClose}>
         <Transition.Child
           as={Fragment}
           enter="ease-out duration-200"
@@ -142,7 +142,7 @@ export default function DayDetailModal({
           leaveFrom="opacity-100"
           leaveTo="opacity-0"
         >
-          <div className="fixed inset-0 bg-black/60" />
+          <div className="fixed inset-0 bg-slate-950/80" />
         </Transition.Child>
 
         <div className="fixed inset-0 overflow-y-auto">
