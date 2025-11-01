@@ -165,6 +165,8 @@ export default function PaymentDrawer({
     [categories, transactionType],
   );
 
+  const shouldIncludeTransaction = useMemo(() => includeTransaction && Boolean(accountId), [includeTransaction, accountId]);
+
   const defaultCategoryId = useMemo(() => {
     if (!filteredCategories.length) return '';
     const targetName = transactionType === 'income' ? 'piutang' : 'hutang';
@@ -245,13 +247,13 @@ export default function PaymentDrawer({
 
   const isSubmitDisabled = useMemo(() => {
     if (submitting) return true;
-    if (includeTransaction) {
+    if (shouldIncludeTransaction) {
       if (accountsLoading) return true;
       if (!accountId) return true;
       if (filteredCategories.length > 0 && !categoryId) return true;
     }
     return false;
-  }, [submitting, includeTransaction, accountsLoading, accountId, filteredCategories, categoryId]);
+  }, [submitting, shouldIncludeTransaction, accountsLoading, accountId, filteredCategories, categoryId]);
 
   const transactionTypeLabel = transactionType === 'income' ? 'Pemasukan' : 'Pengeluaran';
   const TransactionIcon = transactionType === 'income' ? ArrowUpRight : ArrowDownLeft;
@@ -273,7 +275,7 @@ export default function PaymentDrawer({
       nextErrors.amount = 'Nominal melebihi sisa hutang/piutang.';
     }
 
-    if (includeTransaction) {
+    if (shouldIncludeTransaction) {
       if (!accountId) {
         nextErrors.account = accountsLoading ? 'Sedang memuat daftar akun…' : 'Pilih akun untuk mencatat transaksi.';
       }
@@ -294,9 +296,9 @@ export default function PaymentDrawer({
         amount: parsed,
         date: trimmedDate || todayIso(),
         notes: notes.trim() ? notes.trim() : null,
-        includeTransaction,
-        accountId: includeTransaction ? accountId || null : null,
-        categoryId: includeTransaction ? categoryId || null : null,
+        includeTransaction: shouldIncludeTransaction,
+        accountId: shouldIncludeTransaction ? accountId || null : null,
+        categoryId: shouldIncludeTransaction ? categoryId || null : null,
         markAsPaid,
         allowOverpay,
       });
@@ -496,8 +498,12 @@ export default function PaymentDrawer({
                         id="payment-account"
                         value={accountId}
                         onChange={(event) => {
-                          setAccountId(event.target.value);
-                          if (errors.account) {
+                          const value = event.target.value;
+                          setAccountId(value);
+                          if (!value && includeTransaction) {
+                            setIncludeTransaction(false);
+                            setErrors((prev) => ({ ...prev, account: undefined, category: undefined }));
+                          } else if (errors.account) {
                             setErrors((prev) => ({ ...prev, account: undefined }));
                           }
                         }}
