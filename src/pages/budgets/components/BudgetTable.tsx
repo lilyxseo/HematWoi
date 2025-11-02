@@ -6,7 +6,6 @@ interface BudgetTableProps {
   rows: BudgetWithSpent[];
   loading?: boolean;
   highlightedIds?: Set<string>;
-  highlightLimitReached?: boolean;
   onEdit: (row: BudgetWithSpent) => void;
   onDelete: (row: BudgetWithSpent) => void;
   onToggleCarryover: (row: BudgetWithSpent, carryover: boolean) => void;
@@ -77,7 +76,6 @@ export default function BudgetTable({
   rows,
   loading,
   highlightedIds,
-  highlightLimitReached,
   onEdit,
   onDelete,
   onToggleCarryover,
@@ -93,20 +91,17 @@ export default function BudgetTable({
   }
 
   const highlightSet = highlightedIds ?? new Set<string>();
-  const limitReached = Boolean(highlightLimitReached);
 
   return (
     <div className={GRID_CLASS}>
       {rows.map((row) => {
         const isHighlighted = highlightSet.has(String(row.id));
-        const disableHighlight = !isHighlighted && limitReached;
 
         return (
           <BudgetCard
             key={row.id}
             budget={row}
             isHighlighted={isHighlighted}
-            disableHighlight={disableHighlight}
             onViewTransactions={() => onViewTransactions(row)}
             onToggleHighlight={() => onToggleHighlight(row)}
             onToggleCarryover={(carryover) => onToggleCarryover(row, carryover)}

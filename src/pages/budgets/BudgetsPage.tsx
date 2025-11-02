@@ -422,8 +422,6 @@ export default function BudgetsPage() {
     );
   }, [selectedWeek, selectedWeekStart, weekly.weeks]);
 
-  const highlightLimitReached = !highlightLoading && highlightSelections.length >= 2;
-
   const handleTabChange = (value: TabValue) => {
     setTab(value);
   };
@@ -633,11 +631,7 @@ export default function BudgetsPage() {
       addToast(result.highlighted ? 'Highlight ditambahkan' : 'Highlight dihapus', 'success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Gagal memperbarui highlight';
-      if (message.toLowerCase().includes('maks')) {
-        addToast('Maks. 2 highlight', 'error');
-      } else {
-        addToast(message, 'error');
-      }
+      addToast(message, 'error');
     } finally {
       setHighlightLoading(false);
     }
@@ -741,7 +735,6 @@ export default function BudgetsPage() {
             rows={monthly.rows}
             loading={monthlyLoading}
             highlightedIds={highlightedMonthlyIds}
-            highlightLimitReached={highlightLimitReached}
             onEdit={handleEditMonthly}
             onDelete={handleDeleteMonthly}
             onToggleCarryover={handleToggleCarryover}
@@ -763,7 +756,6 @@ export default function BudgetsPage() {
             loading={weeklyLoading}
             highlightedIds={highlightedWeeklyIds}
             highlightedCategoryIds={highlightedWeeklyCategoryIds}
-            highlightLimitReached={highlightLimitReached}
             onEdit={handleEditWeekly}
             onDelete={handleDeleteWeekly}
             onViewTransactions={(row) =>
