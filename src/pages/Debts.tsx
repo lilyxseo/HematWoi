@@ -651,17 +651,18 @@ export default function Debts() {
       return;
     }
 
-    const includeTransaction = Boolean(input.includeTransaction && input.accountId);
-    const accountId = includeTransaction ? String(input.accountId ?? '') : '';
-
-    if (includeTransaction && !accountId) {
+    const rawAccountId = input.accountId ? String(input.accountId) : '';
+    const accountId = rawAccountId ? rawAccountId : null;
+    const wantsTransaction = Boolean(input.includeTransaction);
+    if (wantsTransaction && !accountId) {
       addToast('Pilih akun untuk mencatat transaksi.', 'error');
       return;
     }
+    const includeTransaction = Boolean(wantsTransaction && accountId);
 
     setPaymentSubmitting(true);
     const tempId = `temp-payment-${Date.now()}`;
-    const selectedAccount = includeTransaction ? accounts.find((item) => item.id === accountId) : undefined;
+    const selectedAccount = accountId ? accounts.find((item) => item.id === accountId) : undefined;
     const optimisticPayment: DebtPaymentRecord = {
       id: tempId,
       debt_id: paymentDebt.id,
@@ -669,8 +670,8 @@ export default function Debts() {
       amount: input.amount,
       date: toISO(input.date) ?? new Date().toISOString(),
       notes: input.notes ?? null,
-      account_id: includeTransaction ? accountId : null,
-      account_name: includeTransaction ? selectedAccount?.name ?? null : null,
+      account_id: accountId,
+      account_name: accountId ? selectedAccount?.name ?? null : null,
       transaction_id: null,
       created_at: new Date().toISOString(),
     };
@@ -698,7 +699,7 @@ export default function Debts() {
             amount: input.amount,
             date: input.date,
             notes: input.notes ?? null,
-            account_id: accountId,
+            account_id: accountId!,
             category_id: input.categoryId ?? null,
             markAsPaid: input.markAsPaid,
             allowOverpay: input.allowOverpay,
@@ -707,6 +708,7 @@ export default function Debts() {
             amount: input.amount,
             date: input.date,
             notes: input.notes ?? null,
+            account_id: accountId,
             markAsPaid: input.markAsPaid,
             allowOverpay: input.allowOverpay,
           });

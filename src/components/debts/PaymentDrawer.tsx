@@ -177,10 +177,6 @@ export default function PaymentDrawer({
 
   useEffect(() => {
     if (!open) return;
-    if (!includeTransaction) {
-      setAccountId('');
-      return;
-    }
     if (!accounts.length) {
       setAccountId('');
       return;
@@ -189,7 +185,10 @@ export default function PaymentDrawer({
       if (prev && accounts.some((account) => account.id === prev)) {
         return prev;
       }
-      return accounts[0]?.id ?? '';
+      if (!prev && includeTransaction) {
+        return accounts[0]?.id ?? '';
+      }
+      return prev ?? '';
     });
   }, [open, includeTransaction, accounts]);
 
@@ -295,7 +294,7 @@ export default function PaymentDrawer({
         date: trimmedDate || todayIso(),
         notes: notes.trim() ? notes.trim() : null,
         includeTransaction,
-        accountId: includeTransaction ? accountId || null : null,
+        accountId: accountId || null,
         categoryId: includeTransaction ? categoryId || null : null,
         markAsPaid,
         allowOverpay,
@@ -560,9 +559,50 @@ export default function PaymentDrawer({
                     </div>
                   </div>
                 ) : (
-                  <p className="mt-4 rounded-2xl border border-border-subtle/60 bg-surface px-3 py-2 text-xs text-muted">
-                    Transaksi tidak akan dibuat. Saldo akun tidak berubah otomatis.
-                  </p>
+                  <div className="mt-4 space-y-4">
+                    <div className="flex items-start gap-3 rounded-2xl border border-border-subtle bg-surface px-3 py-2 text-sm text-text">
+                      <span className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-border/50 text-muted">
+                        <Info className="h-4 w-4" aria-hidden="true" />
+                      </span>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted">Catatan tanpa transaksi</p>
+                        <p className="text-sm text-muted">
+                          Simpan informasi akun sebagai referensi. Saldo akun dan riwayat transaksi tidak berubah otomatis.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 flex flex-col gap-1.5 text-sm font-medium text-text">
+                      <label htmlFor="payment-account-note" className="form-label inline-flex items-center gap-2">
+                        <Wallet className="h-4 w-4 text-muted" aria-hidden="true" /> Akun sumber dana (opsional)
+                      </label>
+                      <select
+                        id="payment-account-note"
+                        value={accountId}
+                        onChange={(event) => setAccountId(event.target.value)}
+                        className="input"
+                        disabled={Boolean(accountsLoading) || accounts.length === 0}
+                      >
+                        {accountsLoading ? (
+                          <option value="">Memuat akun…</option>
+                        ) : (
+                          <>
+                            <option value="">Tidak pilih akun</option>
+                            {accounts.map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name}
+                              </option>
+                            ))}
+                          </>
+                        )}
+                      </select>
+                      {!accountsLoading && accounts.length === 0 ? (
+                        <span className="text-xs text-muted">Belum ada akun. Tambahkan akun baru melalui menu Akun.</span>
+                      ) : (
+                        <span className="text-xs text-muted">Saldo akun tidak akan diperbarui otomatis.</span>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
 
