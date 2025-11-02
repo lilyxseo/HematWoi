@@ -248,7 +248,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
           </div>
         ) : cards.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border/60 bg-white/60 p-6 text-sm text-muted-foreground shadow-sm dark:border-border/40 dark:bg-white/5">
-            Belum ada highlight. Pilih hingga dua anggaran favoritmu di halaman Budgets untuk ditampilkan di sini.
+            Belum ada highlight. Pilih anggaran favoritmu di halaman Budgets untuk ditampilkan di sini.
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
