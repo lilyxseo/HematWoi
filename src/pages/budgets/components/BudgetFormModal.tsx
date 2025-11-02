@@ -87,15 +87,23 @@ export default function BudgetFormModal({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, onClose]);
 
-  const groupedCategories = useMemo(() => {
+  const { groupedCategories, ungroupedCategories } = useMemo(() => {
     const groups = new Map<string, ExpenseCategory[]>();
+    const ungrouped: ExpenseCategory[] = [];
     for (const category of categories) {
-      const key = category.group_name ?? 'Ungrouped';
-      const list = groups.get(key) ?? [];
-      list.push(category);
-      groups.set(key, list);
+      const groupName = category.group_name?.trim();
+      if (groupName) {
+        const list = groups.get(groupName) ?? [];
+        list.push(category);
+        groups.set(groupName, list);
+      } else {
+        ungrouped.push(category);
+      }
     }
-    return Array.from(groups.entries());
+    return {
+      groupedCategories: Array.from(groups.entries()),
+      ungroupedCategories: ungrouped,
+    };
   }, [categories]);
 
   const emptyMessage = useMemo(() => {
@@ -180,6 +188,11 @@ export default function BudgetFormModal({
                 <option value="" disabled>
                   Pilih kategori
                 </option>
+                {ungroupedCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
                 {groupedCategories.map(([groupName, groupCategories]) => (
                   <optgroup key={groupName} label={groupName}>
                     {groupCategories.map((category) => (
