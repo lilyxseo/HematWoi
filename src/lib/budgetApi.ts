@@ -258,10 +258,12 @@ function mapCategoryRecordToExpense(category: {
   order_index?: number | null;
   sort_order?: number | null;
 }): ExpenseCategory {
+  const normalizedType = category.type === 'income' ? 'income' : 'expense';
+
   return {
     id: category.id as UUID,
     user_id: (category.user_id ?? 'local') as UUID,
-    type: 'expense',
+    type: normalizedType,
     name: category.name,
     inserted_at:
       category.inserted_at ??
@@ -646,7 +648,26 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   async function fetchFromCloud(): Promise<ExpenseCategory[]> {
     const userId = await getCurrentUserId();
     ensureAuth(userId);
-    return listExpenseCategories(userId);
+    const results = await Promise.all(
+      (['expense', 'income'] as const).map(async (type) => {
+        try {
+          return await fetchBudgetCategoriesRemote(userId, type);
+        } catch (error) {
+          if (isAbortError(error)) throw error;
+          if ((error as { status?: number }).status === 404) {
+            return [];
+          }
+          throw error;
+        }
+      })
+    );
+
+    const merged = results.flat();
+    const deduped = new Map<string, ExpenseCategory>();
+    for (const category of merged) {
+      deduped.set(category.id, category);
+    }
+    return Array.from(deduped.values());
   }
 
   try {
@@ -657,18 +678,18 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
   }
 
   const localCategories = await listAllCategories();
-  return localCategories
-    .filter((category) => category.type === 'expense')
-    .map((category) =>
-      mapCategoryRecordToExpense({
-        id: category.id,
-        user_id: category.user_id,
-        name: category.name,
-        type: category.type,
-        created_at: category.created_at,
-        order_index: category.sort_order,
-      })
-    );
+  const mapped = localCategories.map((category) =>
+    mapCategoryRecordToExpense({
+      id: category.id,
+      user_id: category.user_id,
+      name: category.name,
+      type: category.type,
+      created_at: category.created_at,
+      order_index: category.sort_order,
+    })
+  );
+
+  return Array.from(new Map(mapped.map((item) => [item.id, item])).values());
 }
 
 function buildCategoryViewSelect(): string {
@@ -718,15 +739,16 @@ function isMissingRelationError(bodyText: string): boolean {
   return /relation\s+"?[A-Za-z0-9_.]+"?\s+does not exist/i.test(bodyText);
 }
 
-async function fetchExpenseCategoriesRemote(
+async function fetchBudgetCategoriesRemote(
   userId: string,
+  type: 'income' | 'expense',
   signal?: AbortSignal
 ): Promise<ExpenseCategory[]> {
   const headers = buildSupabaseHeaders();
 
   if (!categoriesViewUnavailable) {
     while (!categoriesViewUnavailable) {
-      const params = createCategoryViewParams(userId, 'expense');
+      const params = createCategoryViewParams(userId, type);
       const viewUrl = createRestUrl('/rest/v1/v_categories_budget', params);
       const response = await fetch(viewUrl, { headers, signal });
       if (response.status === 404) {
@@ -765,7 +787,7 @@ async function fetchExpenseCategoriesRemote(
           id: String(row.id ?? ''),
           user_id: typeof row.user_id === 'string' ? row.user_id : userId,
           name: String(row.name ?? ''),
-          type: 'expense',
+          type,
           inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
           group_name: (row.group_name as string | null | undefined) ?? null,
           order_index: parseOrderIndex((row as any).order_index),
@@ -774,7 +796,7 @@ async function fetchExpenseCategoriesRemote(
     }
   }
 
-  const fallbackParams = createCategoryFallbackParams(userId, 'expense');
+  const fallbackParams = createCategoryFallbackParams(userId, type);
   const fallbackUrl = createRestUrl('/rest/v1/categories', fallbackParams);
   const fallbackResponse = await fetch(fallbackUrl, { headers, signal });
   if (fallbackResponse.status === 404) {
@@ -789,7 +811,7 @@ async function fetchExpenseCategoriesRemote(
       id: String(row.id ?? ''),
       user_id: typeof row.user_id === 'string' ? row.user_id : userId,
       name: String(row.name ?? ''),
-      type: 'expense',
+      type,
       inserted_at: typeof row.inserted_at === 'string' ? row.inserted_at : undefined,
       group_name: (row.group_name as string | null | undefined) ?? null,
       order_index: parseOrderIndex((row as any).order_index),
@@ -802,7 +824,7 @@ export async function listExpenseCategories(
   signal?: AbortSignal
 ): Promise<ExpenseCategory[]> {
   try {
-    return await fetchExpenseCategoriesRemote(userId, signal);
+    return await fetchBudgetCategoriesRemote(userId, 'expense', signal);
   } catch (error) {
     if (isAbortError(error)) throw error;
     throw error;
