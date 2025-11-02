@@ -63,7 +63,6 @@ function getProgressTone(progress: number) {
 interface BudgetCardProps {
   budget: BudgetWithSpent;
   isHighlighted: boolean;
-  disableHighlight: boolean;
   onViewTransactions: () => void;
   onToggleHighlight: () => void;
   onToggleCarryover: (carryover: boolean) => void;
@@ -96,7 +95,6 @@ function StatItem({
 export default function BudgetCard({
   budget,
   isHighlighted,
-  disableHighlight,
   onViewTransactions,
   onToggleHighlight,
   onToggleCarryover,
@@ -252,7 +250,6 @@ export default function BudgetCard({
         <button
           type="button"
           onClick={onToggleHighlight}
-          disabled={disableHighlight}
           aria-pressed={isHighlighted}
           aria-label={`${isHighlighted ? 'Hapus' : 'Tambah'} highlight untuk ${categoryName}`}
           className={clsx(
@@ -260,7 +257,6 @@ export default function BudgetCard({
             isHighlighted
               ? 'border-brand/40 bg-brand/15 text-brand shadow-sm'
               : 'border-white/10 bg-surface/80 text-muted-foreground hover:text-text shadow-sm',
-            disableHighlight ? 'cursor-not-allowed opacity-60 hover:text-muted-foreground' : null,
           )}
         >
           <Star className="h-4 w-4" aria-hidden="true" fill={isHighlighted ? 'currentColor' : 'none'} />

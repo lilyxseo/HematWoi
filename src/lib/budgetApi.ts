@@ -481,13 +481,13 @@ function formatWeeklyLabel(sequence: number, weekStart: string): string {
 export function getFirstWeekStartOfPeriod(period: string): string {
   try {
     const monthStart = toMonthStart(period);
-    return getWeekStartOnOrAfter(parseIsoDate(monthStart));
+    return getWeekStartForDate(parseIsoDate(monthStart));
   } catch (error) {
     const fallback = new Date();
     const fallbackMonthStart = new Date(
       Date.UTC(fallback.getUTCFullYear(), fallback.getUTCMonth(), 1)
     );
-    return getWeekStartOnOrAfter(fallbackMonthStart);
+    return getWeekStartForDate(fallbackMonthStart);
   }
 }
 
@@ -1206,12 +1206,6 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
     };
   }
 
-  if (existing.length >= 2) {
-    const err = new Error('Maks. 2 highlight');
-    (err as { code?: string }).code = 'LIMIT_REACHED';
-    throw err;
-  }
-
   const insertResponse = await supabase
     .from('user_highlight_budgets')
     .insert({
@@ -1222,12 +1216,6 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
     .select('id,user_id,budget_type,budget_id');
 
   if (insertResponse.error) {
-    const message = (insertResponse.error.message ?? '').toLowerCase();
-    if (message.includes('max') && message.includes('highlight')) {
-      const err = new Error('Maks. 2 highlight');
-      (err as { code?: string }).code = 'LIMIT_REACHED';
-      throw err;
-    }
     throw insertResponse.error;
   }
 

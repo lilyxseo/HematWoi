@@ -8,7 +8,6 @@ interface WeeklyBudgetsGridProps {
   loading?: boolean;
   highlightedIds?: Set<string>;
   highlightedCategoryIds?: Set<string>;
-  highlightLimitReached?: boolean;
   onEdit: (row: WeeklyBudgetWithSpent) => void;
   onDelete: (row: WeeklyBudgetWithSpent) => void;
   onViewTransactions: (row: WeeklyBudgetWithSpent) => void;
@@ -99,7 +98,6 @@ export default function WeeklyBudgetsGrid({
   loading,
   highlightedIds,
   highlightedCategoryIds,
-  highlightLimitReached,
   onEdit,
   onDelete,
   onViewTransactions,
@@ -116,7 +114,6 @@ export default function WeeklyBudgetsGrid({
 
   const highlightSet = highlightedIds ?? new Set<string>();
   const highlightCategorySet = highlightedCategoryIds ?? new Set<string>();
-  const limitReached = Boolean(highlightLimitReached);
 
   return (
     <div className={GRID_CLASS}>
@@ -131,7 +128,6 @@ export default function WeeklyBudgetsGrid({
         const categoryKey = row.category_id ? String(row.category_id) : null;
         const isHighlighted =
           highlightSet.has(String(row.id)) || (categoryKey ? highlightCategorySet.has(categoryKey) : false);
-        const disableHighlight = !isHighlighted && limitReached;
 
         const categoryType = row.category?.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
         const categoryTypeClass = row.category?.type === 'income'
@@ -269,7 +265,6 @@ export default function WeeklyBudgetsGrid({
               <button
                 type="button"
                 onClick={() => onToggleHighlight(row)}
-                disabled={disableHighlight}
                 aria-pressed={isHighlighted}
                 aria-label={`${isHighlighted ? 'Hapus' : 'Tambah'} highlight untuk ${categoryName}`}
                 className={clsx(
@@ -277,7 +272,6 @@ export default function WeeklyBudgetsGrid({
                   isHighlighted
                     ? 'border-brand/40 bg-brand/15 text-brand shadow-sm'
                     : 'border-white/10 bg-surface/80 text-muted-foreground hover:text-text shadow-sm',
-                  disableHighlight ? 'cursor-not-allowed opacity-60 hover:text-muted-foreground' : null
                 )}
               >
                 <Star className="h-4 w-4" fill={isHighlighted ? 'currentColor' : 'none'} />
