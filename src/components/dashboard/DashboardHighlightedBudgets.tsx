@@ -6,6 +6,8 @@ import { useWeeklyBudgets } from '../../hooks/useWeeklyBudgets';
 import {
   listHighlightBudgets,
   type HighlightBudgetSelection,
+  type WeeklyBudgetPeriod,
+  type WeeklyBudgetWithSpent,
 } from '../../lib/budgetApi';
 import { formatCurrency } from '../../lib/format';
 import type { PeriodRange } from './PeriodPicker';
@@ -36,6 +38,23 @@ function getBudgetPeriod(range: PeriodRange): string {
     return `${now.getFullYear()}-${month}`;
   }
   return base.slice(0, 7);
+}
+
+function getPreviousPeriod(period: string): string | null {
+  try {
+    const [yearStr, monthStr] = period.split('-');
+    if (!yearStr || !monthStr) return null;
+    const year = Number.parseInt(yearStr, 10);
+    const month = Number.parseInt(monthStr, 10);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
+    const date = new Date(Date.UTC(year, month - 1, 1));
+    date.setUTCMonth(date.getUTCMonth() - 1);
+    const prevYear = date.getUTCFullYear();
+    const prevMonth = `${date.getUTCMonth() + 1}`.padStart(2, '0');
+    return `${prevYear}-${prevMonth}`;
+  } catch (error) {
+    return null;
+  }
 }
 
 function formatIsoDateUTC(date: Date): string {
@@ -113,6 +132,43 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
   );
   const monthly = useBudgets(budgetPeriod);
   const weekly = useWeeklyBudgets(budgetPeriod);
+  const derivedPreviousPeriod = useMemo(() => getPreviousPeriod(budgetPeriod), [budgetPeriod]);
+  const previousWeekly = useWeeklyBudgets(derivedPreviousPeriod ?? budgetPeriod);
+
+  const weeklyRowsForHighlights = useMemo(() => {
+    if (!derivedPreviousPeriod) {
+      return weekly.rows;
+    }
+    const map = new Map<string, WeeklyBudgetWithSpent>();
+    for (const row of previousWeekly.rows) {
+      map.set(String(row.id), row);
+    }
+    for (const row of weekly.rows) {
+      map.set(String(row.id), row);
+    }
+    return Array.from(map.values());
+  }, [derivedPreviousPeriod, previousWeekly.rows, weekly.rows]);
+
+  const weeklyWeeksForHighlights = useMemo(() => {
+    if (!derivedPreviousPeriod) {
+      return weekly.weeks;
+    }
+    const map = new Map<string, WeeklyBudgetPeriod>();
+    for (const week of previousWeekly.weeks) {
+      if (!map.has(week.start)) {
+        map.set(week.start, week);
+      }
+    }
+    for (const week of weekly.weeks) {
+      if (!map.has(week.start)) {
+        map.set(week.start, week);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.start.localeCompare(b.start));
+  }, [derivedPreviousPeriod, previousWeekly.weeks, weekly.weeks]);
+
+  const weeklyDataLoading = weekly.loading || (derivedPreviousPeriod ? previousWeekly.loading : false);
+  const weeklyDataError = weekly.error || (derivedPreviousPeriod ? previousWeekly.error : null);
 
   useEffect(() => {
     let active = true;
@@ -138,11 +194,11 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
   }, []);
 
   const cards = useMemo<HighlightCardData[]>(() => {
-    if (loading || monthly.loading || weekly.loading) return [];
+    if (loading || monthly.loading || weeklyDataLoading) return [];
     if (!highlights.length) return [];
 
     const monthlyMap = new Map(monthly.rows.map((row) => [String(row.id), row]));
-    const weeklyMap = new Map(weekly.rows.map((row) => [String(row.id), row]));
+    const weeklyMap = new Map(weeklyRowsForHighlights.map((row) => [String(row.id), row]));
 
     return highlights
       .map((item) => {
@@ -169,7 +225,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         if (!row) return null;
 
         if (row.week_start !== activeWeekStart && row.category_id) {
-          const currentWeekRow = weekly.rows.find(
+          const currentWeekRow = weeklyRowsForHighlights.find(
             (candidate) =>
               candidate.category_id === row.category_id && candidate.week_start === activeWeekStart
           );
@@ -186,7 +242,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         const spent = Number(row.spent ?? 0);
         const remaining = planned - spent;
         const progress = planned > 0 ? Math.min(spent / planned, 2) : 0;
-        const weekMeta = weekly.weeks.find((week) => week.start === row.week_start);
+        const weekMeta = weeklyWeeksForHighlights.find((week) => week.start === row.week_start);
         const subtitleParts: string[] = [];
         if (weekMeta) {
           subtitleParts.push(weekMeta.label);
@@ -211,13 +267,13 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
     loading,
     monthly.loading,
     monthly.rows,
-    weekly.loading,
-    weekly.rows,
-    weekly.weeks,
+    weeklyDataLoading,
+    weeklyRowsForHighlights,
+    weeklyWeeksForHighlights,
   ]);
 
-  const isLoading = loading || monthly.loading || weekly.loading;
-  const displayError = error || monthly.error || weekly.error;
+  const isLoading = loading || monthly.loading || weeklyDataLoading;
+  const displayError = error || monthly.error || weeklyDataError;
 
   return (
     <section className="rounded-3xl border border-border/60 bg-gradient-to-br from-white via-white to-primary/5 p-6 shadow-sm transition dark:border-border/40 dark:from-zinc-900/60 dark:via-zinc-900/40 dark:to-primary/10">
@@ -248,7 +304,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
           </div>
         ) : cards.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border/60 bg-white/60 p-6 text-sm text-muted-foreground shadow-sm dark:border-border/40 dark:bg-white/5">
-            Belum ada highlight. Pilih hingga dua anggaran favoritmu di halaman Budgets untuk ditampilkan di sini.
+            Belum ada highlight. Pilih anggaran favoritmu di halaman Budgets untuk ditampilkan di sini.
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
