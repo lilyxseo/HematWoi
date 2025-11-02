@@ -94,7 +94,9 @@ export interface DebtPaymentWithTransactionInput extends DebtPaymentBaseInput {
   category_id?: string | null;
 }
 
-export interface CreateDebtPaymentOptions extends DebtPaymentBaseInput {}
+export interface CreateDebtPaymentOptions extends DebtPaymentBaseInput {
+  account_id?: string | null;
+}
 
 export interface CreateDebtPaymentWithTransactionOptions extends DebtPaymentWithTransactionInput {}
 
@@ -914,6 +916,8 @@ export async function createDebtPayment(
     const isoDate = toISODate(payload.date) ?? new Date().toISOString();
     const trimmedNotes = payload.notes?.trim() ? payload.notes.trim() : null;
     const markAsPaid = payload.markAsPaid !== false;
+    const rawAccountId = typeof payload.account_id === 'string' ? payload.account_id.trim() : '';
+    const accountId = rawAccountId ? rawAccountId : null;
 
     return await commitDebtPayment({
       debtId,
@@ -921,6 +925,7 @@ export async function createDebtPayment(
       amount: normalizedAmount,
       isoDate,
       notes: trimmedNotes,
+      accountId,
       markAsPaid,
       remainingBefore,
     });
