@@ -117,13 +117,20 @@ export default function WeeklyBudgetFormModal({
 
   const groupedCategories = useMemo(() => {
     const groups = new Map<string, ExpenseCategory[]>();
+    const ungrouped: ExpenseCategory[] = [];
     for (const category of categories) {
-      const key = category.group_name ?? 'Ungrouped';
-      const list = groups.get(key) ?? [];
+      if (!category.group_name) {
+        ungrouped.push(category);
+        continue;
+      }
+      const list = groups.get(category.group_name) ?? [];
       list.push(category);
-      groups.set(key, list);
+      groups.set(category.group_name, list);
     }
-    return Array.from(groups.entries());
+    return {
+      ungrouped,
+      groups: Array.from(groups.entries()),
+    };
   }, [categories]);
 
   const handleChange = (
@@ -218,7 +225,12 @@ export default function WeeklyBudgetFormModal({
                 <option value="" disabled>
                   Pilih kategori
                 </option>
-                {groupedCategories.map(([groupName, groupCategories]) => (
+                {groupedCategories.ungrouped.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+                {groupedCategories.groups.map(([groupName, groupCategories]) => (
                   <optgroup key={groupName} label={groupName}>
                     {groupCategories.map((category) => (
                       <option key={category.id} value={category.id}>
