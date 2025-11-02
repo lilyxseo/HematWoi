@@ -3,6 +3,7 @@
 import { supabase } from './supabase';
 import { getCurrentUserId, getUserToken } from './session';
 import { listCategories as listAllCategories } from './api-categories';
+import type { CategoryRecord } from './api-categories';
 import { buildSupabaseHeaders, createRestUrl } from './supabaseRest';
 
 type UUID = string;
@@ -270,6 +271,38 @@ function mapCategoryRecordToExpense(category: {
     group_name: category.group_name ?? null,
     order_index: (category.order_index ?? category.sort_order) ?? null,
   };
+}
+
+function mergeExpenseCategoriesWithFallback(
+  primary: ExpenseCategory[],
+  fallback: CategoryRecord[],
+): ExpenseCategory[] {
+  if (!fallback.length) {
+    return primary;
+  }
+
+  const seen = new Set(primary.map((category) => category.id));
+  const extras = fallback
+    .filter((category) => category.type === 'expense' && category.id && !seen.has(category.id))
+    .map((category) =>
+      mapCategoryRecordToExpense({
+        id: category.id,
+        user_id: category.user_id,
+        name: category.name,
+        type: category.type,
+        created_at: category.created_at,
+        inserted_at: category.created_at,
+        group_name: (category as { group_name?: string | null }).group_name ?? null,
+        sort_order: category.sort_order,
+      })
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, 'id-ID', { sensitivity: 'base' }));
+
+  if (extras.length === 0) {
+    return primary;
+  }
+
+  return [...primary, ...extras];
 }
 
 export interface BudgetRow {
@@ -651,24 +684,18 @@ export async function listCategoriesExpense(): Promise<ExpenseCategory[]> {
 
   try {
     const rows = await fetchFromCloud();
-    return rows;
+    try {
+      const localCategories = await listAllCategories();
+      return mergeExpenseCategoriesWithFallback(rows, localCategories);
+    } catch (_localError) {
+      return rows;
+    }
   } catch (_error) {
     // Fallback handled below when cloud fetch fails (e.g. offline or guest mode)
   }
 
   const localCategories = await listAllCategories();
-  return localCategories
-    .filter((category) => category.type === 'expense')
-    .map((category) =>
-      mapCategoryRecordToExpense({
-        id: category.id,
-        user_id: category.user_id,
-        name: category.name,
-        type: category.type,
-        created_at: category.created_at,
-        order_index: category.sort_order,
-      })
-    );
+  return mergeExpenseCategoriesWithFallback([], localCategories);
 }
 
 function buildCategoryViewSelect(): string {
