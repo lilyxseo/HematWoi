@@ -116,14 +116,36 @@ export default function WeeklyBudgetFormModal({
   }, [open, onClose]);
 
   const groupedCategories = useMemo(() => {
-    const groups = new Map<string, ExpenseCategory[]>();
-    for (const category of categories) {
-      const key = category.group_name ?? 'Ungrouped';
-      const list = groups.get(key) ?? [];
+    const withOrder = [...categories].sort((a, b) => {
+      const orderA = typeof a.order_index === 'number' ? a.order_index : Number.POSITIVE_INFINITY;
+      const orderB = typeof b.order_index === 'number' ? b.order_index : Number.POSITIVE_INFINITY;
+      if (orderA !== orderB) return orderA - orderB;
+      return a.name.localeCompare(b.name, 'id-ID', { sensitivity: 'base' });
+    });
+
+    const ungrouped: ExpenseCategory[] = [];
+    const grouped = new Map<string, ExpenseCategory[]>();
+
+    for (const category of withOrder) {
+      const groupName = category.group_name?.trim();
+      if (!groupName) {
+        ungrouped.push(category);
+        continue;
+      }
+
+      const list = grouped.get(groupName) ?? [];
       list.push(category);
-      groups.set(key, list);
+      grouped.set(groupName, list);
     }
-    return Array.from(groups.entries());
+
+    const orderedGroups = Array.from(grouped.entries())
+      .sort(([a], [b]) => a.localeCompare(b, 'id-ID', { sensitivity: 'base' }))
+      .map(([name, items]) => ({ name, items }));
+
+    return {
+      ungrouped,
+      groups: orderedGroups,
+    };
   }, [categories]);
 
   const handleChange = (
@@ -218,9 +240,14 @@ export default function WeeklyBudgetFormModal({
                 <option value="" disabled>
                   Pilih kategori
                 </option>
-                {groupedCategories.map(([groupName, groupCategories]) => (
-                  <optgroup key={groupName} label={groupName}>
-                    {groupCategories.map((category) => (
+                {groupedCategories.ungrouped.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+                {groupedCategories.groups.map(({ name, items }) => (
+                  <optgroup key={name} label={name}>
+                    {items.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>
