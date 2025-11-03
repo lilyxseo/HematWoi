@@ -543,6 +543,15 @@ export async function patchTransaction(
   }
 }
 
+function mapCategoryRealtimeRow(row: Record<string, any>) {
+  return {
+    id: String(row?.id ?? ''),
+    name: typeof row?.name === 'string' ? row.name : '',
+    type: typeof row?.type === 'string' ? row.type : null,
+    created_at: row?.created_at ?? null,
+  } as { id: string; name: string; type: string | null; created_at: string | null };
+}
+
 export async function subscribeTransactions(
   onUpsert: (row: Record<string, any>) => void,
   onDelete: (id: string) => void,
@@ -587,6 +596,54 @@ export async function subscribeTransactions(
     };
   } catch (error) {
     logDevError('subscribeTransactions', error);
+    return () => {};
+  }
+}
+
+export async function subscribeCategories(
+  onUpsert: (row: { id: string; name: string; type: string | null; created_at: string | null }) => void,
+  onDelete: (id: string) => void,
+) {
+  try {
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      return () => {};
+    }
+    const channel = supabase
+      .channel(`categories-inline-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'categories', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.new) {
+            onUpsert(mapCategoryRealtimeRow(payload.new));
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'categories', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.new) {
+            onUpsert(mapCategoryRealtimeRow(payload.new));
+          }
+        },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'categories', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          if (payload.old?.id) {
+            onDelete(String(payload.old.id));
+          }
+        },
+      );
+    await channel.subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (error) {
+    logDevError('subscribeCategories', error);
     return () => {};
   }
 }
