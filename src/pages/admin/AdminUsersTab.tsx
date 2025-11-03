@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import clsx from 'clsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
+  createUser,
+  deleteUser,
   listUsers,
   updateUserProfile,
+  type CreateUserInput,
   type ListUsersParams,
   type UpdateUserProfileInput,
   type UserProfileRecord,
+  type UserRole,
 } from '../../lib/adminApi';
 import { Icon } from '../../components/icons';
 
@@ -22,6 +26,22 @@ const dateFormatter = new Intl.DateTimeFormat('id-ID', {
 });
 
 type UserDraftMap = Record<string, UpdateUserProfileInput>;
+
+type CreateUserFormState = {
+  email: string;
+  password: string;
+  username: string;
+  role: UserRole;
+  is_active: boolean;
+};
+
+const INITIAL_CREATE_FORM: CreateUserFormState = {
+  email: '',
+  password: '',
+  username: '',
+  role: 'user',
+  is_active: true,
+};
 
 function ToggleSwitch({
   checked,
@@ -72,6 +92,14 @@ function Avatar({ user }: { user: UserProfileRecord }) {
   );
 }
 
+function sortUsersByCreatedAt(list: UserProfileRecord[]): UserProfileRecord[] {
+  return [...list].sort((a, b) => {
+    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return timeA - timeB;
+  });
+}
+
 export default function AdminUsersTab() {
   const { addToast } = useToast();
   const [users, setUsers] = useState<UserProfileRecord[]>([]);
@@ -84,6 +112,11 @@ export default function AdminUsersTab() {
   const [drafts, setDrafts] = useState<UserDraftMap>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState<CreateUserFormState>(() => ({ ...INITIAL_CREATE_FORM }));
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let mounted = true;
@@ -133,12 +166,14 @@ export default function AdminUsersTab() {
       }
     };
     void load();
-  }, [debouncedSearch, filters.role, filters.status]);
+  }, [debouncedSearch, filters.role, filters.status, reloadToken]);
 
   const activeAdminCount = useMemo(
     () => users.filter((user) => user.role === 'admin' && user.is_active).length,
     [users]
   );
+
+  const isCreateValid = createForm.email.trim() !== '' && createForm.password.trim().length >= 6;
 
   const updateDraft = (id: string, patch: UpdateUserProfileInput) => {
     setDrafts((prev) => {
@@ -198,6 +233,86 @@ export default function AdminUsersTab() {
     });
   };
 
+  const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (creating) return;
+
+    setCreateError(null);
+
+    const payload: CreateUserInput = {
+      email: createForm.email.trim(),
+      password: createForm.password,
+      username: createForm.username.trim() ? createForm.username.trim() : undefined,
+      role: createForm.role,
+      is_active: createForm.is_active,
+    };
+
+    if (!payload.email) {
+      setCreateError('Email wajib diisi');
+      return;
+    }
+
+    if (!payload.password || payload.password.length < 6) {
+      setCreateError('Password minimal 6 karakter');
+      return;
+    }
+
+    setCreating(true);
+    try {
+      const newUser = await createUser(payload);
+      setUsers((prev) => sortUsersByCreatedAt([...prev.filter((item) => item.id !== newUser.id), newUser]));
+      setCreateForm({ ...INITIAL_CREATE_FORM });
+      setReloadToken((token) => token + 1);
+      addToast('Pengguna berhasil dibuat', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal membuat pengguna';
+      setCreateError(message);
+      addToast(message, 'error');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (user: UserProfileRecord) => {
+    if (deletingId) return;
+    if (user.id === sessionUserId) {
+      addToast('Tidak dapat menghapus akun sendiri', 'error');
+      return;
+    }
+
+    if (user.role === 'admin' && user.is_active && activeAdminCount <= 1) {
+      addToast('Tidak dapat menghapus admin terakhir', 'error');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Apakah Anda yakin ingin menghapus pengguna ${user.username || user.email || 'ini'}?`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(user.id);
+    try {
+      await deleteUser(user.id);
+      setUsers((prev) => prev.filter((item) => item.id !== user.id));
+      setDrafts((prev) => {
+        const { [user.id]: _omit, ...rest } = prev;
+        return rest;
+      });
+      setReloadToken((token) => token + 1);
+      addToast('Pengguna berhasil dihapus', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal menghapus pengguna';
+      addToast(message, 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleResetCreate = () => {
+    setCreateForm({ ...INITIAL_CREATE_FORM });
+    setCreateError(null);
+  };
+
   const renderSkeleton = () => (
     <div className="space-y-3">
       {Array.from({ length: 4 }).map((_, index) => (
@@ -226,6 +341,9 @@ export default function AdminUsersTab() {
     const isDirty = Boolean(draft);
     const isSelf = sessionUserId === user.id;
     const disableSelf = isSelf && user.role === 'admin' && user.is_active && activeAdminCount <= 1;
+    const isOnlyActiveAdmin = user.role === 'admin' && user.is_active && activeAdminCount <= 1;
+    const isDeleting = deletingId === user.id;
+    const disableDelete = Boolean(deletingId) || isDeleting || isSelf || isOnlyActiveAdmin;
 
     return (
       <div key={user.id} className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm">
@@ -285,6 +403,14 @@ export default function AdminUsersTab() {
           >
             Batalkan
           </button>
+          <button
+            type="button"
+            onClick={() => handleDelete(user)}
+            className="h-11 flex-1 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
+            disabled={disableDelete}
+          >
+            {isDeleting ? 'Menghapus…' : 'Hapus'}
+          </button>
         </div>
       </div>
     );
@@ -312,6 +438,9 @@ export default function AdminUsersTab() {
               const isDirty = Boolean(draft);
               const isSelf = sessionUserId === user.id;
               const disableSelf = isSelf && user.role === 'admin' && user.is_active && activeAdminCount <= 1;
+              const isOnlyActiveAdmin = user.role === 'admin' && user.is_active && activeAdminCount <= 1;
+              const isDeleting = deletingId === user.id;
+              const disableDelete = Boolean(deletingId) || isDeleting || isSelf || isOnlyActiveAdmin;
 
               return (
                 <tr key={user.id} className="odd:bg-muted/10">
@@ -364,6 +493,14 @@ export default function AdminUsersTab() {
                       >
                         Batalkan
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(user)}
+                        className="h-11 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 text-sm font-medium text-destructive transition hover:bg-destructive/20 disabled:opacity-50"
+                        disabled={disableDelete}
+                      >
+                        {isDeleting ? 'Menghapus…' : 'Hapus'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -382,6 +519,111 @@ export default function AdminUsersTab() {
         <p className="mt-1 text-sm text-muted-foreground">
           Lihat dan kelola peran pengguna. Ubah role dan status aktif dengan aman.
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm md:p-6">
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="text-base font-semibold">Tambah Pengguna</h3>
+            <p className="text-sm text-muted-foreground">
+              Buat akun baru dengan peran dan status awal.
+            </p>
+          </div>
+        </div>
+        {createError ? (
+          <div className="mt-4 rounded-2xl border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+            {createError}
+          </div>
+        ) : null}
+        <form onSubmit={handleCreate} className="mt-4 grid gap-3 md:grid-cols-2">
+          <label>
+            <span className="text-xs font-semibold text-muted-foreground">Email</span>
+            <input
+              type="email"
+              value={createForm.email}
+              onChange={(event) =>
+                setCreateForm((prev) => ({ ...prev, email: event.target.value }))
+              }
+              className={clsx(INPUT_CLASS, 'mt-1')}
+              placeholder="contoh@email.com"
+              autoComplete="off"
+              required
+              disabled={creating}
+            />
+          </label>
+          <label>
+            <span className="text-xs font-semibold text-muted-foreground">Password</span>
+            <input
+              type="password"
+              value={createForm.password}
+              onChange={(event) =>
+                setCreateForm((prev) => ({ ...prev, password: event.target.value }))
+              }
+              className={clsx(INPUT_CLASS, 'mt-1')}
+              placeholder="Minimal 6 karakter"
+              minLength={6}
+              required
+              disabled={creating}
+            />
+          </label>
+          <label>
+            <span className="text-xs font-semibold text-muted-foreground">Username (opsional)</span>
+            <input
+              value={createForm.username}
+              onChange={(event) =>
+                setCreateForm((prev) => ({ ...prev, username: event.target.value }))
+              }
+              className={clsx(INPUT_CLASS, 'mt-1')}
+              placeholder="Nama pengguna"
+              autoComplete="off"
+              disabled={creating}
+            />
+          </label>
+          <label>
+            <span className="text-xs font-semibold text-muted-foreground">Peran</span>
+            <select
+              value={createForm.role}
+              onChange={(event) =>
+                setCreateForm((prev) => ({ ...prev, role: event.target.value as UserRole }))
+              }
+              className={clsx(SELECT_CLASS, 'mt-1')}
+              disabled={creating}
+            >
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <label className="md:col-span-2">
+            <span className="text-xs font-semibold text-muted-foreground">Status</span>
+            <div className="mt-1">
+              <ToggleSwitch
+                checked={createForm.is_active}
+                onChange={(value) =>
+                  setCreateForm((prev) => ({ ...prev, is_active: value }))
+                }
+                disabled={creating}
+                label="Status aktif pengguna baru"
+              />
+            </div>
+          </label>
+          <div className="md:col-span-2 flex flex-wrap gap-3 pt-2">
+            <button
+              type="submit"
+              className="h-11 rounded-2xl bg-primary px-6 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+              disabled={!isCreateValid || creating}
+            >
+              {creating ? 'Menyimpan…' : 'Buat Pengguna'}
+            </button>
+            <button
+              type="button"
+              onClick={handleResetCreate}
+              className="h-11 rounded-2xl border border-border/60 px-6 text-sm font-medium text-muted-foreground transition hover:border-primary hover:text-primary disabled:opacity-50"
+              disabled={creating}
+            >
+              Reset
+            </button>
+          </div>
+        </form>
       </div>
 
       <div className="grid gap-3 rounded-2xl border border-border/60 bg-muted/10 p-4 md:grid-cols-4 md:p-6">
