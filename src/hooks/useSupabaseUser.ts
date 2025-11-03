@@ -13,18 +13,26 @@ export default function useSupabaseUser(): SupabaseUserState {
   useEffect(() => {
     let active = true;
 
-    supabase.auth
-      .getUser()
-      .then(({ data }) => {
+    const syncInitialSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
         if (!active) return;
-        setState({ user: data.user ?? null, loading: false });
-      })
-      .catch(() => {
+        setState({ user: data.session?.user ?? null, loading: false });
+      } catch (error) {
+        console.error('[auth] Failed to read initial session', error);
         if (!active) return;
         setState({ user: null, loading: false });
-      });
+      }
+    };
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    void syncInitialSession();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN') {
+        console.info('[auth] onAuthStateChange SIGNED_IN', {
+          email: session?.user?.email ?? null,
+        });
+      }
       if (!active) return;
       setState({ user: session?.user ?? null, loading: false });
     });

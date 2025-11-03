@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PostgrestError } from "@supabase/supabase-js"
 import type { PeriodPreset } from "../components/dashboard/PeriodPicker"
-import { supabase } from "../lib/supabase.js"
+import { supabase } from "../lib/supabase"
 
 export type DashboardRange = {
   start: string
