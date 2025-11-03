@@ -330,6 +330,10 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
+  const normalizedSelected = useMemo(
+    () => (Array.isArray(selected) ? selected.map((value) => String(value)) : []),
+    [selected],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -387,20 +391,22 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
   }, [categories, query]);
 
   const summaryLabel = useMemo(() => {
-    if (!selected.length) return "Semua kategori";
-    if (selected.length === 1) {
-      const match = categories.find((cat) => cat.id === selected[0]);
+    if (!normalizedSelected.length) return "Semua kategori";
+    if (normalizedSelected.length === 1) {
+      const match = categories.find((cat) => String(cat.id) === normalizedSelected[0]);
       return match?.name || "1 kategori";
     }
-    return `${selected.length} kategori`;
-  }, [categories, selected]);
+    return `${normalizedSelected.length} kategori`;
+  }, [categories, normalizedSelected]);
 
-  const toggle = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) {
-      next.delete(id);
+  const toggle = (value: string | number | null | undefined) => {
+    const idValue = value != null ? String(value) : "";
+    if (!idValue) return;
+    const next = new Set(normalizedSelected);
+    if (next.has(idValue)) {
+      next.delete(idValue);
     } else {
-      next.add(id);
+      next.add(idValue);
     }
     onChange(Array.from(next));
   };
@@ -460,7 +466,8 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
                   <p className="px-4 py-3 text-sm text-slate-400">Kategori tidak ditemukan</p>
                 )}
                 {filteredCategories.map((cat) => {
-                  const checked = selected.includes(cat.id);
+                  const idValue = cat.id != null ? String(cat.id) : "";
+                  const checked = idValue ? normalizedSelected.includes(idValue) : false;
                   return (
                     <button
                       key={cat.id}
