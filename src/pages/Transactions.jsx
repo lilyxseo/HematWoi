@@ -23,6 +23,7 @@ import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useToast } from "../context/ToastContext";
 import PageHeader from "../layout/PageHeader";
 import { addTransaction, listAccounts, updateTransaction } from "../lib/api";
+import { getCurrentUserId } from "../lib/session";
 import { supabase } from "../lib/supabase";
 import {
   listTransactions,
@@ -1455,10 +1456,6 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [accounts, setAccounts] = useState([]);
-  const [sessionReady, setSessionReady] = useState(false);
-  const [sessionUserId, setSessionUserId] = useState(null);
-  const [sessionError, setSessionError] = useState(null);
-  const [sessionFetchTick, setSessionFetchTick] = useState(0);
   const [transactionData, setTransactionData] = useState(() => normalizeTransactionData(initialData));
   const [transactionLoading, setTransactionLoading] = useState(false);
   const [transactionError, setTransactionError] = useState(null);
@@ -1489,67 +1486,7 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   }, [open, initialData]);
 
   useEffect(() => {
-    if (!open) {
-      setSessionReady(false);
-      setSessionUserId(null);
-      setSessionError(null);
-      return;
-    }
-    let active = true;
-    let subscription;
-    setSessionReady(false);
-    setSessionError(null);
-
-    const applySession = (session) => {
-      if (!active) return;
-      const userId = session?.user?.id ? String(session.user.id) : null;
-      if (userId) {
-        setSessionUserId(userId);
-        setSessionReady(true);
-        setSessionError(null);
-      }
-    };
-
-    (async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (!active) return;
-        if (error) {
-          console.error("[edit:session] getSession error", error);
-          setSessionError(error);
-          setSessionReady(false);
-          return;
-        }
-        if (data?.session) {
-          applySession(data.session);
-        }
-      } catch (err) {
-        if (!active) return;
-        console.error("[edit:session] getSession error", err);
-        setSessionError(err);
-        setSessionReady(false);
-      }
-    })();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!active) return;
-      if (session?.user?.id) {
-        applySession(session);
-      } else if (event === "SIGNED_OUT") {
-        setSessionReady(false);
-        setSessionUserId(null);
-      }
-    });
-    subscription = listener?.subscription;
-
-    return () => {
-      active = false;
-      subscription?.unsubscribe?.();
-    };
-  }, [open, sessionFetchTick]);
-
-  useEffect(() => {
-    if (!open || !sessionReady) return;
+    if (!open) return;
     let cancelled = false;
     setAccountsLoading(true);
     listAccounts()
@@ -1567,10 +1504,10 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
     return () => {
       cancelled = true;
     };
-  }, [open, addToast, sessionReady]);
+  }, [open, addToast]);
 
   useEffect(() => {
-    if (!open || !sessionReady || !isEdit) return;
+    if (!open || !isEdit) return;
     const transactionId =
       transactionData?.id || (initialData?.id ? String(initialData.id) : null);
     if (!transactionId) return;
@@ -1578,19 +1515,22 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
     setTransactionLoading(true);
     setTransactionError(null);
 
-    let builder = supabase
-      .from("transactions")
-      .select(
-        "id,user_id,type,category_id,amount,title,notes,date,account_id,to_account_id,receipt_url,merchant_id",
-      )
-      .eq("id", transactionId);
-    if (sessionUserId) {
-      builder = builder.eq("user_id", sessionUserId);
-    }
-
-    builder
-      .maybeSingle()
-      .then(({ data, error }) => {
+    (async () => {
+      try {
+        const userId = await getCurrentUserId().catch((err) => {
+          console.error("[edit:tx:user] failed to resolve user", err);
+          return null;
+        });
+        let builder = supabase
+          .from("transactions")
+          .select(
+            "id,user_id,type,category_id,amount,title,notes,date,account_id,to_account_id,receipt_url,merchant_id",
+          )
+          .eq("id", transactionId);
+        if (userId) {
+          builder = builder.eq("user_id", userId);
+        }
+        const { data, error } = await builder.maybeSingle();
         if (cancelled) return;
         if (error) {
           console.error("[edit:tx:get] error", error);
@@ -1612,26 +1552,18 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
         });
         setTransactionData((prev) => ({ ...prev, ...normalized }));
         setTransactionLoading(false);
-      })
-      .catch((err) => {
+      } catch (err) {
         if (cancelled) return;
         console.error("[edit:tx:get] error", err);
         setTransactionError(err);
         setTransactionLoading(false);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
     };
-  }, [
-    open,
-    sessionReady,
-    sessionUserId,
-    isEdit,
-    transactionData?.id,
-    initialData?.id,
-    transactionFetchTick,
-  ]);
+  }, [open, isEdit, transactionData?.id, initialData?.id, transactionFetchTick]);
 
   useEffect(() => {
     if (!open) return;
@@ -1656,7 +1588,7 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   }, [open, transactionData, initialData]);
 
   useEffect(() => {
-    if (!open || !sessionReady) return;
+    if (!open) return;
     if (type === "transfer") {
       setCategoriesState([]);
       setCategoriesError(null);
@@ -1669,12 +1601,16 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
 
     (async () => {
       try {
+        const userId = await getCurrentUserId().catch((err) => {
+          console.error("[edit:cats:user] failed to resolve user", err);
+          return null;
+        });
         let builder = supabase
           .from("categories")
           .select("id,user_id,type,name,group_name,order_index")
           .eq("type", type);
-        if (sessionUserId) {
-          builder = builder.eq("user_id", sessionUserId);
+        if (userId) {
+          builder = builder.eq("user_id", userId);
         }
         builder = builder
           .order("order_index", { ascending: true, nullsFirst: true })
@@ -1706,10 +1642,10 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
     return () => {
       cancelled = true;
     };
-  }, [open, sessionReady, sessionUserId, type, categoryFetchTick]);
+  }, [open, type, categoryFetchTick]);
 
   useEffect(() => {
-    if (!open || !sessionReady) return;
+    if (!open) return;
     if (type === "transfer") return;
     if (!categoryId) return;
     if (categoriesState.some((cat) => cat.id === categoryId)) return;
@@ -1719,12 +1655,16 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
 
     (async () => {
       try {
+        const userId = await getCurrentUserId().catch((err) => {
+          console.error("[edit:cats:fallback:user] failed to resolve user", err);
+          return null;
+        });
         let builder = supabase
           .from("categories")
           .select("id,user_id,type,name,group_name,order_index")
           .eq("id", categoryId);
-        if (sessionUserId) {
-          builder = builder.eq("user_id", sessionUserId);
+        if (userId) {
+          builder = builder.eq("user_id", userId);
         }
         const { data, error } = await builder.maybeSingle();
         if (cancelled) return;
@@ -1761,7 +1701,7 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
     return () => {
       cancelled = true;
     };
-  }, [open, sessionReady, sessionUserId, type, categoryId, categoriesState]);
+  }, [open, type, categoryId, categoriesState]);
 
   useEffect(() => {
     if (!categoryId) return;
@@ -1770,12 +1710,6 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
       setCategoryHint("");
     }
   }, [categoryId, categoriesState, type]);
-
-  const handleRetrySession = () => {
-    setSessionError(null);
-    setSessionReady(false);
-    setSessionFetchTick((prev) => prev + 1);
-  };
 
   const handleRetryTransaction = () => {
     setTransactionError(null);
@@ -1889,33 +1823,12 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   };
 
   const categoryOptions = categoriesState;
-  const isInitialLoading = !sessionReady || accountsLoading || (isEdit && transactionLoading);
-  const blockingSessionError = sessionError && !sessionReady;
+  const isInitialLoading = accountsLoading || (isEdit && transactionLoading);
   const blockingTransactionError = transactionError && isEdit;
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? "Edit Transaksi" : "Transaksi"}>
-      {blockingSessionError ? (
-        <div className="space-y-4 py-12 text-center text-white/80">
-          <p className="text-sm">Gagal memuat sesi Supabase. Coba muat ulang.</p>
-          <div className="flex justify-center gap-3">
-            <button
-              type="button"
-              onClick={handleRetrySession}
-              className="rounded-full bg-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/30 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            >
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            >
-              Tutup
-            </button>
-          </div>
-        </div>
-      ) : blockingTransactionError ? (
+      {blockingTransactionError ? (
         <div className="space-y-4 py-12 text-center text-white/80">
           <p className="text-sm">Gagal memuat data transaksi. Coba muat ulang.</p>
           <div className="flex justify-center gap-3">
