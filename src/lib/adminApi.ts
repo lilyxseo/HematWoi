@@ -45,7 +45,10 @@ export type ListUsersParams = {
   status?: 'active' | 'inactive' | 'all';
 };
 
-export type UpdateUserProfileInput = Partial<Pick<UserProfileRecord, 'role' | 'is_active'>>;
+export type UpdateUserProfileInput =
+  Partial<Pick<UserProfileRecord, 'role' | 'is_active' | 'username' | 'email'>> & {
+    password?: string | null;
+  };
 
 export type AppDescriptionSetting = {
   text: string;
@@ -383,12 +386,12 @@ export async function listUsers(params: ListUsersParams = {}): Promise<UserProfi
 
 export async function updateUserProfile(
   id: string,
-  updates: UpdateUserProfileInput
+  updates: UpdateUserProfileInput,
 ): Promise<UserProfileRecord> {
   try {
     const currentResponse = await supabase
       .from('user_profiles')
-      .select('id, role, is_active')
+      .select('id, role, is_active, email, username')
       .eq('id', id)
       .maybeSingle();
 
@@ -401,6 +404,9 @@ export async function updateUserProfile(
 
     const currentRole: UserRole = current.role === 'admin' ? 'admin' : 'user';
     const currentActive = sanitizeBoolean(current.is_active, true);
+    const currentEmail = typeof current.email === 'string' ? current.email : null;
+    const currentUsername =
+      typeof current.username === 'string' ? current.username : null;
 
     const nextRole = updates.role ?? currentRole;
     const nextActive =
@@ -422,29 +428,135 @@ export async function updateUserProfile(
       }
     }
 
-    const payload: Record<string, unknown> = {};
+    const profilePayload: Record<string, unknown> = {};
+    const adminPayload: { email?: string; password?: string } = {};
+    let didChange = false;
 
     if (updates.role === 'admin' || updates.role === 'user') {
-      payload.role = updates.role;
+      if (updates.role !== currentRole) {
+        profilePayload.role = updates.role;
+        didChange = true;
+      }
     }
 
     if (typeof updates.is_active === 'boolean') {
-      payload.is_active = updates.is_active;
+      if (updates.is_active !== currentActive) {
+        profilePayload.is_active = updates.is_active;
+        didChange = true;
+      }
     }
 
-    const response = await supabase
+    if ('username' in updates) {
+      const nextUsername =
+        typeof updates.username === 'string'
+          ? updates.username.trim() || null
+          : null;
+      if (nextUsername !== (currentUsername ?? null)) {
+        profilePayload.username = nextUsername;
+        didChange = true;
+      }
+    }
+
+    if ('email' in updates) {
+      if (typeof updates.email === 'string') {
+        const trimmedEmail = updates.email.trim();
+        if (!trimmedEmail) {
+          throw new Error('Email tidak boleh kosong');
+        }
+        if (trimmedEmail !== currentEmail) {
+          profilePayload.email = trimmedEmail;
+          adminPayload.email = trimmedEmail;
+          didChange = true;
+        }
+      } else if (updates.email === null) {
+        throw new Error('Email tidak boleh kosong');
+      }
+    }
+
+    if (typeof updates.password === 'string') {
+      const trimmedPassword = updates.password.trim();
+      if (trimmedPassword) {
+        adminPayload.password = trimmedPassword;
+        didChange = true;
+      }
+    }
+
+    if (!didChange) {
+      const profileResponse = await supabase
+        .from('user_profiles')
+        .select('id, email, username, role, is_active, created_at, updated_at')
+        .eq('id', id)
+        .single();
+
+      const data = ensureResponse(profileResponse);
+      return mapUserRow(data);
+    }
+
+    if (Object.keys(adminPayload).length > 0) {
+      const { error: adminError } = await supabase.auth.admin.updateUserById(
+        id,
+        adminPayload,
+      );
+      if (adminError) throw adminError;
+    }
+
+    if (Object.keys(profilePayload).length > 0) {
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update(profilePayload)
+        .eq('id', id);
+      if (updateError) throw updateError;
+    }
+
+    const profileResponse = await supabase
       .from('user_profiles')
-      .update(payload)
-      .eq('id', id)
       .select('id, email, username, role, is_active, created_at, updated_at')
+      .eq('id', id)
       .single();
 
-    const data = ensureResponse(response);
+    const data = ensureResponse(profileResponse);
     return mapUserRow(data);
   } catch (error) {
     console.error('[adminApi] updateUserProfile failed', error);
     const message = error instanceof Error ? error.message : 'Gagal memperbarui pengguna';
     throw new Error(message || 'Gagal memperbarui pengguna');
+  }
+}
+
+export async function loginAsUser(email: string): Promise<void> {
+  try {
+    const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+    if (!normalizedEmail) {
+      throw new Error('Email pengguna tidak valid');
+    }
+
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: 'magiclink',
+      email: normalizedEmail,
+    });
+
+    if (linkError) throw linkError;
+
+    const otp = linkData?.properties?.email_otp;
+    if (!otp) {
+      throw new Error('Gagal membuat tautan login pengguna');
+    }
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      type: 'magiclink',
+      email: normalizedEmail,
+      token: otp,
+    });
+
+    if (error) throw error;
+
+    if (!data?.session) {
+      throw new Error('Gagal membuat sesi login pengguna');
+    }
+  } catch (error) {
+    console.error('[adminApi] loginAsUser failed', error);
+    const message = error instanceof Error ? error.message : 'Gagal login sebagai pengguna';
+    throw new Error(message || 'Gagal login sebagai pengguna');
   }
 }
 
