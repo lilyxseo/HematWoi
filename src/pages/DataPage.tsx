@@ -35,6 +35,7 @@ import {
   dedupeCandidates,
   computeHash,
   subscribeTransactions,
+  subscribeCategories,
 } from '../lib/api-data';
 import { supabase } from '../lib/supabase';
 import { getCurrentUserId } from '../lib/session';
@@ -528,9 +529,40 @@ function DataPageContent() {
     }
   };
 
-  const refreshCurrentTab = () => {
-    setFilters((prev) => ({ ...prev, [activeTab]: { ...prev[activeTab] } }));
-  };
+  const refreshCurrentTab = useCallback(() => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      next[activeTab] = { ...next[activeTab] };
+      return next;
+    });
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'categories') return undefined;
+    if (import.meta.env.VITE_ENABLE_REALTIME !== 'true') return undefined;
+    let unsub = () => {};
+    let active = true;
+    subscribeCategories(
+      () => {
+        if (!active) return;
+        refreshCurrentTab();
+      },
+      () => {
+        if (!active) return;
+        refreshCurrentTab();
+      },
+    ).then((cleanup) => {
+      if (!active) {
+        cleanup?.();
+        return;
+      }
+      unsub = cleanup || (() => {});
+    });
+    return () => {
+      active = false;
+      unsub?.();
+    };
+  }, [activeTab, refreshCurrentTab]);
 
   const handleExportCSV = async () => {
     try {
