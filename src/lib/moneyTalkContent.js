@@ -1,6 +1,6 @@
 export const quotes = {
   id: {
-    Makan: [
+    Makanan: [
       "Aku masuk mulut, bukan dompet! 🍜",
       "Habis makan enak, aku langsung melangsing. 😅",
       "Perut kenyang, dompet kempes!",
@@ -68,7 +68,7 @@ export const quotes = {
     ],
   },
   en: {
-    Makan: [
+    Makanan: [
       "I go to your belly, not your wallet! 🍜",
       "Great meal, sudden slim wallet. 😅",
       "Full tummy, empty pocket!",
@@ -139,7 +139,7 @@ export const quotes = {
 
 export const tips = {
   id: {
-    Makan: [
+    Makanan: [
       "Coba masak sendiri untuk lebih hemat.",
       "Bawa bekal dari rumah.",
     ],
@@ -165,7 +165,7 @@ export const tips = {
     ],
   },
   en: {
-    Makan: [
+    Makanan: [
       "Cook at home to save more.",
       "Bring your own lunch.",
     ],

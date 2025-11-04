@@ -7,7 +7,7 @@ import {
 describe("resolveMoneyTalkIntent", () => {
   const baseValues = {
     amount: "Rp50.000",
-    category: "Makan",
+    category: "Makanan",
     type: "expense",
     title: "Ngopi di Starbucks",
   };

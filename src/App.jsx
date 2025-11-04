@@ -117,13 +117,21 @@ function resolveInternalRouteFromUrl(url) {
 const defaultCategories = {
   income: ["Gaji", "Bonus", "Lainnya"],
   expense: [
-    "Makan",
+    "Makanan",
+    "Minuman",
+    "Jajan",
+    "Bensin",
+    "Perawatan Motor",
     "Transport",
+    "Kuota",
     "Belanja",
+    "Belanja Online",
     "Tagihan",
-    "Tabungan",
+    "Baju",
+    "Celana",
     "Kesehatan",
     "Hiburan",
+    "Tabungan",
     "Lainnya",
   ],
 };

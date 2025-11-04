@@ -11,7 +11,7 @@ const mockTxs = [
     date: new Date().toISOString().slice(0, 10),
     type: "expense",
     amount: 100000,
-    category: "Makan",
+    category: "Makanan",
   },
 ];
 
