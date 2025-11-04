@@ -1108,9 +1108,11 @@ function AppShell({ prefs, setPrefs }) {
     const amounts = catTx
       .map((t) => Number(t.amount || 0))
       .sort((a, b) => a - b);
-    const p75 =
-      amounts.length > 0 ? amounts[Math.floor(0.75 * (amounts.length - 1))] : 0;
-    const isHigh = amount > p75;
+    const hasHistory = amounts.length > 0;
+    const p75 = hasHistory
+      ? amounts[Math.floor(0.75 * (amounts.length - 1))]
+      : 0;
+    const isHigh = hasHistory && amount > p75;
     const month = tx.date?.slice(0, 7);
     const budget = data.budgets.find(
       (b) => b.category === category && b.month === month
