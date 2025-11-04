@@ -68,7 +68,8 @@ export default function PaymentDeleteDialog({
           </div>
           {hasTransaction ? (
             <p className="text-sm text-muted">
-              Pembayaran ini terhubung dengan transaksi dan saldo akun. Pilih tindakan di bawah.
+              Pembayaran ini terhubung dengan transaksi dan saldo akun. Anda dapat menghapus pembayaran saja atau sekalian
+              menghapus transaksi serta mengembalikan saldo akun.
             </p>
           ) : (
             <p className="text-sm text-muted">Pembayaran akan dihapus dari riwayat dan perhitungan hutang.</p>
@@ -86,19 +87,19 @@ export default function PaymentDeleteDialog({
           {hasTransaction ? (
             <>
               <button
+                ref={deletePrimaryRef}
                 type="button"
                 onClick={() => onDelete(false)}
                 disabled={Boolean(loading)}
-                className="inline-flex h-[40px] items-center justify-center rounded-xl border border-border/70 bg-surface-1 px-5 text-sm font-semibold text-text transition hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-[40px] items-center justify-center rounded-xl bg-danger px-5 text-sm font-semibold text-brand-foreground transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Hapus pembayaran saja
+                {loading ? 'Memproses…' : 'Hapus pembayaran'}
               </button>
               <button
-                ref={deletePrimaryRef}
                 type="button"
                 onClick={() => onDelete(true)}
                 disabled={Boolean(loading)}
-                className="inline-flex h-[40px] items-center justify-center rounded-xl bg-danger px-5 text-sm font-semibold text-brand-foreground transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-[40px] items-center justify-center rounded-xl border border-border/70 bg-surface-1 px-5 text-sm font-semibold text-text transition hover:bg-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? 'Memproses…' : 'Hapus & rollback'}
               </button>
