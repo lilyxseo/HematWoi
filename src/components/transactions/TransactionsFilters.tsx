@@ -320,8 +320,8 @@ export default function TransactionsFilters({
 
 interface CategoryMultiSelectProps {
   categories: Array<any>;
-  selected: string[];
-  onChange: (next: string[]) => void;
+  selected: Array<string | number>;
+  onChange: (next: Array<string | number>) => void;
 }
 
 function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSelectProps) {
@@ -330,10 +330,41 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState({ top: 0, left: 0, width: 0 });
+  const selectedKeyMap = useMemo(() => {
+    const map = new Map<string, string | number>();
+    if (!Array.isArray(selected)) {
+      return map;
+    }
+    for (const value of selected) {
+      if (value == null) continue;
+      const key = String(value);
+      if (!key) continue;
+      if (!map.has(key)) {
+        map.set(key, value);
+      }
+    }
+    return map;
+  }, [selected]);
+
   const normalizedSelected = useMemo(
-    () => (Array.isArray(selected) ? selected.map((value) => String(value)) : []),
-    [selected],
+    () => Array.from(selectedKeyMap.keys()),
+    [selectedKeyMap],
   );
+
+  const categoryKeyMap = useMemo(() => {
+    const map = new Map<string, string | number>();
+    const categoryList = Array.isArray(categories) ? categories : [];
+    for (const cat of categoryList) {
+      const idValue = cat?.id;
+      if (idValue == null) continue;
+      const key = String(idValue);
+      if (!key) continue;
+      if (!map.has(key)) {
+        map.set(key, idValue as string | number);
+      }
+    }
+    return map;
+  }, [categories]);
 
   useEffect(() => {
     if (!open) return;
@@ -400,15 +431,23 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
   }, [categories, normalizedSelected]);
 
   const toggle = (value: string | number | null | undefined) => {
-    const idValue = value != null ? String(value) : "";
-    if (!idValue) return;
-    const next = new Set(normalizedSelected);
-    if (next.has(idValue)) {
-      next.delete(idValue);
+    if (value == null) return;
+    const key = String(value);
+    if (!key) return;
+    const nextMap = new Map(selectedKeyMap);
+    if (nextMap.has(key)) {
+      nextMap.delete(key);
     } else {
-      next.add(idValue);
+      if (categoryKeyMap.has(key)) {
+        const mapped = categoryKeyMap.get(key);
+        if (mapped != null) {
+          nextMap.set(key, mapped);
+        }
+      } else {
+        nextMap.set(key, value);
+      }
     }
-    onChange(Array.from(next));
+    onChange(Array.from(nextMap.values()));
   };
 
   const clear = () => {
