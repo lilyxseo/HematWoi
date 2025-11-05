@@ -1,4 +1,9 @@
-import type { AuthChangeEvent, OAuthResponse, Session, SignInWithPasswordCredentials } from '@supabase/supabase-js';
+import type {
+  AuthChangeEvent,
+  OAuthResponse,
+  Session,
+  SignInWithPasswordCredentials,
+} from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 type Provider = 'google' | 'github';
@@ -27,6 +32,13 @@ const resetRedirect =
   '';
 
 const DEFAULT_ERROR = 'Terjadi kesalahan. Silakan coba lagi.';
+
+type SignUpWithEmailPayload = {
+  email: string;
+  password: string;
+  fullName?: string | null;
+  emailRedirectTo?: string | null;
+};
 
 function resolveRedirect(path = '/'): string | undefined {
   if (!baseRedirect && !path) return undefined;
@@ -236,6 +248,42 @@ export async function signInWithProvider(provider: Provider): Promise<OAuthRespo
   } catch (error) {
     throw normalizeAuthError(error, 'Gagal masuk dengan penyedia sosial.');
   }
+}
+
+export async function signUpWithEmail({
+  email,
+  password,
+  fullName,
+  emailRedirectTo,
+}: SignUpWithEmailPayload) {
+  try {
+    const payload: Parameters<typeof supabase.auth.signUp>[0] = {
+      email,
+      password,
+      options: {
+        emailRedirectTo: emailRedirectTo ? resolveRedirect(emailRedirectTo) : resolveRedirect('/auth/confirm'),
+      },
+    };
+
+    if (fullName && fullName.trim()) {
+      payload.options = {
+        ...payload.options,
+        data: {
+          full_name: fullName.trim(),
+        },
+      };
+    }
+
+    const { data, error } = await supabase.auth.signUp(payload);
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    throw normalizeAuthError(error, 'Gagal membuat akun. Silakan coba lagi.');
+  }
+}
+
+export function resolveAuthRedirect(path = '/'): string | undefined {
+  return resolveRedirect(path);
 }
 
 export function onAuthStateChange(
