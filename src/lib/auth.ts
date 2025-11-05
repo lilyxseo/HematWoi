@@ -1,4 +1,10 @@
-import type { AuthChangeEvent, OAuthResponse, Session, SignInWithPasswordCredentials } from '@supabase/supabase-js';
+import type {
+  AuthChangeEvent,
+  OAuthResponse,
+  Session,
+  SignInWithPasswordCredentials,
+  User,
+} from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 type Provider = 'google' | 'github';
@@ -123,6 +129,52 @@ function isNetworkError(error: unknown): boolean {
   );
 }
 
+type FunctionsErrorLike = {
+  message?: unknown;
+  context?: {
+    body?: unknown;
+  };
+};
+
+function extractFunctionErrorMessage(error: unknown): string | null {
+  if (!error) return null;
+  if (typeof error === 'string') {
+    return error.trim() || null;
+  }
+  if (typeof error !== 'object') return null;
+  const err = error as FunctionsErrorLike;
+  if (err.context?.body) {
+    const body = err.context.body;
+    if (typeof body === 'string') {
+      try {
+        const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
+        if (typeof parsed.error === 'string' && parsed.error.trim()) {
+          return parsed.error;
+        }
+        if (typeof parsed.message === 'string' && parsed.message.trim()) {
+          return parsed.message;
+        }
+      } catch {
+        if (body.trim()) {
+          return body.trim();
+        }
+      }
+    } else if (typeof body === 'object' && body) {
+      const maybeError = body as { error?: unknown; message?: unknown };
+      if (typeof maybeError.error === 'string' && maybeError.error.trim()) {
+        return maybeError.error;
+      }
+      if (typeof maybeError.message === 'string' && maybeError.message.trim()) {
+        return maybeError.message;
+      }
+    }
+  }
+  if (typeof err.message === 'string' && err.message.trim()) {
+    return err.message.trim();
+  }
+  return null;
+}
+
 export async function resolveEmailByUsername(username: string): Promise<string | null> {
   const trimmed = username.trim();
   if (!trimmed) return null;
@@ -191,6 +243,55 @@ export async function resetPassword(email: string) {
     return data;
   } catch (error) {
     throw normalizeAuthError(error, 'Gagal mengirim tautan reset kata sandi.');
+  }
+}
+
+type RegisterWithoutConfirmationPayload = {
+  email: string;
+  password: string;
+  fullName: string;
+};
+
+type RegisterWithoutConfirmationResult = {
+  user: User;
+};
+
+export async function registerWithoutConfirmation({
+  email,
+  password,
+  fullName,
+}: RegisterWithoutConfirmationPayload): Promise<RegisterWithoutConfirmationResult> {
+  try {
+    const { data, error } = await supabase.functions.invoke('signup-no-confirm', {
+      body: {
+        email,
+        password,
+        full_name: fullName,
+      },
+    });
+
+    if (error) {
+      const message = extractFunctionErrorMessage(error) ?? 'Gagal membuat akun.';
+      throw new Error(message);
+    }
+
+    const user = (data as { user?: User | null } | null)?.user ?? null;
+    if (!user) {
+      throw new Error('Gagal membuat akun.');
+    }
+
+    return { user };
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.error('[HW][auth-register]', error);
+    }
+    if (isNetworkError(error)) {
+      throw new Error('Periksa koneksi internet.');
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('Gagal membuat akun.');
   }
 }
 

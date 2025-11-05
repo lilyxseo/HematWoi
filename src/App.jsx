@@ -31,6 +31,7 @@ import SettingsPage from "./pages/SettingsPage";
 import ProfilePage from "./pages/Profile";
 import AccountsPage from "./pages/AccountsPage";
 import AuthLogin from "./pages/AuthLogin";
+import AuthRegister from "./pages/AuthRegister";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
@@ -1412,6 +1413,7 @@ function AppShell({ prefs, setPrefs }) {
         <>
           <Routes>
             <Route path="/auth" element={<AuthLogin />} />
+            <Route path="/auth/register" element={<AuthRegister />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/auth/mobile/google" element={<MobileGoogleCallback />} />
             <Route element={<AuthGuard />}>
@@ -1456,6 +1458,7 @@ function AppShell({ prefs, setPrefs }) {
                     />
                   }
                 />
+                <Route path="dashboard" element={<Navigate to="/" replace />} />
                 <Route
                   path="transactions"
                   element={
