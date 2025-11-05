@@ -355,6 +355,15 @@ export default function AuthLogin() {
                     <span>{loading ? 'Memproses…' : 'Login'}</span>
                   </button>
                 </form>
+                <p className="text-sm text-muted">
+                  Belum punya akun?{' '}
+                  <Link
+                    to="/register"
+                    className="font-semibold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+                  >
+                    Daftar sekarang
+                  </Link>
+                </p>
               </div>
             </div>
           </section>
