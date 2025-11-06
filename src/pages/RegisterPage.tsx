@@ -4,7 +4,7 @@ import { IconBrandGoogle } from '@tabler/icons-react';
 import { CheckCircle2, Circle, Eye, EyeOff } from 'lucide-react';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import Logo from '../components/Logo';
-import { resolveAuthRedirect, signUpWithEmail } from '../lib/auth';
+import { resolveAuthRedirect, signInWithPassword, signUpWithoutEmailConfirmation } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { getPasswordStrength, isPasswordValid, validatePassword } from '../lib/password';
 import { useToast } from '../context/ToastContext';
@@ -22,8 +22,6 @@ type FormState = {
 type FormErrors = Partial<Record<'email' | 'password' | 'confirmPassword' | 'terms', string>>;
 
 type StatusState = { type: 'success' | 'error' | 'info'; message: string } | null;
-
-type StageState = 'form' | 'verify-email';
 
 function getAppUrl(path: string) {
   const url = resolveAuthRedirect(path);
@@ -49,8 +47,6 @@ export default function RegisterPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<StatusState>(null);
-  const [stage, setStage] = useState<StageState>('form');
-
   useEffect(() => {
     let active = true;
 
@@ -151,36 +147,24 @@ export default function RegisterPage() {
       setStatus(null);
 
       try {
-        const data = await signUpWithEmail({
+        await signUpWithoutEmailConfirmation({
           email: trimmedEmail,
           password: form.password,
           fullName: trimmedFullName || undefined,
-          emailRedirectTo: '/auth/confirm',
         });
 
-        const { session, user } = data;
+        await signInWithPassword({
+          email: trimmedEmail,
+          password: form.password,
+        });
 
-        if (!session) {
-          setStage('verify-email');
-          setStatus({
-            type: 'success',
-            message: 'Kami telah mengirim email verifikasi. Silakan cek inbox/spam.',
-          });
-          return;
-        }
-
-        if (trimmedFullName && (!user?.user_metadata || !user.user_metadata.full_name)) {
-          try {
-            await supabase.auth.updateUser({ data: { full_name: trimmedFullName } });
-          } catch (error) {
-            console.warn('[register] gagal memperbarui metadata nama', error);
-          }
-        }
+        setStatus({ type: 'success', message: 'Akun berhasil dibuat. Mengarahkan ke dashboard…' });
 
         if (addToast) {
           addToast(`Akun berhasil dibuat. Selamat datang, ${trimmedFullName || trimmedEmail}!`, 'success');
         }
-        navigate('/', { replace: true });
+
+        navigate('/dashboard', { replace: true });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Gagal membuat akun. Silakan coba lagi nanti.';
@@ -250,8 +234,7 @@ export default function RegisterPage() {
                 </div>
               </header>
 
-              {stage === 'form' ? (
-                <div className="space-y-8">
+              <div className="space-y-8">
                   <div className="grid gap-3 sm:grid-cols-1">
                     <button
                       type="button"
@@ -450,29 +433,7 @@ export default function RegisterPage() {
                       Masuk
                     </Link>
                   </p>
-                </div>
-              ) : (
-                <div className="space-y-6 rounded-3xl border border-success/40 bg-success/10 p-6 text-success shadow-sm">
-                  <div className="space-y-2 text-center">
-                    <CheckCircle2 className="mx-auto h-10 w-10" aria-hidden="true" />
-                    <h1 className="text-lg font-semibold">Verifikasi email kamu</h1>
-                    <p className="text-sm text-success/90">
-                      Kami telah mengirim email verifikasi. Silakan cek kotak masuk atau folder spam untuk mengaktifkan akunmu.
-                    </p>
-                  </div>
-                  <div className="space-y-3 text-center text-sm">
-                    <p className="text-success/90">
-                      Setelah verifikasi selesai, kamu bisa langsung masuk dan mulai mengatur keuanganmu.
-                    </p>
-                    <Link
-                      to="/login"
-                      className="inline-flex items-center justify-center rounded-2xl border border-success/40 px-4 py-2 font-semibold text-success transition hover:bg-success/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-success/40"
-                    >
-                      Kembali ke halaman login
-                    </Link>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </section>
         </div>

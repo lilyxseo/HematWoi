@@ -3,6 +3,7 @@ import type {
   OAuthResponse,
   Session,
   SignInWithPasswordCredentials,
+  User,
 } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
@@ -38,6 +39,12 @@ type SignUpWithEmailPayload = {
   password: string;
   fullName?: string | null;
   emailRedirectTo?: string | null;
+};
+
+type SignUpWithoutConfirmationPayload = {
+  email: string;
+  password: string;
+  fullName?: string | null;
 };
 
 function resolveRedirect(path = '/'): string | undefined {
@@ -277,6 +284,55 @@ export async function signUpWithEmail({
     const { data, error } = await supabase.auth.signUp(payload);
     if (error) throw error;
     return data;
+  } catch (error) {
+    throw normalizeAuthError(error, 'Gagal membuat akun. Silakan coba lagi.');
+  }
+}
+
+type SignUpFunctionSuccess = {
+  user: User;
+};
+
+type SignUpFunctionError = {
+  error: string;
+};
+
+export async function signUpWithoutEmailConfirmation({
+  email,
+  password,
+  fullName,
+}: SignUpWithoutConfirmationPayload): Promise<User> {
+  try {
+    const body = {
+      email,
+      password,
+      full_name: fullName?.trim() || undefined,
+    };
+
+    const { data, error } = await supabase.functions.invoke<
+      SignUpFunctionSuccess | SignUpFunctionError
+    >('signup-no-confirm', {
+      body,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data || typeof data !== 'object') {
+      throw new Error('Gagal membuat akun. Silakan coba lagi.');
+    }
+
+    if ('error' in data) {
+      const message = typeof data.error === 'string' ? data.error : null;
+      throw new Error(message || 'Gagal membuat akun. Silakan coba lagi.');
+    }
+
+    if (!('user' in data) || !data.user) {
+      throw new Error('Data pengguna tidak ditemukan.');
+    }
+
+    return data.user;
   } catch (error) {
     throw normalizeAuthError(error, 'Gagal membuat akun. Silakan coba lagi.');
   }
