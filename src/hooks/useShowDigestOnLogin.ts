@@ -70,6 +70,7 @@ export interface UseShowDigestOnLoginResult {
   open: boolean;
   data: DailyDigestModalData | null;
   loading: boolean;
+  upcomingLoading: boolean;
   openManual: () => void;
   close: () => void;
 }
@@ -574,7 +575,8 @@ export default function useShowDigestOnLogin({
   return {
     open,
     data,
-    loading: !transactionsSettled || upcomingLoading,
+    loading: !transactionsSettled,
+    upcomingLoading,
     openManual,
     close,
   };
