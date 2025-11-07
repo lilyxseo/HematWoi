@@ -14,10 +14,11 @@ export default function useSupabaseUser(): SupabaseUserState {
     let active = true;
 
     supabase.auth
-      .getUser()
+      .getSession()
       .then(({ data }) => {
         if (!active) return;
-        setState({ user: data.user ?? null, loading: false });
+        const session = data.session ?? null;
+        setState({ user: session?.user ?? null, loading: false });
       })
       .catch(() => {
         if (!active) return;
