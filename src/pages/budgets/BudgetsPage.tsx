@@ -607,6 +607,7 @@ export default function BudgetsPage() {
     id: string,
     categoryId?: string | null
   ) => {
+    let removedSelection: HighlightBudgetSelection | null = null;
     try {
       setHighlightLoading(true);
       if (type === 'weekly' && categoryId) {
@@ -619,10 +620,8 @@ export default function BudgetsPage() {
         });
 
         if (selectionForCategory && String(selectionForCategory.budget_id) !== String(id)) {
-          const result = await toggleHighlight({ type, id: String(selectionForCategory.budget_id) });
-          setHighlightSelections(result.highlights);
-          addToast(result.highlighted ? 'Highlight ditambahkan' : 'Highlight dihapus', 'success');
-          return;
+          removedSelection = selectionForCategory;
+          await toggleHighlight({ type, id: String(selectionForCategory.budget_id) });
         }
       }
 
@@ -630,6 +629,14 @@ export default function BudgetsPage() {
       setHighlightSelections(result.highlights);
       addToast(result.highlighted ? 'Highlight ditambahkan' : 'Highlight dihapus', 'success');
     } catch (err) {
+      if (removedSelection) {
+        try {
+          const revertResult = await toggleHighlight({ type, id: String(removedSelection.budget_id) });
+          setHighlightSelections(revertResult.highlights);
+        } catch (revertError) {
+          console.error('Failed to restore highlight after error', revertError);
+        }
+      }
       const message = err instanceof Error ? err.message : 'Gagal memperbarui highlight';
       addToast(message, 'error');
     } finally {
