@@ -143,9 +143,6 @@ export default function useTransactionsQuery() {
     const request = toRequestFilter(filter, page);
     setLoading(true);
     setError(null);
-    if (page === 1) {
-      setItems([]);
-    }
 
     (async () => {
       try {
