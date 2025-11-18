@@ -536,6 +536,7 @@ export function getWeeklyTransactionEndExclusive(period: string): string {
 }
 
 interface WeeklyCarryoverEntry {
+  id?: UUID;
   planned_amount: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
@@ -558,7 +559,7 @@ async function ensureWeeklyCarryover(
 
   const { data, error } = await supabase
     .from('budgets_weekly')
-    .select('category_id,planned_amount,carryover_enabled,notes,week_start')
+    .select('id,category_id,planned_amount,carryover_enabled,notes,week_start')
     .eq('user_id', userId)
     .gte('week_start', normalizedStart)
     .lt('week_start', rangeEnd)
@@ -569,6 +570,7 @@ async function ensureWeeklyCarryover(
   const budgetsByWeek = new Map<string, Map<string, WeeklyCarryoverEntry>>();
 
   for (const row of (data ?? []) as {
+    id: UUID | null;
     category_id: UUID | null;
     planned_amount: number | null;
     carryover_enabled: boolean | null;
@@ -592,6 +594,7 @@ async function ensureWeeklyCarryover(
       : Boolean(row.carryover_enabled);
 
     currentWeekBudgets.set(categoryId, {
+      id: row.id ?? undefined,
       planned_amount: Number.isFinite(plannedAmount) ? plannedAmount : 0,
       carryover_enabled: carryoverEnabled,
       notes: row.notes ?? null,
@@ -607,17 +610,30 @@ async function ensureWeeklyCarryover(
     weekStartDates.push(formatIsoDateUTC(current));
   }
 
-  const toInsert: {
-    category_id: UUID;
-    week_start: string;
-    planned_amount: number;
-    carryover_enabled: boolean;
-    notes: Nullable<string>;
-  }[] = [];
+  let highlightMap: Map<string, HighlightBudgetSelection> | null = null;
+  const ensureHighlightMap = async () => {
+    if (highlightMap) return highlightMap;
+    const selections = await fetchHighlightSelections(userId);
+    highlightMap = new Map(
+      selections
+        .filter((item) => item.budget_type === 'weekly')
+        .map((item) => [String(item.budget_id), item])
+    );
+    return highlightMap;
+  };
 
   for (const weekStart of weekStartDates) {
     const currentBudgets = budgetsByWeek.get(weekStart);
     if (!currentBudgets) continue;
+
+    const toInsert: {
+      category_id: UUID;
+      week_start: string;
+      planned_amount: number;
+      carryover_enabled: boolean;
+      notes: Nullable<string>;
+      source_budget_id?: UUID;
+    }[] = [];
 
     for (const [categoryId, budget] of currentBudgets.entries()) {
       if (!budget.carryover_enabled) continue;
@@ -649,29 +665,87 @@ async function ensureWeeklyCarryover(
         planned_amount: budget.planned_amount,
         carryover_enabled: budget.carryover_enabled,
         notes: budget.notes ?? null,
+        source_budget_id: budget.id,
       });
     }
-  }
 
-  if (!toInsert.length) {
-    return;
-  }
+    if (!toInsert.length) {
+      continue;
+    }
 
-  const insertPayload = toInsert.map((item) => ({
-    user_id: userId,
-    category_id: item.category_id,
-    planned_amount: item.planned_amount,
-    carryover_enabled: item.carryover_enabled,
-    notes: item.notes ?? null,
-    week_start: item.week_start,
-  }));
+    const insertPayload = toInsert.map(({ source_budget_id: _sourceBudgetId, ...item }) => ({
+      user_id: userId,
+      category_id: item.category_id,
+      planned_amount: item.planned_amount,
+      carryover_enabled: item.carryover_enabled,
+      notes: item.notes ?? null,
+      week_start: item.week_start,
+    }));
 
-  const { error: upsertError } = await supabase
-    .from('budgets_weekly')
-    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' });
+    const upsertResponse = await supabase
+      .from('budgets_weekly')
+      .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' })
+      .select('id,category_id,week_start');
 
-  if (upsertError) {
-    throw upsertError;
+    if (upsertResponse.error) {
+      throw upsertResponse.error;
+    }
+
+    const insertedRows = (upsertResponse.data ?? []) as {
+      id: UUID | null;
+      category_id: UUID | null;
+      week_start: string | null;
+    }[];
+
+    if (!insertedRows.length) {
+      continue;
+    }
+
+    const highlightSources = new Map<string, UUID>();
+    for (const item of toInsert) {
+      if (item.source_budget_id) {
+        highlightSources.set(`${item.category_id}:${item.week_start}`, item.source_budget_id);
+      }
+    }
+
+    for (const row of insertedRows) {
+      const categoryId = row.category_id ?? undefined;
+      const weekStartValue = row.week_start ?? undefined;
+      const id = row.id ?? undefined;
+      if (!categoryId || !weekStartValue || !id) continue;
+
+      const normalizedWeekStart = getWeekStartForDate(parseIsoDate(weekStartValue));
+      const weekBudgets = budgetsByWeek.get(normalizedWeekStart);
+      const entry = weekBudgets?.get(categoryId);
+      if (entry) {
+        entry.id = id;
+      }
+
+      const sourceBudgetId = highlightSources.get(`${categoryId}:${weekStartValue}`);
+      if (!sourceBudgetId) {
+        continue;
+      }
+
+      const map = await ensureHighlightMap();
+      const highlight = map.get(String(sourceBudgetId));
+      if (!highlight) {
+        continue;
+      }
+
+      const updateResponse = await supabase
+        .from('user_highlight_budgets')
+        .update({ budget_id: id })
+        .eq('user_id', userId)
+        .eq('id', highlight.id)
+        .select('id');
+
+      if (updateResponse.error) {
+        throw updateResponse.error;
+      }
+
+      map.delete(String(sourceBudgetId));
+      map.set(String(id), { ...highlight, budget_id: id });
+    }
   }
 }
 
