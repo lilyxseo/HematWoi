@@ -200,6 +200,7 @@ export default function SalarySimulationPage() {
   const budgetMap = useMemo(() => {
     const map = new Map<string, MonthlyBudgetRow>();
     for (const budget of budgets) {
+      if (!budget.category_id) continue;
       map.set(budget.category_id, budget);
     }
     return map;
