@@ -781,7 +781,14 @@ async function fetchExpenseCategoriesRemote(
           categoriesViewUnavailable = true;
           break;
         }
-        throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
+        categoriesViewUnavailable = true;
+        if (import.meta?.env?.DEV || process?.env?.NODE_ENV === 'development') {
+          console.warn(
+            '[HW] Kategori view fallback karena respons 400:',
+            bodyText
+          );
+        }
+        break;
       }
       if (!response.ok) {
         throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
