@@ -410,6 +410,7 @@ export default function useShowDigestOnLogin({
 }: UseShowDigestOnLoginOptions): UseShowDigestOnLoginResult {
   const [open, setOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
   const autoOpenRef = useRef(false);
   const [upcoming, setUpcoming] = useState<DigestUpcomingItem[]>(() => loadUpcomingSubscriptions());
   const [upcomingLoading, setUpcomingLoading] = useState(false);
@@ -445,9 +446,12 @@ export default function useShowDigestOnLogin({
     }
 
     if (!userId) {
-      setTransactionsSettled(true);
+      if (authResolved) {
+        setTransactionsSettled(true);
+      }
+      return;
     }
-  }, [transactions, userId]);
+  }, [transactions, userId, authResolved]);
 
   const data = useMemo(
     () => {
@@ -538,11 +542,13 @@ export default function useShowDigestOnLogin({
         const session = data.session ?? null;
         const uid = session?.user?.id ?? null;
         setUserId(uid);
+        setAuthResolved(true);
         tryOpenForUser(uid, false);
       })
       .catch(() => {
         if (!active) return;
         setUserId(null);
+        setAuthResolved(true);
       });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
@@ -551,11 +557,13 @@ export default function useShowDigestOnLogin({
         setUserId(null);
         setOpen(false);
         autoOpenRef.current = false;
+        setAuthResolved(true);
         return;
       }
       if (event === 'SIGNED_IN') {
         const uid = session?.user?.id ?? null;
         setUserId(uid);
+        setAuthResolved(true);
         tryOpenForUser(uid, true);
       }
     });
