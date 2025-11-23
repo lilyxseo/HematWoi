@@ -147,7 +147,16 @@ function toError(error: unknown, fallback: string) {
 }
 
 function normalizeType(value: unknown): CategoryType {
-  return value === "income" ? "income" : "expense";
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "income") {
+      return "income";
+    }
+    if (normalized === "expense") {
+      return "expense";
+    }
+  }
+  return "expense";
 }
 
 function normalizeColor(value: unknown): string {
