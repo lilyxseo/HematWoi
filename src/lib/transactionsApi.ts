@@ -32,6 +32,8 @@ export interface TransactionRecord {
   notes: string | null;
   tags: string[] | null;
   receipt_url: string | null;
+  category?: string | null;
+  category_color?: string | null;
 }
 
 function isValidDate(value: string): boolean {
@@ -120,12 +122,16 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
   const { data, error } = await supabase
     .from('transactions')
     .insert(insertPayload)
-    .select('id, user_id, type, date, amount, account_id, to_account_id, category_id, merchant_id, title, notes, tags, receipt_url')
+    .select(
+      'id, user_id, type, date, amount, account_id, to_account_id, category_id, merchant_id, title, notes, tags, receipt_url, categories(id, name, color)',
+    )
     .single();
 
   if (error) {
     throw new Error(error.message || 'Gagal menyimpan transaksi.');
   }
+
+  const categoryData = data?.categories ?? null;
 
   const record = {
     ...data,
@@ -136,6 +142,8 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
     merchant_id: data.merchant_id ?? merchant_id ?? null,
     title: data.title ?? title?.trim() ?? null,
     notes: data.notes ?? notes?.trim() ?? null,
+    category: categoryData?.name ?? null,
+    category_color: categoryData?.color ?? null,
   };
 
   try {
@@ -161,5 +169,7 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
     notes: record.notes,
     tags: Array.isArray(data.tags) ? data.tags : null,
     receipt_url: data.receipt_url ?? null,
+    category: categoryData?.name ?? null,
+    category_color: categoryData?.color ?? null,
   };
 }
