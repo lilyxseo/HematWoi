@@ -23,7 +23,13 @@ const DEFAULT_PRESET = "month";
 export default function Dashboard({ stats, txs }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
-  const balances = useDashboardBalances(periodRange, periodPreset);
+  const visibleTxs = useMemo(
+    () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
+    [txs],
+  );
+  const balances = useDashboardBalances(periodRange, periodPreset, {
+    guestTransactions: visibleTxs,
+  });
   const {
     income: periodIncome,
     expense: periodExpense,
@@ -41,11 +47,6 @@ export default function Dashboard({ stats, txs }) {
     refresh,
   } = balances;
   const { start: periodStart, end: periodEnd } = periodRange;
-
-  const visibleTxs = useMemo(
-    () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
-    [txs],
-  );
 
   const digest = useShowDigestOnLogin({
     transactions: txs,
