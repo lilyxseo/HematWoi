@@ -781,7 +781,14 @@ async function fetchExpenseCategoriesRemote(
           categoriesViewUnavailable = true;
           break;
         }
-        throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn(
+            '[HW] Falling back to categories endpoint due to v_categories_budget error',
+            bodyText || response.statusText
+          );
+        }
+        categoriesViewUnavailable = true;
+        break;
       }
       if (!response.ok) {
         throw await parsePostgrestError(response, 'Gagal memuat kategori pengeluaran');
