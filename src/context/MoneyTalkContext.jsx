@@ -185,7 +185,14 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
           Math.random().toString(36).slice(2),
         message,
         tip,
-        avatar: Math.random() > 0.5 ? "bill" : "coin",
+        avatar:
+          normalizedType === "income"
+            ? "coin"
+            : normalizedType === "transfer"
+            ? "transfer"
+            : "bill",
+        variant: normalizedType,
+        typeLabel: langTypeLabels?.[normalizedType] || normalizedType,
         duration: baseDuration + Math.random() * 1500,
       });
       if (queue.current.length > 3) queue.current.splice(3);
@@ -209,6 +216,8 @@ export default function MoneyTalkProvider({ prefs = {}, children }) {
           message={current.message}
           tip={current.tip}
           avatar={current.avatar}
+          variant={current.variant}
+          typeLabel={current.typeLabel}
           onDismiss={() => {
             handleDismiss();
             process();
