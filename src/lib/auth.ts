@@ -246,9 +246,15 @@ export async function verifyOtp({ email, token, type }: VerifyOtpPayload) {
 
 export async function signInWithProvider(provider: Provider): Promise<OAuthResponse['data']> {
   try {
+    const redirectTo =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : resolveRedirect('/');
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: resolveRedirect('/'), flowType: 'pkce' },
+      options: {
+        redirectTo: redirectTo || undefined,
+      },
     });
     if (error) throw error;
     return data;

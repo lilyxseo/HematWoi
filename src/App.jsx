@@ -532,11 +532,15 @@ function AppShell({ prefs, setPrefs }) {
 
   useEffect(() => {
     let isMounted = true;
+    console.info("[AUTH] Syncing persisted Supabase session...");
     supabase.auth
       .getSession()
       .then(({ data }) => {
         if (!isMounted) return;
         const session = data.session ?? null;
+        console.info("[AUTH] Initial session resolved", {
+          email: session?.user?.email ?? null,
+        });
         if (session?.user) {
           try {
             localStorage.setItem("hw:connectionMode", "online");
@@ -552,17 +556,25 @@ function AppShell({ prefs, setPrefs }) {
         setSessionUser(session?.user ?? null);
         setSessionChecked(true);
       })
-      .catch(() => {
+      .catch((error) => {
         if (!isMounted) return;
+        console.error("[AUTH] Failed to resolve initial session", error);
         setSessionUser(null);
         setSessionChecked(true);
         syncedUsersRef.current.clear();
       });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isMounted) return;
+      console.info("[AUTH] onAuthStateChange", {
+        event,
+        email: session?.user?.email ?? null,
+      });
       setSessionUser(session?.user ?? null);
       setSessionChecked(true);
       if (event === "SIGNED_IN") {
+        console.info("[AUTH] SIGNED_IN received", {
+          email: session?.user?.email ?? null,
+        });
         try {
           localStorage.setItem("hw:connectionMode", "online");
           localStorage.setItem("hw:mode", "online");
