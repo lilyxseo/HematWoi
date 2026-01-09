@@ -79,6 +79,15 @@ function formatWeekRange(start: string, end: string) {
   }
 }
 
+function formatMonthLabel(period: string) {
+  try {
+    const date = new Date(`${period}-01T00:00:00.000Z`);
+    return new Intl.DateTimeFormat('id-ID', { month: 'short', year: 'numeric' }).format(date);
+  } catch (error) {
+    return period;
+  }
+}
+
 function HighlightSkeleton() {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -162,6 +171,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
             spent,
             remaining,
             progress,
+            subtitle: formatMonthLabel(budgetPeriod),
           } satisfies HighlightCardData;
         }
 

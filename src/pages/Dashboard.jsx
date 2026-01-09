@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import QuickActions from "../components/QuickActions";
+import SectionHeader from "../components/SectionHeader";
 import CategoryDonut from "../components/CategoryDonut";
 import TopSpendsTable from "../components/TopSpendsTable";
 import RecentTransactions from "../components/RecentTransactions";
@@ -143,21 +144,12 @@ export default function Dashboard({ stats, txs }) {
 
         <DashboardHighlightedBudgets period={periodRange} />
 
-        <section className="rounded-3xl border border-border/60 bg-gradient-to-br from-white/90 via-white/70 to-primary/5 p-6 shadow-sm dark:border-border/40 dark:from-zinc-900/70 dark:via-zinc-900/50 dark:to-primary/10 sm:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold text-foreground sm:text-2xl">
-                Analisis Bulanan
-              </h2>
-              <p className="text-sm text-muted-foreground">
-                Ringkasan pola transaksi dan kategori pengeluaranmu selama periode ini.
-              </p>
-            </div>
-          </div>
-          <div className="mt-6 grid gap-4 sm:gap-6 lg:gap-8">
+        <section className="space-y-5 sm:space-y-7 lg:space-y-10 max-[400px]:space-y-4">
+          <SectionHeader title="Analisis Bulanan" />
+          <div className="grid gap-4 sm:gap-6 lg:gap-8">
             <CategoryDonut data={insights.categories} />
           </div>
-          <div className="mt-6 grid gap-4 sm:gap-6 lg:gap-8 lg:grid-cols-2">
+          <div className="grid gap-4 sm:gap-6 lg:gap-8 lg:grid-cols-2">
             <TopSpendsTable
               data={insights.topSpends}
               onSelect={(t) => EventBus.emit("tx:open", t)}

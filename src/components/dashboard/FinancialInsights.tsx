@@ -164,7 +164,13 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
 
           {limitedNear.length > 0
             ? limitedNear.map((item) => (
-                <BudgetInsightRow key={`near-${item.id}`} item={item} tone="warning" navigate={navigate} />
+                <BudgetInsightRow
+                  key={`near-${item.id}`}
+                  item={item}
+                  tone="warning"
+                  navigate={navigate}
+                  periodMonth={periodMonth}
+                />
               ))
             : null}
 
@@ -248,13 +254,26 @@ function BudgetInsightRow({
   item,
   tone,
   navigate,
+  periodMonth,
 }: {
   item: BudgetProgressInsight
   tone: 'warning' | 'danger'
   navigate: (to: string) => void
+  periodMonth?: string
 }) {
   const progressLabel = percentageFormatter.format(Math.min(item.progress, 1))
   const subtitle = `${formatAmount(item.actual)} dari ${formatAmount(item.planned)} terpakai`
+  const handleClick = () => {
+    const params = new URLSearchParams()
+    params.set('range', 'month')
+    if (periodMonth) {
+      params.set('month', periodMonth)
+    }
+    if (item.categoryId) {
+      params.set('categories', item.categoryId)
+    }
+    navigate(`/transactions?${params.toString()}`)
+  }
   return (
     <FinancialInsightItem
       icon={tone === 'warning' ? <AlertTriangle className="h-5 w-5 text-amber-500" aria-hidden="true" /> : <Flame className="h-5 w-5 text-rose-500" aria-hidden="true" />}
@@ -262,13 +281,7 @@ function BudgetInsightRow({
       subtitle={subtitle}
       badge={{ label: progressLabel, tone: tone === 'warning' ? 'warning' : 'danger', tooltip: `${progressLabel} dari limit ${formatAmount(item.planned)}` }}
       tone={tone}
-      onClick={() =>
-        navigate(
-          tone === 'warning'
-            ? '/budgets?tab=monthly&filter=near-limit'
-            : '/budgets?tab=monthly&filter=over-limit'
-        )
-      }
+      onClick={handleClick}
       progress={item.progress}
     />
   )
