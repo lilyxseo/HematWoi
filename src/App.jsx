@@ -256,8 +256,14 @@ function ProtectedAppContainer({
   const location = useLocation();
   const prefersReducedMotion = usePrefersReducedMotion();
   const hideNav = location.pathname.startsWith("/add");
+  const previousPathnameRef = useRef(location.pathname);
 
   useEffect(() => {
+    if (previousPathnameRef.current === location.pathname) {
+      return;
+    }
+    previousPathnameRef.current = location.pathname;
+
     const frame = requestAnimationFrame(() => {
       const behavior = prefersReducedMotion ? "auto" : "smooth";
       const scroller = document.getElementById("main");
@@ -281,8 +287,6 @@ function ProtectedAppContainer({
     return () => cancelAnimationFrame(frame);
   }, [
     location.pathname,
-    location.search,
-    location.hash,
     prefersReducedMotion,
   ]);
 
