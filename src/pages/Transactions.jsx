@@ -887,28 +887,6 @@ export default function Transactions() {
       </PageHeader>
 
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
-        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-slate-950 via-slate-900/90 to-slate-950 px-5 py-4 text-slate-200 shadow-xl shadow-slate-950/40">
-          <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Ringkasan Cepat</p>
-              <p className="mt-1 text-lg font-semibold text-white">
-                Menampilkan <span className="text-[var(--accent)]">{total}</span> transaksi
-              </p>
-              <p className="text-sm text-slate-400">Periode {periodLabel}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-                <ArrowRightLeft className="h-3.5 w-3.5" />
-                Sort: {SORT_LABELS[filter.sort] || "Terbaru"}
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
-                <Check className="h-3.5 w-3.5 text-emerald-300" />
-                Aktif: {activeFilterCount} filter
-              </span>
-            </div>
-          </div>
-        </section>
         <div>
           <button
             type="button"
