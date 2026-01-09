@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Wallet,
   Wand2,
+  X,
 } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -151,12 +152,7 @@ export default function TransactionAdd({ onAdd }) {
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
 
-  const categoryTypes = useMemo(() => {
-    if (type === 'transfer') {
-      return ['expense', 'income'];
-    }
-    return [type];
-  }, [type]);
+  const categoryTypes = useMemo(() => ['expense', 'income'], []);
 
   const {
     data: categoryData,
@@ -168,6 +164,7 @@ export default function TransactionAdd({ onAdd }) {
   const categories = categoryData;
 
   const previousTypeRef = useRef(type);
+  const categoryButtonRef = useRef(null);
 
   useEffect(() => {
     const previousType = previousTypeRef.current;
@@ -849,10 +846,11 @@ export default function TransactionAdd({ onAdd }) {
                       <div className="relative">
                         <Combobox.Input
                           id="category"
-                          className={`${INPUT_CLASS} pr-20`}
+                          className={`${INPUT_CLASS} pr-16`}
                           displayValue={(option) => option?.label || ''}
                           placeholder="Pilih kategori"
                           aria-invalid={Boolean(errors.category_id)}
+                          onClick={() => categoryButtonRef.current?.click()}
                           readOnly
                         />
                         <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
@@ -863,12 +861,17 @@ export default function TransactionAdd({ onAdd }) {
                                 setCategoryId('');
                                 setErrors((prev) => ({ ...prev, category_id: undefined }));
                               }}
-                              className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-subtle text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              aria-label="Bersihkan kategori"
+                              title="Bersihkan kategori"
                             >
-                              Clear
+                              <X className="h-3.5 w-3.5" aria-hidden="true" />
                             </button>
                           ) : null}
-                          <Combobox.Button className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                          <Combobox.Button
+                            ref={categoryButtonRef}
+                            className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          >
                             {categoriesLoading ? (
                               <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                             ) : (
@@ -1075,7 +1078,7 @@ export default function TransactionAdd({ onAdd }) {
                       Belum ada template. Isi formulir di atas lalu simpan sebagai template untuk mempercepat pencatatan transaksi berikutnya.
                     </p>
                   ) : (
-                    <ul className="space-y-3">
+                    <ul className="space-y-2">
                       {templates.map((template) => {
                         const accountName = accounts.find((item) => item.id === template.account_id)?.name || 'Akun tidak ditemukan';
                         const toAccountName = template.to_account_id
@@ -1084,60 +1087,64 @@ export default function TransactionAdd({ onAdd }) {
                         const categoryName = template.category_id
                           ? categories.find((item) => item.id === template.category_id)?.name || 'Kategori tidak ditemukan'
                           : null;
+                        const metaLabel =
+                          template.type === 'transfer'
+                            ? `Ke ${toAccountName || '—'}`
+                            : categoryName || '—';
                         return (
                           <li
                             key={template.id}
-                            className="group relative overflow-hidden rounded-2xl border border-border-subtle bg-white/80 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg dark:bg-zinc-900/60"
+                            className="group relative overflow-hidden rounded-xl border border-border-subtle bg-white/80 p-3 shadow-sm transition hover:border-primary/50 dark:bg-zinc-900/60"
                           >
-                            <div className="flex flex-col gap-4">
-                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="space-y-1">
-                                  <p className="text-sm font-semibold text-text">{template.name || 'Tanpa judul'}</p>
-                                  <p className="text-2xl font-bold tracking-tight text-text">
-                                    {formatAmountDisplay(template.amount)}
-                                  </p>
-                                </div>
-                                <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted">
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle/80 bg-background px-3 py-1 text-muted-foreground">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div className="min-w-0 space-y-1">
+                                <p className="truncate text-sm font-semibold text-text">{template.name || 'Tanpa judul'}</p>
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                                  <span className="inline-flex items-center gap-1">
                                     <Wallet className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                                    {accountName || '—'}
+                                    <span className="truncate">{accountName || '—'}</span>
                                   </span>
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle/80 bg-background px-3 py-1 text-muted-foreground">
+                                  <span className="inline-flex items-center gap-1">
                                     {template.type === 'transfer' ? (
                                       <ArrowRight className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
                                     ) : (
                                       <TagIcon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
                                     )}
-                                    {template.type === 'transfer' ? toAccountName || '—' : categoryName || '—'}
+                                    <span className="truncate">{metaLabel}</span>
                                   </span>
                                 </div>
                               </div>
-                              <div className="flex flex-wrap items-center justify-end gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="whitespace-nowrap text-sm font-semibold text-text">
+                                  {formatAmountDisplay(template.amount)}
+                                </span>
                                 <button
                                   type="button"
                                   onClick={() => handleApplyTemplate(template)}
                                   disabled={Boolean(applyingTemplateId)}
-                                  className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Gunakan template"
+                                  title="Gunakan template"
                                 >
                                   {applyingTemplateId === template.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                                   ) : (
                                     <Wand2 className="h-4 w-4" aria-hidden="true" />
                                   )}
-                                  {applyingTemplateId === template.id ? 'Memproses...' : 'Gunakan'}
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteTemplate(template.id)}
                                   disabled={deletingTemplateId === template.id}
-                                  className="inline-flex items-center gap-2 rounded-full border border-border-subtle px-4 py-2 text-xs font-semibold text-muted transition hover:border-destructive/60 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-subtle text-muted transition hover:border-destructive/60 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Hapus template"
+                                  title="Hapus template"
                                 >
                                   {deletingTemplateId === template.id ? (
                                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                                   ) : (
                                     <Trash2 className="h-4 w-4" aria-hidden="true" />
                                   )}
-                                  Hapus
                                 </button>
                               </div>
                             </div>
