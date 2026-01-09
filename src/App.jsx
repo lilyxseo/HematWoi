@@ -65,9 +65,6 @@ import ToastProvider, { useToast } from "./context/ToastContext";
 import UserProfileProvider from "./context/UserProfileContext.jsx";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
-import MoneyTalkProvider, {
-  useMoneyTalk,
-} from "./context/MoneyTalkContext.jsx";
 import { ModeProvider, useMode } from "./hooks/useMode";
 import AuthCallback from "./pages/AuthCallback";
 import MobileGoogleCallback from "./routes/MobileGoogleCallback";
@@ -407,7 +404,6 @@ function AppShell({ prefs, setPrefs }) {
   const { addToast } = useToast();
   const { challenges, addChallenge, updateChallenge, removeChallenge } =
     useChallenges(data.txs);
-  const { speak } = useMoneyTalk();
   window.__hw_prefs = prefs;
 
   useEffect(() => {
@@ -1079,45 +1075,6 @@ function AppShell({ prefs, setPrefs }) {
     return () => window.removeEventListener("online", handleOnline);
   }, [useCloud, sessionUser, refreshCloudData]);
 
-  const triggerMoneyTalk = (tx) => {
-    const category = tx.category;
-    const amount = Number(tx.amount || 0);
-    const isSavings = (category || "").toLowerCase() === "tabungan";
-    const catTx = data.txs.filter(
-      (t) => t.category === category && t.type === tx.type
-    );
-    const amounts = catTx
-      .map((t) => Number(t.amount || 0))
-      .sort((a, b) => a - b);
-    const p75 =
-      amounts.length > 0 ? amounts[Math.floor(0.75 * (amounts.length - 1))] : 0;
-    const isHigh = amount > p75;
-    const month = tx.date?.slice(0, 7);
-    const budget = data.budgets.find(
-      (b) => b.category === category && b.month === month
-    );
-    let spent = data.txs
-      .filter(
-        (t) =>
-          t.type === "expense" &&
-          t.category === category &&
-          t.date?.slice(0, 7) === month
-      )
-      .reduce((s, t) => s + Number(t.amount || 0), 0);
-    if (tx.type === "expense") spent += amount;
-    const isOverBudget = budget
-      ? spent > Number(budget.amount_planned || 0)
-      : false;
-    speak({
-      category,
-      title: tx.title || tx.notes || tx.note || "",
-      amount,
-      type: tx.type,
-      currency: tx.currency || prefs.currency || "IDR",
-      context: { isHigh, isSavings, isOverBudget },
-    });
-  };
-
   const addTx = async (tx) => {
     const alreadyPersisted = Boolean(tx && tx.__persisted);
     const payloadTx = alreadyPersisted ? { ...tx } : tx;
@@ -1229,7 +1186,6 @@ function AppShell({ prefs, setPrefs }) {
     }
 
     if (prefs.walletSound) playChaChing();
-    triggerMoneyTalk(finalRecord || payloadTx);
   };
 
   const updateTx = async (id, patch) => {
@@ -1536,9 +1492,6 @@ function AppShell({ prefs, setPrefs }) {
                 lateMode = "auto",
                 lateModeDay = 24,
                 lateModeBalance = 0.4,
-                moneyTalkEnabled = true,
-                moneyTalkIntensity = "normal",
-                moneyTalkLang = "id",
               } = val;
               setTheme(nextTheme);
               setPrefs({
@@ -1552,9 +1505,6 @@ function AppShell({ prefs, setPrefs }) {
                 lateMode,
                 lateModeDay,
                 lateModeBalance,
-                moneyTalkEnabled,
-                moneyTalkIntensity,
-                moneyTalkLang,
               });
             }}
           />
@@ -1578,9 +1528,6 @@ function AppContent() {
       lateMode: "auto",
       lateModeDay: 24,
       lateModeBalance: 0.4,
-      moneyTalkEnabled: true,
-      moneyTalkIntensity: "normal",
-      moneyTalkLang: "id",
     };
     if (!raw) return base;
     try {
@@ -1590,9 +1537,7 @@ function AppContent() {
     }
   });
   return (
-    <MoneyTalkProvider prefs={prefs}>
-      <AppShell prefs={prefs} setPrefs={setPrefs} />
-    </MoneyTalkProvider>
+    <AppShell prefs={prefs} setPrefs={setPrefs} />
   );
 }
 

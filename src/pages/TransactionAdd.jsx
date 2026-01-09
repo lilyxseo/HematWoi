@@ -25,7 +25,6 @@ import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
-import { useMoneyTalk } from '../context/MoneyTalkContext';
 import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
 import {
@@ -34,7 +33,6 @@ import {
   listTransactionTemplates,
 } from '../lib/transactionTemplatesApi';
 import { supabase } from '../lib/supabase';
-import { findMoneyTalkKeywordMatch } from '../lib/moneyTalkIntents';
 import useCategories from '../hooks/useCategories';
 
 const TYPE_OPTIONS = [
@@ -129,7 +127,6 @@ async function uploadReceipt(file, transactionId) {
 export default function TransactionAdd({ onAdd }) {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const { speak } = useMoneyTalk();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState('expense');
@@ -601,27 +598,6 @@ export default function TransactionAdd({ onAdd }) {
       onAdd?.(payload);
       addToast('Transaksi tersimpan', 'success');
 
-      if (trimmedTitle) {
-        const match = findMoneyTalkKeywordMatch(trimmedTitle);
-        if (match) {
-          const categoryName = !isTransfer && selectedCategoryName ? selectedCategoryName : null;
-          const amount = Number.isFinite(amountValue) ? amountValue : 0;
-          const isSavingsCategory =
-            !isTransfer && typeof categoryName === 'string' && categoryName.toLowerCase() === 'tabungan';
-
-          speak({
-            category: categoryName || undefined,
-            title: trimmedTitle,
-            amount,
-            type,
-            context: {
-              isHigh: false,
-              isSavings: isSavingsCategory,
-              isOverBudget: false,
-            },
-          });
-        }
-      }
       navigate('/transactions', { state: { recentTransaction: payload } });
     } catch (err) {
       addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
