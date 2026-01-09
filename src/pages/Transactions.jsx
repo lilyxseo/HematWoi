@@ -173,6 +173,8 @@ export default function Transactions() {
     goToPage,
     refresh,
     categories,
+    categoriesLoading,
+    categoriesError,
     summary,
     pageSize,
   } = useTransactionsQuery();
@@ -918,6 +920,8 @@ export default function Transactions() {
             <TransactionsFilters
               filter={filter}
               categories={categories}
+              categoriesLoading={categoriesLoading}
+              categoriesError={categoriesError}
               searchTerm={searchTerm}
               onSearchChange={setSearchTerm}
               onFilterChange={setFilter}
