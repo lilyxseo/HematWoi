@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Combobox } from '@headlessui/react';
 import {
   ArrowRight,
   ArrowLeftRight,
@@ -138,6 +139,7 @@ export default function TransactionAdd({ onAdd }) {
   const [categoryId, setCategoryId] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [categoryQuery, setCategoryQuery] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
@@ -273,6 +275,24 @@ export default function TransactionAdd({ onAdd }) {
   const filteredCategories = useMemo(() => {
     return categoriesByType[type] || [];
   }, [categoriesByType, type]);
+
+  const categoryOptions = useMemo(
+    () => filteredCategories.map((category) => ({ value: category.id, label: category.name })),
+    [filteredCategories],
+  );
+
+  const normalizedCategoryQuery = categoryQuery.trim().toLowerCase();
+  const filteredCategoryOptions = useMemo(() => {
+    if (!normalizedCategoryQuery) return categoryOptions;
+    return categoryOptions.filter((option) =>
+      option.label.toLowerCase().includes(normalizedCategoryQuery),
+    );
+  }, [categoryOptions, normalizedCategoryQuery]);
+
+  const selectedCategoryOption = useMemo(
+    () => categoryOptions.find((option) => option.value === categoryId) || null,
+    [categoryOptions, categoryId],
+  );
 
   useEffect(() => {
     if (type === 'transfer') return;
@@ -827,23 +847,71 @@ export default function TransactionAdd({ onAdd }) {
                       <TagIcon className="h-4 w-4" aria-hidden="true" />
                       Kategori
                     </label>
-                    <select
-                      id="category"
-                      value={categoryId}
-                      onChange={(event) => {
-                        setCategoryId(event.target.value);
+                    <Combobox
+                      value={selectedCategoryOption}
+                      onChange={(option) => {
+                        setCategoryId(option?.value || '');
+                        setCategoryQuery('');
                         setErrors((prev) => ({ ...prev, category_id: undefined }));
                       }}
-                      className={INPUT_CLASS}
-                      disabled={filteredCategories.length === 0}
+                      disabled={categoriesLoading}
                     >
-                      <option value="">Pilih kategori</option>
-                      {filteredCategories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
-                        </option>
-                      ))}
-                    </select>
+                      <div className="relative">
+                        <Combobox.Input
+                          id="category"
+                          className={`${INPUT_CLASS} pr-20`}
+                          displayValue={(option) => option?.label || ''}
+                          onChange={(event) => setCategoryQuery(event.target.value)}
+                          placeholder="Pilih kategori"
+                          aria-invalid={Boolean(errors.category_id)}
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                          {selectedCategoryOption ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCategoryId('');
+                                setCategoryQuery('');
+                                setErrors((prev) => ({ ...prev, category_id: undefined }));
+                              }}
+                              className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            >
+                              Clear
+                            </button>
+                          ) : null}
+                          <Combobox.Button className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                            {categoriesLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                            ) : (
+                              'Pilih'
+                            )}
+                          </Combobox.Button>
+                        </div>
+                        <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
+                          {filteredCategoryOptions.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-muted">
+                              {categoryOptions.length === 0
+                                ? 'No categories found'
+                                : 'No categories found'}
+                            </div>
+                          ) : (
+                            filteredCategoryOptions.map((option) => (
+                              <Combobox.Option
+                                key={option.value}
+                                value={option}
+                                className={({ active }) =>
+                                  `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
+                                    active ? 'bg-muted/60' : ''
+                                  }`
+                                }
+                              >
+                                {option.label}
+                              </Combobox.Option>
+                            ))
+                          )}
+                        </Combobox.Options>
+                      </div>
+                    </Combobox>
                     {errors.category_id ? (
                       <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
                     ) : categoriesError ? (
