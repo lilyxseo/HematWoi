@@ -189,7 +189,7 @@ export default function TransactionsFilters({
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-3xl bg-slate-950/70 p-4 text-slate-200 shadow-lg ring-1 ring-slate-800 backdrop-blur"
+      className="flex flex-col gap-4 rounded-3xl bg-slate-950/70 p-4 text-slate-200 shadow-lg ring-1 ring-slate-800 backdrop-blur"
       role="search"
       aria-label="Filter transaksi"
     >

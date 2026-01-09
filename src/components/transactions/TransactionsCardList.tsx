@@ -174,8 +174,11 @@ export default function TransactionsCardList({
                       <div className="space-y-1">
                         <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
                           <CategoryDot color={item.category_color} />
-                          <span>{categoryLabel}</span>
+                          <span className="truncate">{categoryLabel}</span>
                         </div>
+                        <span className="inline-flex w-fit items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
+                          {typeLabels[item.type] || item.type}
+                        </span>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
@@ -218,7 +221,7 @@ export default function TransactionsCardList({
                     <span className={clsx("text-2xl font-semibold", meta.amountClass)}>
                       {formatAmount(item.amount)}
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-full bg-slate-900/80 px-2 py-1 ring-1 ring-slate-800">
                       <button
                         type="button"
                         onClick={() => onRepeat(item)}
