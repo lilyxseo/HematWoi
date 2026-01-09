@@ -398,6 +398,7 @@ export default function ReportsProPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { filter, tab } = useMemo(() => parseSearchParams(searchParams), [searchParams]);
   const [activeTab, setActiveTab] = useState(tab);
+  const scrollRestoreRef = useRef<number | null>(null);
   const [exportMode, setExportMode] = useState<'zip' | 'single'>('zip');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -441,6 +442,16 @@ export default function ReportsProPage() {
   }, [activeTab, filter, searchParams, setSearchParams, tab]);
 
   useEffect(() => {
+    if (scrollRestoreRef.current == null) return;
+    const top = scrollRestoreRef.current;
+    scrollRestoreRef.current = null;
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top, behavior: 'auto' });
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
     setMerchantPage(1);
     setTransactionPage(1);
   }, [filter, reportData.transactions.length]);
@@ -448,6 +459,7 @@ export default function ReportsProPage() {
   const handleFilterChange = useCallback(
     (patch: Partial<ReportFilters>) => {
       const scrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+      scrollRestoreRef.current = scrollY;
       const next = {
         ...filter,
         ...patch,
@@ -458,11 +470,6 @@ export default function ReportsProPage() {
       };
       const params = serializeFilter(searchParams, next, activeTab);
       setSearchParams(params, { replace: true });
-      if (typeof window !== 'undefined') {
-        window.requestAnimationFrame(() => {
-          window.scrollTo({ top: scrollY, behavior: 'auto' });
-        });
-      }
     },
     [activeTab, filter, searchParams, setSearchParams],
   );
@@ -933,7 +940,14 @@ export default function ReportsProPage() {
         </div>
 
         <Card className="space-y-6">
-          <CardHeader title="Detail Report" actions={<ReportTabs value={activeTab} onChange={handleTabChange} />} />
+          <CardHeader
+            title="Detail Report"
+            actions={
+              <div className="w-full max-w-full overflow-x-auto">
+                <ReportTabs value={activeTab} onChange={handleTabChange} />
+              </div>
+            }
+          />
           <CardBody>
             {activeTab === 'categories' && (
               <div className="space-y-4">
