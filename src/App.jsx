@@ -249,9 +249,6 @@ function ProtectedAppContainer({
   setTheme,
   brand,
   setBrand,
-  onRefreshCloud = null,
-  cloudRefreshing = false,
-  cloudRefreshDisabled = false,
 }) {
   const location = useLocation();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -304,11 +301,7 @@ function ProtectedAppContainer({
         ) : null
       }
       topbar={
-        <AppTopbar
-          onRefreshCloud={onRefreshCloud}
-          refreshing={cloudRefreshing}
-          cloudRefreshDisabled={cloudRefreshDisabled}
-        />
+        <AppTopbar />
       }
     >
       <div className="flex min-h-full flex-col">
@@ -353,7 +346,6 @@ function AppShell({ prefs, setPrefs }) {
   const [sessionUser, setSessionUser] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [profileSyncEnabled, setProfileSyncEnabled] = useState(true);
-  const [cloudRefreshPending, setCloudRefreshPending] = useState(false);
   const syncedUsersRef = useRef(new Set());
   const budgetRetryTimeoutRef = useRef(null);
   const budgetRetryVisibilityHandlerRef = useRef(null);
@@ -1020,53 +1012,36 @@ function AppShell({ prefs, setPrefs }) {
   );
 
   const refreshCloudData = useCallback(
-    async ({ force = false, showIndicator = false } = {}) => {
+    async ({ force = false } = {}) => {
       if (!useCloud || !sessionUser) return;
-      if (showIndicator) setCloudRefreshPending(true);
-      try {
-        if (
-          showIndicator &&
-          typeof navigator !== "undefined" &&
-          navigator.onLine === false
-        ) {
-          addToast(
-            "Tidak ada koneksi internet. Coba lagi setelah tersambung.",
-            "error"
-          );
-          return;
+      await maybeFetchCloud(CLOUD_CACHE_KEYS.categories, fetchCategoriesCloud, {
+        hasData: hasCategoryData,
+        ttl: CLOUD_FETCH_TTL.categories,
+        force,
+      });
+      await maybeFetchCloud(CLOUD_CACHE_KEYS.transactions, fetchTxsCloud, {
+        hasData: hasTransactionData,
+        ttl: CLOUD_FETCH_TTL.transactions,
+        force,
+      });
+      await maybeFetchCloud(CLOUD_CACHE_KEYS.budgets, fetchBudgetsCloud, {
+        hasData: hasBudgetData,
+        ttl: CLOUD_FETCH_TTL.budgets,
+        force,
+      });
+      await maybeFetchCloud(
+        CLOUD_CACHE_KEYS.budgetStatus,
+        fetchBudgetStatusCloud,
+        {
+          hasData: hasBudgetStatusData,
+          ttl: CLOUD_FETCH_TTL.budgetStatus,
+          force,
         }
-        await maybeFetchCloud(CLOUD_CACHE_KEYS.categories, fetchCategoriesCloud, {
-          hasData: hasCategoryData,
-          ttl: CLOUD_FETCH_TTL.categories,
-          force,
-        });
-        await maybeFetchCloud(CLOUD_CACHE_KEYS.transactions, fetchTxsCloud, {
-          hasData: hasTransactionData,
-          ttl: CLOUD_FETCH_TTL.transactions,
-          force,
-        });
-        await maybeFetchCloud(CLOUD_CACHE_KEYS.budgets, fetchBudgetsCloud, {
-          hasData: hasBudgetData,
-          ttl: CLOUD_FETCH_TTL.budgets,
-          force,
-        });
-        await maybeFetchCloud(
-          CLOUD_CACHE_KEYS.budgetStatus,
-          fetchBudgetStatusCloud,
-          {
-            hasData: hasBudgetStatusData,
-            ttl: CLOUD_FETCH_TTL.budgetStatus,
-            force,
-          }
-        );
-      } finally {
-        if (showIndicator) setCloudRefreshPending(false);
-      }
+      );
     },
     [
       useCloud,
       sessionUser,
-      addToast,
       hasCategoryData,
       hasTransactionData,
       hasBudgetData,
@@ -1431,19 +1406,6 @@ function AppShell({ prefs, setPrefs }) {
                     setTheme={setTheme}
                     brand={brand}
                     setBrand={handleBrandChange}
-                    onRefreshCloud={
-                      useCloud && sessionUser
-                        ? () =>
-                            refreshCloudData({
-                              force: true,
-                              showIndicator: true,
-                            })
-                        : null
-                    }
-                    cloudRefreshing={cloudRefreshPending}
-                    cloudRefreshDisabled={
-                      !useCloud || !sessionUser || cloudRefreshPending
-                    }
                   />
                 }
               >
