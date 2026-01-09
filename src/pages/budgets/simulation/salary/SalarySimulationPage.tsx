@@ -55,8 +55,6 @@ interface AllocationItem {
   categoryName: string;
   amount: number;
   percent: number;
-  carryoverEnabled: boolean;
-  carryoverDirty?: boolean;
   color?: string | null;
   groupName?: string | null;
 }
@@ -137,8 +135,6 @@ function mapSimulationItems(
       categoryName: item.category?.name ?? category?.name ?? 'Tanpa kategori',
       amount: Number(item.allocation_amount ?? 0),
       percent: computeItemPercent(Number(item.allocation_amount ?? 0), salaryAmount),
-      carryoverEnabled: Boolean((item as { carryover_enabled?: boolean }).carryover_enabled ?? false),
-      carryoverDirty: false,
       color: category?.color ?? null,
       groupName: category?.group_name ?? null,
     } satisfies AllocationItem;
@@ -388,19 +384,6 @@ export default function SalarySimulationPage() {
     autoTitleRef.current = autoTitle;
   }, [period]);
 
-  useEffect(() => {
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.carryoverDirty) return item;
-        const budget = budgets.find((budget) => budget.category_id === item.categoryId);
-        if (!budget) return item;
-        const carryoverEnabled = Boolean(budget.carryover_enabled);
-        if (item.carryoverEnabled === carryoverEnabled) return item;
-        return { ...item, carryoverEnabled };
-      }),
-    );
-  }, [budgets]);
-
   const availableCategories = useMemo(() => {
     const selected = new Set(items.map((item) => item.categoryId));
     return categories.filter((category) => !selected.has(category.id));
@@ -415,14 +398,11 @@ export default function SalarySimulationPage() {
       .map((categoryId) => {
         const category = categories.find((item) => item.id === categoryId);
         if (!category) return null;
-        const budget = budgetMap.get(category.id);
         return {
           categoryId: category.id,
           categoryName: category.name,
           amount: 0,
           percent: 0,
-          carryoverEnabled: Boolean(budget?.carryover_enabled ?? false),
-          carryoverDirty: false,
           color: category.color ?? null,
           groupName: category.group_name ?? null,
         } as AllocationItem;
@@ -431,7 +411,7 @@ export default function SalarySimulationPage() {
     setItems((prev) => sortItems([...prev, ...newItems]));
     setSelectedToAdd([]);
     setShowAddCategories(false);
-  }, [selectedToAdd, categories, budgetMap]);
+  }, [selectedToAdd, categories]);
 
   const handleRemoveItem = useCallback((categoryId: string) => {
     setItems((prev) => prev.filter((item) => item.categoryId !== categoryId));
@@ -454,20 +434,6 @@ export default function SalarySimulationPage() {
     },
     [salaryAmount],
   );
-
-  const handleCarryoverToggle = useCallback((categoryId: string, enabled: boolean) => {
-    setItems((prev) =>
-      prev.map((item) =>
-        item.categoryId === categoryId
-          ? {
-              ...item,
-              carryoverEnabled: enabled,
-              carryoverDirty: true,
-            }
-          : item,
-      ),
-    );
-  }, []);
 
   const handleAutoDistribute = useCallback(() => {
     if (!items.length) {
@@ -517,7 +483,7 @@ export default function SalarySimulationPage() {
             category_id: item.categoryId,
             period,
             amount_planned: item.amount,
-            carryover_enabled: item.carryoverEnabled,
+            carryover_enabled: Boolean(existing?.carryover_enabled ?? false),
             notes: existing?.notes ?? undefined,
           });
         }),
@@ -803,7 +769,7 @@ export default function SalarySimulationPage() {
           <header className="flex flex-col gap-2 border-b border-border/60 pb-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text">Alokasi per Kategori</h2>
-              <p className="text-sm text-muted">Atur nominal alokasi, lihat persentase otomatis, dan tandai kategori carryover.</p>
+              <p className="text-sm text-muted">Atur nominal alokasi dan lihat persentase otomatis.</p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-4 sm:flex-nowrap">
               <button
@@ -893,11 +859,10 @@ export default function SalarySimulationPage() {
 
           {items.length ? (
             <div className="space-y-5">
-              <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto] items-center gap-4 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
+              <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_auto] items-center gap-4 rounded-2xl bg-surface-alt px-4 py-3 text-xs font-semibold text-muted md:grid">
                 <div>Kategori</div>
                 <div>Nominal (Rp)</div>
                 <div>Persentase</div>
-                <div>Carryover</div>
                 <div className="text-right">Aksi</div>
               </div>
               {items.map((item) => {
@@ -909,15 +874,11 @@ export default function SalarySimulationPage() {
                   difference > 0 && 'text-amber-600 dark:text-amber-300',
                   difference < 0 && 'text-emerald-600 dark:text-emerald-300',
                 );
-                const rowHighlight = item.carryoverEnabled
-                  ? 'border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-500/40 dark:bg-emerald-500/10'
-                  : 'border-border/70 bg-surface-alt/80';
                 return (
                   <div
                     key={item.categoryId}
                     className={clsx(
-                      'grid gap-4 rounded-2xl border p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_minmax(0,120px)_auto]',
-                      rowHighlight,
+                      'grid gap-4 rounded-2xl border border-border/70 bg-surface-alt/80 p-4 text-sm text-text transition md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,140px)_auto]',
                     )}
                   >
                     <div className="space-y-1">
@@ -956,25 +917,6 @@ export default function SalarySimulationPage() {
                         {formatPercent(item.percent)}
                       </div>
                       <p className="text-xs text-muted">Dihitung dari total gaji secara real-time.</p>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-muted">Carryover</label>
-                      <div className="flex items-center gap-3">
-                        <label className="relative inline-flex h-6 w-11 cursor-pointer items-center" aria-label={`Atur carryover untuk ${item.categoryName}`}>
-                          <input
-                            type="checkbox"
-                            className="peer sr-only"
-                            checked={item.carryoverEnabled}
-                            onChange={(event) => handleCarryoverToggle(item.categoryId, event.target.checked)}
-                          />
-                          <span className="absolute inset-0 rounded-full bg-border/70 transition peer-checked:bg-emerald-500/60" />
-                          <span className="relative ml-[3px] h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5 dark:bg-zinc-900" />
-                        </label>
-                        <span className="text-xs font-medium text-muted">
-                          {item.carryoverEnabled ? 'Aktif' : 'Nonaktif'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-muted">Bawa sisa anggaran ke bulan berikutnya.</p>
                     </div>
                     <div className="flex items-start justify-end">
                       <button

@@ -27,6 +27,16 @@ function normalizeMonthStart(value: string): string {
   return value;
 }
 
+function parseBudgetAmount(row: {
+  amount_planned?: number | string | null;
+  planned_amount?: number | string | null;
+  planned?: number | string | null;
+}): number {
+  const candidate = row.amount_planned ?? row.planned_amount ?? row.planned ?? 0;
+  const parsed = Number(candidate);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function buildDefaultTitle(periodMonth: string): string {
   try {
     const formatter = new Intl.DateTimeFormat('id-ID', {
@@ -84,7 +94,7 @@ export async function getMonthlyBudgets(periodMonth: string, userId?: string): P
   const normalized = normalizeMonthStart(periodMonth);
   const { data, error } = await supabase
     .from('budgets')
-    .select('id,category_id,planned,carryover_enabled,notes,category:categories(id,name)')
+    .select('*,category:categories(id,name)')
     .eq('user_id', resolvedUserId)
     .eq('period_month', normalized)
     .order('created_at', { ascending: true });
@@ -92,7 +102,7 @@ export async function getMonthlyBudgets(periodMonth: string, userId?: string): P
   return (data ?? []).map((row) => ({
     id: row.id as UUID,
     category_id: row.category_id as UUID,
-    amount_planned: Number((row as { planned?: number | null }).planned ?? 0),
+    amount_planned: parseBudgetAmount(row as { amount_planned?: number | string | null; planned_amount?: number | string | null; planned?: number | string | null }),
     carryover_enabled: (row as { carryover_enabled?: boolean }).carryover_enabled ?? false,
     notes: (row as { notes?: string | null }).notes ?? null,
     category: (row as { category?: { id: UUID; name: string | null } | null }).category ?? null,
