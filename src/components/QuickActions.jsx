@@ -25,12 +25,12 @@ export default function QuickActions() {
   ];
 
   return (
-    <Card className="h-full rounded-3xl border border-border/70 bg-card/70 p-5 shadow-sm">
+    <Card className="h-full">
       <CardHeader
         title="Quick Actions"
         subtext="Akses cepat ke aksi favoritmu"
       />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4">
         {actions.map((action) => (
           <QuickActionCard
             key={action.to}
