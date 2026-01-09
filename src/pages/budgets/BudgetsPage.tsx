@@ -722,8 +722,6 @@ export default function BudgetsPage() {
       ) : (
         <Section>
           <div className="space-y-4">
-            <h2 className="text-base font-semibold text-text">Total Weekly (Month-to-date)</h2>
-            <MonthlyFromWeeklySummary summary={weekly.summaryByCategory} loading={weeklyLoading} />
             {weekSelector}
           </div>
         </Section>
@@ -801,4 +799,3 @@ export default function BudgetsPage() {
     </Page>
   );
 }
-
