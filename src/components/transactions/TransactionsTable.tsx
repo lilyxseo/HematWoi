@@ -196,6 +196,7 @@ export default function TransactionsTable({
                         key={item.id}
                         className={clsx(
                           "transition-colors hover:bg-slate-900/40",
+                          "odd:bg-slate-900/10",
                           selected && "bg-[var(--accent)]/5",
                         )}
                       >
@@ -217,9 +218,9 @@ export default function TransactionsTable({
                               <p className="truncate text-sm font-semibold text-slate-200" title={categoryLabel}>
                                 {categoryLabel}
                               </p>
-                              <p className="truncate text-xs uppercase tracking-wide text-slate-400">
+                              <span className="inline-flex w-fit items-center rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">
                                 {typeLabels[item.type] || item.type}
-                              </p>
+                              </span>
                               <p className="truncate text-sm text-slate-400" title={description}>
                                 {description}
                               </p>
@@ -246,7 +247,7 @@ export default function TransactionsTable({
                           <span className={clsx("font-mono text-sm font-semibold", amountTone, "block text-right")}>{formatAmount(item.amount)}</span>
                         </td>
                         <td className="px-4 py-4 align-middle">
-                          <div className="flex justify-end gap-2">
+                          <div className="flex justify-end gap-2 rounded-full bg-slate-900/70 px-2 py-1 ring-1 ring-slate-800">
                             <button
                               type="button"
                               onClick={() => onRepeat(item)}

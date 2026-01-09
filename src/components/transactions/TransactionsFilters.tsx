@@ -33,6 +33,13 @@ const PRESET_OPTIONS: Record<string, string> = {
   custom: "Rentang tanggal",
 };
 
+const QUICK_TYPE_OPTIONS = [
+  { value: "all", label: "Semua" },
+  { value: "income", label: "Pemasukan" },
+  { value: "expense", label: "Pengeluaran" },
+  { value: "transfer", label: "Transfer" },
+];
+
 function currentMonthValue() {
   const now = new Date();
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -189,7 +196,7 @@ export default function TransactionsFilters({
 
   return (
     <section
-      className="flex flex-col gap-3 rounded-3xl bg-slate-950/70 p-4 text-slate-200 shadow-lg ring-1 ring-slate-800 backdrop-blur"
+      className="flex flex-col gap-4 rounded-3xl bg-slate-950/70 p-4 text-slate-200 shadow-lg ring-1 ring-slate-800 backdrop-blur"
       role="search"
       aria-label="Filter transaksi"
     >
@@ -206,6 +213,28 @@ export default function TransactionsFilters({
             aria-label="Cari transaksi"
           />
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {QUICK_TYPE_OPTIONS.map((option) => {
+            const isActive = filter.type === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => onFilterChange({ type: option.value })}
+                className={clsx(
+                  "inline-flex h-10 items-center justify-center rounded-full px-4 text-xs font-semibold uppercase tracking-wide transition",
+                  isActive
+                    ? "bg-[var(--accent)]/20 text-[var(--accent)] ring-1 ring-[var(--accent)]/40"
+                    : "bg-slate-900/60 text-slate-300 ring-1 ring-slate-800 hover:text-white",
+                )}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex flex-1 gap-3">
           <label className="flex flex-1 items-center">
             <span className="sr-only">Filter tipe transaksi</span>

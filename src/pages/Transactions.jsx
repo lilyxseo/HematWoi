@@ -4,8 +4,11 @@ import clsx from "clsx";
 import {
   AlertTriangle,
   ArrowRightLeft,
+  ArrowDownRight,
+  ArrowUpRight,
   Check,
   ChevronDown,
+  Circle,
   Download,
   Inbox,
   Loader2,
@@ -161,6 +164,10 @@ function chunk(arr, size) {
   return result;
 }
 
+function getPeriodLabel(preset) {
+  return PERIOD_LABELS[preset] || PERIOD_LABELS.all;
+}
+
 export default function Transactions() {
   const {
     items: queryItems,
@@ -218,6 +225,7 @@ export default function Transactions() {
       return false;
     }
   });
+  const periodLabel = getPeriodLabel(filter?.period?.preset ?? "all");
 
   useEffect(() => {
     if (!optimisticItems.length) {
@@ -857,26 +865,50 @@ export default function Transactions() {
   return (
     <main className="mx-auto w-full max-w-[1280px] px-4 pb-10 sm:px-6 lg:px-8">
       <PageHeader title="Transaksi" description={PAGE_DESCRIPTION}>
-        <button
-          type="button"
-          onClick={handleNavigateToAdd}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-          aria-label="Tambah transaksi (Ctrl+T)"
-        >
-          <Plus className="h-4 w-4" /> Tambah Transaksi
-        </button>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
-          aria-label="Export CSV (Ctrl+E)"
-        >
-          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
-        </button>
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-slate-900/60 px-2 py-2 shadow-lg shadow-slate-950/30 backdrop-blur">
+          <button
+            type="button"
+            onClick={handleNavigateToAdd}
+            className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-brand/30 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+            aria-label="Tambah transaksi (Ctrl+T)"
+          >
+            <Plus className="h-4 w-4" /> Tambah Transaksi
+          </button>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/80 backdrop-blur focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60 disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Export CSV (Ctrl+E)"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
+          </button>
+        </div>
       </PageHeader>
 
       <div className="space-y-6 sm:space-y-7 lg:space-y-8">
+        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-slate-950 via-slate-900/90 to-slate-950 px-5 py-4 text-slate-200 shadow-xl shadow-slate-950/40">
+          <div className="pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Ringkasan Cepat</p>
+              <p className="mt-1 text-lg font-semibold text-white">
+                Menampilkan <span className="text-[var(--accent)]">{total}</span> transaksi
+              </p>
+              <p className="text-sm text-slate-400">Periode {periodLabel}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                Sort: {SORT_LABELS[filter.sort] || "Terbaru"}
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                <Check className="h-3.5 w-3.5 text-emerald-300" />
+                Aktif: {activeFilterCount} filter
+              </span>
+            </div>
+          </div>
+        </section>
         <div>
           <button
             type="button"
@@ -955,7 +987,7 @@ export default function Transactions() {
           </div>
         )}
 
-        <SummaryCards summary={summary} loading={loading && items.length === 0} />
+        <SummaryCards summary={summary} loading={loading && items.length === 0} periodLabel={periodLabel} />
 
         {activeChips.length > 0 && (
           <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
@@ -1142,42 +1174,53 @@ export default function Transactions() {
 function ActiveFilterChips({ chips, onRemove }) {
   if (!chips?.length) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {chips.map((chip) => (
-        <button
-          key={chip.key}
-          type="button"
-          onClick={() => onRemove(chip)}
-          className="group inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:bg-brand/5 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-          aria-label={`Hapus filter ${chip.label}`}
-        >
-          <span className="truncate">{chip.label}</span>
-          <X className="h-3.5 w-3.5 transition group-hover:text-brand" aria-hidden="true" />
-        </button>
-      ))}
+    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-xs text-slate-300 shadow-lg shadow-slate-950/30">
+      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+        Filter aktif ({chips.length})
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        {chips.map((chip) => (
+          <button
+            key={chip.key}
+            type="button"
+            onClick={() => onRemove(chip)}
+            className="group inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-200 transition hover:border-brand/40 hover:bg-brand/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+            aria-label={`Hapus filter ${chip.label}`}
+          >
+            <span className="truncate">{chip.label}</span>
+            <X className="h-3.5 w-3.5 transition group-hover:text-brand" aria-hidden="true" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-function SummaryCards({ summary, loading }) {
+function SummaryCards({ summary, loading, periodLabel }) {
   const cards = [
     {
       key: "income",
       title: "Pemasukan",
       value: summary?.income ?? 0,
-      accent: "text-success",
+      accent: "text-emerald-400",
+      icon: ArrowUpRight,
+      tone: "from-emerald-500/20 via-emerald-500/10 to-transparent",
     },
     {
       key: "expense",
       title: "Pengeluaran",
       value: summary?.expense ?? 0,
-      accent: "text-danger",
+      accent: "text-rose-400",
+      icon: ArrowDownRight,
+      tone: "from-rose-500/20 via-rose-500/10 to-transparent",
     },
     {
       key: "net",
       title: "Net",
       value: summary?.net ?? 0,
-      accent: "text-info",
+      accent: "text-sky-300",
+      icon: Circle,
+      tone: "from-sky-500/20 via-sky-500/10 to-transparent",
     },
   ];
 
@@ -1186,14 +1229,38 @@ function SummaryCards({ summary, loading }) {
       {cards.map((card) => (
         <div
           key={card.key}
-          className="rounded-2xl border border-border bg-surface-1/90 p-5 shadow-sm"
+          className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70 p-5 shadow-lg shadow-slate-950/40"
         >
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">{card.title}</p>
-          {loading ? (
-            <div className="mt-3 h-6 w-32 animate-pulse rounded-full bg-border/60" />
-          ) : (
-            <p className={clsx("mt-2 text-2xl font-semibold", card.accent)}>{formatIDR(card.value)}</p>
-          )}
+          <div className={clsx("pointer-events-none absolute inset-0 opacity-60", "bg-gradient-to-br", card.tone)} />
+          <div className="relative">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{card.title}</p>
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase text-slate-300">
+                {periodLabel}
+              </span>
+            </div>
+            <div className="mt-3 flex items-end justify-between gap-2">
+              {loading ? (
+                <div className="h-6 w-32 animate-pulse rounded-full bg-white/10" />
+              ) : (
+                <p className={clsx("text-2xl font-semibold", card.accent)}>{formatIDR(card.value)}</p>
+              )}
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200">
+                <card.icon className="h-4 w-4" />
+              </span>
+            </div>
+            <div className="mt-3">
+              <svg viewBox="0 0 120 32" className="h-8 w-full text-white/10" preserveAspectRatio="none">
+                <path
+                  d="M0 24 C20 18, 40 30, 60 16 C80 4, 100 22, 120 10"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+          </div>
         </div>
       ))}
     </div>
@@ -1223,26 +1290,30 @@ function UndoSnackbar({ open, message, onUndo, loading }) {
 
 function EmptyTransactionsState({ onResetFilters, onOpenAdd }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-5 rounded-3xl bg-slate-950/70 px-8 py-16 text-center text-slate-200 ring-1 ring-slate-800">
-      <span className="rounded-full bg-[var(--accent)]/10 p-3 text-[var(--accent)]">
+    <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900/80 to-slate-950 px-8 py-16 text-center text-slate-200 shadow-xl shadow-slate-950/50">
+      <div className="pointer-events-none absolute -left-10 -top-10 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-16 right-0 h-40 w-40 rounded-full bg-[var(--accent)]/15 blur-3xl" />
+      <span className="relative inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 p-3 text-[var(--accent)]">
         <Inbox className="h-7 w-7" aria-hidden="true" />
       </span>
-      <div className="space-y-2">
+      <div className="relative mt-4 space-y-2">
         <h2 className="text-xl font-semibold">Belum ada transaksi</h2>
-        <p className="text-sm text-slate-400">Coba bersihkan filter atau mulai catat transaksi pertama Anda.</p>
+        <p className="text-sm text-slate-400">
+          Mulai catat transaksi pertama untuk mendapatkan insight keuangan yang lebih lengkap.
+        </p>
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-3">
+      <div className="relative mt-6 flex flex-wrap items-center justify-center gap-3">
         <button
           type="button"
           onClick={onResetFilters}
-          className="inline-flex h-11 items-center justify-center rounded-2xl bg-slate-900 px-4 text-sm font-semibold text-slate-200 ring-1 ring-slate-800 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          className="inline-flex h-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         >
           Bersihkan Filter
         </button>
         <button
           type="button"
           onClick={onOpenAdd}
-          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60"
+          className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           Tambah Transaksi
