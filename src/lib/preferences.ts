@@ -5,7 +5,6 @@ export const defaultPrefs = {
   density: 'comfortable',
   language: 'id',
   avatarLeveling: true,
-  moneyTalk: 'normal',
   soundFx: true,
   currency: 'IDR',
   digitFormat: 'comma',
@@ -39,4 +38,3 @@ export function updatePrefs(partial) {
   setPrefs(next);
   return next;
 }
-

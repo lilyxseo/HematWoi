@@ -81,16 +81,6 @@ export default function SettingsPage() {
           checked={prefs.avatarLeveling}
           onChange={(v) => setLocalPrefs({ ...prefs, avatarLeveling: v })}
         />
-        <Select
-          label="MoneyTalk intensity"
-          value={prefs.moneyTalk}
-          options={[
-            { value: 'jarang', label: 'Jarang' },
-            { value: 'normal', label: 'Normal' },
-            { value: 'ramai', label: 'Ramai' },
-          ]}
-          onChange={(v) => setLocalPrefs({ ...prefs, moneyTalk: v })}
-        />
         <Toggle
           label="Sound FX"
           checked={prefs.soundFx}
