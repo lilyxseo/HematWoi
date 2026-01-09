@@ -139,7 +139,6 @@ export default function TransactionAdd({ onAdd }) {
   const [categoryId, setCategoryId] = useState('');
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [categoryQuery, setCategoryQuery] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [errors, setErrors] = useState({});
   const [receiptFile, setReceiptFile] = useState(null);
@@ -169,6 +168,7 @@ export default function TransactionAdd({ onAdd }) {
   const categories = categoryData;
 
   const previousTypeRef = useRef(type);
+  const categoryButtonRef = useRef(null);
 
   useEffect(() => {
     const previousType = previousTypeRef.current;
@@ -280,14 +280,6 @@ export default function TransactionAdd({ onAdd }) {
     () => filteredCategories.map((category) => ({ value: category.id, label: category.name })),
     [filteredCategories],
   );
-
-  const normalizedCategoryQuery = categoryQuery.trim().toLowerCase();
-  const filteredCategoryOptions = useMemo(() => {
-    if (!normalizedCategoryQuery) return categoryOptions;
-    return categoryOptions.filter((option) =>
-      option.label.toLowerCase().includes(normalizedCategoryQuery),
-    );
-  }, [categoryOptions, normalizedCategoryQuery]);
 
   const selectedCategoryOption = useMemo(
     () => categoryOptions.find((option) => option.value === categoryId) || null,
@@ -851,7 +843,6 @@ export default function TransactionAdd({ onAdd }) {
                       value={selectedCategoryOption}
                       onChange={(option) => {
                         setCategoryId(option?.value || '');
-                        setCategoryQuery('');
                         setErrors((prev) => ({ ...prev, category_id: undefined }));
                       }}
                       disabled={categoriesLoading}
@@ -861,25 +852,16 @@ export default function TransactionAdd({ onAdd }) {
                           id="category"
                           className={`${INPUT_CLASS} pr-20`}
                           displayValue={(option) => option?.label || ''}
-                          onChange={(event) => setCategoryQuery(event.target.value)}
+                          onClick={() => categoryButtonRef.current?.click()}
                           placeholder="Pilih kategori"
                           aria-invalid={Boolean(errors.category_id)}
+                          readOnly
                         />
                         <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
-                          {selectedCategoryOption ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCategoryId('');
-                                setCategoryQuery('');
-                                setErrors((prev) => ({ ...prev, category_id: undefined }));
-                              }}
-                              className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                            >
-                              Clear
-                            </button>
-                          ) : null}
-                          <Combobox.Button className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                          <Combobox.Button
+                            ref={categoryButtonRef}
+                            className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          >
                             {categoriesLoading ? (
                               <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                             ) : (
@@ -888,14 +870,14 @@ export default function TransactionAdd({ onAdd }) {
                           </Combobox.Button>
                         </div>
                         <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
-                          {filteredCategoryOptions.length === 0 ? (
+                          {categoryOptions.length === 0 ? (
                             <div className="px-3 py-2 text-xs text-muted">
                               {categoryOptions.length === 0
                                 ? 'No categories found'
                                 : 'No categories found'}
                             </div>
                           ) : (
-                            filteredCategoryOptions.map((option) => (
+                            categoryOptions.map((option) => (
                               <Combobox.Option
                                 key={option.value}
                                 value={option}
