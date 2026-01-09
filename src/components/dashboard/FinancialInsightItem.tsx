@@ -30,6 +30,22 @@ const toneRingMap: Record<InsightTone, string> = {
   danger: 'ring-rose-500/50 hover:bg-rose-500/10',
 }
 
+const toneSurfaceMap: Record<InsightTone, string> = {
+  default: 'bg-card/60',
+  info: 'bg-[color:var(--accent-muted)]/25',
+  accent: 'bg-[color:var(--accent-muted)]/25',
+  warning: 'bg-amber-500/10',
+  danger: 'bg-rose-500/10',
+}
+
+const toneIconMap: Record<InsightTone, string> = {
+  default: 'bg-surface-alt',
+  info: 'bg-[color:var(--accent-muted)]/60 text-[color:var(--accent-dark)]',
+  accent: 'bg-[color:var(--accent-muted)]/60 text-[color:var(--accent-dark)]',
+  warning: 'bg-amber-500/15 text-amber-600 dark:text-amber-300',
+  danger: 'bg-rose-500/15 text-rose-500 dark:text-rose-300',
+}
+
 const badgeToneMap: Record<InsightTone, string> = {
   default: 'bg-border text-text',
   info: 'bg-[color:var(--accent-muted)] text-[color:var(--accent-dark)]',
@@ -51,10 +67,17 @@ export default function FinancialInsightItem({
 }: FinancialInsightItemProps) {
   const buttonTone = toneRingMap[tone] ?? toneRingMap.default
   const badgeTone = badgeToneMap[badge?.tone ?? tone] ?? badgeToneMap.default
+  const surfaceTone = toneSurfaceMap[tone] ?? toneSurfaceMap.default
+  const iconTone = toneIconMap[tone] ?? toneIconMap.default
 
   const content = (
     <span className="flex min-h-[48px] flex-1 items-start gap-3 text-left">
-      <span className="mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-border-subtle bg-surface-alt text-[color:var(--accent-dark)]">
+      <span
+        className={clsx(
+          'mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-border-subtle',
+          iconTone
+        )}
+      >
         {icon}
       </span>
       <span className="flex-1">
@@ -82,14 +105,17 @@ export default function FinancialInsightItem({
   )
 
   if (!onClick) {
-    return <div className="rounded-2xl border border-border-subtle/70 bg-card/60 p-3">{content}</div>
+    return (
+      <div className={clsx('rounded-2xl border border-border-subtle/70 p-3', surfaceTone)}>{content}</div>
+    )
   }
 
   return (
     <button
       type="button"
       className={clsx(
-        'group flex w-full items-stretch rounded-2xl border border-border-subtle/70 bg-card/60 p-3 text-left text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+        'group flex w-full items-stretch rounded-2xl border border-border-subtle/70 p-3 text-left text-sm text-text shadow-sm transition duration-200 hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent',
+        surfaceTone,
         buttonTone,
         disabled ? 'pointer-events-none opacity-60' : 'focus-visible:ring-[color:var(--brand-ring)]'
       )}

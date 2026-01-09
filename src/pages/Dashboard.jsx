@@ -8,6 +8,7 @@ import useInsights from "../hooks/useInsights";
 import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
 import PeriodPicker, {
+  formatPeriodLabel,
   getPresetRange,
 } from "../components/dashboard/PeriodPicker";
 import useDashboardBalances from "../hooks/useDashboardBalances";
@@ -16,6 +17,7 @@ import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighlightedBudgets";
 import FinancialInsights from "../components/dashboard/FinancialInsights";
 import { isTransactionDeleted } from "../lib/transactionUtils";
+import { useMode } from "../hooks/useMode";
 
 const DEFAULT_PRESET = "month";
 
@@ -23,6 +25,7 @@ const DEFAULT_PRESET = "month";
 export default function Dashboard({ stats, txs }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
+  const { mode } = useMode();
   const balances = useDashboardBalances(periodRange, periodPreset);
   const {
     income: periodIncome,
@@ -62,6 +65,10 @@ export default function Dashboard({ stats, txs }) {
   };
 
   const insights = useInsights(visibleTxs);
+  const periodLabel = useMemo(
+    () => formatPeriodLabel(periodRange) || "—",
+    [periodRange],
+  );
 
   return (
     <>
@@ -80,12 +87,26 @@ export default function Dashboard({ stats, txs }) {
             <p className="text-sm text-muted sm:text-base">
               Ringkasan keuanganmu
             </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold sm:text-sm">
+              <span className="inline-flex items-center gap-1 rounded-full border border-border-subtle/80 bg-surface-alt/80 px-3 py-1 text-text">
+                Periode <span className="text-muted">{periodLabel}</span>
+              </span>
+              <span
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold sm:text-sm ${
+                  mode === "online"
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    : "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-300"
+                }`}
+              >
+                {mode === "online" ? "✅ Online Mode" : "📴 Local Mode"}
+              </span>
+            </div>
           </div>
           <button
             type="button"
             onClick={digest.openManual}
             aria-haspopup="dialog"
-            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-border-subtle bg-surface-alt px-3 py-2 text-sm font-semibold text-text shadow-sm transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:rounded-2xl sm:px-4 max-[400px]:text-xs"
+            className="inline-flex min-h-[40px] items-center justify-center rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand shadow-sm transition hover:border-brand/50 hover:bg-brand/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] sm:rounded-2xl sm:px-4 max-[400px]:text-xs"
           >
             Lihat Ringkasan Hari Ini
           </button>

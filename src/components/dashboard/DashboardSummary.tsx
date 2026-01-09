@@ -159,7 +159,9 @@ function DashboardSummary({
   return (
     <section className="space-y-3 md:space-y-4 max-[400px]:space-y-2">
       <div className="grid gap-3 sm:gap-4 min-[420px]:grid-cols-2 xl:grid-cols-4">
-        <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
+        <article className="group relative min-h-fit overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/90 via-white/70 to-white/40 p-3 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-emerald-500/20 hover:shadow-lg dark:from-zinc-900/70 dark:via-zinc-900/50 dark:to-zinc-900/30 sm:p-4 md:p-5">
+          <span className="absolute left-0 top-0 h-full w-1 bg-emerald-500/70" aria-hidden="true" />
+          <span className="pointer-events-none absolute right-0 top-0 h-24 w-24 -translate-y-8 translate-x-10 rounded-full bg-emerald-500/10 blur-2xl" aria-hidden="true" />
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Pemasukan</p>
@@ -184,7 +186,9 @@ function DashboardSummary({
           </div>
         </article>
 
-        <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
+        <article className="group relative min-h-fit overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/90 via-white/70 to-white/40 p-3 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-rose-500/20 hover:shadow-lg dark:from-zinc-900/70 dark:via-zinc-900/50 dark:to-zinc-900/30 sm:p-4 md:p-5">
+          <span className="absolute left-0 top-0 h-full w-1 bg-rose-500/70" aria-hidden="true" />
+          <span className="pointer-events-none absolute right-0 top-0 h-24 w-24 -translate-y-8 translate-x-10 rounded-full bg-rose-500/10 blur-2xl" aria-hidden="true" />
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Pengeluaran</p>
@@ -209,7 +213,9 @@ function DashboardSummary({
           </div>
         </article>
 
-        <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
+        <article className="group relative min-h-fit overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/90 via-white/70 to-white/40 p-3 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-amber-500/20 hover:shadow-lg dark:from-zinc-900/70 dark:via-zinc-900/50 dark:to-zinc-900/30 sm:p-4 md:p-5">
+          <span className="absolute left-0 top-0 h-full w-1 bg-amber-500/70" aria-hidden="true" />
+          <span className="pointer-events-none absolute right-0 top-0 h-24 w-24 -translate-y-8 translate-x-10 rounded-full bg-amber-500/10 blur-2xl" aria-hidden="true" />
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Saldo</p>
@@ -266,7 +272,9 @@ function DashboardSummary({
           </div>
         </article>
 
-        <article className="group min-h-fit rounded-xl border border-white/10 bg-gradient-to-b from-white/80 to-white/40 p-3 shadow-sm transition hover:border-primary/20 hover:shadow-md dark:from-zinc-900/60 dark:to-zinc-900/30 sm:p-4 md:p-5">
+        <article className="group relative min-h-fit overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-brand/10 via-white/70 to-white/40 p-3 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-brand/30 hover:shadow-lg dark:from-slate-900/80 dark:via-slate-900/60 dark:to-slate-900/40 sm:p-4 md:p-5">
+          <span className="absolute left-0 top-0 h-full w-1 bg-brand/70" aria-hidden="true" />
+          <span className="pointer-events-none absolute right-0 top-0 h-24 w-24 -translate-y-6 translate-x-8 rounded-full bg-brand/10 blur-2xl" aria-hidden="true" />
           <div className="space-y-2">
             <div className="flex items-start justify-between gap-2 sm:gap-3">
               <p className="text-sm font-medium text-muted-foreground max-[400px]:text-xs">Total Saldo</p>
