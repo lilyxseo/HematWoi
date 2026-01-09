@@ -47,6 +47,14 @@ export const NAV_ITEMS: NavItem[] = [
     protected: true,
   },
   {
+    title: 'Reports Pro',
+    path: '/reports/pro',
+    icon: <BarChart3 className="h-5 w-5" />,
+    section: 'primary',
+    inSidebar: true,
+    protected: true,
+  },
+  {
     title: 'Transaksi',
     path: '/transactions',
     icon: <ListChecks className="h-5 w-5" />,
