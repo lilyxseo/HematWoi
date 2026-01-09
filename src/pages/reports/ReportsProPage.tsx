@@ -353,14 +353,17 @@ function ReportTabs({
     { id: 'transactions', label: 'Transactions (Report View)' },
   ];
   return (
-    <div className="flex flex-wrap gap-2" role="tablist">
+    <div
+      className="flex w-full flex-nowrap gap-2 overflow-x-auto pb-2 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-700/70"
+      role="tablist"
+    >
       {tabs.map((tab) => (
         <button
           key={tab.id}
           type="button"
           onClick={() => onChange(tab.id)}
           className={clsx(
-            'rounded-2xl px-4 py-2 text-sm font-semibold transition',
+            'whitespace-nowrap rounded-2xl px-4 py-2 text-sm font-semibold transition',
             value === tab.id
               ? 'bg-[var(--accent)] text-white shadow'
               : 'bg-slate-900/60 text-slate-300 hover:bg-slate-900',
@@ -444,6 +447,7 @@ export default function ReportsProPage() {
 
   const handleFilterChange = useCallback(
     (patch: Partial<ReportFilters>) => {
+      const scrollY = typeof window !== 'undefined' ? window.scrollY : 0;
       const next = {
         ...filter,
         ...patch,
@@ -454,6 +458,11 @@ export default function ReportsProPage() {
       };
       const params = serializeFilter(searchParams, next, activeTab);
       setSearchParams(params, { replace: true });
+      if (typeof window !== 'undefined') {
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: scrollY, behavior: 'auto' });
+        });
+      }
     },
     [activeTab, filter, searchParams, setSearchParams],
   );
@@ -655,22 +664,24 @@ export default function ReportsProPage() {
             title="Filter"
             subtext="Semua filter tersimpan di URL untuk dibagikan."
             actions={
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-auto">
                   <button
                     type="button"
                     onClick={() => setExportMenuOpen((prev) => !prev)}
-                    className="inline-flex h-11 items-center gap-2 rounded-2xl bg-slate-900/60 px-4 text-sm font-semibold text-slate-200 ring-2 ring-slate-800 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                    className="inline-flex h-11 w-full items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-4 text-sm font-semibold text-slate-200 ring-2 ring-slate-800 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:w-auto"
                     aria-haspopup="menu"
                     aria-expanded={exportMenuOpen}
                   >
-                    <ChevronDown className="h-4 w-4 text-slate-400" />
-                    {exportMode === 'zip'
-                      ? 'Export (ZIP of CSVs)'
-                      : 'Export Single CSV'}
+                    <span className="flex items-center gap-2">
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                      {exportMode === 'zip'
+                        ? 'Export (ZIP of CSVs)'
+                        : 'Export Single CSV'}
+                    </span>
                   </button>
                   {exportMenuOpen && (
-                    <div className="absolute right-0 z-30 mt-2 w-64 rounded-2xl bg-slate-950/95 p-2 text-sm text-slate-200 shadow-2xl ring-1 ring-slate-800">
+                    <div className="absolute right-0 z-30 mt-2 w-full rounded-2xl bg-slate-950/95 p-2 text-sm text-slate-200 shadow-2xl ring-1 ring-slate-800 sm:w-64">
                       <button
                         type="button"
                         onClick={() => setExportMode('zip')}
@@ -703,7 +714,7 @@ export default function ReportsProPage() {
                   type="button"
                   onClick={handleExport}
                   disabled={exporting || loading}
-                  className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                 >
                   {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                   Export CSV
