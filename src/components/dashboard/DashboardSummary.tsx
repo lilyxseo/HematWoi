@@ -180,9 +180,7 @@ function DashboardSummary({
               </div>
             )}
             <div className="mt-1 h-16">{renderSparkline(incomeSparklinePath, "text-emerald-500/80 dark:text-emerald-400/90")}</div>
-            <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
-              Periode {periodLabel}
-            </p>
+            <p className="sr-only">Periode {periodLabel}</p>
           </div>
         </article>
 
@@ -207,9 +205,7 @@ function DashboardSummary({
               </div>
             )}
             <div className="mt-1 h-16">{renderSparkline(expenseSparklinePath, "text-rose-500/80 dark:text-rose-400/90")}</div>
-            <p className="text-[11px] text-muted-foreground sm:text-xs md:text-sm">
-              Periode {periodLabel}
-            </p>
+            <p className="sr-only">Periode {periodLabel}</p>
           </div>
         </article>
 

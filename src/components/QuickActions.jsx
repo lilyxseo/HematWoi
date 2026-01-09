@@ -30,7 +30,7 @@ export default function QuickActions() {
         title="Quick Actions"
         subtext="Akses cepat ke aksi favoritmu"
       />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {actions.map((action) => (
           <QuickActionCard
             key={action.to}
