@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { getTransactionsSummary, listCategories } from "../lib/api";
+import { getTransactionsSummary } from "../lib/api";
 import { getCachedTransactions, listTransactions } from "../lib/api-transactions";
+import { useDataMode, useRepo } from "../context/DataContext";
 
 const PAGE_SIZE = 50;
 
@@ -116,27 +118,29 @@ export default function useTransactionsQuery() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState({ income: 0, expense: 0, net: 0 });
-  const [categories, setCategories] = useState([]);
   const [refreshToken, setRefreshToken] = useState(0);
+  const repo = useRepo();
+  const { mode } = useDataMode();
 
   const filterKey = useMemo(
     () => JSON.stringify({ ...filter, page: 0 }),
     [filter],
   );
 
-  useEffect(() => {
-    let ignore = false;
-    listCategories()
-      .then((rows) => {
-        if (!ignore) setCategories(rows || []);
+  const categoriesQuery = useQuery({
+    queryKey: ["transactions", "categories", mode],
+    queryFn: () => repo.categories.list(),
+  });
+
+  const categories = useMemo(() => {
+    const data = Array.isArray(categoriesQuery.data) ? categoriesQuery.data : [];
+    return data
+      .map((cat) => {
+        const id = cat?.id != null ? String(cat.id) : "";
+        return { ...cat, id };
       })
-      .catch((err) => {
-        console.error("Failed to fetch categories", err);
-      });
-    return () => {
-      ignore = true;
-    };
-  }, []);
+      .filter((cat) => Boolean(cat.id));
+  }, [categoriesQuery.data]);
 
   useEffect(() => {
     let cancelled = false;
@@ -268,6 +272,8 @@ export default function useTransactionsQuery() {
     goToPage,
     refresh,
     categories,
+    categoriesLoading: categoriesQuery.isLoading,
+    categoriesError: categoriesQuery.error || null,
     summary,
     pageSize: PAGE_SIZE,
   };

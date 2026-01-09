@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import clsx from "clsx";
-import { Calendar, ChevronDown, Search } from "lucide-react";
+import { Calendar, ChevronDown, Loader2, Search } from "lucide-react";
 import CategoryDot from "./CategoryDot";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -50,6 +50,8 @@ function toDateInput(value?: string | null) {
 interface TransactionsFiltersProps {
   filter: any;
   categories: Array<any>;
+  categoriesLoading?: boolean;
+  categoriesError?: Error | null;
   searchTerm: string;
   onSearchChange: (value: string) => void;
   onFilterChange: (next: any) => void;
@@ -62,6 +64,8 @@ interface TransactionsFiltersProps {
 export default function TransactionsFilters({
   filter,
   categories,
+  categoriesLoading = false,
+  categoriesError = null,
   searchTerm,
   onSearchChange,
   onFilterChange,
@@ -219,6 +223,8 @@ export default function TransactionsFilters({
           </label>
           <CategoryMultiSelect
             categories={categories}
+            isLoading={categoriesLoading}
+            error={categoriesError}
             selected={filter.categories}
             onChange={(next) => onFilterChange({ categories: next })}
           />
@@ -320,11 +326,19 @@ export default function TransactionsFilters({
 
 interface CategoryMultiSelectProps {
   categories: Array<any>;
+  isLoading?: boolean;
+  error?: Error | null;
   selected: string[];
   onChange: (next: string[]) => void;
 }
 
-function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSelectProps) {
+function CategoryMultiSelect({
+  categories,
+  isLoading = false,
+  error = null,
+  selected,
+  onChange,
+}: CategoryMultiSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -386,6 +400,8 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
     );
   }, [categories, query]);
 
+  const hasError = Boolean(error);
+
   const summaryLabel = useMemo(() => {
     if (!selected.length) return "Semua kategori";
     if (selected.length === 1) {
@@ -420,7 +436,10 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
         aria-expanded={open}
       >
         <span className="truncate">{summaryLabel}</span>
-        <ChevronDown className="ml-3 h-4 w-4 text-slate-500" aria-hidden="true" />
+        <span className="ml-3 flex items-center gap-2 text-slate-500">
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+          <ChevronDown className="h-4 w-4" aria-hidden="true" />
+        </span>
       </button>
       {open &&
         typeof document !== "undefined" &&
@@ -456,31 +475,41 @@ function CategoryMultiSelect({ categories, selected, onChange }: CategoryMultiSe
                 </div>
               </div>
               <div className="max-h-[240px] overflow-y-auto px-2 pb-4">
-                {filteredCategories.length === 0 && (
+                {isLoading && (
+                  <div className="flex items-center gap-2 px-4 py-3 text-sm text-slate-400">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Memuat kategori...
+                  </div>
+                )}
+                {!isLoading && hasError && filteredCategories.length === 0 && (
+                  <p className="px-4 py-3 text-sm text-rose-200">Gagal memuat kategori</p>
+                )}
+                {!isLoading && !hasError && filteredCategories.length === 0 && (
                   <p className="px-4 py-3 text-sm text-slate-400">Kategori tidak ditemukan</p>
                 )}
-                {filteredCategories.map((cat) => {
-                  const checked = selected.includes(cat.id);
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => toggle(cat.id)}
-                      className={clsx(
-                        "flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm transition",
-                        checked ? "bg-[var(--accent)]/15 text-slate-50" : "text-slate-300 hover:bg-slate-800/80",
-                      )}
-                      role="option"
-                      aria-selected={checked}
-                    >
-                      <span className="flex items-center gap-3">
-                        <CategoryDot color={cat.color} />
-                        <span className="font-medium">{cat.name || "(Tanpa kategori)"}</span>
-                      </span>
-                      {checked && <span className="text-xs uppercase text-[var(--accent)]">Dipilih</span>}
-                    </button>
-                  );
-                })}
+                {!isLoading &&
+                  filteredCategories.map((cat) => {
+                    const checked = selected.includes(cat.id);
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => toggle(cat.id)}
+                        className={clsx(
+                          "flex w-full items-center justify-between rounded-2xl px-3 py-2 text-left text-sm transition",
+                          checked ? "bg-[var(--accent)]/15 text-slate-50" : "text-slate-300 hover:bg-slate-800/80",
+                        )}
+                        role="option"
+                        aria-selected={checked}
+                      >
+                        <span className="flex items-center gap-3">
+                          <CategoryDot color={cat.color} />
+                          <span className="font-medium">{cat.name || "(Tanpa kategori)"}</span>
+                        </span>
+                        {checked && <span className="text-xs uppercase text-[var(--accent)]">Dipilih</span>}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           </div>,
