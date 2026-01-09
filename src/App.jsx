@@ -25,6 +25,7 @@ import DataPage from "./pages/DataPage";
 import TransactionAdd from "./pages/TransactionAdd";
 import Subscriptions from "./pages/Subscriptions";
 import ReportsPage from "./pages/Reports";
+import ReportsProPage from "./pages/reports/ReportsProPage";
 import ImportWizard from "./pages/ImportWizard";
 import GoalsPage from "./pages/Goals";
 import SettingsPage from "./pages/SettingsPage";
@@ -1475,6 +1476,7 @@ function AppShell({ prefs, setPrefs }) {
                 />
                 <Route path="calendar" element={<CalendarPage />} />
                 <Route path="reports" element={<ReportsPage />} />
+                <Route path="reports/pro" element={<ReportsProPage />} />
                 <Route
                   path="budgets"
                   element={<Budgets currentMonth={currentMonth} />}
