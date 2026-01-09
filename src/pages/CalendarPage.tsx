@@ -138,6 +138,10 @@ export default function CalendarPage() {
   const isGridLoading = monthQuery.isLoading || monthQuery.isFetching;
 
   const categories = categoriesQuery.data ?? [];
+  const expenseCategories = useMemo(
+    () => categories.filter((category) => category.type === 'expense'),
+    [categories],
+  );
   const accounts = accountsQuery.data ?? [];
 
   useEffect(() => {
@@ -195,7 +199,7 @@ export default function CalendarPage() {
             value={filters}
             onChange={handleFiltersChange}
             onReset={resetFilters}
-            categories={categories}
+            categories={expenseCategories}
             accounts={accounts}
             loadingCategories={categoriesQuery.isLoading}
             loadingAccounts={accountsQuery.isLoading}
@@ -246,7 +250,7 @@ export default function CalendarPage() {
         open={detailOpen}
         date={selectedDate}
         filters={normalizedFilters}
-        categories={categories}
+        categories={expenseCategories}
         accounts={accounts}
         onClose={() => setDetailOpen(false)}
         onDeleted={() => monthQuery.refetch()}
