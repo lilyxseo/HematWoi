@@ -79,6 +79,15 @@ function formatWeekRange(start: string, end: string) {
   }
 }
 
+function formatMonthLabel(period: string) {
+  try {
+    const date = new Date(`${period}-01T00:00:00.000Z`);
+    return new Intl.DateTimeFormat('id-ID', { month: 'short', year: 'numeric' }).format(date);
+  } catch (error) {
+    return period;
+  }
+}
+
 function HighlightSkeleton() {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -162,6 +171,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
             spent,
             remaining,
             progress,
+            subtitle: formatMonthLabel(budgetPeriod),
           } satisfies HighlightCardData;
         }
 
@@ -220,18 +230,19 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
   const displayError = error || monthly.error || weekly.error;
 
   return (
-    <section className="rounded-3xl border border-border/60 bg-gradient-to-br from-white via-white to-primary/5 p-6 shadow-sm transition dark:border-border/40 dark:from-zinc-900/60 dark:via-zinc-900/40 dark:to-primary/10">
+    <section className="relative overflow-hidden rounded-[32px] border border-border/60 bg-gradient-to-br from-white/90 via-white/70 to-primary/10 p-6 shadow-sm transition dark:border-border/40 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-primary/15 sm:p-8">
+      <span className="pointer-events-none absolute right-0 top-0 h-32 w-32 -translate-y-10 translate-x-10 rounded-full bg-primary/10 blur-3xl" aria-hidden="true" />
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-2">
-          <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
-            <Sparkles className="h-3.5 w-3.5" /> Highlighted Budgets
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+            <Sparkles className="h-3.5 w-3.5" /> Anggaran pilihan
           </span>
           <h2 className="text-xl font-semibold text-foreground sm:text-2xl">Anggaran pilihanmu</h2>
-          <p className="text-sm text-muted-foreground">Pantau cepat progres anggaran favoritmu tanpa harus membuka halaman anggaran.</p>
+          <p className="text-sm text-muted-foreground">Pantau progres anggaran favorit dengan tampilan ringkas dan premium.</p>
         </div>
         <Link
           to="/budgets"
-          className="inline-flex items-center gap-2 rounded-full border border-transparent bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+          className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary shadow-sm transition hover:border-primary/50 hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           Kelola Highlight
           <ArrowRight className="h-4 w-4" />
@@ -247,11 +258,11 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
             {displayError}
           </div>
         ) : cards.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-white/60 p-6 text-sm text-muted-foreground shadow-sm dark:border-border/40 dark:bg-white/5">
+          <div className="rounded-2xl border border-dashed border-border/60 bg-white/70 p-6 text-sm text-muted-foreground shadow-sm dark:border-border/40 dark:bg-white/5">
             Belum ada highlight. Pilih anggaran favoritmu di halaman Budgets untuk ditampilkan di sini.
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {cards.map((card) => {
               const progress = Math.min(1.2, Math.max(0, card.progress));
               const color = getProgressColor(progress);
@@ -260,8 +271,9 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
               return (
                 <article
                   key={card.id}
-                  className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-white/80 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-border/40 dark:bg-zinc-900/70"
+                  className="group relative flex flex-col gap-4 overflow-hidden rounded-3xl border border-border/60 bg-white/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md dark:border-border/40 dark:bg-slate-900/70"
                 >
+                  <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary/60 via-primary/30 to-transparent" aria-hidden="true" />
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">{card.label}</p>
@@ -269,7 +281,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
                         <p className="text-xs text-muted-foreground">{card.subtitle}</p>
                       ) : null}
                     </div>
-                    <span className="inline-flex items-center rounded-full bg-muted/30 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <span className="inline-flex items-center rounded-full border border-border-subtle/70 bg-surface-alt/80 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">
                       {badge}
                     </span>
                   </div>
@@ -296,7 +308,7 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
                     </div>
                     <div className="h-2 w-full overflow-hidden rounded-full bg-muted/20 dark:bg-muted/30">
                       <div
-                        className="h-full rounded-full"
+                        className="h-full rounded-full transition-all duration-300"
                         style={{
                           width: `${Math.min(100, Math.max(0, card.progress * 100))}%`,
                           backgroundColor: color,
@@ -313,4 +325,3 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
     </section>
   );
 }
-

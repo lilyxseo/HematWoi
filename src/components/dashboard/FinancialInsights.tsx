@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CalendarClock, Flame, Info, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import { AlertTriangle, CalendarClock, Flame, Info, Sparkles, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import Card, { CardBody, CardHeader } from '../Card'
 import FinancialInsightItem, { FinancialInsightItemSkeleton } from './FinancialInsightItem'
 import {
@@ -164,7 +164,13 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
 
           {limitedNear.length > 0
             ? limitedNear.map((item) => (
-                <BudgetInsightRow key={`near-${item.id}`} item={item} tone="warning" navigate={navigate} />
+                <BudgetInsightRow
+                  key={`near-${item.id}`}
+                  item={item}
+                  tone="warning"
+                  navigate={navigate}
+                  periodMonth={periodMonth}
+                />
               ))
             : null}
 
@@ -217,12 +223,22 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
           ) : null}
 
           {!hasWarnings ? (
-            <div className="mt-2 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-200">
-              <p className="font-semibold">Semua aman. Tetap lanjut hemat! 🎉</p>
+            <div className="mt-2 flex flex-col gap-3 rounded-2xl border border-emerald-400/40 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-200">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-200">
+                  <Sparkles className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div>
+                  <p className="font-semibold">Semua aman. Tetap lanjut hemat! 🎉</p>
+                  <p className="text-xs text-emerald-700/80 dark:text-emerald-200/80">
+                    Insight terlihat stabil. Pantau terus agar tetap konsisten.
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => navigate('/budgets')}
-                className="mt-3 inline-flex items-center justify-center rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                className="inline-flex items-center justify-center self-start rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
               >
                 Lihat detail budget
               </button>
@@ -238,13 +254,26 @@ function BudgetInsightRow({
   item,
   tone,
   navigate,
+  periodMonth,
 }: {
   item: BudgetProgressInsight
   tone: 'warning' | 'danger'
   navigate: (to: string) => void
+  periodMonth?: string
 }) {
   const progressLabel = percentageFormatter.format(Math.min(item.progress, 1))
   const subtitle = `${formatAmount(item.actual)} dari ${formatAmount(item.planned)} terpakai`
+  const handleClick = () => {
+    const params = new URLSearchParams()
+    params.set('range', 'month')
+    if (periodMonth) {
+      params.set('month', periodMonth)
+    }
+    if (item.categoryId) {
+      params.set('categories', item.categoryId)
+    }
+    navigate(`/transactions?${params.toString()}`)
+  }
   return (
     <FinancialInsightItem
       icon={tone === 'warning' ? <AlertTriangle className="h-5 w-5 text-amber-500" aria-hidden="true" /> : <Flame className="h-5 w-5 text-rose-500" aria-hidden="true" />}
@@ -252,13 +281,7 @@ function BudgetInsightRow({
       subtitle={subtitle}
       badge={{ label: progressLabel, tone: tone === 'warning' ? 'warning' : 'danger', tooltip: `${progressLabel} dari limit ${formatAmount(item.planned)}` }}
       tone={tone}
-      onClick={() =>
-        navigate(
-          tone === 'warning'
-            ? '/budgets?tab=monthly&filter=near-limit'
-            : '/budgets?tab=monthly&filter=over-limit'
-        )
-      }
+      onClick={handleClick}
       progress={item.progress}
     />
   )
