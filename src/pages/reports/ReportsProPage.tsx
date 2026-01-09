@@ -67,7 +67,6 @@ const DEFAULT_FILTERS: ReportFilters = {
 function parseSearchParams(params: URLSearchParams) {
   const allowedTabs = new Set([
     'categories',
-    'merchants',
     'daily',
     'transactions',
   ]);
@@ -348,7 +347,6 @@ function ReportTabs({
 }) {
   const tabs = [
     { id: 'categories', label: 'Category Breakdown' },
-    { id: 'merchants', label: 'Merchant Breakdown' },
     { id: 'daily', label: 'Daily / Weekly Trends' },
     { id: 'transactions', label: 'Transactions (Report View)' },
   ];
@@ -402,8 +400,6 @@ export default function ReportsProPage() {
   const [exportMode, setExportMode] = useState<'zip' | 'single'>('zip');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [merchantSort, setMerchantSort] = useState<'total' | 'count' | 'last'>('total');
-  const [merchantPage, setMerchantPage] = useState(1);
   const [transactionPage, setTransactionPage] = useState(1);
   const [focusedCategory, setFocusedCategory] = useState<string | null>(null);
 
@@ -452,7 +448,6 @@ export default function ReportsProPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    setMerchantPage(1);
     setTransactionPage(1);
   }, [filter, reportData.transactions.length]);
 
@@ -509,7 +504,6 @@ export default function ReportsProPage() {
     () => ({
       transactions: reportData.transactions.length,
       categories: reportData.categories.length,
-      merchants: reportData.merchants.length,
       daily: reportData.daily.length,
     }),
     [reportData],
@@ -586,9 +580,7 @@ export default function ReportsProPage() {
     {
       label: 'Largest Expense',
       value: currencyFormatter.format(reportData.summary.largest_expense_amount),
-      helper: `${reportData.summary.largest_expense_date || '-'} • ${
-        reportData.summary.largest_expense_merchant || 'Tanpa merchant'
-      }`,
+      helper: reportData.summary.largest_expense_date || '-',
       tone: 'text-slate-100',
     },
     {
@@ -604,25 +596,6 @@ export default function ReportsProPage() {
       tone: 'text-slate-100',
     },
   ];
-
-  const merchantRows = useMemo(() => {
-    const base = [...reportData.merchants];
-    if (merchantSort === 'count') {
-      base.sort((a, b) => b.transaction_count - a.transaction_count);
-    } else if (merchantSort === 'last') {
-      base.sort((a, b) => b.last_transaction_date.localeCompare(a.last_transaction_date));
-    } else {
-      base.sort((a, b) => b.total_expense - a.total_expense);
-    }
-    return base;
-  }, [merchantSort, reportData.merchants]);
-
-  const merchantPageSize = 10;
-  const merchantPages = Math.max(1, Math.ceil(merchantRows.length / merchantPageSize));
-  const pagedMerchants = merchantRows.slice(
-    (merchantPage - 1) * merchantPageSize,
-    merchantPage * merchantPageSize,
-  );
 
   const transactionPageSize = 25;
   const transactionPages = Math.max(
@@ -662,293 +635,302 @@ export default function ReportsProPage() {
     transactionsQuery.error || categoriesQuery.error || accountsQuery.error;
 
   return (
-    <Page>
+    <Page className="flex h-full min-h-0 flex-col">
       <PageHeader title="Reports Pro" description="Analisis detail cashflow dan breakdown laporan." />
 
-      <section className="space-y-6">
-        <Card className="space-y-5">
-          <CardHeader
-            title="Filter"
-            subtext="Semua filter tersimpan di URL untuk dibagikan."
-            actions={
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                <div className="relative w-full sm:w-auto">
+      <section className="flex min-h-0 flex-1 flex-col gap-6">
+        <div className="shrink-0 space-y-6">
+          <Card className="space-y-5">
+            <CardHeader
+              title="Filter"
+              subtext="Semua filter tersimpan di URL untuk dibagikan."
+              actions={
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setExportMenuOpen((prev) => !prev)}
+                      className="inline-flex h-11 w-full items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-4 text-sm font-semibold text-slate-200 ring-2 ring-slate-800 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:w-auto"
+                      aria-haspopup="menu"
+                      aria-expanded={exportMenuOpen}
+                    >
+                      <span className="flex items-center gap-2">
+                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                        {exportMode === 'zip'
+                          ? 'Export (ZIP of CSVs)'
+                          : 'Export Single CSV'}
+                      </span>
+                    </button>
+                    {exportMenuOpen && (
+                      <div className="absolute right-0 z-30 mt-2 w-full rounded-2xl bg-slate-950/95 p-2 text-sm text-slate-200 shadow-2xl ring-1 ring-slate-800 sm:w-64">
+                        <button
+                          type="button"
+                          onClick={() => setExportMode('zip')}
+                          className={clsx(
+                            'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition',
+                            exportMode === 'zip'
+                              ? 'bg-[var(--accent)]/15 text-white'
+                              : 'hover:bg-slate-900/80',
+                          )}
+                        >
+                          Export (ZIP of CSVs)
+                          <span className="text-xs text-slate-400">butuh JSZip</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setExportMode('single')}
+                          className={clsx(
+                            'mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition',
+                            exportMode === 'single'
+                              ? 'bg-[var(--accent)]/15 text-white'
+                              : 'hover:bg-slate-900/80',
+                          )}
+                        >
+                          Export Single CSV (sections)
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setExportMenuOpen((prev) => !prev)}
-                    className="inline-flex h-11 w-full items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-4 text-sm font-semibold text-slate-200 ring-2 ring-slate-800 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:w-auto"
-                    aria-haspopup="menu"
-                    aria-expanded={exportMenuOpen}
+                    onClick={handleExport}
+                    disabled={exporting || loading}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                   >
-                    <span className="flex items-center gap-2">
-                      <ChevronDown className="h-4 w-4 text-slate-400" />
-                      {exportMode === 'zip'
-                        ? 'Export (ZIP of CSVs)'
-                        : 'Export Single CSV'}
-                    </span>
+                    {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    Export CSV
                   </button>
-                  {exportMenuOpen && (
-                    <div className="absolute right-0 z-30 mt-2 w-full rounded-2xl bg-slate-950/95 p-2 text-sm text-slate-200 shadow-2xl ring-1 ring-slate-800 sm:w-64">
-                      <button
-                        type="button"
-                        onClick={() => setExportMode('zip')}
-                        className={clsx(
-                          'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition',
-                          exportMode === 'zip'
-                            ? 'bg-[var(--accent)]/15 text-white'
-                            : 'hover:bg-slate-900/80',
-                        )}
-                      >
-                        Export (ZIP of CSVs)
-                        <span className="text-xs text-slate-400">butuh JSZip</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setExportMode('single')}
-                        className={clsx(
-                          'mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-left transition',
-                          exportMode === 'single'
-                            ? 'bg-[var(--accent)]/15 text-white'
-                            : 'hover:bg-slate-900/80',
-                        )}
-                      >
-                        Export Single CSV (sections)
-                      </button>
+                </div>
+              }
+            />
+            <CardBody>
+              <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
+                <div className="space-y-2 rounded-2xl bg-slate-900/60 p-4 ring-1 ring-slate-800">
+                  <label className="text-xs font-semibold uppercase text-slate-400">
+                    Periode
+                  </label>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleFilterChange({
+                          period: { preset: 'month', month: filter.period.month, start: '', end: '' },
+                        })
+                      }
+                      className={clsx(
+                        'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition',
+                        filter.period.preset === 'month'
+                          ? 'bg-[var(--accent)] text-white'
+                          : 'bg-slate-950/60 text-slate-300 hover:bg-slate-900/80',
+                      )}
+                    >
+                      <Calendar className="h-4 w-4" />
+                      Month
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleFilterChange({
+                          period: {
+                            preset: 'custom',
+                            month: '',
+                            start: filter.period.start || new Date().toISOString().slice(0, 10),
+                            end: filter.period.end || new Date().toISOString().slice(0, 10),
+                          },
+                        })
+                      }
+                      className={clsx(
+                        'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition',
+                        filter.period.preset === 'custom'
+                          ? 'bg-[var(--accent)] text-white'
+                          : 'bg-slate-950/60 text-slate-300 hover:bg-slate-900/80',
+                      )}
+                    >
+                      Custom Range
+                    </button>
+                  </div>
+                  {filter.period.preset === 'month' ? (
+                    <input
+                      type="month"
+                      value={filter.period.month}
+                      onChange={(event) =>
+                        handleFilterChange({
+                          period: {
+                            preset: 'month',
+                            month: event.target.value,
+                            start: '',
+                            end: '',
+                          },
+                        })
+                      }
+                      className="h-11 w-full rounded-2xl bg-slate-950/60 px-4 text-sm text-slate-200 ring-1 ring-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                    />
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        type="date"
+                        value={toInputDate(filter.period.start)}
+                        onChange={(event) =>
+                          handleFilterChange({
+                            period: {
+                              preset: 'custom',
+                              month: '',
+                              start: event.target.value,
+                              end: filter.period.end,
+                            },
+                          })
+                        }
+                        className="h-11 flex-1 rounded-2xl bg-slate-950/60 px-4 text-sm text-slate-200 ring-1 ring-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                      />
+                      <input
+                        type="date"
+                        value={toInputDate(filter.period.end)}
+                        onChange={(event) =>
+                          handleFilterChange({
+                            period: {
+                              preset: 'custom',
+                              month: '',
+                              start: filter.period.start,
+                              end: event.target.value,
+                            },
+                          })
+                        }
+                        className="h-11 flex-1 rounded-2xl bg-slate-950/60 px-4 text-sm text-slate-200 ring-1 ring-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                      />
                     </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleExport}
-                  disabled={exporting || loading}
-                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-lg shadow-[var(--accent)]/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                >
-                  {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                  Export CSV
-                </button>
-              </div>
-            }
-          />
-          <CardBody>
-            <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_1fr]">
-              <div className="space-y-2 rounded-2xl bg-slate-900/60 p-4 ring-1 ring-slate-800">
-                <label className="text-xs font-semibold uppercase text-slate-400">
-                  Periode
-                </label>
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleFilterChange({
-                        period: { preset: 'month', month: filter.period.month, start: '', end: '' },
-                      })
-                    }
-                    className={clsx(
-                      'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition',
-                      filter.period.preset === 'month'
-                        ? 'bg-[var(--accent)] text-white'
-                        : 'bg-slate-950/60 text-slate-300 hover:bg-slate-900/80',
-                    )}
-                  >
-                    <Calendar className="h-4 w-4" />
-                    Month
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleFilterChange({
-                        period: {
-                          preset: 'custom',
-                          month: '',
-                          start: filter.period.start || new Date().toISOString().slice(0, 10),
-                          end: filter.period.end || new Date().toISOString().slice(0, 10),
-                        },
-                      })
-                    }
-                    className={clsx(
-                      'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition',
-                      filter.period.preset === 'custom'
-                        ? 'bg-[var(--accent)] text-white'
-                        : 'bg-slate-950/60 text-slate-300 hover:bg-slate-900/80',
-                    )}
-                  >
-                    Custom Range
-                  </button>
-                </div>
-                {filter.period.preset === 'month' ? (
-                  <input
-                    type="month"
-                    value={filter.period.month}
-                    onChange={(event) =>
-                      handleFilterChange({
-                        period: {
-                          preset: 'month',
-                          month: event.target.value,
-                          start: '',
-                          end: '',
-                        },
-                      })
-                    }
-                    className="h-11 w-full rounded-2xl bg-slate-950/60 px-4 text-sm text-slate-200 ring-1 ring-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                <div className="space-y-4 rounded-2xl bg-slate-900/60 p-4 ring-1 ring-slate-800">
+                  <label className="text-xs font-semibold uppercase text-slate-400">
+                    Akun
+                  </label>
+                  <MultiSelect
+                    options={accountOptions}
+                    selected={filter.accounts}
+                    onChange={(next) => handleFilterChange({ accounts: next })}
+                    placeholder="Semua akun"
+                    title="Akun"
+                    showSearch
                   />
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    <input
-                      type="date"
-                      value={toInputDate(filter.period.start)}
-                      onChange={(event) =>
-                        handleFilterChange({
-                          period: {
-                            preset: 'custom',
-                            month: '',
-                            start: event.target.value,
-                            end: filter.period.end,
-                          },
-                        })
-                      }
-                      className="h-11 flex-1 rounded-2xl bg-slate-950/60 px-4 text-sm text-slate-200 ring-1 ring-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                    <input
-                      type="date"
-                      value={toInputDate(filter.period.end)}
-                      onChange={(event) =>
-                        handleFilterChange({
-                          period: {
-                            preset: 'custom',
-                            month: '',
-                            start: filter.period.start,
-                            end: event.target.value,
-                          },
-                        })
-                      }
-                      className="h-11 flex-1 rounded-2xl bg-slate-950/60 px-4 text-sm text-slate-200 ring-1 ring-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-4 rounded-2xl bg-slate-900/60 p-4 ring-1 ring-slate-800">
-                <label className="text-xs font-semibold uppercase text-slate-400">
-                  Akun
-                </label>
-                <MultiSelect
-                  options={accountOptions}
-                  selected={filter.accounts}
-                  onChange={(next) => handleFilterChange({ accounts: next })}
-                  placeholder="Semua akun"
-                  title="Akun"
-                  showSearch
-                />
-                <label className="text-xs font-semibold uppercase text-slate-400">
-                  Kategori
-                </label>
-                <MultiSelect
-                  options={categoriesOptions.map((option) => ({
-                    id: option.id,
-                    label: option.label,
-                    meta: option.meta,
-                    color: option.color,
-                  }))}
-                  selected={filter.categories}
-                  onChange={(next) => handleFilterChange({ categories: next })}
-                  placeholder="Semua kategori"
-                  title="Kategori"
-                  showSearch
-                  renderPrefix={(option) => <CategoryDot color={option.color ?? undefined} />}
-                />
-                {hasSubcategories && (
+                  <label className="text-xs font-semibold uppercase text-slate-400">
+                    Kategori
+                  </label>
+                  <MultiSelect
+                    options={categoriesOptions.map((option) => ({
+                      id: option.id,
+                      label: option.label,
+                      meta: option.meta,
+                      color: option.color,
+                    }))}
+                    selected={filter.categories}
+                    onChange={(next) => handleFilterChange({ categories: next })}
+                    placeholder="Semua kategori"
+                    title="Kategori"
+                    showSearch
+                    renderPrefix={(option) => <CategoryDot color={option.color ?? undefined} />}
+                  />
+                  {hasSubcategories && (
+                    <label className="flex items-center gap-3 text-sm text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={filter.includeSubcategories}
+                        onChange={(event) =>
+                          handleFilterChange({ includeSubcategories: event.target.checked })
+                        }
+                        className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                      />
+                      Sertakan subkategori
+                    </label>
+                  )}
+                </div>
+                <div className="space-y-4 rounded-2xl bg-slate-900/60 p-4 ring-1 ring-slate-800">
+                  <label className="text-xs font-semibold uppercase text-slate-400">
+                    Toggles
+                  </label>
                   <label className="flex items-center gap-3 text-sm text-slate-300">
                     <input
                       type="checkbox"
-                      checked={filter.includeSubcategories}
+                      checked={filter.includeTransfers}
                       onChange={(event) =>
-                        handleFilterChange({ includeSubcategories: event.target.checked })
+                        handleFilterChange({ includeTransfers: event.target.checked })
                       }
                       className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     />
-                    Sertakan subkategori
+                    Include transfers
                   </label>
-                )}
-              </div>
-              <div className="space-y-4 rounded-2xl bg-slate-900/60 p-4 ring-1 ring-slate-800">
-                <label className="text-xs font-semibold uppercase text-slate-400">
-                  Toggles
-                </label>
-                <label className="flex items-center gap-3 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={filter.includeTransfers}
-                    onChange={(event) =>
-                      handleFilterChange({ includeTransfers: event.target.checked })
-                    }
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                  />
-                  Include transfers
-                </label>
-                <label className="flex items-center gap-3 text-sm text-slate-300">
-                  <input
-                    type="checkbox"
-                    checked={filter.includePending}
-                    onChange={(event) =>
-                      handleFilterChange({ includePending: event.target.checked })
-                    }
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                  />
-                  Include pending / uncleared
-                </label>
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase text-slate-400">
-                    Search
-                  </label>
-                  <div className="flex items-center gap-2 rounded-2xl bg-slate-950/60 px-3 ring-1 ring-slate-800">
-                    <Search className="h-4 w-4 text-slate-500" />
+                  <label className="flex items-center gap-3 text-sm text-slate-300">
                     <input
-                      type="search"
-                      value={filter.search}
-                      onChange={(event) => handleFilterChange({ search: event.target.value })}
-                      placeholder="Cari merchant/notes"
-                      className="h-10 w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none"
+                      type="checkbox"
+                      checked={filter.includePending}
+                      onChange={(event) =>
+                        handleFilterChange({ includePending: event.target.checked })
+                      }
+                      className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-[var(--accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                     />
+                    Include pending / uncleared
+                  </label>
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold uppercase text-slate-400">
+                      Search
+                    </label>
+                    <div className="flex items-center gap-2 rounded-2xl bg-slate-950/60 px-3 ring-1 ring-slate-800">
+                      <Search className="h-4 w-4 text-slate-500" />
+                      <input
+                        type="search"
+                        value={filter.search}
+                        onChange={(event) => handleFilterChange({ search: event.target.value })}
+                        placeholder="Cari notes/kategori/akun"
+                        className="h-10 w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-500 focus:outline-none"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
-              Export akan berisi {exportPreview.transactions} transaksi, {exportPreview.categories}{' '}
-              kategori, {exportPreview.merchants} merchant, dan {exportPreview.daily} baris harian.
-              <span className="ml-2 text-xs text-slate-500">
-                Amount di CSV menggunakan angka positif; kolom type menunjukkan income/expense.
-              </span>
-            </div>
-            {error && (
-              <div className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-200 ring-1 ring-red-500/30">
-                Gagal memuat data. Coba refresh halaman.
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-300">
+                Export akan berisi {exportPreview.transactions} transaksi, {exportPreview.categories}{' '}
+                kategori, dan {exportPreview.daily} baris harian.
+                <span className="ml-2 text-xs text-slate-500">
+                  Amount di CSV menggunakan angka positif; kolom type menunjukkan income/expense.
+                </span>
               </div>
-            )}
-          </CardBody>
-        </Card>
+              {error && (
+                <div className="rounded-2xl bg-red-500/10 px-4 py-3 text-sm text-red-200 ring-1 ring-red-500/30">
+                  Gagal memuat data. Coba refresh halaman.
+                </div>
+              )}
+            </CardBody>
+          </Card>
 
-        <div className="grid gap-4 lg:grid-cols-4">
-          {kpiCards.map((card) => (
-            <Card key={card.label} className="flex flex-col gap-2 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                {card.label}
-              </p>
-              <p className={clsx('text-lg font-semibold', card.tone)}>{card.value}</p>
-              {card.helper && <p className="text-xs text-slate-400">{card.helper}</p>}
-            </Card>
-          ))}
+          <div className="grid gap-4 lg:grid-cols-4">
+            {kpiCards.map((card) => (
+              <Card key={card.label} className="flex flex-col gap-2 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {card.label}
+                </p>
+                <p className={clsx('text-lg font-semibold', card.tone)}>{card.value}</p>
+                {card.helper && <p className="text-xs text-slate-400">{card.helper}</p>}
+              </Card>
+            ))}
+          </div>
+
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> Memuat data report...
+            </div>
+          )}
         </div>
 
-        <Card className="space-y-6">
+        <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader
             title="Detail Report"
+            className="shrink-0"
             actions={
               <div className="w-full max-w-full overflow-x-auto">
                 <ReportTabs value={activeTab} onChange={handleTabChange} />
               </div>
             }
           />
-          <CardBody>
+          <CardBody className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pb-24">
             {activeTab === 'categories' && (
               <div className="space-y-4">
                 <div className="overflow-hidden rounded-3xl ring-1 ring-slate-800">
@@ -1037,10 +1019,10 @@ export default function ReportsProPage() {
                           >
                             <div>
                               <p className="font-semibold text-slate-200">
-                                {tx.merchant_name || 'Tanpa merchant'}
+                                {tx.notes || 'Transaksi tanpa catatan'}
                               </p>
                               <p className="text-xs text-slate-400">
-                                {tx.date} • {tx.notes || 'Tanpa catatan'}
+                                {tx.date} • {tx.account_name}
                               </p>
                             </div>
                             <div className="text-sm font-semibold text-rose-300">
@@ -1052,102 +1034,6 @@ export default function ReportsProPage() {
                     )}
                   </div>
                 )}
-              </div>
-            )}
-
-            {activeTab === 'merchants' && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-slate-400">
-                    {merchantRows.length} merchant terdeteksi.
-                  </p>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-400">Sort:</span>
-                    <select
-                      value={merchantSort}
-                      onChange={(event) => setMerchantSort(event.target.value as 'total' | 'count' | 'last')}
-                      className="h-9 rounded-xl bg-slate-900/60 px-3 text-sm text-slate-200 ring-1 ring-slate-800 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                    >
-                      <option value="total">Total expense</option>
-                      <option value="count">Transaction count</option>
-                      <option value="last">Last transaction date</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="overflow-hidden rounded-3xl ring-1 ring-slate-800">
-                  <table className="min-w-full divide-y divide-slate-800 text-sm">
-                    <thead className="bg-slate-900">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs uppercase text-slate-400">
-                          Merchant
-                        </th>
-                        <th className="px-4 py-3 text-right text-xs uppercase text-slate-400">
-                          Total expense
-                        </th>
-                        <th className="px-4 py-3 text-right text-xs uppercase text-slate-400">
-                          Count
-                        </th>
-                        <th className="px-4 py-3 text-right text-xs uppercase text-slate-400">
-                          Average
-                        </th>
-                        <th className="px-4 py-3 text-right text-xs uppercase text-slate-400">
-                          Last date
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800">
-                      {pagedMerchants.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
-                            Tidak ada data merchant pada rentang ini.
-                          </td>
-                        </tr>
-                      )}
-                      {pagedMerchants.map((row) => (
-                        <tr key={row.merchant_name} className="hover:bg-slate-900/60">
-                          <td className="px-4 py-3 font-semibold text-slate-200">
-                            {row.merchant_name || 'Tanpa merchant'}
-                          </td>
-                          <td className="px-4 py-3 text-right text-rose-300">
-                            {currencyFormatter.format(row.total_expense)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-200">
-                            {row.transaction_count}
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-200">
-                            {currencyFormatter.format(row.average_expense)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-200">
-                            {row.last_transaction_date || '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="flex items-center justify-between text-sm text-slate-400">
-                  <span>
-                    Page {merchantPage} of {merchantPages}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setMerchantPage((prev) => Math.max(1, prev - 1))}
-                      disabled={merchantPage === 1}
-                      className="rounded-xl bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-40"
-                    >
-                      Prev
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setMerchantPage((prev) => Math.min(merchantPages, prev + 1))}
-                      disabled={merchantPage === merchantPages}
-                      className="rounded-xl bg-slate-900/60 px-3 py-1.5 text-xs text-slate-200 disabled:opacity-40"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -1288,9 +1174,6 @@ export default function ReportsProPage() {
                         <th className="px-4 py-3 text-left text-xs uppercase text-slate-400">
                           Category
                         </th>
-                        <th className="px-4 py-3 text-left text-xs uppercase text-slate-400">
-                          Merchant
-                        </th>
                         <th className="px-4 py-3 text-right text-xs uppercase text-slate-400">
                           Amount
                         </th>
@@ -1305,7 +1188,7 @@ export default function ReportsProPage() {
                     <tbody className="divide-y divide-slate-800">
                       {pagedTransactions.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+                          <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
                             Tidak ada transaksi pada rentang ini.
                           </td>
                         </tr>
@@ -1315,7 +1198,6 @@ export default function ReportsProPage() {
                           <td className="px-4 py-3 text-slate-200">{row.date}</td>
                           <td className="px-4 py-3 text-slate-200">{row.account_name}</td>
                           <td className="px-4 py-3 text-slate-200">{row.category_name}</td>
-                          <td className="px-4 py-3 text-slate-200">{row.merchant_name}</td>
                           <td
                             className={clsx(
                               'px-4 py-3 text-right font-semibold',
@@ -1360,12 +1242,6 @@ export default function ReportsProPage() {
             )}
           </CardBody>
         </Card>
-
-        {loading && (
-          <div className="flex items-center gap-2 text-sm text-slate-400">
-            <Loader2 className="h-4 w-4 animate-spin" /> Memuat data report...
-          </div>
-        )}
       </section>
     </Page>
   );

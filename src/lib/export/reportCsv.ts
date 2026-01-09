@@ -39,7 +39,6 @@ type NormalizedTransaction = {
   accountName: string;
   categoryId: string | null;
   categoryName: string;
-  merchantName: string;
   notes: string;
   tags: string;
   createdAt: string;
@@ -58,7 +57,6 @@ export type ReportSummary = {
   avg_daily_expense: number;
   largest_expense_amount: number;
   largest_expense_date: string;
-  largest_expense_merchant: string;
   top_category_name: string;
   top_category_amount: number;
   top_category_share: number;
@@ -77,14 +75,6 @@ export type CategoryReportRow = {
   share_of_total_expense: number;
 };
 
-export type MerchantReportRow = {
-  merchant_name: string;
-  total_expense: number;
-  transaction_count: number;
-  average_expense: number;
-  last_transaction_date: string;
-};
-
 export type DailyReportRow = {
   date: string;
   income: number;
@@ -98,7 +88,6 @@ export type TransactionReportRow = {
   date: string;
   account_name: string;
   category_name: string;
-  merchant_name: string;
   notes: string;
   amount: number;
   type: string;
@@ -110,7 +99,6 @@ export type TransactionReportRow = {
 export type ReportData = {
   summary: ReportSummary;
   categories: CategoryReportRow[];
-  merchants: MerchantReportRow[];
   daily: DailyReportRow[];
   transactions: TransactionReportRow[];
   meta: {
@@ -230,7 +218,6 @@ function normalizeTransactions(
         safeString(tx.account_name ?? tx.account?.name ?? tx.account) ||
         (accountId ? accountMap.get(accountId) ?? '' : '') ||
         'Tanpa akun';
-      const merchantName = safeString(tx.merchant_name ?? tx.merchant?.name ?? tx.merchant) || 'Tanpa merchant';
       const notes = safeString(tx.notes ?? tx.note ?? tx.title ?? tx.description);
       const tagsValue = tx.tags ?? tx.tag_list ?? tx.labels ?? tx.label;
       const tags = Array.isArray(tagsValue) ? tagsValue.filter(Boolean).join('|') : safeString(tagsValue);
@@ -247,7 +234,6 @@ function normalizeTransactions(
         accountName,
         categoryId: categoryId || null,
         categoryName,
-        merchantName,
         notes,
         tags,
         createdAt,
@@ -365,7 +351,6 @@ export function buildReportData(
     if (categoryFilter.size && !tx.categoryId) return false;
     if (searchValue) {
       const haystack = [
-        tx.merchantName,
         tx.notes,
         tx.accountName,
         tx.categoryName,
@@ -448,30 +433,6 @@ export function buildReportData(
     },
   );
 
-  const merchantMap = new Map<string, MerchantReportRow>();
-  filteredTransactions
-    .filter((tx) => tx.type === 'expense')
-    .forEach((tx) => {
-      const key = tx.merchantName || 'Tanpa merchant';
-      const entry = merchantMap.get(key) ?? {
-        merchant_name: key,
-        total_expense: 0,
-        transaction_count: 0,
-        average_expense: 0,
-        last_transaction_date: '',
-      };
-      entry.total_expense += tx.amount;
-      entry.transaction_count += 1;
-      entry.average_expense =
-        entry.transaction_count > 0 ? entry.total_expense / entry.transaction_count : 0;
-      if (!entry.last_transaction_date || tx.date > entry.last_transaction_date) {
-        entry.last_transaction_date = tx.date;
-      }
-      merchantMap.set(key, entry);
-    });
-
-  const merchantRows = Array.from(merchantMap.values());
-
   const dailyMap = new Map<string, { income: number; expense: number }>();
   filteredTransactions.forEach((tx) => {
     if (!tx.date) return;
@@ -522,7 +483,6 @@ export function buildReportData(
     date: tx.date,
     account_name: tx.accountName,
     category_name: tx.categoryName,
-    merchant_name: tx.merchantName,
     notes: tx.notes,
     amount: tx.amount,
     type: tx.type,
@@ -542,14 +502,12 @@ export function buildReportData(
       avg_daily_expense: avgDailyExpense,
       largest_expense_amount: largestExpense?.amount ?? 0,
       largest_expense_date: largestExpense?.date ?? '',
-      largest_expense_merchant: largestExpense?.merchantName ?? '',
       top_category_name: topCategory?.category_name ?? '',
       top_category_amount: topCategory?.total_expense ?? 0,
       top_category_share: expenseTotal > 0 ? (topCategory?.total_expense ?? 0) / expenseTotal : 0,
       cashflow_volatility: dailyStdDev,
     },
     categories: categoryRows,
-    merchants: merchantRows,
     daily: dailyRows,
     transactions: transactionRows,
     meta: {
@@ -584,7 +542,6 @@ export function buildSingleCsv(reportData: ReportData): string {
           { key: 'avg_daily_expense', header: 'avg_daily_expense' },
           { key: 'largest_expense_amount', header: 'largest_expense_amount' },
           { key: 'largest_expense_date', header: 'largest_expense_date' },
-          { key: 'largest_expense_merchant', header: 'largest_expense_merchant' },
           { key: 'top_category_name', header: 'top_category_name' },
           { key: 'top_category_amount', header: 'top_category_amount' },
           { key: 'top_category_share', header: 'top_category_share' },
@@ -612,20 +569,6 @@ export function buildSingleCsv(reportData: ReportData): string {
   );
 
   sections.push('');
-  sections.push('# merchants');
-  sections.push(
-    stripBom(
-      toCsv(reportData.merchants, [
-        { key: 'merchant_name', header: 'merchant_name' },
-        { key: 'total_expense', header: 'total_expense' },
-        { key: 'transaction_count', header: 'transaction_count' },
-        { key: 'average_expense', header: 'average_expense' },
-        { key: 'last_transaction_date', header: 'last_transaction_date' },
-      ]),
-    ),
-  );
-
-  sections.push('');
   sections.push('# daily');
   sections.push(
     stripBom(
@@ -644,7 +587,6 @@ export function buildSingleCsv(reportData: ReportData): string {
     { key: 'date', header: 'date' },
     { key: 'account_name', header: 'account_name' },
     { key: 'category_name', header: 'category_name' },
-    { key: 'merchant_name', header: 'merchant_name' },
     { key: 'notes', header: 'notes' },
     { key: 'amount', header: 'amount' },
     { key: 'type', header: 'type' },
@@ -682,7 +624,6 @@ export function buildCsvFiles(reportData: ReportData) {
         { key: 'avg_daily_expense', header: 'avg_daily_expense' },
         { key: 'largest_expense_amount', header: 'largest_expense_amount' },
         { key: 'largest_expense_date', header: 'largest_expense_date' },
-        { key: 'largest_expense_merchant', header: 'largest_expense_merchant' },
         { key: 'top_category_name', header: 'top_category_name' },
         { key: 'top_category_amount', header: 'top_category_amount' },
         { key: 'top_category_share', header: 'top_category_share' },
@@ -699,13 +640,6 @@ export function buildCsvFiles(reportData: ReportData) {
       { key: 'average_amount', header: 'average_amount' },
       { key: 'share_of_total_expense', header: 'share_of_total_expense' },
     ]),
-    merchants: toCsv(reportData.merchants, [
-      { key: 'merchant_name', header: 'merchant_name' },
-      { key: 'total_expense', header: 'total_expense' },
-      { key: 'transaction_count', header: 'transaction_count' },
-      { key: 'average_expense', header: 'average_expense' },
-      { key: 'last_transaction_date', header: 'last_transaction_date' },
-    ]),
     daily: toCsv(reportData.daily, [
       { key: 'date', header: 'date' },
       { key: 'income', header: 'income' },
@@ -719,7 +653,6 @@ export function buildCsvFiles(reportData: ReportData) {
         { key: 'date', header: 'date' },
         { key: 'account_name', header: 'account_name' },
         { key: 'category_name', header: 'category_name' },
-        { key: 'merchant_name', header: 'merchant_name' },
         { key: 'notes', header: 'notes' },
         { key: 'amount', header: 'amount' },
         { key: 'type', header: 'type' },
