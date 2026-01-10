@@ -91,11 +91,34 @@ serve(async (req) => {
     });
 
     if (error) {
+      const normalizedMessage = error.message?.toLowerCase() ?? "";
+      const isDuplicateEmail =
+        normalizedMessage.includes("already registered") ||
+        normalizedMessage.includes("already exists") ||
+        normalizedMessage.includes("email already") ||
+        normalizedMessage.includes("user already");
+      if (error.status === 409 || isDuplicateEmail) {
+        return jsonResponse({ error: "Email sudah terdaftar" }, { status: 409 });
+      }
       return jsonResponse({ error: error.message ?? "Gagal membuat akun." }, { status: 400 });
     }
 
     if (!data?.user) {
       return jsonResponse({ error: "Data pengguna tidak ditemukan." }, { status: 400 });
+    }
+
+    const { error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .upsert({
+        id: data.user.id,
+        preferences: {},
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("[signup-no-confirm] failed to create profile", profileError);
+      return jsonResponse({ error: "Gagal menyiapkan profil pengguna." }, { status: 500 });
     }
 
     return jsonResponse({ user: data.user }, { status: 200 });

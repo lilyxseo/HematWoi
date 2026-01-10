@@ -297,6 +297,69 @@ type SignUpFunctionError = {
   error: string;
 };
 
+async function resolveFunctionError(error: unknown): Promise<{ message?: string; status?: number }> {
+  if (!error || typeof error !== 'object') {
+    return {};
+  }
+
+  const errorWithContext = error as { context?: Response | { status?: number; body?: unknown } };
+  const context = errorWithContext.context;
+  let status: number | undefined;
+  let message: string | undefined;
+
+  if (context instanceof Response) {
+    status = context.status;
+    try {
+      const data = await context.clone().json();
+      if (data && typeof data === 'object' && 'error' in data) {
+        const errorMessage = (data as { error?: unknown }).error;
+        if (typeof errorMessage === 'string') {
+          message = errorMessage;
+        }
+      }
+    } catch {
+      try {
+        const text = await context.clone().text();
+        if (text) {
+          message = text;
+        }
+      } catch {
+        // noop
+      }
+    }
+  } else if (context && typeof context === 'object') {
+    if (typeof context.status === 'number') {
+      status = context.status;
+    }
+    const body = (context as { body?: unknown }).body;
+    if (body && typeof body === 'object' && 'error' in body) {
+      const errorMessage = (body as { error?: unknown }).error;
+      if (typeof errorMessage === 'string') {
+        message = errorMessage;
+      }
+    } else if (typeof body === 'string') {
+      try {
+        const data = JSON.parse(body) as { error?: unknown };
+        if (typeof data?.error === 'string') {
+          message = data.error;
+        }
+      } catch {
+        message = body;
+      }
+    }
+  }
+
+  if (!status && typeof (error as { status?: number }).status === 'number') {
+    status = (error as { status?: number }).status;
+  }
+
+  if (!message && error instanceof Error) {
+    message = error.message;
+  }
+
+  return { message, status };
+}
+
 export async function signUpWithoutEmailConfirmation({
   email,
   password,
@@ -328,7 +391,13 @@ export async function signUpWithoutEmailConfirmation({
     });
 
     if (error) {
-      throw error;
+      const details = await resolveFunctionError(error);
+      const message = details.message || 'Gagal membuat akun. Silakan coba lagi.';
+      const enrichedError = new Error(message);
+      if (details.status) {
+        (enrichedError as { status?: number }).status = details.status;
+      }
+      throw enrichedError;
     }
 
     if (!data || typeof data !== 'object') {
