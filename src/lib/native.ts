@@ -474,7 +474,7 @@ function applyThemeToDocument(themeMode: unknown, brandValue?: unknown): void {
   );
   const softLightness = clamp(brand.l + 32, 70, 96);
   const ringLightness = clamp(brand.l + (resolvedTheme === 'dark' ? 4 : -14), 0, 100);
-  const useDarkForeground = brand.l > 65;
+  const useDarkForeground = brand.l > 70;
 
   root.style.setProperty('--brand-h', String(brand.h));
   root.style.setProperty('--brand-s', `${brand.s}%`);

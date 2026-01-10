@@ -623,7 +623,7 @@ function AppShell({ prefs, setPrefs }) {
     root.style.setProperty('--brand-ring', `hsl(${brand.h} ${brand.s}% ${ringLightness}%)`);
     root.style.setProperty('--brand', `hsl(${brand.h} ${brand.s}% ${brand.l}%)`);
 
-    const useDarkForeground = brand.l > 65;
+    const useDarkForeground = brand.l > 70;
     root.style.setProperty(
       '--color-primary-foreground',
       useDarkForeground ? '0 0% 10%' : '0 0% 100%'
