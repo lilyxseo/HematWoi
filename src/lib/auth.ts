@@ -303,8 +303,9 @@ export async function signUpWithoutEmailConfirmation({
   fullName,
 }: SignUpWithoutConfirmationPayload): Promise<User> {
   try {
-    const signupSecret = env.VITE_SIGNUP_SECRET;
-    if (typeof signupSecret !== 'string' || !signupSecret.trim()) {
+    const signupSecret = import.meta.env?.VITE_SIGNUP_SECRET;
+    const trimmedSecret = typeof signupSecret === 'string' ? signupSecret.trim() : '';
+    if (!trimmedSecret) {
       console.error('[HW][auth] Missing VITE_SIGNUP_SECRET for signup-no-confirm.');
       throw new Error('Konfigurasi pendaftaran belum lengkap. Silakan hubungi admin.');
     }
@@ -315,12 +316,14 @@ export async function signUpWithoutEmailConfirmation({
       full_name: fullName?.trim() || undefined,
     };
 
+    console.debug('signupSecret length', trimmedSecret.length);
+
     const { data, error } = await supabase.functions.invoke<
       SignUpFunctionSuccess | SignUpFunctionError
     >('signup-no-confirm', {
       body,
       headers: {
-        'x-signup-secret': signupSecret,
+        'x-signup-secret': trimmedSecret,
       },
     });
 
