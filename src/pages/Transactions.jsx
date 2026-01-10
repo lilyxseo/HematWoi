@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -23,6 +24,13 @@ import TransactionsCardList from "../components/transactions/TransactionsCardLis
 import BatchToolbar from "../components/transactions/BatchToolbar";
 import useTransactionsQuery from "../hooks/useTransactionsQuery";
 import useNetworkStatus from "../hooks/useNetworkStatus";
+import { useTransactionFormPrefetch } from "../hooks/useTransactionFormPrefetch";
+import {
+  fetchTransactionDetail,
+  getTransactionDetailQueryKey,
+  useAccountsQuery,
+  useCategoriesQuery,
+} from "../hooks/transactionFormQueries";
 import { useToast } from "../context/ToastContext";
 import PageHeader from "../layout/PageHeader";
 import { addTransaction, listAccounts, updateTransaction } from "../lib/api";
@@ -189,6 +197,7 @@ export default function Transactions() {
   const online = useNetworkStatus();
   const navigate = useNavigate();
   const location = useLocation();
+  const { prefetchAddForm, prefetchEditForm } = useTransactionFormPrefetch();
   const [items, setItems] = useState(queryItems);
   const [optimisticItems, setOptimisticItems] = useState(() => []);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -803,8 +812,9 @@ export default function Transactions() {
   const showSyncBadge = offlineMode || queueCount > 0;
 
   const handleNavigateToAdd = useCallback(() => {
+    prefetchAddForm();
     navigate("/transaction/add");
-  }, [navigate]);
+  }, [navigate, prefetchAddForm]);
 
   const tableStickyTop = "calc(var(--app-header-height, var(--app-topbar-h, 64px)) + 16px)";
   const isFilterPanelVisible = isDesktopFilterView || filterPanelOpen;
@@ -816,8 +826,11 @@ export default function Transactions() {
   };
 
   const handleEditTransaction = useCallback((item) => {
+    if (item?.id) {
+      prefetchEditForm(String(item.id), item?.type);
+    }
     setEditTarget(item);
-  }, []);
+  }, [prefetchEditForm]);
 
   const handleRepeatTransaction = useCallback(
     async (target) => {
@@ -868,6 +881,8 @@ export default function Transactions() {
         <button
           type="button"
           onClick={handleNavigateToAdd}
+          onMouseEnter={prefetchAddForm}
+          onTouchStart={prefetchAddForm}
           className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-brand/30 focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
           aria-label="Tambah transaksi (Ctrl+T)"
         >
@@ -1504,17 +1519,9 @@ function normalizeCategoryRow(row) {
 
 function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast }) {
   const isEdit = Boolean(initialData);
-  const [accountsLoading, setAccountsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [accounts, setAccounts] = useState([]);
   const [transactionData, setTransactionData] = useState(() => normalizeTransactionData(initialData));
-  const [transactionLoading, setTransactionLoading] = useState(false);
-  const [transactionError, setTransactionError] = useState(null);
-  const [transactionFetchTick, setTransactionFetchTick] = useState(0);
   const [categoriesState, setCategoriesState] = useState(() => []);
-  const [categoriesLoading, setCategoriesLoading] = useState(false);
-  const [categoriesError, setCategoriesError] = useState(null);
-  const [categoryFetchTick, setCategoryFetchTick] = useState(0);
   const [categoryHint, setCategoryHint] = useState("");
   const [type, setType] = useState(transactionData?.type || "expense");
   const [amount, setAmount] = useState(() => formatAmountDisplay(transactionData?.amount ?? ""));
@@ -1529,92 +1536,46 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   const [receiptUrl, setReceiptUrl] = useState(transactionData?.receipt_url || "");
   const [merchantId, setMerchantId] = useState(transactionData?.merchant_id ?? null);
 
+  const accountsQuery = useAccountsQuery({ enabled: open });
+  const accounts = Array.isArray(accountsQuery.data) ? accountsQuery.data : [];
+  const accountsLoading = accountsQuery.isLoading;
+  const accountsError = accountsQuery.error;
+
+  const transactionId = transactionData?.id || (initialData?.id ? String(initialData.id) : null);
+  const transactionQuery = useQuery({
+    queryKey: transactionId ? getTransactionDetailQueryKey(transactionId) : ["transactions", "detail", "missing"],
+    queryFn: () => fetchTransactionDetail(transactionId),
+    enabled: open && isEdit && Boolean(transactionId),
+    initialData: () => (initialData ? normalizeTransactionData(initialData) : undefined),
+  });
+  const transactionError = transactionQuery.error;
+  const transactionLoading = transactionQuery.isLoading || transactionQuery.isFetching;
+
+  const categoriesQuery = useCategoriesQuery(type === "transfer" ? [] : [type], {
+    enabled: open && type !== "transfer",
+  });
+  const categoriesLoading = categoriesQuery.isLoading;
+  const categoriesError = categoriesQuery.error;
+
   useEffect(() => {
     if (!open) return;
     setTransactionData(normalizeTransactionData(initialData));
-    setTransactionError(null);
     setCategoryHint("");
   }, [open, initialData]);
 
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setAccountsLoading(true);
-    listAccounts()
-      .then((accountRows) => {
-        if (cancelled) return;
-        setAccounts(accountRows || []);
-        setAccountsLoading(false);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error(err);
-        addToast(err?.message || "Gagal memuat master data", "error");
-        setAccountsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, addToast]);
+    if (accountsError) {
+      addToast(accountsError?.message || "Gagal memuat master data", "error");
+    }
+  }, [accountsError, addToast]);
 
   useEffect(() => {
-    if (!open || !isEdit) return;
-    const transactionId =
-      transactionData?.id || (initialData?.id ? String(initialData.id) : null);
-    if (!transactionId) return;
-    let cancelled = false;
-    setTransactionLoading(true);
-    setTransactionError(null);
-
-    (async () => {
-      try {
-        const userId = await getCurrentUserId().catch((err) => {
-          console.error("[edit:tx:user] failed to resolve user", err);
-          return null;
-        });
-        let builder = supabase
-          .from("transactions")
-          .select(
-            "id,user_id,type,category_id,amount,title,notes,date,account_id,to_account_id,receipt_url,merchant_id",
-          )
-          .eq("id", transactionId);
-        if (userId) {
-          builder = builder.eq("user_id", userId);
-        }
-        const { data, error } = await builder.maybeSingle();
-        if (cancelled) return;
-        if (error) {
-          console.error("[edit:tx:get] error", error);
-          setTransactionError(error);
-          setTransactionLoading(false);
-          return;
-        }
-        if (!data) {
-          const notFoundError = new Error("Transaksi tidak ditemukan");
-          setTransactionError(notFoundError);
-          setTransactionLoading(false);
-          return;
-        }
-        const normalized = normalizeTransactionData(data);
-        console.log("[edit:tx:get]", {
-          id: normalized.id,
-          type: normalized.type,
-          category_id: normalized.category_id || null,
-        });
-        setTransactionData((prev) => ({ ...prev, ...normalized }));
-        setTransactionLoading(false);
-      } catch (err) {
-        if (cancelled) return;
-        console.error("[edit:tx:get] error", err);
-        setTransactionError(err);
-        setTransactionLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, isEdit, transactionData?.id, initialData?.id, transactionFetchTick]);
+    if (!open) return;
+    if (transactionQuery.data) {
+      const normalized = normalizeTransactionData(transactionQuery.data);
+      setTransactionData((prev) => ({ ...prev, ...normalized }));
+    }
+  }, [open, transactionQuery.data]);
 
   useEffect(() => {
     if (!open) return;
@@ -1642,58 +1603,20 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
     if (!open) return;
     if (type === "transfer") {
       setCategoriesState([]);
-      setCategoriesError(null);
-      setCategoriesLoading(false);
       return;
     }
-    let cancelled = false;
-    setCategoriesLoading(true);
-    setCategoriesError(null);
-
-    (async () => {
-      try {
-        const userId = await getCurrentUserId().catch((err) => {
-          console.error("[edit:cats:user] failed to resolve user", err);
-          return null;
-        });
-        let builder = supabase
-          .from("categories")
-          .select("id,user_id,type,name,group_name,order_index")
-          .eq("type", type);
-        if (userId) {
-          builder = builder.eq("user_id", userId);
+    const baseCategories = Array.isArray(categoriesQuery.data) ? categoriesQuery.data : [];
+    setCategoriesState((prev) => {
+      const injected = prev.filter((item) => item?.__injected);
+      const merged = [...baseCategories];
+      injected.forEach((item) => {
+        if (!merged.some((cat) => cat.id === item.id)) {
+          merged.push(item);
         }
-        builder = builder
-          .order("order_index", { ascending: true, nullsFirst: true })
-          .order("name", { ascending: true });
-        const { data, error } = await builder;
-        if (cancelled) return;
-        if (error) {
-          console.error("[edit:cats:list] error", error);
-          setCategoriesError(error);
-          setCategoriesState([]);
-          setCategoriesLoading(false);
-          return;
-        }
-        const normalized = (data || [])
-          .map((row) => normalizeCategoryRow(row))
-          .filter(Boolean);
-        setCategoriesState(normalized);
-        setCategoriesLoading(false);
-        console.log("[edit:cats:list]", { type, count: normalized.length });
-      } catch (err) {
-        if (cancelled) return;
-        console.error("[edit:cats:list] error", err);
-        setCategoriesError(err);
-        setCategoriesState([]);
-        setCategoriesLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open, type, categoryFetchTick]);
+      });
+      return merged;
+    });
+  }, [open, type, categoriesQuery.data]);
 
   useEffect(() => {
     if (!open) return;
@@ -1741,7 +1664,7 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
             type: normalized.type,
             injected: true,
           });
-          return [...prev, { ...normalized, label }];
+          return [...prev, { ...normalized, label, __injected: true }];
         });
       } catch (err) {
         if (cancelled) return;
@@ -1763,13 +1686,11 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   }, [categoryId, categoriesState, type]);
 
   const handleRetryTransaction = () => {
-    setTransactionError(null);
-    setTransactionFetchTick((prev) => prev + 1);
+    void transactionQuery.refetch();
   };
 
   const handleRetryCategories = () => {
-    setCategoriesError(null);
-    setCategoryFetchTick((prev) => prev + 1);
+    void categoriesQuery.refetch();
   };
 
   const handleTypeChange = (event) => {
@@ -1874,7 +1795,7 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   };
 
   const categoryOptions = categoriesState;
-  const isInitialLoading = accountsLoading || (isEdit && transactionLoading);
+  const shouldShowSkeleton = isEdit && !transactionData && transactionLoading;
   const blockingTransactionError = transactionError && isEdit;
 
   return (
@@ -1899,9 +1820,17 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
             </button>
           </div>
         </div>
-      ) : isInitialLoading ? (
-        <div className="flex items-center justify-center py-12 text-white/70">
-          <Loader2 className="h-6 w-6 animate-spin" />
+      ) : shouldShowSkeleton ? (
+        <div className="space-y-4 py-6">
+          <div className="h-9 w-40 rounded-xl bg-white/10" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="h-11 rounded-xl bg-white/10" />
+            <div className="h-11 rounded-xl bg-white/10" />
+            <div className="h-11 rounded-xl bg-white/10" />
+            <div className="h-11 rounded-xl bg-white/10" />
+          </div>
+          <div className="h-10 rounded-xl bg-white/10" />
+          <div className="h-20 rounded-xl bg-white/10" />
         </div>
       ) : (
         <form className="space-y-4" onSubmit={handleSubmit}>
@@ -1989,31 +1918,37 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
               <>
                 <label className="flex flex-col gap-2 text-sm">
                   <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Dari</span>
-                  <select
-                    value={accountId}
-                    onChange={(event) => setAccountId(event.target.value)}
-                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                  >
-                    <option value="">Pilih akun sumber</option>
-                    {accounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name || "(Tanpa nama)"}
-                      </option>
+                <select
+                  value={accountId}
+                  onChange={(event) => setAccountId(event.target.value)}
+                  disabled={accountsLoading && accounts.length === 0}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                >
+                  <option value="">
+                    {accountsLoading && accounts.length === 0 ? "Memuat akun..." : "Pilih akun sumber"}
+                  </option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name || "(Tanpa nama)"}
+                    </option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-2 text-sm">
                   <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Tujuan</span>
-                  <select
-                    value={toAccountId}
-                    onChange={(event) => setToAccountId(event.target.value)}
-                    className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-                  >
-                    <option value="">Pilih akun tujuan</option>
-                    {accounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name || "(Tanpa nama)"}
-                      </option>
+                <select
+                  value={toAccountId}
+                  onChange={(event) => setToAccountId(event.target.value)}
+                  disabled={accountsLoading && accounts.length === 0}
+                  className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+                >
+                  <option value="">
+                    {accountsLoading && accounts.length === 0 ? "Memuat akun..." : "Pilih akun tujuan"}
+                  </option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name || "(Tanpa nama)"}
+                    </option>
                     ))}
                   </select>
                 </label>
@@ -2024,9 +1959,12 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
                 <select
                   value={accountId}
                   onChange={(event) => setAccountId(event.target.value)}
+                  disabled={accountsLoading && accounts.length === 0}
                   className="rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
                 >
-                  <option value="">Pilih akun</option>
+                  <option value="">
+                    {accountsLoading && accounts.length === 0 ? "Memuat akun..." : "Pilih akun"}
+                  </option>
                   {accounts.map((acc) => (
                     <option key={acc.id} value={acc.id}>
                       {acc.name || "(Tanpa nama)"}

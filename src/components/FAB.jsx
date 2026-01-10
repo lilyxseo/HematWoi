@@ -1,15 +1,22 @@
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTransactionFormPrefetch } from "../hooks/useTransactionFormPrefetch";
 
 export default function FAB() {
   const navigate = useNavigate();
+  const { prefetchAddForm } = useTransactionFormPrefetch();
   const reduceMotion =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   return (
     <button
       type="button"
-      onClick={() => navigate("/transaction/add")}
+      onClick={() => {
+        prefetchAddForm();
+        navigate("/transaction/add");
+      }}
+      onMouseEnter={prefetchAddForm}
+      onTouchStart={prefetchAddForm}
       aria-label="Tambah transaksi"
       className={[
         "fixed right-4 bottom-[calc(4rem+env(safe-area-inset-bottom))]",
@@ -22,4 +29,3 @@ export default function FAB() {
     </button>
   );
 }
-

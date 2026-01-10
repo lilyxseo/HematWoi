@@ -1,7 +1,9 @@
 import { NavLink } from "react-router-dom";
 import { Home, Plus, BarChart3, Settings, Flag } from "lucide-react";
+import { useTransactionFormPrefetch } from "../hooks/useTransactionFormPrefetch";
 
 export default function BottomNav() {
+  const { prefetchAddForm } = useTransactionFormPrefetch();
   const base =
     "flex flex-1 flex-col items-center justify-center gap-1 py-2 text-xs text-muted";
   const active = "text-brand-var";
@@ -12,7 +14,13 @@ export default function BottomNav() {
           <Home className="h-5 w-5" />
           <span>Dashboard</span>
         </NavLink>
-        <NavLink to="/transaction/add" className={({ isActive }) => `${base} ${isActive ? active : ""}`}>
+        <NavLink
+          to="/transaction/add"
+          onMouseEnter={prefetchAddForm}
+          onTouchStart={prefetchAddForm}
+          onClick={prefetchAddForm}
+          className={({ isActive }) => `${base} ${isActive ? active : ""}`}
+        >
           <Plus className="h-5 w-5" />
           <span>Tambah</span>
         </NavLink>
@@ -32,4 +40,3 @@ export default function BottomNav() {
     </nav>
   );
 }
-

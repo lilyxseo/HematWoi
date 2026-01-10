@@ -1,14 +1,19 @@
 import { PlusCircle, Wallet, CreditCard } from "lucide-react";
 import Card, { CardHeader } from "./Card";
 import QuickActionCard from "./dashboard/QuickActionCard";
+import { useTransactionFormPrefetch } from "../hooks/useTransactionFormPrefetch";
 
 export default function QuickActions() {
+  const { prefetchAddForm } = useTransactionFormPrefetch();
   const actions = [
     {
       to: "/transaction/add",
       label: "Tambah Transaksi",
       icon: PlusCircle,
       shortcut: "Ctrl/Cmd + T",
+      onMouseEnter: prefetchAddForm,
+      onTouchStart: prefetchAddForm,
+      onClick: prefetchAddForm,
     },
     {
       to: "/budgets",
@@ -38,6 +43,9 @@ export default function QuickActions() {
             icon={action.icon}
             title={action.label}
             hint={action.shortcut}
+            onMouseEnter={action.onMouseEnter}
+            onTouchStart={action.onTouchStart}
+            onClick={action.onClick}
           />
         ))}
       </div>
