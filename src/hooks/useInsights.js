@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { isTransactionDeleted } from "../lib/transactionUtils";
 
 const JAKARTA_TIMEZONE = "Asia/Jakarta";
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const jakartaDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: JAKARTA_TIMEZONE,
@@ -37,33 +38,67 @@ function getJakartaMonthKey(input) {
   return `${parts.year}-${parts.month}`;
 }
 
+function getJakartaDateKey(input) {
+  const parts = getJakartaDateParts(input);
+  if (!parts) return null;
+  return `${parts.year}-${parts.month}-${String(parts.day).padStart(2, "0")}`;
+}
+
+function toUtcDate(dateValue) {
+  if (!dateValue) return null;
+  const [year, month, day] = dateValue.split("-").map((part) => Number.parseInt(part, 10));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function countDays(range) {
+  if (!range?.start || !range?.end) return null;
+  const start = toUtcDate(range.start);
+  const end = toUtcDate(range.end);
+  if (!start || !end) return null;
+  const diff = Math.floor((end.getTime() - start.getTime()) / MS_PER_DAY);
+  return diff >= 0 ? diff + 1 : null;
+}
+
+function isWithinRange(input, range) {
+  if (!range?.start || !range?.end) return false;
+  const key = getJakartaDateKey(input);
+  if (!key) return false;
+  return key >= range.start && key <= range.end;
+}
+
 function getCurrentJakartaMonthIndex(baseDate = new Date()) {
   const parts = getJakartaDateParts(baseDate);
   if (!parts) return null;
   return parts.year * 12 + (Number.parseInt(parts.month, 10) - 1);
 }
 
-export function aggregateInsights(txs = [], baseDate = new Date()) {
+export function aggregateInsights(txs = [], options = {}) {
+  const { baseDate, range } = options ?? {};
+  const resolvedBaseDate =
+    baseDate ?? (range?.end ? new Date(`${range.end}T00:00:00+07:00`) : new Date());
   const activeTxs = Array.isArray(txs)
     ? txs.filter((tx) => !isTransactionDeleted(tx))
     : [];
-  const currentMonthIndex = getCurrentJakartaMonthIndex(baseDate);
+  const currentMonthIndex = getCurrentJakartaMonthIndex(resolvedBaseDate);
   if (currentMonthIndex == null) {
     return { kpis: { income: 0, expense: 0, net: 0, avgDaily: 0 }, trend: [], categories: [], topSpends: [] };
   }
 
-  const currentMonthKey = getJakartaMonthKey(baseDate);
-
-  const monthTx = activeTxs.filter((t) => getJakartaMonthKey(t.date) === currentMonthKey);
-  const income = monthTx
+  const currentMonthKey = getJakartaMonthKey(resolvedBaseDate);
+  const periodTx = range?.start && range?.end
+    ? activeTxs.filter((t) => isWithinRange(t.date, range))
+    : activeTxs.filter((t) => getJakartaMonthKey(t.date) === currentMonthKey);
+  const income = periodTx
     .filter((t) => t.type === "income")
     .reduce((s, t) => s + Number(t.amount || 0), 0);
-  const expense = monthTx
+  const expense = periodTx
     .filter((t) => t.type === "expense")
     .reduce((s, t) => s + Number(t.amount || 0), 0);
   const net = income - expense;
-  const todayParts = getJakartaDateParts(baseDate);
-  const day = todayParts?.day ?? 0;
+  const dayCount = countDays(range);
+  const todayParts = getJakartaDateParts(resolvedBaseDate);
+  const day = dayCount ?? todayParts?.day ?? 0;
   const avgDaily = day ? expense / day : 0;
 
   // trend last 6 months (including current)
@@ -92,8 +127,8 @@ export function aggregateInsights(txs = [], baseDate = new Date()) {
     return { month: key, net: entry.income - entry.expense };
   });
 
-  // category breakdown for current month
-  const categories = monthTx
+  // category breakdown for current period
+  const categories = periodTx
     .filter((t) => t.type === "expense")
     .reduce((acc, t) => {
       const key = t.category || "Lainnya";
@@ -116,8 +151,8 @@ export function aggregateInsights(txs = [], baseDate = new Date()) {
     color: item.color,
   }));
 
-  // top spends for current month
-  const topSpends = monthTx
+  // top spends for current period
+  const topSpends = periodTx
     .filter((t) => t.type === "expense")
     .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
 
@@ -131,17 +166,18 @@ export function aggregateInsights(txs = [], baseDate = new Date()) {
 
 const cache = new Map();
 
-export default function useInsights(txs = []) {
+export default function useInsights(txs = [], options = {}) {
+  const { range } = options ?? {};
   const sanitizedTxs = useMemo(
     () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
     [txs],
   );
-  const key = sanitizedTxs.map((t) => `${t.id || t.date}-${t.amount}-${t.type}`).join("|");
+  const rangeKey = range?.start && range?.end ? `${range.start}:${range.end}` : "current";
+  const key = `${rangeKey}|${sanitizedTxs.map((t) => `${t.id || t.date}-${t.amount}-${t.type}`).join("|")}`;
   return useMemo(() => {
     if (cache.has(key)) return cache.get(key);
-    const data = aggregateInsights(sanitizedTxs);
+    const data = aggregateInsights(sanitizedTxs, { range });
     cache.set(key, data);
     return data;
-  }, [key, sanitizedTxs]);
+  }, [key, range, sanitizedTxs]);
 }
-
