@@ -21,7 +21,9 @@ type FormState = {
 
 type FormErrors = Partial<Record<'email' | 'password' | 'confirmPassword' | 'terms', string>>;
 
-type StatusState = { type: 'success' | 'error' | 'info'; message: string } | null;
+type StatusState =
+  | { type: 'success' | 'error' | 'info'; message: string; statusCode?: number }
+  | null;
 
 function getAppUrl(path: string) {
   const url = resolveAuthRedirect(path);
@@ -168,7 +170,10 @@ export default function RegisterPage() {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Gagal membuat akun. Silakan coba lagi nanti.';
-        setStatus({ type: 'error', message });
+        const statusCode = typeof (error as { status?: number }).status === 'number'
+          ? (error as { status?: number }).status
+          : undefined;
+        setStatus({ type: 'error', message, statusCode });
         const normalized = message.toLowerCase();
         if (normalized.includes('email')) {
           setErrors((prev) => ({ ...prev, email: message }));
@@ -272,7 +277,17 @@ export default function RegisterPage() {
                             : 'border-primary/40 bg-primary/10 text-primary'
                       }`}
                     >
-                      {status.message}
+                      <p>{status.message}</p>
+                      {status.type === 'error' && status.statusCode === 409 ? (
+                        <div className="mt-2">
+                          <Link
+                            to="/auth"
+                            className="inline-flex items-center gap-2 font-semibold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
+                          >
+                            Silakan login
+                          </Link>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
 
