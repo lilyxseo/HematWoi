@@ -114,6 +114,16 @@ export default function SettingsPage() {
           onChange={(v) => setLocalPrefs({ ...prefs, firstDay: v })}
         />
       </SettingsGroup>
+      <SettingsGroup title="Productivity">
+        <div className="space-y-1">
+          <Toggle
+            label="Tetap di halaman tambah setelah simpan transaksi"
+            checked={prefs.stayOnAddAfterSave}
+            onChange={(v) => setLocalPrefs({ ...prefs, stayOnAddAfterSave: v })}
+          />
+          <p className="text-xs text-muted">Memudahkan input banyak transaksi sekaligus</p>
+        </div>
+      </SettingsGroup>
       <SettingsGroup title="Privacy">
         <Toggle
           label="PIN lock"

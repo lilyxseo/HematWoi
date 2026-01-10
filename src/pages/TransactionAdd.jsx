@@ -27,6 +27,7 @@ import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
+import { getPrefs, updatePrefs } from '../lib/preferences';
 import {
   createTransactionTemplate,
   deleteTransactionTemplate,
@@ -148,6 +149,9 @@ export default function TransactionAdd({ onAdd }) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
+  const [stayOnAddAfterSave, setStayOnAddAfterSave] = useState(
+    () => getPrefs().stayOnAddAfterSave,
+  );
 
   const categoryTypes = useMemo(() => ['expense', 'income'], []);
 
@@ -598,7 +602,15 @@ export default function TransactionAdd({ onAdd }) {
       onAdd?.(payload);
       addToast('Transaksi tersimpan', 'success');
 
-      navigate('/transactions', { state: { recentTransaction: payload } });
+      if (stayOnAddAfterSave) {
+        setAmountInput('');
+        setNotes('');
+        setReceiptFile(null);
+        setReceiptPreview('');
+        setErrors({});
+      } else {
+        navigate('/transactions', { state: { recentTransaction: payload } });
+      }
     } catch (err) {
       addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
     } finally {
@@ -933,6 +945,20 @@ export default function TransactionAdd({ onAdd }) {
                   </div>
                 ) : null}
               </div>
+
+              <label className="flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-background px-4 py-3 text-sm text-text">
+                <span className="font-medium">Tetap di halaman tambah setelah simpan</span>
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={stayOnAddAfterSave}
+                  onChange={(event) => {
+                    const nextValue = event.target.checked;
+                    setStayOnAddAfterSave(nextValue);
+                    updatePrefs({ stayOnAddAfterSave: nextValue });
+                  }}
+                />
+              </label>
 
               <div>
                 <input
