@@ -107,21 +107,47 @@ serve(async (req) => {
       return jsonResponse({ error: "Data pengguna tidak ditemukan." }, { status: 400 });
     }
 
-    const { error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .upsert({
-        id: data.user.id,
-        preferences: {},
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (profileError) {
-      console.error("[signup-no-confirm] failed to create profile", profileError);
-      return jsonResponse({ error: "Gagal menyiapkan profil pengguna." }, { status: 500 });
+    const userId = data.user?.id;
+    if (!userId) {
+      return jsonResponse({ error: "User created but id missing" }, { status: 500 });
     }
 
-    return jsonResponse({ user: data.user }, { status: 200 });
+    const payloadRecord = payload as Record<string, unknown>;
+    const fullName = String(payloadRecord?.full_name ?? payloadRecord?.name ?? "").trim();
+    const payloadEmail = String(payloadRecord?.email ?? "").trim().toLowerCase();
+    const profileEmail = payloadEmail || normalizedEmail;
+
+    const { error: profileError } = await supabaseAdmin
+      .from("user_profiles")
+      .insert([
+        {
+          id: userId,
+          full_name: fullName || null,
+          email: profileEmail,
+          username: null,
+        },
+      ]);
+
+    if (profileError) {
+      const code = (profileError as { code?: string }).code;
+      const message = profileError.message ?? "";
+      if (code === "23505") {
+        return jsonResponse(
+          { ok: true, user_id: userId, email: profileEmail, user: data.user },
+          { status: 200 }
+        );
+      }
+      console.error("[signup-no-confirm] failed to create profile", profileError);
+      return jsonResponse(
+        { error: "Profile insert failed", details: message },
+        { status: 500 }
+      );
+    }
+
+    return jsonResponse(
+      { ok: true, user_id: userId, email: profileEmail, user: data.user },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("[signup-no-confirm] failed", error);
     return jsonResponse({ error: "Terjadi kesalahan. Coba lagi nanti." }, { status: 400 });
