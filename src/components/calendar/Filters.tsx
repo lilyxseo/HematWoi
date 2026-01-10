@@ -155,7 +155,7 @@ export default function Filters({
             <div className="relative">
               <div
                 ref={segmentedRef}
-                className="relative flex w-full justify-between gap-1 rounded-full bg-slate-800/60 px-2 py-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:w-fit sm:px-1 sm:py-1"
+                className="relative flex w-full justify-between gap-1 rounded-full bg-slate-800/60 px-2 py-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:px-1 sm:py-1"
               >
                 <span
                   className="pointer-events-none absolute inset-y-1 left-0 z-0 rounded-full bg-[var(--accent)] shadow-md transition-[transform,width,opacity] duration-300 ease-in-out"
