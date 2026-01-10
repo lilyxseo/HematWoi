@@ -303,6 +303,12 @@ export async function signUpWithoutEmailConfirmation({
   fullName,
 }: SignUpWithoutConfirmationPayload): Promise<User> {
   try {
+    const signupSecret = env.VITE_SIGNUP_SECRET;
+    if (typeof signupSecret !== 'string' || !signupSecret.trim()) {
+      console.error('[HW][auth] Missing VITE_SIGNUP_SECRET for signup-no-confirm.');
+      throw new Error('Konfigurasi pendaftaran belum lengkap. Silakan hubungi admin.');
+    }
+
     const body = {
       email,
       password,
@@ -313,6 +319,9 @@ export async function signUpWithoutEmailConfirmation({
       SignUpFunctionSuccess | SignUpFunctionError
     >('signup-no-confirm', {
       body,
+      headers: {
+        'x-signup-secret': signupSecret,
+      },
     });
 
     if (error) {
