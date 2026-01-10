@@ -295,7 +295,8 @@ export async function signUpWithEmail({
 }
 
 type SignUpFunctionSuccess = {
-  user: User;
+  ok?: boolean;
+  user?: User;
 };
 
 type SignUpFunctionError = {
@@ -388,7 +389,7 @@ export async function signUpWithoutEmailConfirmation({
   email,
   password,
   fullName,
-}: SignUpWithoutConfirmationPayload): Promise<User> {
+}: SignUpWithoutConfirmationPayload): Promise<{ ok: boolean; user?: User }> {
   try {
     const signupSecret = import.meta.env?.VITE_SIGNUP_SECRET;
     const trimmedSecret = typeof signupSecret === 'string' ? signupSecret.trim() : '';
@@ -433,11 +434,15 @@ export async function signUpWithoutEmailConfirmation({
       throw new Error(message || 'Gagal membuat akun. Silakan coba lagi.');
     }
 
-    if (!('user' in data) || !data.user) {
-      throw new Error('Data pengguna tidak ditemukan.');
+    if ('user' in data && data.user) {
+      return { ok: true, user: data.user };
     }
 
-    return data.user;
+    if ('ok' in data && data.ok === true) {
+      return { ok: true };
+    }
+
+    throw new Error('Gagal membuat akun. Silakan coba lagi.');
   } catch (error) {
     throw normalizeAuthError(error, 'Gagal membuat akun. Silakan coba lagi.');
   }

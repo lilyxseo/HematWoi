@@ -149,14 +149,37 @@ export default function RegisterPage() {
       setStatus(null);
 
       try {
-        await signUpWithoutEmailConfirmation({
+        const signupResult = await signUpWithoutEmailConfirmation({
           email: trimmedEmail,
           password: form.password,
           fullName: trimmedFullName || undefined,
         });
 
+        if (signupResult.ok) {
+          try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+              email: trimmedEmail,
+              password: form.password,
+            });
+            if (error) throw error;
+            const loggedInUser = data?.session?.user ?? data?.user ?? null;
+            if (!loggedInUser) {
+              throw new Error('Sesi login belum tersedia.');
+            }
+            if (addToast) {
+              addToast('Akun berhasil dibuat. Selamat datang!', 'success');
+            }
+            navigate('/', { replace: true });
+            return;
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              console.warn('[register] auto login gagal', error);
+            }
+          }
+        }
+
         if (addToast) {
-          addToast('Akun berhasil dibuat. Silakan login.', 'success');
+          addToast('Akun berhasil dibuat. Silakan login untuk melanjutkan.', 'success');
         }
 
         const emailQuery = trimmedEmail ? `?${new URLSearchParams({ email: trimmedEmail }).toString()}` : '';
