@@ -27,6 +27,7 @@ import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
+import { getPrefs } from '../lib/preferences';
 import {
   createTransactionTemplate,
   deleteTransactionTemplate,
@@ -162,6 +163,7 @@ export default function TransactionAdd({ onAdd }) {
 
   const previousTypeRef = useRef(type);
   const categoryButtonRef = useRef(null);
+  const amountInputRef = useRef(null);
 
   useEffect(() => {
     const previousType = previousTypeRef.current;
@@ -598,7 +600,17 @@ export default function TransactionAdd({ onAdd }) {
       onAdd?.(payload);
       addToast('Transaksi tersimpan', 'success');
 
-      navigate('/transactions', { state: { recentTransaction: payload } });
+      const { stayOnAddAfterSave } = getPrefs();
+      if (stayOnAddAfterSave) {
+        setAmountInput('');
+        setNotes('');
+        setReceiptFile(null);
+        setReceiptPreview('');
+        setErrors({});
+        amountInputRef.current?.focus();
+      } else {
+        navigate('/transactions', { state: { recentTransaction: payload } });
+      }
     } catch (err) {
       addToast(err?.message || 'Gagal menyimpan transaksi', 'error');
     } finally {
@@ -736,6 +748,7 @@ export default function TransactionAdd({ onAdd }) {
                     onBlur={() => validate()}
                     inputMode="decimal"
                     placeholder="Masukkan jumlah"
+                    ref={amountInputRef}
                     className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-text focus:outline-none"
                   />
                 </div>
