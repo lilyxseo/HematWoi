@@ -64,7 +64,7 @@ export default function Dashboard({ stats, txs }) {
     setPeriodPreset(preset);
   };
 
-  const insights = useInsights(visibleTxs);
+  const insights = useInsights(visibleTxs, { range: periodRange });
   const periodLabel = useMemo(
     () => formatPeriodLabel(periodRange) || "—",
     [periodRange],
