@@ -25,7 +25,6 @@ import PageHeader from '../layout/PageHeader';
 import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
-import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
 import { getPrefs, updatePrefs } from '../lib/preferences';
 import {
@@ -34,7 +33,7 @@ import {
   listTransactionTemplates,
 } from '../lib/transactionTemplatesApi';
 import { supabase } from '../lib/supabase';
-import useCategories from '../hooks/useCategories';
+import { useAccountsQuery, useCategoriesQuery } from '../hooks/transactionFormQueries';
 
 const TYPE_OPTIONS = [
   {
@@ -128,7 +127,6 @@ async function uploadReceipt(file, transactionId) {
 export default function TransactionAdd({ onAdd }) {
   const navigate = useNavigate();
   const { addToast } = useToast();
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState('expense');
   const [date, setDate] = useState(() => getDateWithOffset(0));
@@ -155,56 +153,33 @@ export default function TransactionAdd({ onAdd }) {
 
   const categoryTypes = useMemo(() => ['expense', 'income'], []);
 
-  const {
-    data: categoryData,
-    isLoading: categoriesLoading,
-    error: categoriesError,
-    refresh: refreshCategories,
-  } = useCategories(categoryTypes);
+  const categoriesQuery = useCategoriesQuery(categoryTypes);
+  const categories = categoriesQuery.data ?? [];
+  const categoriesLoading = categoriesQuery.isLoading;
+  const categoriesError = categoriesQuery.error;
 
-  const categories = categoryData;
+  const accountsQuery = useAccountsQuery();
+  const accountsLoading = accountsQuery.isLoading;
+  const accountsError = accountsQuery.error;
 
-  const previousTypeRef = useRef(type);
+  useEffect(() => {
+    if (!Array.isArray(accountsQuery.data)) return;
+    setAccounts(accountsQuery.data);
+  }, [accountsQuery.data]);
+
   const categoryButtonRef = useRef(null);
 
   useEffect(() => {
-    const previousType = previousTypeRef.current;
-    if (previousType !== type) {
-      if (
-        (previousType === 'expense' || previousType === 'income') &&
-        (type === 'expense' || type === 'income')
-      ) {
-        void refreshCategories();
-      }
-      previousTypeRef.current = type;
+    if (accountsError) {
+      addToast(accountsError?.message || 'Gagal memuat master data', 'error');
     }
-  }, [type, refreshCategories]);
+  }, [accountsError, addToast]);
 
   useEffect(() => {
-    let active = true;
-    async function loadMasterData() {
-      setLoading(true);
-      try {
-        const accountRows = await listAccounts();
-        if (!active) return;
-        const orderedAccounts = Array.isArray(accountRows)
-          ? accountRows.filter(Boolean)
-          : [];
-        setAccounts(orderedAccounts);
-        if (orderedAccounts.length) {
-          setAccountId((prev) => prev || orderedAccounts[0].id);
-        }
-      } catch (err) {
-        addToast(err?.message || 'Gagal memuat master data', 'error');
-      } finally {
-        if (active) setLoading(false);
-      }
+    if (!accountId && accounts.length) {
+      setAccountId(accounts[0].id);
     }
-    loadMasterData();
-    return () => {
-      active = false;
-    };
-  }, [addToast]);
+  }, [accountId, accounts]);
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -618,19 +593,6 @@ export default function TransactionAdd({ onAdd }) {
     }
   };
 
-  if (loading) {
-    return (
-      <Page>
-        <Section first className="mx-auto max-w-3xl">
-          <div className="flex items-center justify-center gap-2 py-16 text-muted">
-            <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-            Memuat formulir...
-          </div>
-        </Section>
-      </Page>
-    );
-  }
-
   return (
     <Page>
       <PageHeader title="Tambah Transaksi">
@@ -780,8 +742,11 @@ export default function TransactionAdd({ onAdd }) {
                       setErrors((prev) => ({ ...prev, account_id: undefined }));
                     }}
                     className={INPUT_CLASS}
+                    disabled={accountsLoading && accounts.length === 0}
                   >
-                    <option value="">Pilih akun</option>
+                    <option value="">
+                      {accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun'}
+                    </option>
                     {accounts.map((account) => (
                       <option key={account.id} value={account.id}>
                         {account.name || 'Tanpa nama'}
@@ -804,8 +769,11 @@ export default function TransactionAdd({ onAdd }) {
                         setErrors((prev) => ({ ...prev, to_account_id: undefined }));
                       }}
                       className={INPUT_CLASS}
+                      disabled={accountsLoading && accounts.length === 0}
                     >
-                      <option value="">Pilih akun tujuan</option>
+                      <option value="">
+                        {accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun tujuan'}
+                      </option>
                       {accounts
                         .filter((account) => account.id !== accountId)
                         .map((account) => (
@@ -829,7 +797,7 @@ export default function TransactionAdd({ onAdd }) {
                         setCategoryId(option?.value || '');
                         setErrors((prev) => ({ ...prev, category_id: undefined }));
                       }}
-                      disabled={categoriesLoading}
+                      disabled={categoriesLoading && filteredCategories.length === 0}
                     >
                       <div className="relative">
                         <Combobox.Input
@@ -870,9 +838,7 @@ export default function TransactionAdd({ onAdd }) {
                         <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
                           {categoryOptions.length === 0 ? (
                             <div className="px-3 py-2 text-xs text-muted">
-                              {categoryOptions.length === 0
-                                ? 'No categories found'
-                                : 'No categories found'}
+                              {categoriesLoading ? 'Memuat kategori...' : 'No categories found'}
                             </div>
                           ) : (
                             categoryOptions.map((option) => (
@@ -900,7 +866,7 @@ export default function TransactionAdd({ onAdd }) {
                         <button
                           type="button"
                           onClick={() => {
-                            void refreshCategories();
+                            void categoriesQuery.refetch();
                           }}
                           className="rounded-lg border border-destructive px-2 py-1 text-xs font-medium transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive"
                         >
@@ -932,7 +898,7 @@ export default function TransactionAdd({ onAdd }) {
                             <button
                               type="button"
                               onClick={() => {
-                                void refreshCategories();
+                                void categoriesQuery.refetch();
                               }}
                               className="rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-text transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
                             >

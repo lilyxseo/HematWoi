@@ -5,6 +5,7 @@ import CurrencyInput from "./ui/CurrencyInput";
 import Input from "./ui/Input";
 import Select from "./ui/Select";
 import Textarea from "./ui/Textarea";
+import { useTransactionFormPrefetch } from "../hooks/useTransactionFormPrefetch";
 
 export default function AddForm({ categories, onAdd }) {
   const [type, setType] = useState("expense");
@@ -12,6 +13,7 @@ export default function AddForm({ categories, onAdd }) {
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [category, setCategory] = useState("");
   const [note, setNote] = useState("");
+  const { prefetchAddForm } = useTransactionFormPrefetch();
 
   useEffect(() => {
     setCategory(categories[type]?.[0] || "");
@@ -55,7 +57,13 @@ export default function AddForm({ categories, onAdd }) {
         onChange={(e) => setNote(e.target.value)}
       />
       <div className="flex justify-between pt-2">
-        <Link to="/transaction/add" className="btn">
+        <Link
+          to="/transaction/add"
+          onMouseEnter={prefetchAddForm}
+          onTouchStart={prefetchAddForm}
+          onClick={prefetchAddForm}
+          className="btn"
+        >
           Form lengkap
         </Link>
         <button type="submit" className="btn btn-primary">

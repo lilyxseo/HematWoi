@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { useTransactionFormPrefetch } from '../../hooks/useTransactionFormPrefetch'
 import { AlertTriangle, CalendarClock, Flame, Info, Sparkles, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import Card, { CardBody, CardHeader } from '../Card'
 import FinancialInsightItem, { FinancialInsightItemSkeleton } from './FinancialInsightItem'
@@ -38,6 +39,7 @@ interface FinancialInsightsProps {
 
 export default function FinancialInsights({ periodEnd }: FinancialInsightsProps) {
   const navigate = useNavigate()
+  const { prefetchAddForm } = useTransactionFormPrefetch()
   const periodMonth = useMemo(() => toMonthKey(periodEnd) ?? undefined, [periodEnd])
 
   const topSpendingQuery = useQuery({
@@ -157,7 +159,10 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
               title="Belum ada pengeluaran tercatat"
               subtitle="Catat transaksi untuk melihat insight pengeluaran."
               tone="info"
-              onClick={() => navigate('/transaction/add')}
+              onClick={() => {
+                prefetchAddForm()
+                navigate('/transaction/add')
+              }}
               ariaLabel="Tambah transaksi baru"
             />
           )}
