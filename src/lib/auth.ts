@@ -108,19 +108,24 @@ function normalizeAuthError(error: unknown, fallback = DEFAULT_ERROR): Normalize
   }
   let code: string | undefined;
   let message = fallback;
+  let status: number | undefined;
 
   if (typeof error === 'string') {
     message = translateMessage(undefined, error) ?? error ?? fallback;
   } else if (error && typeof error === 'object') {
-    const err = error as AuthErrorLike;
+    const err = error as AuthErrorLike & { status?: number };
     code = err.code ?? undefined;
+    status = typeof err.status === 'number' ? err.status : undefined;
     const translated = translateMessage(err.code ?? undefined, err.message ?? undefined);
     message = translated ?? err.message ?? fallback;
   }
 
-  const normalizedError = new Error(message ?? fallback) as NormalizedError;
+  const normalizedError = new Error(message ?? fallback) as NormalizedError & { status?: number };
   if (code) {
     normalizedError.code = code;
+  }
+  if (typeof status === 'number') {
+    normalizedError.status = status;
   }
   return normalizedError;
 }
@@ -311,17 +316,31 @@ async function resolveFunctionError(error: unknown): Promise<{ message?: string;
     status = context.status;
     try {
       const data = await context.clone().json();
-      if (data && typeof data === 'object' && 'error' in data) {
-        const errorMessage = (data as { error?: unknown }).error;
+      if (data && typeof data === 'object') {
+        const errorMessage = 'error' in data ? (data as { error?: unknown }).error : undefined;
+        const messageText = 'message' in data ? (data as { message?: unknown }).message : undefined;
         if (typeof errorMessage === 'string') {
           message = errorMessage;
+        } else if (typeof messageText === 'string') {
+          message = messageText;
         }
       }
     } catch {
       try {
         const text = await context.clone().text();
         if (text) {
-          message = text;
+          try {
+            const data = JSON.parse(text) as { error?: unknown; message?: unknown };
+            if (typeof data?.error === 'string') {
+              message = data.error;
+            } else if (typeof data?.message === 'string') {
+              message = data.message;
+            } else {
+              message = text;
+            }
+          } catch {
+            message = text;
+          }
         }
       } catch {
         // noop
@@ -332,16 +351,21 @@ async function resolveFunctionError(error: unknown): Promise<{ message?: string;
       status = context.status;
     }
     const body = (context as { body?: unknown }).body;
-    if (body && typeof body === 'object' && 'error' in body) {
-      const errorMessage = (body as { error?: unknown }).error;
+    if (body && typeof body === 'object') {
+      const errorMessage = 'error' in body ? (body as { error?: unknown }).error : undefined;
+      const messageText = 'message' in body ? (body as { message?: unknown }).message : undefined;
       if (typeof errorMessage === 'string') {
         message = errorMessage;
+      } else if (typeof messageText === 'string') {
+        message = messageText;
       }
     } else if (typeof body === 'string') {
       try {
-        const data = JSON.parse(body) as { error?: unknown };
+        const data = JSON.parse(body) as { error?: unknown; message?: unknown };
         if (typeof data?.error === 'string') {
           message = data.error;
+        } else if (typeof data?.message === 'string') {
+          message = data.message;
         }
       } catch {
         message = body;
