@@ -4,7 +4,7 @@ import { IconBrandGoogle } from '@tabler/icons-react';
 import { CheckCircle2, Circle, Eye, EyeOff } from 'lucide-react';
 import ErrorBoundary from '../components/system/ErrorBoundary';
 import Logo from '../components/Logo';
-import { resolveAuthRedirect, signInWithPassword, signUpWithoutEmailConfirmation } from '../lib/auth';
+import { resolveAuthRedirect, signUpWithoutEmailConfirmation } from '../lib/auth';
 import { supabase } from '../lib/supabase';
 import { getPasswordStrength, isPasswordValid, validatePassword } from '../lib/password';
 import { useToast } from '../context/ToastContext';
@@ -155,24 +155,24 @@ export default function RegisterPage() {
           fullName: trimmedFullName || undefined,
         });
 
-        await signInWithPassword({
-          email: trimmedEmail,
-          password: form.password,
-        });
-
-        setStatus({ type: 'success', message: 'Akun berhasil dibuat. Mengarahkan ke dashboard…' });
-
         if (addToast) {
-          addToast(`Akun berhasil dibuat. Selamat datang, ${trimmedFullName || trimmedEmail}!`, 'success');
+          addToast('Akun berhasil dibuat. Silakan login.', 'success');
         }
 
-        navigate('/dashboard', { replace: true });
+        const emailQuery = trimmedEmail ? `?${new URLSearchParams({ email: trimmedEmail }).toString()}` : '';
+        navigate(`/auth${emailQuery}`, { replace: true });
       } catch (error) {
-        const message =
+        let message =
           error instanceof Error ? error.message : 'Gagal membuat akun. Silakan coba lagi nanti.';
         const statusCode = typeof (error as { status?: number }).status === 'number'
           ? (error as { status?: number }).status
           : undefined;
+        if (message.toLowerCase().includes('edge function returned a non-2xx status code')) {
+          message = 'Gagal membuat akun. Silakan coba lagi nanti.';
+        }
+        if (statusCode === 409) {
+          message = 'Email sudah terdaftar.';
+        }
         setStatus({ type: 'error', message, statusCode });
         const normalized = message.toLowerCase();
         if (normalized.includes('email')) {
@@ -284,7 +284,7 @@ export default function RegisterPage() {
                             to="/auth"
                             className="inline-flex items-center gap-2 font-semibold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/45"
                           >
-                            Silakan login
+                            Login
                           </Link>
                         </div>
                       ) : null}
