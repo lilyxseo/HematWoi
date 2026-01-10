@@ -27,7 +27,7 @@ import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { listAccounts } from '../lib/api';
 import { createTransaction } from '../lib/transactionsApi';
-import { getPrefs } from '../lib/preferences';
+import { getPrefs, updatePrefs } from '../lib/preferences';
 import {
   createTransactionTemplate,
   deleteTransactionTemplate,
@@ -149,6 +149,9 @@ export default function TransactionAdd({ onAdd }) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
+  const [stayOnAddAfterSave, setStayOnAddAfterSave] = useState(
+    () => getPrefs().stayOnAddAfterSave,
+  );
 
   const categoryTypes = useMemo(() => ['expense', 'income'], []);
 
@@ -163,7 +166,6 @@ export default function TransactionAdd({ onAdd }) {
 
   const previousTypeRef = useRef(type);
   const categoryButtonRef = useRef(null);
-  const amountInputRef = useRef(null);
 
   useEffect(() => {
     const previousType = previousTypeRef.current;
@@ -600,14 +602,12 @@ export default function TransactionAdd({ onAdd }) {
       onAdd?.(payload);
       addToast('Transaksi tersimpan', 'success');
 
-      const { stayOnAddAfterSave } = getPrefs();
       if (stayOnAddAfterSave) {
         setAmountInput('');
         setNotes('');
         setReceiptFile(null);
         setReceiptPreview('');
         setErrors({});
-        amountInputRef.current?.focus();
       } else {
         navigate('/transactions', { state: { recentTransaction: payload } });
       }
@@ -748,7 +748,6 @@ export default function TransactionAdd({ onAdd }) {
                     onBlur={() => validate()}
                     inputMode="decimal"
                     placeholder="Masukkan jumlah"
-                    ref={amountInputRef}
                     className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-text focus:outline-none"
                   />
                 </div>
@@ -945,6 +944,25 @@ export default function TransactionAdd({ onAdd }) {
                     )}
                   </div>
                 ) : null}
+              </div>
+
+              <div className="rounded-2xl border border-border-subtle bg-muted/30 px-4 py-3">
+                <label className="flex items-start justify-between gap-4 text-sm text-text">
+                  <div className="space-y-1">
+                    <span className="font-medium">Tetap di halaman tambah setelah simpan</span>
+                    <p className="text-xs text-muted">Memudahkan input banyak transaksi sekaligus</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4"
+                    checked={stayOnAddAfterSave}
+                    onChange={(event) => {
+                      const nextValue = event.target.checked;
+                      setStayOnAddAfterSave(nextValue);
+                      updatePrefs({ stayOnAddAfterSave: nextValue });
+                    }}
+                  />
+                </label>
               </div>
 
               <div>
