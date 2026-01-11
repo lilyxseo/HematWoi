@@ -167,6 +167,7 @@ export default function TransactionAdd({ onAdd }) {
     setAccounts(accountsQuery.data);
   }, [accountsQuery.data]);
 
+  const accountButtonRef = useRef(null);
   const categoryButtonRef = useRef(null);
 
   useEffect(() => {
@@ -248,9 +249,19 @@ export default function TransactionAdd({ onAdd }) {
     return categoriesByType[type] || [];
   }, [categoriesByType, type]);
 
+  const accountOptions = useMemo(
+    () => accounts.map((account) => ({ value: account.id, label: account.name || 'Tanpa nama' })),
+    [accounts],
+  );
+
   const categoryOptions = useMemo(
     () => filteredCategories.map((category) => ({ value: category.id, label: category.name })),
     [filteredCategories],
+  );
+
+  const selectedAccountOption = useMemo(
+    () => accountOptions.find((option) => option.value === accountId) || null,
+    [accountOptions, accountId],
   );
 
   const selectedCategoryOption = useMemo(
@@ -578,10 +589,6 @@ export default function TransactionAdd({ onAdd }) {
       addToast('Transaksi tersimpan', 'success');
 
       if (stayOnAddAfterSave) {
-        setAmountInput('');
-        setNotes('');
-        setReceiptFile(null);
-        setReceiptPreview('');
         setErrors({});
       } else {
         navigate('/transactions', { state: { recentTransaction: payload } });
@@ -734,25 +741,73 @@ export default function TransactionAdd({ onAdd }) {
                     <Wallet className="h-4 w-4" aria-hidden="true" />
                     Akun sumber
                   </label>
-                  <select
-                    id="account"
-                    value={accountId}
-                    onChange={(event) => {
-                      setAccountId(event.target.value);
+                  <Combobox
+                    value={selectedAccountOption}
+                    onChange={(option) => {
+                      setAccountId(option?.value || '');
                       setErrors((prev) => ({ ...prev, account_id: undefined }));
                     }}
-                    className={INPUT_CLASS}
                     disabled={accountsLoading && accounts.length === 0}
                   >
-                    <option value="">
-                      {accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun'}
-                    </option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name || 'Tanpa nama'}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="relative">
+                      <Combobox.Input
+                        id="account"
+                        className={`${INPUT_CLASS} pr-16`}
+                        displayValue={(option) => option?.label || ''}
+                        placeholder={accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun'}
+                        aria-invalid={Boolean(errors.account_id)}
+                        onClick={() => accountButtonRef.current?.click()}
+                        readOnly
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                        {selectedAccountOption ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAccountId('');
+                              setErrors((prev) => ({ ...prev, account_id: undefined }));
+                            }}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-subtle text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                            aria-label="Bersihkan akun"
+                            title="Bersihkan akun"
+                          >
+                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        ) : null}
+                        <Combobox.Button
+                          ref={accountButtonRef}
+                          className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          {accountsLoading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                          ) : (
+                            'Pilih'
+                          )}
+                        </Combobox.Button>
+                      </div>
+                      <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
+                        {accountOptions.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted">
+                            {accountsLoading ? 'Memuat akun...' : 'Tidak ada akun'}
+                          </div>
+                        ) : (
+                          accountOptions.map((option) => (
+                            <Combobox.Option
+                              key={option.value}
+                              value={option}
+                              className={({ active }) =>
+                                `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
+                                  active ? 'bg-muted/60' : ''
+                                }`
+                              }
+                            >
+                              {option.label}
+                            </Combobox.Option>
+                          ))
+                        )}
+                      </Combobox.Options>
+                    </div>
+                  </Combobox>
                   {errors.account_id ? <p className="mt-1 text-xs text-destructive">{errors.account_id}</p> : null}
                 </div>
                 {isTransfer ? (
