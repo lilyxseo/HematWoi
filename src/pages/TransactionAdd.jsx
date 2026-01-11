@@ -167,6 +167,7 @@ export default function TransactionAdd({ onAdd }) {
     setAccounts(accountsQuery.data);
   }, [accountsQuery.data]);
 
+  const accountButtonRef = useRef(null);
   const categoryButtonRef = useRef(null);
 
   useEffect(() => {
@@ -248,9 +249,19 @@ export default function TransactionAdd({ onAdd }) {
     return categoriesByType[type] || [];
   }, [categoriesByType, type]);
 
+  const accountOptions = useMemo(
+    () => accounts.map((account) => ({ value: account.id, label: account.name || 'Tanpa nama' })),
+    [accounts],
+  );
+
   const categoryOptions = useMemo(
     () => filteredCategories.map((category) => ({ value: category.id, label: category.name })),
     [filteredCategories],
+  );
+
+  const selectedAccountOption = useMemo(
+    () => accountOptions.find((option) => option.value === accountId) || null,
+    [accountOptions, accountId],
   );
 
   const selectedCategoryOption = useMemo(
@@ -578,11 +589,7 @@ export default function TransactionAdd({ onAdd }) {
       addToast('Transaksi tersimpan', 'success');
 
       if (stayOnAddAfterSave) {
-        setAmountInput('');
-        setNotes('');
-        setReceiptFile(null);
-        setReceiptPreview('');
-        setErrors({});
+        handleReset();
       } else {
         navigate('/transactions', { state: { recentTransaction: payload } });
       }
@@ -734,25 +741,59 @@ export default function TransactionAdd({ onAdd }) {
                     <Wallet className="h-4 w-4" aria-hidden="true" />
                     Akun sumber
                   </label>
-                  <select
-                    id="account"
-                    value={accountId}
-                    onChange={(event) => {
-                      setAccountId(event.target.value);
+                  <Combobox
+                    value={selectedAccountOption}
+                    onChange={(option) => {
+                      setAccountId(option?.value || '');
                       setErrors((prev) => ({ ...prev, account_id: undefined }));
                     }}
-                    className={INPUT_CLASS}
                     disabled={accountsLoading && accounts.length === 0}
                   >
-                    <option value="">
-                      {accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun'}
-                    </option>
-                    {accounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name || 'Tanpa nama'}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="relative">
+                      <Combobox.Input
+                        id="account"
+                        className={`${INPUT_CLASS} pr-16`}
+                        displayValue={(option) => option?.label || ''}
+                        placeholder={accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Akun sumber'}
+                        aria-invalid={Boolean(errors.account_id)}
+                        onClick={() => accountButtonRef.current?.click()}
+                        readOnly
+                      />
+                      <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                        <Combobox.Button
+                          ref={accountButtonRef}
+                          className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          {accountsLoading ? (
+                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                          ) : (
+                            'Buka'
+                          )}
+                        </Combobox.Button>
+                      </div>
+                      <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
+                        {accountOptions.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted">
+                            {accountsLoading ? 'Memuat akun...' : 'Tidak ada akun'}
+                          </div>
+                        ) : (
+                          accountOptions.map((option) => (
+                            <Combobox.Option
+                              key={option.value}
+                              value={option}
+                              className={({ active }) =>
+                                `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
+                                  active ? 'bg-muted/60' : ''
+                                }`
+                              }
+                            >
+                              {option.label}
+                            </Combobox.Option>
+                          ))
+                        )}
+                      </Combobox.Options>
+                    </div>
+                  </Combobox>
                   {errors.account_id ? <p className="mt-1 text-xs text-destructive">{errors.account_id}</p> : null}
                 </div>
                 {isTransfer ? (
@@ -1046,7 +1087,7 @@ export default function TransactionAdd({ onAdd }) {
                       Belum ada template. Isi formulir di atas lalu simpan sebagai template untuk mempercepat pencatatan transaksi berikutnya.
                     </p>
                   ) : (
-                    <ul className="space-y-2">
+                    <ul className="divide-y divide-border-subtle rounded-2xl border border-border-subtle bg-background/60">
                       {templates.map((template) => {
                         const accountName = accounts.find((item) => item.id === template.account_id)?.name || 'Akun tidak ditemukan';
                         const toAccountName = template.to_account_id
@@ -1062,59 +1103,57 @@ export default function TransactionAdd({ onAdd }) {
                         return (
                           <li
                             key={template.id}
-                            className="group relative overflow-hidden rounded-xl border border-border-subtle bg-white/80 p-3 shadow-sm transition hover:border-primary/50 dark:bg-zinc-900/60"
+                            className="group flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition hover:bg-muted/30"
                           >
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="min-w-0 space-y-1">
-                                <p className="truncate text-sm font-semibold text-text">{template.name || 'Tanpa judul'}</p>
-                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                                  <span className="inline-flex items-center gap-1">
-                                    <Wallet className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                                    <span className="truncate">{accountName || '—'}</span>
-                                  </span>
-                                  <span className="inline-flex items-center gap-1">
-                                    {template.type === 'transfer' ? (
-                                      <ArrowRight className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                                    ) : (
-                                      <TagIcon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-                                    )}
-                                    <span className="truncate">{metaLabel}</span>
-                                  </span>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="whitespace-nowrap text-sm font-semibold text-text">
-                                  {formatAmountDisplay(template.amount)}
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <p className="truncate text-sm font-semibold text-text">{template.name || 'Tanpa judul'}</p>
+                              <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+                                <span className="inline-flex items-center gap-1">
+                                  <Wallet className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+                                  <span className="truncate">{accountName || '—'}</span>
                                 </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplyTemplate(template)}
-                                  disabled={Boolean(applyingTemplateId)}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
-                                  aria-label="Gunakan template"
-                                  title="Gunakan template"
-                                >
-                                  {applyingTemplateId === template.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                <span className="inline-flex items-center gap-1">
+                                  {template.type === 'transfer' ? (
+                                    <ArrowRight className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
                                   ) : (
-                                    <Wand2 className="h-4 w-4" aria-hidden="true" />
+                                    <TagIcon className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
                                   )}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteTemplate(template.id)}
-                                  disabled={deletingTemplateId === template.id}
-                                  className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border-subtle text-muted transition hover:border-destructive/60 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
-                                  aria-label="Hapus template"
-                                  title="Hapus template"
-                                >
-                                  {deletingTemplateId === template.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                                  ) : (
-                                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                  )}
-                                </button>
+                                  <span className="truncate">{metaLabel}</span>
+                                </span>
                               </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="min-w-[110px] text-right text-sm font-semibold text-text">
+                                {formatAmountDisplay(template.amount)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleApplyTemplate(template)}
+                                disabled={Boolean(applyingTemplateId)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label="Gunakan template"
+                                title="Gunakan template"
+                              >
+                                {applyingTemplateId === template.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <Wand2 className="h-4 w-4" aria-hidden="true" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTemplate(template.id)}
+                                disabled={deletingTemplateId === template.id}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle text-muted transition hover:border-destructive/60 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                                aria-label="Hapus template"
+                                title="Hapus template"
+                              >
+                                {deletingTemplateId === template.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                )}
+                              </button>
                             </div>
                           </li>
                         );
