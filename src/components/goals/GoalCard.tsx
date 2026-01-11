@@ -1,5 +1,4 @@
 import { CalendarDays, Flag, Pencil, PiggyBank, Archive, Trash2, ListPlus } from 'lucide-react';
-import type { CSSProperties } from 'react';
 import type { GoalRecord } from '../../lib/api-goals';
 
 const currencyFormatter = new Intl.NumberFormat('id-ID', {
@@ -133,12 +132,6 @@ export default function GoalCard({
   const nextMilestone = sortedMilestones.find((milestone) => milestone.amount > goal.saved_amount) ?? null;
   const quickAddOptions = [50000, 100000, 250000];
 
-  const ringStyle: CSSProperties = {
-    ['--p' as string]: progress,
-    ['--goal-color' as string]: goal.color || '#3898F8',
-    background: 'conic-gradient(var(--goal-color) calc(var(--p) * 1%), rgba(113,113,122,0.18) 0)',
-  };
-
   return (
     <article
       className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-4 shadow-sm transition hover:border-border md:p-5 ${
@@ -181,40 +174,33 @@ export default function GoalCard({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[auto,1fr] md:items-center">
-        <div className="flex flex-col items-center gap-2 md:items-start">
-          <div className="relative h-24 w-24">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,240px),1fr] md:items-center">
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Progress</span>
+            <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
+              {Math.round(progress)}%
+            </span>
+          </div>
+          <div className="relative h-2 w-full rounded-full bg-border/60">
             <div
-              className="h-full w-full rounded-full border-4 border-border/40"
-              style={ringStyle}
+              className="h-2 rounded-full bg-gradient-to-r from-brand/60 via-brand to-brand"
+              style={{ width: `${progress}%` }}
             />
-            <div className="absolute inset-2 rounded-full bg-card/95 shadow-inner" />
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-lg font-semibold text-text">{Math.round(progress)}%</span>
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted">Progress</span>
-            </div>
-            <div className="pointer-events-none absolute inset-0">
-              {milestoneDots.map((dot) => {
-                const angle = (dot.percent / 100) * 360 - 90;
-                const radius = 42;
-                const x = 50 + radius * Math.cos((angle * Math.PI) / 180);
-                const y = 50 + radius * Math.sin((angle * Math.PI) / 180);
-                return (
-                  <span
-                    key={dot.id}
-                    className="absolute h-2 w-2 rounded-full border border-white/80 bg-white shadow-sm dark:border-zinc-900/80"
-                    style={{
-                      left: `${x}%`,
-                      top: `${y}%`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                  />
-                );
-              })}
-            </div>
+            {milestoneDots.map((dot) => (
+              <span
+                key={dot.id}
+                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-white bg-card shadow-sm"
+                style={{ left: `${dot.percent}%`, transform: 'translate(-50%, -50%)' }}
+              />
+            ))}
+          </div>
+          <div className="flex items-center justify-between text-xs text-muted">
+            <span>{formatCurrency(goal.saved_amount)} terkumpul</span>
+            <span>{formatCurrency(goal.target_amount)} target</span>
           </div>
           {nextMilestone ? (
-            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-center text-xs font-semibold text-muted">
+            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted">
               Next milestone {formatCurrency(nextMilestone.amount)}
             </div>
           ) : null}
