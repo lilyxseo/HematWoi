@@ -23,6 +23,12 @@ function parseDecimal(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function formatAmountInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('id-ID');
+}
+
 const PRESET_PERCENTAGES = [25, 50, 75, 100];
 
 interface CategoryOption {
@@ -81,7 +87,7 @@ function buildDefaultValues(initial?: GoalRecord | null): GoalFormValues {
   return {
     title: initial.title ?? '',
     description: initial.description ?? '',
-    target_amount: initial.target_amount ? String(initial.target_amount) : '',
+    target_amount: initial.target_amount ? formatAmountInput(String(initial.target_amount)) : '',
     start_date: normalizeDateInput(initial.start_date) || todayIso(),
     due_date: normalizeDateInput(initial.due_date) || '',
     priority: initial.priority,
@@ -111,7 +117,7 @@ function identifyPresetMilestones(initial: GoalRecord | null) {
       custom.push({
         id: `${initial.id}-custom-${index}`,
         label: milestone.label,
-        amount: String(milestone.amount),
+        amount: formatAmountInput(String(milestone.amount)),
       });
     }
   });
@@ -188,7 +194,15 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
   const handleChange = (field: keyof GoalFormValues) =>
     (event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
       const { value } = event.target;
-      setValues((prev) => ({ ...prev, [field]: field === 'color' ? clampHex(value) : value }));
+      setValues((prev) => ({
+        ...prev,
+        [field]:
+          field === 'color'
+            ? clampHex(value)
+            : field === 'target_amount'
+              ? formatAmountInput(value)
+              : value,
+      }));
     };
 
   const togglePreset = (percent: number) => () => {
@@ -208,7 +222,11 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
       const { value } = event.target;
       setMilestonesState((prev) => ({
         presets: prev.presets,
-        custom: prev.custom.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+        custom: prev.custom.map((item) =>
+          item.id === id
+            ? { ...item, [field]: field === 'amount' ? formatAmountInput(value) : value }
+            : item,
+        ),
       }));
     };
 
@@ -359,12 +377,11 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
                 Target nominal
                 <input
                   name="target_amount"
-                  type="number"
-                  inputMode="decimal"
-                  min="0"
+                  type="text"
+                  inputMode="numeric"
                   value={values.target_amount}
                   onChange={handleChange('target_amount')}
-                  placeholder="10000000"
+                  placeholder="10.000.000"
                   className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
                     errors.target_amount ? 'border-danger/70' : 'border-border bg-surface-1'
                   }`}
@@ -528,8 +545,8 @@ export default function GoalForm({ open, mode, initialData = null, categories, s
                     }`}
                   />
                   <input
-                    type="number"
-                    inputMode="decimal"
+                    type="text"
+                    inputMode="numeric"
                     value={item.amount}
                     onChange={handleCustomChange(item.id, 'amount')}
                     placeholder="Nominal"
