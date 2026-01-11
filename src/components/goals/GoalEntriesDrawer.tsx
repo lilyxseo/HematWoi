@@ -22,6 +22,12 @@ function parseDecimal(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+function formatAmountInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('id-ID');
+}
+
 function todayIsoDate() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -196,14 +202,14 @@ export default function GoalEntriesDrawer({
               Nominal setoran
               <input
                 name="amount"
-                type="number"
-                inputMode="decimal"
+                type="text"
+                inputMode="numeric"
                 value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                onChange={(event) => setAmount(formatAmountInput(event.target.value))}
                 className={`h-[44px] rounded-xl border px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] ${
                   errors.amount ? 'border-danger/70' : 'border-border bg-surface-1'
                 }`}
-                placeholder="1000000"
+                placeholder="1.000.000"
                 required
               />
               {errors.amount ? <span className="text-xs text-danger">{errors.amount}</span> : null}

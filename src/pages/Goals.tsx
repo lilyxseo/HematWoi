@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Download, Plus, Sparkles, Target } from 'lucide-react';
+import { ChevronDown, Download, Plus, Target } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/goals/SummaryCards';
@@ -40,43 +40,6 @@ const INITIAL_FILTERS: GoalsFilterState = {
   categoryId: 'all',
   sort: 'newest',
 };
-
-const GOAL_TEMPLATES = [
-  {
-    id: 'emergency-fund',
-    title: 'Dana Darurat',
-    target_amount: 15000000,
-    priority: 'high' as const,
-    color: '#4F46E5',
-    icon: '🛟',
-  },
-  {
-    id: 'holiday',
-    title: 'Liburan Keluarga',
-    target_amount: 8000000,
-    priority: 'normal' as const,
-    color: '#14B8A6',
-    icon: '🏖️',
-  },
-  {
-    id: 'education',
-    title: 'Pendidikan',
-    target_amount: 12000000,
-    priority: 'urgent' as const,
-    color: '#F97316',
-    icon: '🎓',
-  },
-];
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
-
-function formatCurrency(value: number) {
-  return currencyFormatter.format(Math.max(0, value));
-}
 
 function formatDateISO(value: string | null | undefined) {
   if (!value) return null;
@@ -128,8 +91,6 @@ export default function Goals() {
   const [archiveLoadingId, setArchiveLoadingId] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<CategoryOption[]>([]);
-  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
-  const templateMenuRef = useRef<HTMLDivElement | null>(null);
 
   const logError = useCallback((scope: string, error: unknown) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -197,32 +158,6 @@ export default function Goals() {
     setFormMode('create');
     setEditingGoal(null);
     setFormOpen(true);
-  };
-
-  const handleCreateTemplate = async (template: (typeof GOAL_TEMPLATES)[number]) => {
-    try {
-      const dueDate = new Date();
-      dueDate.setMonth(dueDate.getMonth() + 6);
-      const payload: GoalPayload = {
-        title: template.title,
-        target_amount: template.target_amount,
-        priority: template.priority,
-        status: 'active',
-        color: template.color,
-        icon: template.icon,
-        start_date: new Date().toISOString(),
-        due_date: dueDate.toISOString(),
-      };
-      const created = await createGoal(payload);
-      setGoals((prev) => [created, ...prev]);
-      addToast(`Goal "${template.title}" ditambahkan`, 'success');
-      await refreshGoals();
-    } catch (error) {
-      logError('createTemplate', error);
-      addToast('Gagal menambahkan goal dari template', 'error');
-    } finally {
-      setTemplateMenuOpen(false);
-    }
   };
 
   const handleEditGoal = (goal: GoalRecord) => {
@@ -457,23 +392,7 @@ export default function Goals() {
     if (filters.sort !== 'newest') count += 1;
     if (filters.q.trim()) count += 1;
     return count;
-  }, [filters, categories]);
-
-  const aggregateSummary = useMemo(() => {
-    const totals = goals.reduce(
-      (acc, goal) => {
-        acc.target += goal.target_amount ?? 0;
-        acc.saved += goal.saved_amount ?? 0;
-        return acc;
-      },
-      { target: 0, saved: 0 },
-    );
-    return {
-      target: totals.target,
-      saved: totals.saved,
-      remaining: Math.max(totals.target - totals.saved, 0),
-    };
-  }, [goals]);
+  }, [filters]);
 
   const nearestGoalTitle = useMemo(() => {
     const activeGoals = goals.filter((goal) => goal.status === 'active');
@@ -521,20 +440,6 @@ export default function Goals() {
     return chips;
   }, [filters, categories]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!templateMenuRef.current) return;
-      if (!templateMenuRef.current.contains(event.target as Node)) {
-        setTemplateMenuOpen(false);
-      }
-    };
-    if (templateMenuOpen) {
-      window.addEventListener('click', handleClickOutside);
-      return () => window.removeEventListener('click', handleClickOutside);
-    }
-    return undefined;
-  }, [templateMenuOpen]);
-
   const toggleFilterPanel = () => {
     if (isDesktopFilterView) return;
     setFilterPanelOpen((prev) => !prev);
@@ -546,59 +451,14 @@ export default function Goals() {
         title="Goals"
         description="Atur dan pantau progres tabungan tujuan finansial kamu secara menyeluruh."
       >
-        <div className="relative inline-flex items-center" ref={templateMenuRef}>
-          <button
-            type="button"
-            onClick={handleCreateClick}
-            className="inline-flex h-[40px] items-center gap-2 rounded-l-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Tambah Goal
-          </button>
-          <button
-            type="button"
-            onClick={() => setTemplateMenuOpen((prev) => !prev)}
-            className="inline-flex h-[40px] items-center justify-center rounded-r-xl bg-brand px-3 text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-            aria-haspopup="menu"
-            aria-expanded={templateMenuOpen}
-            aria-label="Buka template goal"
-          >
-            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-          </button>
-          {templateMenuOpen ? (
-            <div
-              role="menu"
-              className="absolute right-0 top-[46px] z-10 w-56 overflow-hidden rounded-2xl border border-border/60 bg-surface-1 shadow-lg"
-            >
-              <button
-                type="button"
-                onClick={handleCreateClick}
-                className="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold text-text transition hover:bg-border/60"
-                role="menuitem"
-              >
-                <Target className="h-4 w-4" aria-hidden="true" />
-                Goal baru (kosong)
-              </button>
-              <div className="border-t border-border/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
-                Template cepat
-              </div>
-              {GOAL_TEMPLATES.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => handleCreateTemplate(template)}
-                  className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-text transition hover:bg-border/60"
-                  role="menuitem"
-                >
-                  <span className="text-base" aria-hidden="true">
-                    {template.icon}
-                  </span>
-                  {template.title}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <button
+          type="button"
+          onClick={handleCreateClick}
+          className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          Tambah Goal
+        </button>
         <button
           type="button"
           onClick={handleExportCsv}
@@ -610,40 +470,6 @@ export default function Goals() {
       </PageHeader>
 
       <div className="space-y-[var(--section-y)]">
-        <section className="grid grid-cols-1 gap-3 rounded-3xl border border-border/60 bg-surface-1/70 p-4 shadow-sm md:grid-cols-3">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand/10 text-brand">
-              <Target className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Target gabungan</p>
-              <p className="text-lg font-semibold text-text">{formatCurrency(aggregateSummary.target)}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-500">
-              <Sparkles className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Terkumpul</p>
-              <p className="text-lg font-semibold text-emerald-500 dark:text-emerald-300">
-                {formatCurrency(aggregateSummary.saved)}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-500">
-              <Target className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa target</p>
-              <p className="text-lg font-semibold text-sky-500 dark:text-sky-300">
-                {formatCurrency(aggregateSummary.remaining)}
-              </p>
-            </div>
-          </div>
-        </section>
-
         <div className="space-y-3">
           <button
             type="button"
