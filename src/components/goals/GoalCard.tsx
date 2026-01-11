@@ -101,7 +101,10 @@ interface GoalCardProps {
   onOpenEntries: (goal: GoalRecord) => void;
   onToggleArchive: (goal: GoalRecord) => void;
   onDelete: (goal: GoalRecord) => void;
+  onQuickAdd?: (goal: GoalRecord, amount: number) => void;
   archiveLoading?: boolean;
+  quickAddLoadingKey?: string | null;
+  className?: string;
 }
 
 export default function GoalCard({
@@ -110,7 +113,10 @@ export default function GoalCard({
   onOpenEntries,
   onToggleArchive,
   onDelete,
+  onQuickAdd,
   archiveLoading,
+  quickAddLoadingKey,
+  className,
 }: GoalCardProps) {
   const progress = calculateProgress(goal);
   const remaining = Math.max(goal.target_amount - goal.saved_amount, 0);
@@ -123,6 +129,9 @@ export default function GoalCard({
 
   const archiveLabel = goal.status === 'archived' ? 'Aktifkan' : 'Arsipkan';
   const iconLabel = goal.icon?.trim() || goal.title.charAt(0).toUpperCase() || '🎯';
+  const sortedMilestones = [...goal.milestones].sort((a, b) => a.amount - b.amount);
+  const nextMilestone = sortedMilestones.find((milestone) => milestone.amount > goal.saved_amount) ?? null;
+  const quickAddOptions = [50000, 100000, 250000];
 
   const ringStyle: CSSProperties = {
     ['--p' as string]: progress,
@@ -131,7 +140,11 @@ export default function GoalCard({
   };
 
   return (
-    <article className="flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-4 shadow-sm transition hover:border-border md:p-5">
+    <article
+      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-4 shadow-sm transition hover:border-border md:p-5 ${
+        className ?? ''
+      }`}
+    >
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 items-start gap-3">
           <div
@@ -200,6 +213,11 @@ export default function GoalCard({
               })}
             </div>
           </div>
+          {nextMilestone ? (
+            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-center text-xs font-semibold text-muted">
+              Next milestone {formatCurrency(nextMilestone.amount)}
+            </div>
+          ) : null}
         </div>
 
         <div className="min-w-0 space-y-4">
@@ -251,7 +269,26 @@ export default function GoalCard({
               </span>
             </div>
           ) : null}
-
+          {onQuickAdd && goal.status === 'active' ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted">
+              <span className="text-[11px] uppercase tracking-wide text-muted">Tambah cepat</span>
+              {quickAddOptions.map((amount) => {
+                const key = `${goal.id}-${amount}`;
+                return (
+                  <button
+                    key={amount}
+                    type="button"
+                    onClick={() => onQuickAdd(goal, amount)}
+                    disabled={quickAddLoadingKey === key}
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text transition hover:bg-border/60 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <PiggyBank className="h-3 w-3" aria-hidden="true" />
+                    {formatCurrency(amount)}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
       </div>
 

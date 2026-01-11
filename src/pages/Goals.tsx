@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { ChevronDown, Download, Plus } from 'lucide-react';
+import { ChevronDown, Download, Plus, Sparkles, Target } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
 import SummaryCards from '../components/goals/SummaryCards';
@@ -40,6 +40,43 @@ const INITIAL_FILTERS: GoalsFilterState = {
   categoryId: 'all',
   sort: 'newest',
 };
+
+const GOAL_TEMPLATES = [
+  {
+    id: 'emergency-fund',
+    title: 'Dana Darurat',
+    target_amount: 15000000,
+    priority: 'high' as const,
+    color: '#4F46E5',
+    icon: '🛟',
+  },
+  {
+    id: 'holiday',
+    title: 'Liburan Keluarga',
+    target_amount: 8000000,
+    priority: 'normal' as const,
+    color: '#14B8A6',
+    icon: '🏖️',
+  },
+  {
+    id: 'education',
+    title: 'Pendidikan',
+    target_amount: 12000000,
+    priority: 'urgent' as const,
+    color: '#F97316',
+    icon: '🎓',
+  },
+];
+
+const currencyFormatter = new Intl.NumberFormat('id-ID', {
+  style: 'currency',
+  currency: 'IDR',
+  maximumFractionDigits: 0,
+});
+
+function formatCurrency(value: number) {
+  return currencyFormatter.format(Math.max(0, value));
+}
 
 function formatDateISO(value: string | null | undefined) {
   if (!value) return null;
@@ -83,6 +120,7 @@ export default function Goals() {
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [entrySubmitting, setEntrySubmitting] = useState(false);
   const [entryDeletingId, setEntryDeletingId] = useState<string | null>(null);
+  const [quickAddLoadingKey, setQuickAddLoadingKey] = useState<string | null>(null);
 
   const [pendingGoalDelete, setPendingGoalDelete] = useState<GoalRecord | null>(null);
   const [pendingEntryDelete, setPendingEntryDelete] = useState<GoalEntryRecord | null>(null);
@@ -90,6 +128,8 @@ export default function Goals() {
   const [archiveLoadingId, setArchiveLoadingId] = useState<string | null>(null);
 
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
+  const templateMenuRef = useRef<HTMLDivElement | null>(null);
 
   const logError = useCallback((scope: string, error: unknown) => {
     if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
@@ -157,6 +197,32 @@ export default function Goals() {
     setFormMode('create');
     setEditingGoal(null);
     setFormOpen(true);
+  };
+
+  const handleCreateTemplate = async (template: (typeof GOAL_TEMPLATES)[number]) => {
+    try {
+      const dueDate = new Date();
+      dueDate.setMonth(dueDate.getMonth() + 6);
+      const payload: GoalPayload = {
+        title: template.title,
+        target_amount: template.target_amount,
+        priority: template.priority,
+        status: 'active',
+        color: template.color,
+        icon: template.icon,
+        start_date: new Date().toISOString(),
+        due_date: dueDate.toISOString(),
+      };
+      const created = await createGoal(payload);
+      setGoals((prev) => [created, ...prev]);
+      addToast(`Goal "${template.title}" ditambahkan`, 'success');
+      await refreshGoals();
+    } catch (error) {
+      logError('createTemplate', error);
+      addToast('Gagal menambahkan goal dari template', 'error');
+    } finally {
+      setTemplateMenuOpen(false);
+    }
   };
 
   const handleEditGoal = (goal: GoalRecord) => {
@@ -231,6 +297,25 @@ export default function Goals() {
       addToast('Gagal menambahkan setoran', 'error');
     } finally {
       setEntrySubmitting(false);
+    }
+  };
+
+  const handleQuickAdd = async (goal: GoalRecord, amount: number) => {
+    const key = `${goal.id}-${amount}`;
+    setQuickAddLoadingKey(key);
+    try {
+      await addEntry(goal.id, { amount, date: new Date().toISOString(), note: 'Tambah cepat' });
+      addToast('Setoran cepat berhasil dicatat', 'success');
+      if (selectedGoal?.id === goal.id) {
+        const list = await listGoalEntries(goal.id);
+        setEntries(list);
+      }
+      await refreshGoals();
+    } catch (error) {
+      logError('quickAdd', error);
+      addToast('Gagal menambahkan setoran cepat', 'error');
+    } finally {
+      setQuickAddLoadingKey(null);
     }
   };
 
@@ -372,7 +457,83 @@ export default function Goals() {
     if (filters.sort !== 'newest') count += 1;
     if (filters.q.trim()) count += 1;
     return count;
-  }, [filters]);
+  }, [filters, categories]);
+
+  const aggregateSummary = useMemo(() => {
+    const totals = goals.reduce(
+      (acc, goal) => {
+        acc.target += goal.target_amount ?? 0;
+        acc.saved += goal.saved_amount ?? 0;
+        return acc;
+      },
+      { target: 0, saved: 0 },
+    );
+    return {
+      target: totals.target,
+      saved: totals.saved,
+      remaining: Math.max(totals.target - totals.saved, 0),
+    };
+  }, [goals]);
+
+  const nearestGoalTitle = useMemo(() => {
+    const activeGoals = goals.filter((goal) => goal.status === 'active');
+    if (activeGoals.length === 0) return null;
+    const sorted = [...activeGoals].sort((a, b) => {
+      const remainingA = Math.max(a.target_amount - a.saved_amount, 0);
+      const remainingB = Math.max(b.target_amount - b.saved_amount, 0);
+      return remainingA - remainingB;
+    });
+    return sorted[0]?.title ?? null;
+  }, [goals]);
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string }[] = [];
+    const statusLabelMap: Record<string, string> = {
+      active: 'Aktif',
+      paused: 'Ditahan',
+      achieved: 'Tercapai',
+      archived: 'Diarsipkan',
+    };
+    const priorityLabelMap: Record<string, string> = {
+      low: 'Rendah',
+      normal: 'Normal',
+      high: 'Tinggi',
+      urgent: 'Mendesak',
+    };
+    if (filters.status !== 'all') {
+      chips.push({ key: 'status', label: `Status: ${statusLabelMap[filters.status] ?? filters.status}` });
+    }
+    if (filters.priority !== 'all') {
+      chips.push({
+        key: 'priority',
+        label: `Prioritas: ${priorityLabelMap[filters.priority] ?? filters.priority}`,
+      });
+    }
+    if (filters.dateField !== 'created_at') chips.push({ key: 'dateField', label: 'Tanggal: target' });
+    if (filters.dateFrom) chips.push({ key: 'dateFrom', label: `Dari: ${filters.dateFrom}` });
+    if (filters.dateTo) chips.push({ key: 'dateTo', label: `Sampai: ${filters.dateTo}` });
+    if (filters.categoryId !== 'all') {
+      const categoryName = categories.find((item) => item.id === filters.categoryId)?.name ?? 'Kategori';
+      chips.push({ key: 'category', label: `Kategori: ${categoryName}` });
+    }
+    if (filters.sort !== 'newest') chips.push({ key: 'sort', label: `Urut: ${filters.sort}` });
+    if (filters.q.trim()) chips.push({ key: 'q', label: `Cari: ${filters.q}` });
+    return chips;
+  }, [filters, categories]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!templateMenuRef.current) return;
+      if (!templateMenuRef.current.contains(event.target as Node)) {
+        setTemplateMenuOpen(false);
+      }
+    };
+    if (templateMenuOpen) {
+      window.addEventListener('click', handleClickOutside);
+      return () => window.removeEventListener('click', handleClickOutside);
+    }
+    return undefined;
+  }, [templateMenuOpen]);
 
   const toggleFilterPanel = () => {
     if (isDesktopFilterView) return;
@@ -385,14 +546,59 @@ export default function Goals() {
         title="Goals"
         description="Atur dan pantau progres tabungan tujuan finansial kamu secara menyeluruh."
       >
-        <button
-          type="button"
-          onClick={handleCreateClick}
-          className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Tambah Goal
-        </button>
+        <div className="relative inline-flex items-center" ref={templateMenuRef}>
+          <button
+            type="button"
+            onClick={handleCreateClick}
+            className="inline-flex h-[40px] items-center gap-2 rounded-l-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            Tambah Goal
+          </button>
+          <button
+            type="button"
+            onClick={() => setTemplateMenuOpen((prev) => !prev)}
+            className="inline-flex h-[40px] items-center justify-center rounded-r-xl bg-brand px-3 text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+            aria-haspopup="menu"
+            aria-expanded={templateMenuOpen}
+            aria-label="Buka template goal"
+          >
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+          </button>
+          {templateMenuOpen ? (
+            <div
+              role="menu"
+              className="absolute right-0 top-[46px] z-10 w-56 overflow-hidden rounded-2xl border border-border/60 bg-surface-1 shadow-lg"
+            >
+              <button
+                type="button"
+                onClick={handleCreateClick}
+                className="flex w-full items-center gap-2 px-4 py-3 text-sm font-semibold text-text transition hover:bg-border/60"
+                role="menuitem"
+              >
+                <Target className="h-4 w-4" aria-hidden="true" />
+                Goal baru (kosong)
+              </button>
+              <div className="border-t border-border/60 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Template cepat
+              </div>
+              {GOAL_TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => handleCreateTemplate(template)}
+                  className="flex w-full items-center gap-2 px-4 py-3 text-sm font-medium text-text transition hover:bg-border/60"
+                  role="menuitem"
+                >
+                  <span className="text-base" aria-hidden="true">
+                    {template.icon}
+                  </span>
+                  {template.title}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           onClick={handleExportCsv}
@@ -404,6 +610,40 @@ export default function Goals() {
       </PageHeader>
 
       <div className="space-y-[var(--section-y)]">
+        <section className="grid grid-cols-1 gap-3 rounded-3xl border border-border/60 bg-surface-1/70 p-4 shadow-sm md:grid-cols-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+              <Target className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Target gabungan</p>
+              <p className="text-lg font-semibold text-text">{formatCurrency(aggregateSummary.target)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-500">
+              <Sparkles className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Terkumpul</p>
+              <p className="text-lg font-semibold text-emerald-500 dark:text-emerald-300">
+                {formatCurrency(aggregateSummary.saved)}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-500">
+              <Target className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa target</p>
+              <p className="text-lg font-semibold text-sky-500 dark:text-sky-300">
+                {formatCurrency(aggregateSummary.remaining)}
+              </p>
+            </div>
+          </div>
+        </section>
+
         <div className="space-y-3">
           <button
             type="button"
@@ -451,19 +691,50 @@ export default function Goals() {
               onReset={handleResetFilters}
             />
           </div>
+          {activeFilterChips.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted">
+              <span className="text-[11px] uppercase tracking-wide">Filter aktif</span>
+              {activeFilterChips.map((chip) => (
+                <span
+                  key={chip.key}
+                  className="inline-flex items-center rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text"
+                >
+                  {chip.label}
+                </span>
+              ))}
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1 rounded-full border border-brand/40 bg-brand/10 px-3 py-1 text-xs font-semibold text-brand transition hover:bg-brand/15"
+              >
+                Reset semua
+              </button>
+            </div>
+          ) : null}
         </div>
 
-        <SummaryCards summary={summary} />
+        <SummaryCards summary={summary} nearestGoalTitle={nearestGoalTitle} />
 
         <section aria-live="polite" className="space-y-4">
           {loading ? (
             <p className="text-sm text-muted">Memuat goals…</p>
           ) : goals.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border/60 bg-surface-1/70 p-8 text-center text-sm text-muted">
-              Belum ada goal yang tercatat. Mulai dengan menambahkan goal baru.
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-surface-1/70 p-8 text-center text-sm text-muted">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+                <Target className="h-6 w-6" aria-hidden="true" />
+              </span>
+              <p>Belum ada goal yang tercatat. Mulai dengan menambahkan goal baru.</p>
+              <button
+                type="button"
+                onClick={handleCreateClick}
+                className="inline-flex h-[40px] items-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Tambah Goal Pertama
+              </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
               {goals.map((goal) => (
                 <GoalCard
                   key={goal.id}
@@ -473,6 +744,9 @@ export default function Goals() {
                   onToggleArchive={handleToggleArchive}
                   onDelete={handleRequestDeleteGoal}
                   archiveLoading={archiveLoadingId === goal.id}
+                  onQuickAdd={handleQuickAdd}
+                  quickAddLoadingKey={quickAddLoadingKey}
+                  className={goal.priority === 'urgent' ? 'xl:col-span-2' : undefined}
                 />
               ))}
             </div>
