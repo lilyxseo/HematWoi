@@ -589,7 +589,7 @@ export default function TransactionAdd({ onAdd }) {
       addToast('Transaksi tersimpan', 'success');
 
       if (stayOnAddAfterSave) {
-        setErrors({});
+        handleReset();
       } else {
         navigate('/transactions', { state: { recentTransaction: payload } });
       }
@@ -760,20 +760,6 @@ export default function TransactionAdd({ onAdd }) {
                         readOnly
                       />
                       <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
-                        {selectedAccountOption ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAccountId('');
-                              setErrors((prev) => ({ ...prev, account_id: undefined }));
-                            }}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-subtle text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                            aria-label="Bersihkan akun"
-                            title="Bersihkan akun"
-                          >
-                            <X className="h-3.5 w-3.5" aria-hidden="true" />
-                          </button>
-                        ) : null}
                         <Combobox.Button
                           ref={accountButtonRef}
                           className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
