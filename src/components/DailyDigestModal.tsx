@@ -106,80 +106,117 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
 
   const content = hasData ? (
     <>
-      <header className="space-y-1">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">{data!.todayLabel}</p>
-        <h2 id="daily-digest-modal-title" className="text-2xl font-semibold text-text">Daily Digest</h2>
-        <p className="text-sm text-muted">
-          Ringkasan keuanganmu untuk membantu memulai hari dengan fokus.
-        </p>
+      <header className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">{data!.todayLabel}</p>
+          <h2 id="daily-digest-modal-title" className="text-2xl font-semibold text-text">Daily Digest</h2>
+        </div>
+        <div className="rounded-2xl border border-border-subtle bg-surface-alt/70 px-4 py-3 text-right">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Saldo total</p>
+          <p className="text-lg font-semibold text-text">{formatCurrency(data!.balance)}</p>
+        </div>
       </header>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Saldo total</div>
-          <div className="mt-2 text-2xl font-semibold text-text">{formatCurrency(data!.balance)}</div>
-          <p className="mt-1 text-xs text-muted">Per {data!.todayLabel}</p>
-        </div>
-
-        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Aktivitas hari ini</div>
-          <div className="mt-2 flex items-baseline gap-2 text-xl font-semibold text-text">
-            <span className="text-danger">-{formatCurrency(data!.todayExpense)}</span>
-            <span className="text-muted">/</span>
-            <span className="text-success">+{formatCurrency(data!.todayIncome)}</span>
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-4 rounded-3xl border border-border-subtle bg-surface-alt/40 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Aktivitas hari ini</p>
+              <p className="mt-2 text-2xl font-semibold text-text">
+                <span className="text-danger">-{formatCurrency(data!.todayExpense)}</span>
+                <span className="mx-2 text-muted">/</span>
+                <span className="text-success">+{formatCurrency(data!.todayIncome)}</span>
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                {data!.todayCount} transaksi · Net {formatCurrency(data!.todayNet)}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full border border-border-subtle bg-surface px-3 py-1 text-xs font-semibold text-text">
+                Net {data!.todayNet >= 0 ? 'positif' : 'negatif'}
+              </span>
+              <span className="rounded-full border border-border-subtle bg-surface px-3 py-1 text-xs font-semibold text-text">
+                {data!.todayCount} transaksi
+              </span>
+            </div>
           </div>
-          <p className="mt-1 text-xs text-muted">
-            {data!.todayCount} transaksi · Net {formatCurrency(data!.todayNet)}
-          </p>
+
+          <div className="rounded-2xl border border-border-subtle bg-surface p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Top pengeluaran hari ini</p>
+            {data!.topTodayExpenses.length ? (
+              <ul className="mt-3 space-y-2 text-sm text-text">
+                {data!.topTodayExpenses.map((item) => (
+                  <li key={item.name} className="flex items-center justify-between">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted">Belum ada pengeluaran yang tercatat hari ini.</p>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Top pengeluaran hari ini</div>
-          {data!.topTodayExpenses.length ? (
-            <ul className="mt-3 space-y-2 text-sm text-text">
-              {data!.topTodayExpenses.map((item) => (
-                <li key={item.name} className="flex items-center justify-between">
-                  <span className="font-medium">{item.name}</span>
-                  <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-2 text-sm text-muted">Belum ada pengeluaran yang tercatat hari ini.</p>
-          )}
+        <div className="space-y-4 rounded-3xl border border-border-subtle bg-surface-alt/40 p-4 sm:p-5">
+          <div className="rounded-2xl border border-border-subtle bg-surface p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Ringkasan kemarin</p>
+            <p className="mt-2 text-xl font-semibold text-danger">
+              -{formatCurrency(data!.yesterdayExpense)}
+            </p>
+            {data!.yesterdayCount > 0 ? (
+              <p className="mt-1 text-xs text-muted">{data!.yesterdayCount} transaksi tercatat kemarin.</p>
+            ) : (
+              <p className="mt-1 text-xs text-muted">Tidak ada pengeluaran yang tercatat kemarin.</p>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-border-subtle bg-surface p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Top pengeluaran kemarin</p>
+            {data!.topYesterdayExpenses.length ? (
+              <ul className="mt-3 space-y-2 text-sm text-text">
+                {data!.topYesterdayExpenses.map((item) => (
+                  <li key={item.name} className="flex items-center justify-between">
+                    <span className="font-medium">{item.name}</span>
+                    <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-muted">Tidak ada pengeluaran besar kemarin.</p>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:p-5">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted">Pengeluaran kemarin</div>
-          <div className="mt-2 text-2xl font-semibold text-danger">-{formatCurrency(data!.yesterdayExpense)}</div>
-          {data!.yesterdayCount > 0 ? (
-            <p className="mt-2 text-xs text-muted">{data!.yesterdayCount} transaksi tercatat kemarin.</p>
-          ) : (
-            <p className="mt-2 text-sm text-muted">Tidak ada pengeluaran yang tercatat kemarin.</p>
-          )}
-        </div>
-
-        <div className="rounded-2xl border border-border-subtle bg-surface-alt/60 p-4 sm:col-span-2 sm:p-5">
-          <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
-            <span>Pengingat 7 hari</span>
-            <span>{data!.upcoming.length} agenda</span>
+        <div className="rounded-3xl border border-border-subtle bg-surface-alt/40 p-4 sm:col-span-2 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">Pengingat 7 hari</p>
+              <p className="mt-1 text-sm text-muted">Agenda penting yang akan datang.</p>
+            </div>
+            <span className="rounded-full border border-border-subtle bg-surface px-3 py-1 text-xs font-semibold text-text">
+              {data!.upcoming.length} agenda
+            </span>
           </div>
           {data!.upcoming.length ? (
-            <ul className="mt-3 space-y-2 text-sm text-text">
+            <div className="mt-4 space-y-3">
               {data!.upcoming.map((item) => (
-                <li key={`${item.name}-${item.days}`} className="flex items-center justify-between gap-3 rounded-xl bg-surface p-3">
+                <div
+                  key={`${item.name}-${item.days}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-subtle bg-surface px-4 py-3"
+                >
                   <div>
-                    <p className="font-medium">{item.name}</p>
+                    <p className="font-medium text-text">{item.name}</p>
                     <p className="text-xs text-muted">{formatDaysLabel(item.days)}</p>
                   </div>
-                  <div className="text-sm font-semibold text-brand">{formatCurrency(item.amount)}</div>
-                </li>
+                  <span className="text-sm font-semibold text-brand">
+                    {formatCurrency(item.amount)}
+                  </span>
+                </div>
               ))}
-            </ul>
+            </div>
           ) : (
-            <p className="mt-3 text-sm text-muted">
-              Tidak ada tagihan yang jatuh tempo dalam 7 hari.
-            </p>
+            <p className="mt-3 text-sm text-muted">Tidak ada tagihan yang jatuh tempo dalam 7 hari.</p>
           )}
         </div>
       </div>

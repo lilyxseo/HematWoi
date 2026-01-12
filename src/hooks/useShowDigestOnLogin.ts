@@ -212,7 +212,6 @@ function buildDigestData(
 
     const isToday = dateKey === todayKey;
     const isYesterday = dateKey === yesterdayKey;
-
     if (!shouldComputeBalance && !isToday && !isYesterday) {
       continue;
     }
