@@ -721,44 +721,68 @@ export default function FinancialHealth() {
         title="Financial Health"
         description="Ringkasan kesehatan keuanganmu bulan ini"
       >
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           {!online || mode === "local" ? (
             <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
               Offline Mode
             </span>
           ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={periodMode}
-              onChange={(event) =>
-                setPeriodMode(event.target.value === "range" ? "range" : "single")
-              }
-              className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+          <div className="flex flex-wrap items-center gap-2 rounded-full border border-border bg-surface-1 p-1 text-xs font-semibold text-text shadow-sm">
+            <button
+              type="button"
+              onClick={() => setPeriodMode("single")}
+              className={`rounded-full px-3 py-1.5 transition ${
+                periodMode === "single"
+                  ? "bg-primary text-white shadow"
+                  : "text-muted hover:text-text"
+              }`}
             >
-              <option value="single">Per Bulan</option>
-              <option value="range">Rentang Bulan</option>
-            </select>
+              Per Bulan
+            </button>
+            <button
+              type="button"
+              onClick={() => setPeriodMode("range")}
+              className={`rounded-full px-3 py-1.5 transition ${
+                periodMode === "range"
+                  ? "bg-primary text-white shadow"
+                  : "text-muted hover:text-text"
+              }`}
+            >
+              Rentang Bulan
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border-subtle bg-surface-1 px-3 py-2 text-xs text-muted shadow-sm">
             {periodMode === "single" ? (
-              <input
-                type="month"
-                value={singleMonth}
-                onChange={(event) => setSingleMonth(event.target.value)}
-                className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
-              />
+              <>
+                <span className="text-[11px] font-semibold uppercase text-muted">
+                  Bulan
+                </span>
+                <input
+                  type="month"
+                  value={singleMonth}
+                  onChange={(event) => setSingleMonth(event.target.value)}
+                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
+                />
+              </>
             ) : (
               <>
+                <span className="text-[11px] font-semibold uppercase text-muted">
+                  Mulai
+                </span>
                 <input
                   type="month"
                   value={rangeStart}
                   onChange={(event) => setRangeStart(event.target.value)}
-                  className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
                 />
-                <span className="text-xs text-muted">s.d.</span>
+                <span className="text-[11px] font-semibold uppercase text-muted">
+                  Sampai
+                </span>
                 <input
                   type="month"
                   value={rangeEnd}
                   onChange={(event) => setRangeEnd(event.target.value)}
-                  className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
                 />
               </>
             )}
@@ -808,6 +832,7 @@ export default function FinancialHealth() {
                     status={`${cashflowStatus} · income ${formatCurrency(snapshot.income)}`}
                     score={snapshot.cashflowScore}
                     tooltip="Selisih pemasukan dan pengeluaran pada periode ini."
+                    description="Skor naik jika pemasukan lebih besar dari pengeluaran. Defisit menurunkan skor."
                   />
                   <IndicatorCard
                     title="Savings Rate"
@@ -816,6 +841,7 @@ export default function FinancialHealth() {
                     status={`${savingsStatus} · target >20%`}
                     score={snapshot.savingsScore}
                     tooltip="Persentase tabungan terhadap total pemasukan."
+                    description="Semakin besar rasio tabungan, semakin tinggi skor. Di bawah 10% dianggap rendah."
                   />
                   <IndicatorCard
                     title="Debt Ratio"
@@ -824,6 +850,7 @@ export default function FinancialHealth() {
                     status={`${debtStatus} · batas 30%`}
                     score={snapshot.debtScore}
                     tooltip="Total cicilan bulanan dibanding pemasukan."
+                    description="Rasio di atas 30% mengurangi skor karena beban cicilan terlalu tinggi."
                   />
                   <IndicatorCard
                     title="Budget Discipline"
@@ -832,6 +859,7 @@ export default function FinancialHealth() {
                     status={budgetStatus}
                     score={snapshot.budgetScore}
                     tooltip="Jumlah kategori yang melewati batas budget."
+                    description="Semakin sedikit kategori over-budget, semakin tinggi skornya."
                   />
                   <IndicatorCard
                     title="Liquidity Buffer"
@@ -840,6 +868,7 @@ export default function FinancialHealth() {
                     status={bufferStatus}
                     score={snapshot.bufferScore}
                     tooltip="Perbandingan saldo akun dengan rata-rata pengeluaran bulanan."
+                    description="Buffer ≥1x pengeluaran bulanan dianggap sehat. Di bawah 0.5x dianggap kritis."
                   />
                 </>
               )}
