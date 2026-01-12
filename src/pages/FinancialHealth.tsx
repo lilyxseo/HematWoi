@@ -1,0 +1,826 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  CreditCard,
+  PiggyBank,
+  TrendingDown,
+  TrendingUp,
+  Wallet,
+  ListChecks,
+} from "lucide-react";
+import Page from "../layout/Page";
+import PageHeader from "../layout/PageHeader";
+import Card, { CardBody, CardHeader } from "../components/Card";
+import Skeleton from "../components/Skeleton";
+import ScoreCard from "../components/financial-health/ScoreCard";
+import IndicatorCard from "../components/financial-health/IndicatorCard";
+import InsightList, {
+  type InsightItem,
+} from "../components/financial-health/InsightList";
+import { formatCurrency } from "../lib/format";
+import { listAccounts, listTransactions } from "../lib/api";
+import { listDebts } from "../lib/api-debts";
+import { dbCache } from "../lib/sync/localdb";
+import useNetworkStatus from "../hooks/useNetworkStatus";
+import { useRepo, useDataMode } from "../context/DataContext";
+
+type RawRecord = Record<string, any>;
+
+type NormalizedTransaction = {
+  amount: number;
+  type: "income" | "expense" | "transfer";
+  date: string;
+  month: string;
+  categoryKey: string | number | null;
+  categoryName: string;
+};
+
+type NormalizedBudget = {
+  categoryKey: string | number | null;
+  categoryName: string;
+  cap: number;
+  period: string | null;
+};
+
+type DebtLike = {
+  amount?: number;
+  tenor_months?: number;
+  status?: string;
+};
+
+type HealthSnapshot = {
+  income: number;
+  expense: number;
+  net: number;
+  savingsRate: number;
+  debtRatio: number;
+  budgetOverCount: number;
+  budgetTotal: number;
+  cashflowScore: number;
+  savingsScore: number;
+  debtScore: number;
+  budgetScore: number;
+  totalScore: number;
+  label: string;
+};
+
+const PERIOD_OPTIONS = [
+  { value: "1", label: "Bulan ini", months: 1 },
+  { value: "3", label: "3 bulan", months: 3 },
+  { value: "6", label: "6 bulan", months: 6 },
+];
+
+const SCORE_LABELS = [
+  { min: 80, label: "Sangat Sehat" },
+  { min: 60, label: "Cukup Sehat" },
+  { min: 40, label: "Perlu Perhatian" },
+  { min: 0, label: "Tidak Sehat" },
+];
+
+const MONTH_LABEL =
+  typeof Intl !== "undefined"
+    ? new Intl.DateTimeFormat("id-ID", {
+        month: "long",
+        year: "numeric",
+      })
+    : null;
+
+function getMonthKey(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+function getMonthLabel(key: string) {
+  if (!key) return "";
+  const [year, month] = key.split("-").map((value) => Number.parseInt(value, 10));
+  if (!year || !month) return key;
+  const date = new Date(year, month - 1, 1);
+  return MONTH_LABEL ? MONTH_LABEL.format(date) : key;
+}
+
+function getPeriodRange(months: number) {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
+  return { start, end };
+}
+
+function buildMonthRange(start: Date, months: number) {
+  const values = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  for (let i = 0; i < months; i += 1) {
+    values.push(getMonthKey(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return values;
+}
+
+function safeNumber(value: any) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getCategoryKey(value: any) {
+  if (value == null) return null;
+  if (typeof value === "object") return value.id ?? value.uuid ?? null;
+  return value;
+}
+
+function normalizeTransactions(
+  transactions: RawRecord[] = [],
+  categoriesById: Map<string | number, string>
+): NormalizedTransaction[] {
+  return transactions
+    .map((tx) => {
+      const rawDate =
+        tx.date || tx.transaction_date || tx.created_at || tx.posted_at || tx.createdAt;
+      const iso = rawDate ? String(rawDate) : new Date().toISOString();
+      const month = iso.slice(0, 7);
+      const typeValue = (tx.type || tx.transaction_type || "").toString();
+      let type: NormalizedTransaction["type"];
+      if (typeValue === "income" || typeValue === "expense" || typeValue === "transfer") {
+        type = typeValue;
+      } else if (Number(tx.amount) < 0) {
+        type = "expense";
+      } else {
+        type = "income";
+      }
+      const amount = Math.abs(safeNumber(tx.amount));
+      const categoryKey = getCategoryKey(
+        tx.category_id ?? tx.categoryId ?? tx.category_uuid ?? tx.category
+      );
+      const categoryName =
+        tx.category?.name ||
+        tx.category_name ||
+        (categoryKey != null ? categoriesById.get(categoryKey) : null) ||
+        "Lainnya";
+      return {
+        amount,
+        type,
+        date: iso,
+        month,
+        categoryKey,
+        categoryName,
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeBudgets(
+  budgets: RawRecord[] = [],
+  categoriesById: Map<string | number, string>
+): NormalizedBudget[] {
+  return budgets
+    .map((item) => {
+      const rawCap =
+        item.amount_planned ??
+        item.limit ??
+        item.cap ??
+        item.amount ??
+        item.budget ??
+        0;
+      const cap = safeNumber(rawCap);
+      const periodSource =
+        item.period ?? item.month ?? item.for_month ?? item.date ?? item.created_at;
+      const period = typeof periodSource === "string" ? periodSource.slice(0, 7) : null;
+      const categoryKey = getCategoryKey(
+        item.category_id ?? item.categoryId ?? item.category_uuid ?? item.category
+      );
+      const categoryName =
+        item.category?.name ||
+        item.category_name ||
+        (categoryKey != null ? categoriesById.get(categoryKey) : null) ||
+        "Tanpa kategori";
+      return {
+        categoryKey,
+        categoryName,
+        cap,
+        period,
+      };
+    })
+    .filter(Boolean);
+}
+
+function computeCashflowScore(net: number, income: number, expense: number) {
+  if (income <= 0 && expense <= 0) return 0;
+  if (income <= 0) return 10;
+  const ratio = net / income;
+  if (ratio >= 0.2) return 100;
+  if (ratio >= 0) return 60 + (ratio / 0.2) * 40;
+  const deficitRatio = Math.min(Math.abs(ratio), 1);
+  return Math.max(0, 60 - deficitRatio * 60);
+}
+
+function computeSavingsScore(savingsRate: number, income: number) {
+  if (income <= 0) return 0;
+  if (savingsRate <= 0) return 20;
+  if (savingsRate < 0.1) return 40 + (savingsRate / 0.1) * 20;
+  if (savingsRate < 0.2) return 60 + ((savingsRate - 0.1) / 0.1) * 20;
+  if (savingsRate < 0.4) return 80 + ((savingsRate - 0.2) / 0.2) * 20;
+  return 100;
+}
+
+function computeDebtScore(debtRatio: number, income: number) {
+  if (income <= 0) return 0;
+  if (debtRatio <= 0) return 100;
+  if (debtRatio <= 0.3) return 100 - (debtRatio / 0.3) * 40;
+  if (debtRatio <= 0.6) return 60 - ((debtRatio - 0.3) / 0.3) * 40;
+  return 10;
+}
+
+function computeBudgetScore(overCount: number, total: number) {
+  if (total <= 0) return 50;
+  const ratio = Math.min(overCount / total, 1);
+  return Math.max(0, 100 - ratio * 100);
+}
+
+function getHealthLabel(score: number) {
+  const match = SCORE_LABELS.find((entry) => score >= entry.min);
+  return match ? match.label : "Tidak Sehat";
+}
+
+function buildHealthSnapshot(params: {
+  transactions: NormalizedTransaction[];
+  budgets: NormalizedBudget[];
+  debts: DebtLike[];
+  months: string[];
+  start: Date;
+  end: Date;
+}): HealthSnapshot {
+  const { transactions, budgets, debts, months, start, end } = params;
+  const startIso = start.toISOString().slice(0, 10);
+  const endIso = end.toISOString().slice(0, 10);
+  const inRange = transactions.filter(
+    (tx) => tx.date.slice(0, 10) >= startIso && tx.date.slice(0, 10) <= endIso
+  );
+  const income = inRange
+    .filter((tx) => tx.type === "income")
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const expense = inRange
+    .filter((tx) => tx.type === "expense")
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const net = income - expense;
+  const savingsRate = income > 0 ? net / income : 0;
+
+  const monthlyIncome = months.length ? income / months.length : income;
+  const debtMonthly = debts
+    .filter((debt) => debt?.status !== "paid")
+    .reduce((sum, debt) => {
+      const amount = safeNumber(debt?.amount);
+      const tenor = Math.max(1, safeNumber(debt?.tenor_months ?? 1));
+      return sum + amount / tenor;
+    }, 0);
+  const debtRatio = monthlyIncome > 0 ? debtMonthly / monthlyIncome : 0;
+
+  const monthsSet = new Set(months);
+  const spendByMonthCategory = new Map<string, number>();
+  inRange
+    .filter((tx) => tx.type === "expense")
+    .forEach((tx) => {
+      const key = `${tx.month}:${tx.categoryKey ?? "uncat"}`;
+      spendByMonthCategory.set(
+        key,
+        (spendByMonthCategory.get(key) ?? 0) + tx.amount
+      );
+    });
+
+  const budgetEntries = budgets.map((budget) => ({
+    ...budget,
+    period: budget.period ?? months[months.length - 1] ?? getMonthKey(new Date()),
+  }));
+  const budgetsInRange = budgetEntries.filter((budget) =>
+    monthsSet.has(String(budget.period))
+  );
+  const overBudget = budgetsInRange.filter((budget) => {
+    if (!budget.cap || budget.cap <= 0) return false;
+    const key = `${budget.period}:${budget.categoryKey ?? "uncat"}`;
+    const spent = spendByMonthCategory.get(key) ?? 0;
+    return spent > budget.cap;
+  });
+
+  const cashflowScore = computeCashflowScore(net, income, expense);
+  const savingsScore = computeSavingsScore(savingsRate, income);
+  const debtScore = computeDebtScore(debtRatio, income);
+  const budgetScore = computeBudgetScore(overBudget.length, budgetsInRange.length);
+
+  const totalScore = Math.round(
+    cashflowScore * 0.3 +
+      savingsScore * 0.25 +
+      debtScore * 0.25 +
+      budgetScore * 0.2
+  );
+
+  return {
+    income,
+    expense,
+    net,
+    savingsRate,
+    debtRatio,
+    budgetOverCount: overBudget.length,
+    budgetTotal: budgetsInRange.length,
+    cashflowScore,
+    savingsScore,
+    debtScore,
+    budgetScore,
+    totalScore,
+    label: getHealthLabel(totalScore),
+  };
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return "0%";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+export default function FinancialHealth() {
+  const [period, setPeriod] = useState("1");
+  const selectedPeriod =
+    PERIOD_OPTIONS.find((option) => option.value === period) ??
+    PERIOD_OPTIONS[0];
+  const { start, end } = useMemo(
+    () => getPeriodRange(selectedPeriod.months),
+    [selectedPeriod.months]
+  );
+  const months = useMemo(
+    () => buildMonthRange(start, selectedPeriod.months),
+    [start, selectedPeriod.months]
+  );
+  const online = useNetworkStatus();
+  const { mode } = useDataMode();
+  const repo = useRepo();
+
+  const categoriesQuery = useQuery({
+    queryKey: ["financial-health", "categories", mode],
+    queryFn: () => repo.categories.list(),
+  });
+
+  const transactionsQuery = useQuery({
+    queryKey: ["financial-health", "transactions", mode, period],
+    queryFn: async () => {
+      if (mode === "local") {
+        return repo.transactions.list();
+      }
+      const startIso = start.toISOString().slice(0, 10);
+      const endIso = end.toISOString().slice(0, 10);
+      const { rows } = await listTransactions({
+        period: { preset: "custom", start: startIso, end: endIso },
+        pageSize: 5000,
+        page: 1,
+      });
+      return rows || [];
+    },
+  });
+
+  const budgetsQuery = useQuery({
+    queryKey: ["financial-health", "budgets", mode],
+    queryFn: () => repo.budgets.list(),
+  });
+
+  const goalsQuery = useQuery({
+    queryKey: ["financial-health", "goals", mode],
+    queryFn: () => repo.goals.list(),
+  });
+
+  const subscriptionsQuery = useQuery({
+    queryKey: ["financial-health", "subscriptions", mode],
+    queryFn: () => repo.subscriptions.list(),
+  });
+
+  const accountsQuery = useQuery({
+    queryKey: ["financial-health", "accounts", mode],
+    queryFn: () => listAccounts(),
+  });
+
+  const debtsQuery = useQuery({
+    queryKey: ["financial-health", "debts", mode, online],
+    queryFn: async () => {
+      if (!online || mode === "local") {
+        const cached = await dbCache.list("debts");
+        return Array.isArray(cached) ? cached : [];
+      }
+      const response = await listDebts();
+      return response.items || [];
+    },
+  });
+
+  const isLoading =
+    transactionsQuery.isLoading ||
+    budgetsQuery.isLoading ||
+    categoriesQuery.isLoading ||
+    goalsQuery.isLoading ||
+    subscriptionsQuery.isLoading ||
+    accountsQuery.isLoading ||
+    debtsQuery.isLoading;
+
+  const categoriesById = useMemo(() => {
+    const map = new Map<string | number, string>();
+    const categories = Array.isArray(categoriesQuery.data)
+      ? categoriesQuery.data
+      : [];
+    categories.forEach((cat) => {
+      if (!cat) return;
+      const id = cat.id ?? cat.uuid;
+      if (id != null) map.set(id, cat.name ?? "Lainnya");
+    });
+    return map;
+  }, [categoriesQuery.data]);
+
+  const normalizedTransactions = useMemo(() => {
+    const rows = Array.isArray(transactionsQuery.data)
+      ? transactionsQuery.data
+      : [];
+    return normalizeTransactions(rows, categoriesById);
+  }, [transactionsQuery.data, categoriesById]);
+
+  const normalizedBudgets = useMemo(() => {
+    const rows = Array.isArray(budgetsQuery.data) ? budgetsQuery.data : [];
+    return normalizeBudgets(rows, categoriesById);
+  }, [budgetsQuery.data, categoriesById]);
+
+  const debts = useMemo(
+    () => (Array.isArray(debtsQuery.data) ? debtsQuery.data : []),
+    [debtsQuery.data]
+  );
+
+  const snapshot = useMemo(() => {
+    return buildHealthSnapshot({
+      transactions: normalizedTransactions,
+      budgets: normalizedBudgets,
+      debts,
+      months,
+      start,
+      end,
+    });
+  }, [normalizedTransactions, normalizedBudgets, debts, months, start, end]);
+
+  const comparison = useMemo(() => {
+    const previousStart = new Date(start.getFullYear(), start.getMonth() - selectedPeriod.months, 1);
+    const previousEnd = new Date(start.getFullYear(), start.getMonth(), 0, 23, 59, 59);
+    const previousMonths = buildMonthRange(previousStart, selectedPeriod.months);
+    const previousSnapshot = buildHealthSnapshot({
+      transactions: normalizedTransactions,
+      budgets: normalizedBudgets,
+      debts,
+      months: previousMonths,
+      start: previousStart,
+      end: previousEnd,
+    });
+    const delta = snapshot.totalScore - previousSnapshot.totalScore;
+    if (!Number.isFinite(delta) || previousSnapshot.totalScore === 0) {
+      return null;
+    }
+    const change = (delta / previousSnapshot.totalScore) * 100;
+    return {
+      direction: delta > 0 ? "up" : delta < 0 ? "down" : "flat",
+      value: Math.abs(change),
+      label: `vs ${getMonthLabel(previousMonths[previousMonths.length - 1])}`,
+    };
+  }, [snapshot.totalScore, normalizedTransactions, normalizedBudgets, debts, start, selectedPeriod.months]);
+
+  const insights = useMemo(() => {
+    const items: InsightItem[] = [];
+    const hasTransactions = normalizedTransactions.length > 0;
+    if (!hasTransactions) {
+      items.push({
+        id: "no-transactions",
+        title: "Belum ada transaksi",
+        description: "Catat pemasukan dan pengeluaran agar skor finansial bisa dihitung dengan akurat.",
+        severity: "low",
+        ctaLabel: "Catat Transaksi",
+        ctaHref: "/transaction/add",
+      });
+    }
+
+    if (snapshot.net < 0) {
+      items.push({
+        id: "cashflow-deficit",
+        title: "Cashflow defisit",
+        description: "Pengeluaranmu lebih besar dari pemasukan pada periode ini.",
+        severity: "high",
+        ctaLabel: "Perbarui Budget",
+        ctaHref: "/budgets",
+      });
+    }
+
+    if (snapshot.savingsRate <= 0) {
+      items.push({
+        id: "no-savings",
+        title: "Tabungan 0%",
+        description: "Tidak ada sisa untuk ditabung. Coba alokasikan dana untuk goal tabungan.",
+        severity: "high",
+        ctaLabel: "Buat Goal Tabungan",
+        ctaHref: "/goals",
+      });
+    } else if (snapshot.savingsRate < 0.1) {
+      items.push({
+        id: "low-savings",
+        title: "Savings rate rendah",
+        description: "Rasio tabungan masih di bawah 10%.", 
+        severity: "medium",
+        ctaLabel: "Buat Goal Tabungan",
+        ctaHref: "/goals",
+      });
+    }
+
+    if (snapshot.debtRatio > 0.3) {
+      items.push({
+        id: "debt-ratio",
+        title: "Rasio hutang tinggi",
+        description: "Total cicilan bulananmu melebihi 30% dari pemasukan.",
+        severity: snapshot.debtRatio > 0.5 ? "high" : "medium",
+        ctaLabel: "Lihat Hutang",
+        ctaHref: "/debts",
+      });
+    }
+
+    const budgetsInRange = normalizedBudgets.filter((budget) =>
+      months.includes(String(budget.period ?? months[months.length - 1]))
+    );
+    if (budgetsInRange.length === 0) {
+      items.push({
+        id: "no-budgets",
+        title: "Belum ada budget",
+        description: "Buat budget untuk menjaga pengeluaran tetap terkendali.",
+        severity: "low",
+        ctaLabel: "Buat Budget",
+        ctaHref: "/budgets",
+      });
+    }
+
+    const spendByMonthCategory = new Map<string, number>();
+    normalizedTransactions
+      .filter((tx) => tx.type === "expense")
+      .forEach((tx) => {
+        const key = `${tx.month}:${tx.categoryKey ?? "uncat"}`;
+        spendByMonthCategory.set(
+          key,
+          (spendByMonthCategory.get(key) ?? 0) + tx.amount
+        );
+      });
+    const overBudgets = budgetsInRange.filter((budget) => {
+      if (!budget.cap || budget.cap <= 0) return false;
+      const key = `${budget.period ?? months[months.length - 1]}:${budget.categoryKey ?? "uncat"}`;
+      return (spendByMonthCategory.get(key) ?? 0) > budget.cap;
+    });
+    overBudgets.slice(0, 3).forEach((budget) => {
+      items.push({
+        id: `over-budget-${budget.categoryKey}`,
+        title: `Pengeluaran ${budget.categoryName} over-budget`,
+        description: "Pengeluaran kategori ini melebihi batas yang kamu tetapkan.",
+        severity: "medium",
+        ctaLabel: "Perbarui Budget",
+        ctaHref: "/budgets",
+      });
+    });
+
+    const subscriptions = Array.isArray(subscriptionsQuery.data)
+      ? subscriptionsQuery.data
+      : [];
+    const subscriptionMonthly = subscriptions.reduce((sum, sub) => {
+      if (!sub || sub.status === "canceled") return sum;
+      const amount = safeNumber(sub.amount);
+      const count = Math.max(1, safeNumber(sub.interval_count ?? 1));
+      switch (sub.interval_unit) {
+        case "year":
+          return sum + amount / 12 / count;
+        case "week":
+          return sum + (amount / count) * 4;
+        case "day":
+          return sum + (amount / count) * 30;
+        case "month":
+        default:
+          return sum + amount / count;
+      }
+    }, 0);
+
+    const monthlyIncome = months.length ? snapshot.income / months.length : snapshot.income;
+    if (subscriptionMonthly > 0 && monthlyIncome > 0) {
+      const ratio = subscriptionMonthly / monthlyIncome;
+      if (ratio > 0.15) {
+        items.push({
+          id: "subscription-heavy",
+          title: "Biaya subscription tinggi",
+          description: "Biaya langganan bulanan cukup besar dibanding pemasukan.",
+          severity: "medium",
+          ctaLabel: "Atur Subscription",
+          ctaHref: "/subscriptions",
+        });
+      }
+    }
+
+    const accounts = Array.isArray(accountsQuery.data) ? accountsQuery.data : [];
+    const totalBalance = accounts.reduce(
+      (sum, account) => sum + safeNumber(account?.balance),
+      0
+    );
+    const monthlyExpense = months.length ? snapshot.expense / months.length : snapshot.expense;
+    if (monthlyExpense > 0 && totalBalance < monthlyExpense) {
+      items.push({
+        id: "low-cash-buffer",
+        title: "Buffer kas menipis",
+        description: "Saldo akunmu lebih kecil dari rata-rata pengeluaran bulanan.",
+        severity: "medium",
+        ctaLabel: "Cek Akun",
+        ctaHref: "/accounts",
+      });
+    }
+
+    const goals = Array.isArray(goalsQuery.data) ? goalsQuery.data : [];
+    if (snapshot.savingsRate > 0 && goals.length === 0) {
+      items.push({
+        id: "no-goals",
+        title: "Belum punya goal tabungan",
+        description: "Buat goal agar tabungan punya target jelas.",
+        severity: "low",
+        ctaLabel: "Buat Goal Tabungan",
+        ctaHref: "/goals",
+      });
+    }
+
+    return items;
+  }, [
+    normalizedTransactions,
+    snapshot,
+    normalizedBudgets,
+    months,
+    subscriptionsQuery.data,
+    accountsQuery.data,
+    goalsQuery.data,
+  ]);
+
+  const cashflowStatus = snapshot.net >= 0 ? "Surplus" : "Defisit";
+  const savingsStatus =
+    snapshot.savingsRate < 0.1
+      ? "Buruk"
+      : snapshot.savingsRate < 0.2
+        ? "Cukup"
+        : "Baik";
+  const debtStatus = snapshot.debtRatio > 0.3 ? "Warning" : "Aman";
+  const budgetStatus =
+    snapshot.budgetTotal === 0
+      ? "Belum ada budget"
+      : snapshot.budgetOverCount === 0
+        ? "Semua on-track"
+        : `${snapshot.budgetOverCount} kategori over-budget`;
+
+  return (
+    <Page>
+      <PageHeader
+        title="Financial Health"
+        description="Ringkasan kesehatan keuanganmu bulan ini"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          {!online || mode === "local" ? (
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
+              Offline Mode
+            </span>
+          ) : null}
+          <select
+            value={period}
+            onChange={(event) => setPeriod(event.target.value)}
+            className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+          >
+            {PERIOD_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </PageHeader>
+
+      <div className="space-y-6">
+        {isLoading ? (
+          <Skeleton className="h-48 w-full" />
+        ) : (
+          <ScoreCard
+            score={snapshot.totalScore}
+            label={snapshot.label}
+            subtitle={`Periode ${getMonthLabel(months[0])}`}
+            comparison={comparison}
+          />
+        )}
+
+        <Card>
+          <CardHeader
+            title="Breakdown Indikator"
+            subtext="Lihat faktor utama yang memengaruhi skor finansialmu."
+          />
+          <CardBody>
+            <div className="grid gap-4 md:grid-cols-2">
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-28 w-full" />
+                </>
+              ) : (
+                <>
+                  <IndicatorCard
+                    title="Cashflow Health"
+                    icon={<Wallet className="h-5 w-5" />}
+                    value={formatCurrency(snapshot.net)}
+                    status={`${cashflowStatus} · income ${formatCurrency(snapshot.income)}`}
+                    score={snapshot.cashflowScore}
+                    tooltip="Selisih pemasukan dan pengeluaran pada periode ini."
+                  />
+                  <IndicatorCard
+                    title="Savings Rate"
+                    icon={<PiggyBank className="h-5 w-5" />}
+                    value={formatPercent(snapshot.savingsRate)}
+                    status={`${savingsStatus} · target >20%`}
+                    score={snapshot.savingsScore}
+                    tooltip="Persentase tabungan terhadap total pemasukan."
+                  />
+                  <IndicatorCard
+                    title="Debt Ratio"
+                    icon={<CreditCard className="h-5 w-5" />}
+                    value={formatPercent(snapshot.debtRatio)}
+                    status={`${debtStatus} · batas 30%`}
+                    score={snapshot.debtScore}
+                    tooltip="Total cicilan bulanan dibanding pemasukan."
+                  />
+                  <IndicatorCard
+                    title="Budget Discipline"
+                    icon={<ListChecks className="h-5 w-5" />}
+                    value={`${snapshot.budgetOverCount}/${snapshot.budgetTotal} over-budget`}
+                    status={budgetStatus}
+                    score={snapshot.budgetScore}
+                    tooltip="Jumlah kategori yang melewati batas budget."
+                  />
+                </>
+              )}
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Insight & Warning"
+            subtext="Prioritas yang perlu ditindaklanjuti dari kondisi finansialmu."
+          />
+          <CardBody>
+            {isLoading ? <Skeleton className="h-32 w-full" /> : <InsightList insights={insights} />}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Ringkasan Action"
+            subtext="Rekomendasi praktis untuk meningkatkan skor finansialmu."
+          />
+          <CardBody>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="h-5 w-5 text-emerald-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-text">Naikkan savings rate</p>
+                    <p className="text-xs text-muted">
+                      Sisihkan minimal 10% dari pemasukan setiap bulan.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
+                <div className="flex items-center gap-3">
+                  <TrendingDown className="h-5 w-5 text-amber-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-text">Kontrol cicilan</p>
+                    <p className="text-xs text-muted">
+                      Pastikan rasio hutang di bawah 30% pemasukan.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
+                <div className="flex items-center gap-3">
+                  <ListChecks className="h-5 w-5 text-blue-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-text">Disiplin budget</p>
+                    <p className="text-xs text-muted">
+                      Kurangi kategori yang over-budget agar cashflow stabil.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
+                <div className="flex items-center gap-3">
+                  <Wallet className="h-5 w-5 text-violet-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-text">Bangun dana darurat</p>
+                    <p className="text-xs text-muted">
+                      Siapkan minimal 1x pengeluaran bulanan di saldo akun.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
+    </Page>
+  );
+}
