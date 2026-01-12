@@ -56,6 +56,13 @@ export default function Filters({
   const sortedCategories = useMemo(() => {
     return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'id'));
   }, [categories]);
+  const selectedCategoryNames = useMemo(() => {
+    if (value.categoryIds.length === 0) return [];
+    const selectedSet = new Set(value.categoryIds);
+    return sortedCategories
+      .filter((category) => selectedSet.has(category.id))
+      .map((category) => category.name);
+  }, [sortedCategories, value.categoryIds]);
 
   const updateIndicator = useCallback(() => {
     const container = segmentedRef.current;
@@ -212,7 +219,9 @@ export default function Filters({
                         ? 'Memuat kategori...'
                         : value.categoryIds.length === 0
                           ? 'Semua kategori'
-                          : `${value.categoryIds.length} kategori`}
+                          : selectedCategoryNames.length === 1
+                            ? selectedCategoryNames[0] ?? 'Kategori terpilih'
+                            : `${selectedCategoryNames.length} kategori dipilih`}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 text-slate-400" aria-hidden="true" />
                 </Listbox.Button>
@@ -223,6 +232,16 @@ export default function Filters({
                   leaveTo="opacity-0"
                 >
                   <Listbox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-slate-700 bg-slate-900 p-1 text-sm shadow-xl">
+                    <button
+                      type="button"
+                      onClick={() => handleCategoriesChange([])}
+                      className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-slate-200 transition hover:bg-slate-800 hover:text-slate-100"
+                    >
+                      <span className="text-sm font-medium">Semua kategori</span>
+                      {value.categoryIds.length === 0 ? (
+                        <Check className="h-4 w-4 text-[var(--accent)]" />
+                      ) : null}
+                    </button>
                     {loadingCategories ? (
                       <div className="px-3 py-2 text-sm text-slate-400">Memuat...</div>
                     ) : sortedCategories.length === 0 ? (
@@ -242,9 +261,6 @@ export default function Filters({
                             <>
                               <div className="flex min-w-0 flex-col">
                                 <span className="truncate text-sm font-medium">{category.name}</span>
-                                <span className="text-xs uppercase tracking-wide text-slate-400">
-                                  {category.type === 'income' ? 'Income' : 'Expense'}
-                                </span>
                               </div>
                               {selected ? <Check className="h-4 w-4 text-[var(--accent)]" /> : null}
                             </>
