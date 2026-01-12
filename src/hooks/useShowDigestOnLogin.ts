@@ -42,24 +42,6 @@ export interface DigestUpcomingItem {
   days: number;
 }
 
-export interface DigestCategorySummary {
-  name: string;
-  amount: number;
-}
-
-export interface DigestDailyComparison {
-  expenseDelta: number;
-  expensePercent: number | null;
-  countDelta: number;
-}
-
-export interface DigestSpendingAlert {
-  isUnusual: boolean;
-  baseline: number;
-  threshold: number;
-  deviation: number;
-}
-
 export interface DailyDigestModalData {
   todayKey: string;
   todayLabel: string;
@@ -77,15 +59,6 @@ export interface DailyDigestModalData {
   yesterdayCount: number;
   topYesterdayExpenses: Array<{ name: string; amount: number }>;
   upcoming: DigestUpcomingItem[];
-  upcomingTotal: number;
-  nextUpcoming: DigestUpcomingItem | null;
-  monthIncome: number;
-  monthExpense: number;
-  monthNet: number;
-  avgDailyExpense: number;
-  monthTopCategories: DigestCategorySummary[];
-  todayVsYesterday: DigestDailyComparison;
-  spendingAlert: DigestSpendingAlert;
 }
 
 export interface UseShowDigestOnLoginOptions {
@@ -206,10 +179,6 @@ function buildDigestData(
   let yesterdayExpense = 0;
   let yesterdayCount = 0;
   const yesterdayCategoryTotals = new Map<string, number>();
-  let monthIncome = 0;
-  let monthExpense = 0;
-  const monthCategoryTotals = new Map<string, number>();
-  const monthDailyExpenseTotals = new Map<string, number>();
 
   const shouldComputeBalance = !(
     typeof balanceHint === 'number' && Number.isFinite(balanceHint)
@@ -243,8 +212,6 @@ function buildDigestData(
 
     const isToday = dateKey === todayKey;
     const isYesterday = dateKey === yesterdayKey;
-    const isThisMonth = dateKey.startsWith(monthKey);
-
     if (!shouldComputeBalance && !isToday && !isYesterday) {
       continue;
     }
@@ -261,21 +228,6 @@ function buildDigestData(
     }
 
     const amount = toNumber(tx?.amount);
-
-    if (isThisMonth && isIncome) {
-      monthIncome += amount;
-    }
-
-    if (isThisMonth && isExpense) {
-      monthExpense += amount;
-      const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
-      const label = category || 'Tanpa kategori';
-      monthCategoryTotals.set(label, (monthCategoryTotals.get(label) || 0) + amount);
-      monthDailyExpenseTotals.set(
-        dateKey,
-        (monthDailyExpenseTotals.get(dateKey) || 0) + amount,
-      );
-    }
 
     if (needsAmountForBalance) {
       if (isIncome) {
@@ -324,41 +276,6 @@ function buildDigestData(
     .map(([name, amount]) => ({ name, amount }));
 
   const todayNet = todayIncome - todayExpense;
-  const monthNet = monthIncome - monthExpense;
-  const daysElapsed = Math.max(todayDate.getDate(), 1);
-  const avgDailyExpense = daysElapsed > 0 ? monthExpense / daysElapsed : 0;
-
-  const monthTopCategories = Array.from(monthCategoryTotals.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([name, amount]) => ({ name, amount }));
-
-  const expenseDelta = todayExpense - yesterdayExpense;
-  const expensePercent =
-    yesterdayExpense > 0 ? expenseDelta / yesterdayExpense : null;
-  const countDelta = todayCount - yesterdayCount;
-
-  const dailyExpenseValues = Array.from(monthDailyExpenseTotals.values());
-  const dailyMean =
-    dailyExpenseValues.length > 0
-      ? dailyExpenseValues.reduce((sum, value) => sum + value, 0) / dailyExpenseValues.length
-      : 0;
-  const dailyVariance =
-    dailyExpenseValues.length > 0
-      ? dailyExpenseValues.reduce((sum, value) => sum + Math.pow(value - dailyMean, 2), 0) /
-        dailyExpenseValues.length
-      : 0;
-  const dailyStdDev = Math.sqrt(dailyVariance);
-  const baseline = avgDailyExpense > 0 ? avgDailyExpense : dailyMean;
-  const threshold = dailyStdDev > 0 ? dailyMean + dailyStdDev * 2 : baseline * 2;
-  const isUnusual = baseline > 0 && todayExpense > threshold;
-  const deviation = todayExpense - baseline;
-
-  const upcomingTotal = upcoming.reduce((sum, item) => sum + item.amount, 0);
-  const nextUpcoming =
-    upcoming.length > 0
-      ? [...upcoming].sort((a, b) => a.days - b.days)[0] ?? null
-      : null;
 
   return {
     todayKey,
@@ -377,24 +294,6 @@ function buildDigestData(
     yesterdayCount,
     topYesterdayExpenses,
     upcoming,
-    upcomingTotal,
-    nextUpcoming,
-    monthIncome,
-    monthExpense,
-    monthNet,
-    avgDailyExpense,
-    monthTopCategories,
-    todayVsYesterday: {
-      expenseDelta,
-      expensePercent,
-      countDelta,
-    },
-    spendingAlert: {
-      isUnusual,
-      baseline,
-      threshold,
-      deviation,
-    },
   };
 }
 
