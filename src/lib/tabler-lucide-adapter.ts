@@ -55,6 +55,7 @@ export {
   IconLockOpen as Unlock,
   IconMailCheck as MailCheck,
   IconMenu as Menu,
+  IconMinus as Minus,
   IconMoon as Moon,
   IconPencil as Pencil,
   IconPlus as Plus,
