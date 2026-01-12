@@ -239,24 +239,23 @@ function buildDigestData(
 
     if (isIncome && isToday) {
       todayIncome += amount;
+      todayCount += 1;
     } else if (isExpense && (isToday || isYesterday)) {
       if (isToday) {
         todayExpense += amount;
-        if (amount > 0) {
-          todayCount += 1;
-        }
+        todayCount += 1;
         const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
         const label = category || 'Tanpa kategori';
         todayCategoryTotals.set(label, (todayCategoryTotals.get(label) || 0) + amount);
       } else {
         yesterdayExpense += amount;
-        if (amount > 0) {
-          yesterdayCount += 1;
-        }
+        yesterdayCount += 1;
         const category = typeof tx?.category === 'string' ? tx.category.trim() : '';
         const label = category || 'Tanpa kategori';
         yesterdayCategoryTotals.set(label, (yesterdayCategoryTotals.get(label) || 0) + amount);
       }
+    } else if (isIncome && isYesterday) {
+      yesterdayCount += 1;
     }
   }
 
