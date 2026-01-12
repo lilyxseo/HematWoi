@@ -173,42 +173,44 @@ export default function CalendarPage() {
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-8">
         <div className="flex min-w-0 flex-col gap-6">
-          <Breadcrumbs />
-          <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <h1 className="text-2xl font-semibold text-slate-100">Kalender</h1>
-              <p className="mt-1 text-sm text-slate-400">{headerDescription}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handlePrevMonth}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                aria-label="Bulan sebelumnya"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <div className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200">
-                {monthLabel}
+          <div className="flex min-w-0 flex-col gap-2">
+            <Breadcrumbs />
+            <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold text-slate-100">Kalender</h1>
+                <p className="mt-1 text-sm text-slate-400">{headerDescription}</p>
               </div>
-              <button
-                type="button"
-                onClick={handleNextMonth}
-                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                aria-label="Bulan berikutnya"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleToday}
-                className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
-                aria-label="Kembali ke hari ini"
-              >
-                Today
-              </button>
-            </div>
-          </header>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrevMonth}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label="Bulan sebelumnya"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <div className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-200">
+                  {monthLabel}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleNextMonth}
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label="Bulan berikutnya"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToday}
+                  className="inline-flex h-11 items-center justify-center rounded-2xl border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                  aria-label="Kembali ke hari ini"
+                >
+                  Today
+                </button>
+              </div>
+            </header>
+          </div>
 
           <Filters
             value={filters}
