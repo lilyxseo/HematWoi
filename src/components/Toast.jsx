@@ -1,14 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 
 const colors = {
-  info: 'border-blue-500',
-  success: 'border-green-500',
-  warning: 'border-amber-500',
-  danger: 'border-red-500',
+  info: 'border-blue-500/60 bg-blue-500/10 text-blue-100',
+  success: 'border-emerald-500/60 bg-emerald-500/10 text-emerald-50',
+  warning: 'border-amber-500/60 bg-amber-500/10 text-amber-50',
+  error: 'border-rose-500/60 bg-rose-500/10 text-rose-50',
+  danger: 'border-rose-500/60 bg-rose-500/10 text-rose-50',
+};
+
+const icons = {
+  info: Info,
+  success: CheckCircle2,
+  warning: AlertTriangle,
+  error: AlertCircle,
+  danger: AlertCircle,
 };
 
 function ToastItem({ toast, onDismiss }) {
   const [show, setShow] = useState(false);
+  const content = useMemo(() => {
+    const title = toast.title ?? null;
+    const message = toast.message ?? '';
+    const description = toast.description ?? null;
+    if (title) {
+      return {
+        title,
+        body: description || message,
+      };
+    }
+    return {
+      title: message,
+      body: description,
+    };
+  }, [toast.description, toast.message, toast.title]);
+  const Icon = icons[toast.type] || icons.info;
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => setShow(true));
@@ -21,11 +47,20 @@ function ToastItem({ toast, onDismiss }) {
         colors[toast.type] || colors.info
       } transition-opacity duration-300 ${show ? 'opacity-100' : 'opacity-0'}`}
     >
-      <div className="flex-1 text-sm">{toast.message}</div>
+      <span className="mt-0.5 text-lg" aria-hidden="true">
+        <Icon className="h-5 w-5" />
+      </span>
+      <div className="flex-1 text-sm">
+        <div className="font-semibold">{content.title}</div>
+        {content.body ? (
+          <div className="mt-1 text-xs text-slate-200/80">{content.body}</div>
+        ) : null}
+      </div>
       <button
         type="button"
-        className="text-sm"
+        className="text-sm text-slate-200/80 hover:text-white"
         onClick={() => onDismiss(toast.id)}
+        aria-label="Tutup notifikasi"
       >
         &times;
       </button>
