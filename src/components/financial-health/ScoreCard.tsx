@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 const clamp = (value: number, min = 0, max = 100) =>
   Math.min(Math.max(value, min), max);
@@ -59,13 +60,13 @@ export default function ScoreCard({
                 "border-border bg-surface-2 text-muted"
             )}
           >
-            <span>
-              {comparison.direction === "up"
-                ? "▲"
-                : comparison.direction === "down"
-                  ? "▼"
-                  : "■"}
-            </span>
+            {comparison.direction === "up" ? (
+              <TrendingUp className="h-3.5 w-3.5" />
+            ) : comparison.direction === "down" ? (
+              <TrendingDown className="h-3.5 w-3.5" />
+            ) : (
+              <Minus className="h-3.5 w-3.5" />
+            )}
             <span>
               {comparison.label} · {comparison.value.toFixed(0)}%
             </span>
