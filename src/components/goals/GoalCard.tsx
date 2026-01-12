@@ -207,7 +207,7 @@ export default function GoalCard({
         </div>
 
         <div className="min-w-0 space-y-4">
-          <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 text-sm text-text xl:grid-cols-4">
             <div className="space-y-1">
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Target</dt>
               <dd className="font-medium">{formatCurrency(goal.target_amount)}</dd>
