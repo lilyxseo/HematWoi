@@ -192,9 +192,8 @@ export default function Filters({
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Kategori</span>
             <Listbox
-              value={value.categoryIds}
-              onChange={handleCategoriesChange}
-              multiple
+              value={value.categoryIds[0] ?? null}
+              onChange={(nextCategory) => handleCategoriesChange(nextCategory ? [nextCategory] : [])}
               disabled={isDebtFilter}
             >
               <div className="relative">
@@ -212,7 +211,8 @@ export default function Filters({
                         ? 'Memuat kategori...'
                         : value.categoryIds.length === 0
                           ? 'Semua kategori'
-                          : `${value.categoryIds.length} kategori`}
+                          : sortedCategories.find((category) => category.id === value.categoryIds[0])?.name
+                            ?? 'Kategori tidak ditemukan'}
                   </span>
                   <ChevronDown className="ml-2 h-4 w-4 text-slate-400" aria-hidden="true" />
                 </Listbox.Button>
@@ -223,6 +223,21 @@ export default function Filters({
                   leaveTo="opacity-0"
                 >
                   <Listbox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-slate-700 bg-slate-900 p-1 text-sm shadow-xl">
+                    <Listbox.Option
+                      value={null}
+                      className={({ active }) =>
+                        `flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 ${
+                          active ? 'bg-slate-800 text-slate-100' : 'text-slate-200'
+                        }`
+                      }
+                    >
+                      {({ selected }) => (
+                        <>
+                          <span className="text-sm font-medium">Semua kategori</span>
+                          {selected ? <Check className="h-4 w-4 text-[var(--accent)]" /> : null}
+                        </>
+                      )}
+                    </Listbox.Option>
                     {loadingCategories ? (
                       <div className="px-3 py-2 text-sm text-slate-400">Memuat...</div>
                     ) : sortedCategories.length === 0 ? (
