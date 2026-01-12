@@ -8,6 +8,7 @@ import {
   Wallet,
   ListChecks,
   Banknote,
+  Calendar,
 } from "lucide-react";
 import Page from "../layout/Page";
 import PageHeader from "../layout/PageHeader";
@@ -56,6 +57,7 @@ type HealthSnapshot = {
   savingsRate: number;
   debtRatio: number;
   bufferRatio: number;
+  subscriptionRatio: number;
   budgetOverCount: number;
   budgetTotal: number;
   cashflowScore: number;
@@ -63,6 +65,7 @@ type HealthSnapshot = {
   debtScore: number;
   budgetScore: number;
   bufferScore: number;
+  subscriptionScore: number;
   totalScore: number;
   label: string;
 };
@@ -241,6 +244,37 @@ function computeBufferScore(bufferRatio: number, monthlyExpense: number) {
   return 10;
 }
 
+function computeSubscriptionScore(subscriptionRatio: number, income: number) {
+  if (income <= 0) return 0;
+  if (subscriptionRatio <= 0.05) return 100;
+  if (subscriptionRatio <= 0.15) {
+    return 100 - ((subscriptionRatio - 0.05) / 0.1) * 40;
+  }
+  if (subscriptionRatio <= 0.3) {
+    return 60 - ((subscriptionRatio - 0.15) / 0.15) * 40;
+  }
+  return 10;
+}
+
+function computeSubscriptionMonthly(subscriptions: RawRecord[] = []) {
+  return subscriptions.reduce((sum, sub) => {
+    if (!sub || sub.status === "canceled") return sum;
+    const amount = safeNumber(sub.amount);
+    const count = Math.max(1, safeNumber(sub.interval_count ?? 1));
+    switch (sub.interval_unit) {
+      case "year":
+        return sum + amount / 12 / count;
+      case "week":
+        return sum + (amount / count) * 4;
+      case "day":
+        return sum + (amount / count) * 30;
+      case "month":
+      default:
+        return sum + amount / count;
+    }
+  }, 0);
+}
+
 function getHealthLabel(score: number) {
   const match = SCORE_LABELS.find((entry) => score >= entry.min);
   return match ? match.label : "Tidak Sehat";
@@ -251,11 +285,12 @@ function buildHealthSnapshot(params: {
   budgets: NormalizedBudget[];
   debts: DebtLike[];
   accounts: RawRecord[];
+  subscriptions: RawRecord[];
   months: string[];
   start: Date;
   end: Date;
 }): HealthSnapshot {
-  const { transactions, budgets, debts, accounts, months, start, end } = params;
+  const { transactions, budgets, debts, accounts, subscriptions, months, start, end } = params;
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
   const inRange = transactions.filter(
@@ -279,6 +314,8 @@ function buildHealthSnapshot(params: {
       return sum + amount / tenor;
     }, 0);
   const debtRatio = monthlyIncome > 0 ? debtMonthly / monthlyIncome : 0;
+  const subscriptionMonthly = computeSubscriptionMonthly(subscriptions);
+  const subscriptionRatio = monthlyIncome > 0 ? subscriptionMonthly / monthlyIncome : 0;
   const monthlyExpense = months.length ? expense / months.length : expense;
   const totalBalance = accounts.reduce(
     (sum, account) => sum + safeNumber(account?.balance),
@@ -317,13 +354,15 @@ function buildHealthSnapshot(params: {
   const debtScore = computeDebtScore(debtRatio, income);
   const budgetScore = computeBudgetScore(overBudget.length, budgetsInRange.length);
   const bufferScore = computeBufferScore(bufferRatio, monthlyExpense);
+  const subscriptionScore = computeSubscriptionScore(subscriptionRatio, income);
 
   const totalScore = Math.round(
-    cashflowScore * 0.3 +
+    cashflowScore * 0.25 +
       savingsScore * 0.2 +
       debtScore * 0.2 +
       budgetScore * 0.15 +
-      bufferScore * 0.15
+      bufferScore * 0.1 +
+      subscriptionScore * 0.1
   );
 
   return {
@@ -333,6 +372,7 @@ function buildHealthSnapshot(params: {
     savingsRate,
     debtRatio,
     bufferRatio,
+    subscriptionRatio,
     budgetOverCount: overBudget.length,
     budgetTotal: budgetsInRange.length,
     cashflowScore,
@@ -340,6 +380,7 @@ function buildHealthSnapshot(params: {
     debtScore,
     budgetScore,
     bufferScore,
+    subscriptionScore,
     totalScore,
     label: getHealthLabel(totalScore),
   };
@@ -348,6 +389,64 @@ function buildHealthSnapshot(params: {
 function formatPercent(value: number) {
   if (!Number.isFinite(value)) return "0%";
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function MonthField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex w-full flex-col gap-1 text-[11px] font-semibold uppercase text-muted/70">
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="month"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 w-full rounded-xl border border-white/10 bg-card/40 px-3 pr-9 text-sm font-semibold text-text shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40"
+        />
+        <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+      </div>
+    </label>
+  );
+}
+
+function PeriodPicker({
+  mode,
+  singleMonth,
+  rangeStart,
+  rangeEnd,
+  onSingleMonthChange,
+  onRangeStartChange,
+  onRangeEndChange,
+}: {
+  mode: "single" | "range";
+  singleMonth: string;
+  rangeStart: string;
+  rangeEnd: string;
+  onSingleMonthChange: (value: string) => void;
+  onRangeStartChange: (value: string) => void;
+  onRangeEndChange: (value: string) => void;
+}) {
+  if (mode === "single") {
+    return (
+      <div className="w-full md:w-72">
+        <MonthField label="Bulan" value={singleMonth} onChange={onSingleMonthChange} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid w-full gap-2 md:w-[420px] md:grid-cols-2">
+      <MonthField label="Mulai" value={rangeStart} onChange={onRangeStartChange} />
+      <MonthField label="Sampai" value={rangeEnd} onChange={onRangeEndChange} />
+    </div>
+  );
 }
 
 export default function FinancialHealth() {
@@ -478,6 +577,11 @@ export default function FinancialHealth() {
     return normalizeBudgets(rows, categoriesById);
   }, [budgetsQuery.data, categoriesById]);
 
+  const subscriptions = useMemo(
+    () => (Array.isArray(subscriptionsQuery.data) ? subscriptionsQuery.data : []),
+    [subscriptionsQuery.data]
+  );
+
   const debts = useMemo(
     () => (Array.isArray(debtsQuery.data) ? debtsQuery.data : []),
     [debtsQuery.data]
@@ -489,11 +593,21 @@ export default function FinancialHealth() {
       budgets: normalizedBudgets,
       debts,
       accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
+      subscriptions,
       months,
       start,
       end,
     });
-  }, [normalizedTransactions, normalizedBudgets, debts, accountsQuery.data, months, start, end]);
+  }, [
+    normalizedTransactions,
+    normalizedBudgets,
+    debts,
+    accountsQuery.data,
+    subscriptions,
+    months,
+    start,
+    end,
+  ]);
 
   const comparison = useMemo(() => {
     const monthsCount = Math.max(1, months.length);
@@ -505,6 +619,7 @@ export default function FinancialHealth() {
       budgets: normalizedBudgets,
       debts,
       accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
+      subscriptions,
       months: previousMonths,
       start: previousStart,
       end: previousEnd,
@@ -525,6 +640,7 @@ export default function FinancialHealth() {
     normalizedBudgets,
     debts,
     accountsQuery.data,
+    subscriptions,
     start,
     months.length,
   ]);
@@ -625,39 +741,15 @@ export default function FinancialHealth() {
       });
     });
 
-    const subscriptions = Array.isArray(subscriptionsQuery.data)
-      ? subscriptionsQuery.data
-      : [];
-    const subscriptionMonthly = subscriptions.reduce((sum, sub) => {
-      if (!sub || sub.status === "canceled") return sum;
-      const amount = safeNumber(sub.amount);
-      const count = Math.max(1, safeNumber(sub.interval_count ?? 1));
-      switch (sub.interval_unit) {
-        case "year":
-          return sum + amount / 12 / count;
-        case "week":
-          return sum + (amount / count) * 4;
-        case "day":
-          return sum + (amount / count) * 30;
-        case "month":
-        default:
-          return sum + amount / count;
-      }
-    }, 0);
-
-    const monthlyIncome = months.length ? snapshot.income / months.length : snapshot.income;
-    if (subscriptionMonthly > 0 && monthlyIncome > 0) {
-      const ratio = subscriptionMonthly / monthlyIncome;
-      if (ratio > 0.15) {
-        items.push({
-          id: "subscription-heavy",
-          title: "Biaya subscription tinggi",
-          description: "Biaya langganan bulanan cukup besar dibanding pemasukan.",
-          severity: "medium",
-          ctaLabel: "Atur Subscription",
-          ctaHref: "/subscriptions",
-        });
-      }
+    if (snapshot.subscriptionRatio > 0.15) {
+      items.push({
+        id: "subscription-heavy",
+        title: "Biaya subscription tinggi",
+        description: "Biaya langganan bulanan cukup besar dibanding pemasukan.",
+        severity: "medium",
+        ctaLabel: "Atur Subscription",
+        ctaHref: "/subscriptions",
+      });
     }
 
     if (snapshot.bufferRatio < 1 && snapshot.expense > 0) {
@@ -720,20 +812,17 @@ export default function FinancialHealth() {
       <PageHeader
         title="Financial Health"
         description="Ringkasan kesehatan keuanganmu bulan ini"
-      >
-        <div className="flex flex-wrap items-center gap-3">
-          {!online || mode === "local" ? (
-            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
-              Offline Mode
-            </span>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2 rounded-full border border-border bg-surface-1 p-1 text-xs font-semibold text-text shadow-sm">
+      />
+
+      <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-1/60 p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <div className="inline-flex w-full items-center gap-2 rounded-full bg-muted/30 p-1 text-sm font-semibold text-text shadow-sm md:w-auto">
             <button
               type="button"
               onClick={() => setPeriodMode("single")}
-              className={`rounded-full px-3 py-1.5 transition ${
+              className={`inline-flex flex-1 items-center justify-center rounded-full px-3 py-2 transition md:flex-none ${
                 periodMode === "single"
-                  ? "bg-primary text-white shadow"
+                  ? "border border-primary/30 bg-primary/20 text-primary"
                   : "text-muted hover:text-text"
               }`}
             >
@@ -742,53 +831,47 @@ export default function FinancialHealth() {
             <button
               type="button"
               onClick={() => setPeriodMode("range")}
-              className={`rounded-full px-3 py-1.5 transition ${
+              className={`inline-flex flex-1 items-center justify-center rounded-full px-3 py-2 transition md:flex-none ${
                 periodMode === "range"
-                  ? "bg-primary text-white shadow"
+                  ? "border border-primary/30 bg-primary/20 text-primary"
                   : "text-muted hover:text-text"
               }`}
             >
               Rentang Bulan
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border-subtle bg-surface-1 px-3 py-2 text-xs text-muted shadow-sm">
-            {periodMode === "single" ? (
-              <>
-                <span className="text-[11px] font-semibold uppercase text-muted">
-                  Bulan
-                </span>
-                <input
-                  type="month"
-                  value={singleMonth}
-                  onChange={(event) => setSingleMonth(event.target.value)}
-                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
-                />
-              </>
-            ) : (
-              <>
-                <span className="text-[11px] font-semibold uppercase text-muted">
-                  Mulai
-                </span>
-                <input
-                  type="month"
-                  value={rangeStart}
-                  onChange={(event) => setRangeStart(event.target.value)}
-                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
-                />
-                <span className="text-[11px] font-semibold uppercase text-muted">
-                  Sampai
-                </span>
-                <input
-                  type="month"
-                  value={rangeEnd}
-                  onChange={(event) => setRangeEnd(event.target.value)}
-                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
-                />
-              </>
-            )}
-          </div>
+          <PeriodPicker
+            mode={periodMode}
+            singleMonth={singleMonth}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onSingleMonthChange={setSingleMonth}
+            onRangeStartChange={setRangeStart}
+            onRangeEndChange={setRangeEnd}
+          />
         </div>
-      </PageHeader>
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 md:w-auto md:justify-end">
+          {!online || mode === "local" ? (
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
+              Offline Mode
+            </span>
+          ) : null}
+          {comparison ? (
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                comparison.direction === "up"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                  : comparison.direction === "down"
+                    ? "border-rose-500/30 bg-rose-500/10 text-rose-700"
+                    : "border-border-subtle bg-surface-2 text-muted"
+              }`}
+            >
+              {comparison.direction === "up" ? "▲" : comparison.direction === "down" ? "▼" : "•"}{" "}
+              {comparison.label}
+            </span>
+          ) : null}
+        </div>
+      </div>
 
       <div className="space-y-6">
         {isLoading ? (
@@ -831,8 +914,12 @@ export default function FinancialHealth() {
                     value={formatCurrency(snapshot.net)}
                     status={`${cashflowStatus} · income ${formatCurrency(snapshot.income)}`}
                     score={snapshot.cashflowScore}
-                    tooltip="Selisih pemasukan dan pengeluaran pada periode ini."
-                    description="Skor naik jika pemasukan lebih besar dari pengeluaran. Defisit menurunkan skor."
+                    infoTitle="Cashflow Health"
+                    infoPoints={[
+                      "Apa artinya: selisih pemasukan & pengeluaran.",
+                      "Cara hitung: (income - expense) dibanding income.",
+                      "Target sehat: surplus ≥20%.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Savings Rate"
@@ -840,8 +927,12 @@ export default function FinancialHealth() {
                     value={formatPercent(snapshot.savingsRate)}
                     status={`${savingsStatus} · target >20%`}
                     score={snapshot.savingsScore}
-                    tooltip="Persentase tabungan terhadap total pemasukan."
-                    description="Semakin besar rasio tabungan, semakin tinggi skor. Di bawah 10% dianggap rendah."
+                    infoTitle="Savings Rate"
+                    infoPoints={[
+                      "Apa artinya: porsi tabungan dari pemasukan.",
+                      "Cara hitung: (income - expense) / income.",
+                      "Target sehat: >20%.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Debt Ratio"
@@ -849,8 +940,12 @@ export default function FinancialHealth() {
                     value={formatPercent(snapshot.debtRatio)}
                     status={`${debtStatus} · batas 30%`}
                     score={snapshot.debtScore}
-                    tooltip="Total cicilan bulanan dibanding pemasukan."
-                    description="Rasio di atas 30% mengurangi skor karena beban cicilan terlalu tinggi."
+                    infoTitle="Debt Ratio"
+                    infoPoints={[
+                      "Apa artinya: cicilan bulanan dibanding pemasukan.",
+                      "Cara hitung: total cicilan / pemasukan bulanan.",
+                      "Target sehat: <30%.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Budget Discipline"
@@ -858,8 +953,12 @@ export default function FinancialHealth() {
                     value={`${snapshot.budgetOverCount}/${snapshot.budgetTotal} over-budget`}
                     status={budgetStatus}
                     score={snapshot.budgetScore}
-                    tooltip="Jumlah kategori yang melewati batas budget."
-                    description="Semakin sedikit kategori over-budget, semakin tinggi skornya."
+                    infoTitle="Budget Discipline"
+                    infoPoints={[
+                      "Apa artinya: kategori yang melewati batas budget.",
+                      "Cara hitung: jumlah over-budget / total kategori.",
+                      "Target sehat: 0 kategori over-budget.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Liquidity Buffer"
@@ -867,8 +966,25 @@ export default function FinancialHealth() {
                     value={formatPercent(snapshot.bufferRatio)}
                     status={bufferStatus}
                     score={snapshot.bufferScore}
-                    tooltip="Perbandingan saldo akun dengan rata-rata pengeluaran bulanan."
-                    description="Buffer ≥1x pengeluaran bulanan dianggap sehat. Di bawah 0.5x dianggap kritis."
+                    infoTitle="Liquidity Buffer"
+                    infoPoints={[
+                      "Apa artinya: saldo akun vs pengeluaran bulanan.",
+                      "Cara hitung: total saldo / rata-rata pengeluaran.",
+                      "Target sehat: ≥1x pengeluaran bulanan.",
+                    ]}
+                  />
+                  <IndicatorCard
+                    title="Subscription Burden"
+                    icon={<CreditCard className="h-5 w-5" />}
+                    value={formatPercent(snapshot.subscriptionRatio)}
+                    status="Target <15%"
+                    score={snapshot.subscriptionScore}
+                    infoTitle="Subscription Burden"
+                    infoPoints={[
+                      "Apa artinya: biaya langganan bulanan dibanding pemasukan.",
+                      "Cara hitung: total subscription / pemasukan bulanan.",
+                      "Target sehat: <15%.",
+                    ]}
                   />
                 </>
               )}
