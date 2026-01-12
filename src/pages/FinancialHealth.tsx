@@ -672,16 +672,22 @@ export default function FinancialHealth() {
       const key = `${budget.period ?? months[months.length - 1]}:${budget.categoryKey ?? "uncat"}`;
       return (spendByMonthCategory.get(key) ?? 0) > budget.cap;
     });
-    overBudgets.slice(0, 3).forEach((budget) => {
+    if (overBudgets.length > 0) {
+      const budgetNames = overBudgets
+        .map((budget) => budget.categoryName)
+        .filter(Boolean)
+        .join(", ");
       items.push({
-        id: `over-budget-${budget.categoryKey}`,
-        title: `Pengeluaran ${budget.categoryName} over-budget`,
-        description: "Pengeluaran kategori ini melebihi batas yang kamu tetapkan.",
+        id: "over-budget",
+        title: "Ada kategori yang over-budget",
+        description: budgetNames
+          ? `Kategori: ${budgetNames}.`
+          : "Beberapa kategori melebihi batas yang kamu tetapkan.",
         severity: "medium",
         ctaLabel: "Perbarui Budget",
         ctaHref: "/budgets",
       });
-    });
+    }
 
     if (snapshot.subscriptionRatio > 0.15) {
       items.push({
@@ -788,11 +794,6 @@ export default function FinancialHealth() {
                   )}`
             }
             comparison={comparison}
-            cashflow={formatCurrency(snapshot.net)}
-            savingsRate={formatPercent(snapshot.savingsRate)}
-            debtRatio={formatPercent(snapshot.debtRatio)}
-            budgetOver={`${snapshot.budgetOverCount}/${snapshot.budgetTotal}`}
-            insights={insights}
             isEmpty={isEmpty}
           />
         )}

@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import clsx from "clsx";
 import {
   Circle,
@@ -6,7 +5,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
-import type { InsightItem } from "./InsightList";
+import { Link } from "react-router-dom";
 
 const clamp = (value: number, min = 0, max = 100) =>
   Math.min(Math.max(value, min), max);
@@ -29,18 +28,7 @@ interface FinancialHealthScoreCardProps {
   label: string;
   subtitle: string;
   comparison?: ScoreComparison | null;
-  cashflow: string;
-  savingsRate: string;
-  debtRatio: string;
-  budgetOver: string;
-  insights: InsightItem[];
   isEmpty: boolean;
-}
-
-const INSIGHT_PRIORITY: Record<InsightItem["severity"], number> = {
-  high: 3,
-  medium: 2,
-  low: 1,
 };
 
 export default function FinancialHealthScoreCard({
@@ -48,11 +36,6 @@ export default function FinancialHealthScoreCard({
   label,
   subtitle,
   comparison,
-  cashflow,
-  savingsRate,
-  debtRatio,
-  budgetOver,
-  insights,
   isEmpty,
 }: FinancialHealthScoreCardProps) {
   const safeScore = clamp(score);
@@ -63,10 +46,6 @@ export default function FinancialHealthScoreCard({
   const strokeDashoffset =
     circumference - (safeScore / 100) * circumference;
   const toneClass = getScoreTone(safeScore);
-
-  const nextSteps = [...insights]
-    .sort((a, b) => INSIGHT_PRIORITY[b.severity] - INSIGHT_PRIORITY[a.severity])
-    .slice(0, 2);
 
   const TrendIcon =
     comparison?.direction === "up"
@@ -188,62 +167,6 @@ export default function FinancialHealthScoreCard({
               </p>
             </div>
 
-            <div>
-              <p className="text-sm font-semibold text-text">
-                Quick metrics
-              </p>
-              <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl border border-border-subtle bg-surface-2/40 px-3 py-2">
-                  <p className="text-xs uppercase text-muted">Cashflow</p>
-                  <p className="text-sm font-semibold text-text">
-                    {cashflow}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border-subtle bg-surface-2/40 px-3 py-2">
-                  <p className="text-xs uppercase text-muted">
-                    Savings Rate
-                  </p>
-                  <p className="text-sm font-semibold text-text">
-                    {savingsRate}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border-subtle bg-surface-2/40 px-3 py-2">
-                  <p className="text-xs uppercase text-muted">Debt Ratio</p>
-                  <p className="text-sm font-semibold text-text">
-                    {debtRatio}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border-subtle bg-surface-2/40 px-3 py-2">
-                  <p className="text-xs uppercase text-muted">
-                    Over-budget
-                  </p>
-                  <p className="text-sm font-semibold text-text">
-                    {budgetOver}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {nextSteps.length > 0 ? (
-              <div>
-                <p className="text-sm font-semibold text-text">
-                  What to do next
-                </p>
-                <ul className="mt-2 space-y-2 text-sm text-muted">
-                  {nextSteps.map((item) => (
-                    <li key={item.id} className="flex items-start gap-2">
-                      <span className="mt-1 h-2 w-2 rounded-full bg-primary/60" />
-                      <Link
-                        to={item.ctaHref}
-                        className="text-sm font-medium text-text transition hover:text-primary"
-                      >
-                        {item.title}
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
           </div>
         </div>
       )}
