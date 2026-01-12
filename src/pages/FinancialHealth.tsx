@@ -434,6 +434,8 @@ export default function FinancialHealth() {
   const categoriesQuery = useQuery({
     queryKey: ["financial-health", "categories", mode],
     queryFn: () => repo.categories.list(),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   const transactionsQuery = useQuery({
@@ -451,26 +453,36 @@ export default function FinancialHealth() {
       });
       return rows || [];
     },
+    staleTime: 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   const budgetsQuery = useQuery({
     queryKey: ["financial-health", "budgets", mode],
     queryFn: () => repo.budgets.list(),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   const goalsQuery = useQuery({
     queryKey: ["financial-health", "goals", mode],
     queryFn: () => repo.goals.list(),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   const subscriptionsQuery = useQuery({
     queryKey: ["financial-health", "subscriptions", mode],
     queryFn: () => repo.subscriptions.list(),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   const accountsQuery = useQuery({
     queryKey: ["financial-health", "accounts", mode],
     queryFn: () => listAccounts(),
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   const debtsQuery = useQuery({
@@ -483,6 +495,8 @@ export default function FinancialHealth() {
       const response = await listDebts();
       return response.items || [];
     },
+    staleTime: 5 * 60 * 1000,
+    placeholderData: (previous) => previous,
   });
 
   const isLoading =
