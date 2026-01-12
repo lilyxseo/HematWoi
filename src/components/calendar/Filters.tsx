@@ -261,9 +261,6 @@ export default function Filters({
                             <>
                               <div className="flex min-w-0 flex-col">
                                 <span className="truncate text-sm font-medium">{category.name}</span>
-                                <span className="text-xs uppercase tracking-wide text-slate-400">
-                                  {category.type === 'income' ? 'Pemasukan' : 'Pengeluaran'}
-                                </span>
                               </div>
                               {selected ? <Check className="h-4 w-4 text-[var(--accent)]" /> : null}
                             </>
