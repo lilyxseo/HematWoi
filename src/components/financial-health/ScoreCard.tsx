@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { Minus, TrendingDown, TrendingUp } from "lucide-react";
 
 const clamp = (value: number, min = 0, max = 100) =>
   Math.min(Math.max(value, min), max);
@@ -37,6 +38,12 @@ export default function ScoreCard({
   const strokeDashoffset =
     circumference - (safeScore / 100) * circumference;
   const toneClass = getScoreTone(safeScore);
+  const TrendIcon =
+    comparison?.direction === "up"
+      ? TrendingUp
+      : comparison?.direction === "down"
+        ? TrendingDown
+        : Minus;
 
   return (
     <div className="flex flex-col gap-6 rounded-3xl border border-border-subtle bg-surface-1 p-6 shadow-sm">
@@ -59,12 +66,8 @@ export default function ScoreCard({
                 "border-border bg-surface-2 text-muted"
             )}
           >
-            <span>
-              {comparison.direction === "up"
-                ? "▲"
-                : comparison.direction === "down"
-                  ? "▼"
-                  : "■"}
+            <span className="flex h-4 w-4 items-center justify-center">
+              <TrendIcon className="h-4 w-4" />
             </span>
             <span>
               {comparison.label} · {comparison.value.toFixed(0)}%
