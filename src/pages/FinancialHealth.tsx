@@ -8,6 +8,7 @@ import {
   Wallet,
   ListChecks,
   Banknote,
+  Calendar,
 } from "lucide-react";
 import Page from "../layout/Page";
 import PageHeader from "../layout/PageHeader";
@@ -390,6 +391,64 @@ function formatPercent(value: number) {
   return `${(value * 100).toFixed(1)}%`;
 }
 
+function MonthField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="flex w-full flex-col gap-1 text-[11px] font-semibold uppercase text-muted/70">
+      <span>{label}</span>
+      <div className="relative">
+        <input
+          type="month"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className="h-10 w-full rounded-xl border border-white/10 bg-card/40 px-3 pr-9 text-sm font-semibold text-text shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-primary/40"
+        />
+        <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+      </div>
+    </label>
+  );
+}
+
+function PeriodPicker({
+  mode,
+  singleMonth,
+  rangeStart,
+  rangeEnd,
+  onSingleMonthChange,
+  onRangeStartChange,
+  onRangeEndChange,
+}: {
+  mode: "single" | "range";
+  singleMonth: string;
+  rangeStart: string;
+  rangeEnd: string;
+  onSingleMonthChange: (value: string) => void;
+  onRangeStartChange: (value: string) => void;
+  onRangeEndChange: (value: string) => void;
+}) {
+  if (mode === "single") {
+    return (
+      <div className="w-full md:w-72">
+        <MonthField label="Bulan" value={singleMonth} onChange={onSingleMonthChange} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid w-full gap-2 md:w-[420px] md:grid-cols-2">
+      <MonthField label="Mulai" value={rangeStart} onChange={onRangeStartChange} />
+      <MonthField label="Sampai" value={rangeEnd} onChange={onRangeEndChange} />
+    </div>
+  );
+}
+
 export default function FinancialHealth() {
   const currentMonth = getMonthKey(new Date());
   const [periodMode, setPeriodMode] = useState<"single" | "range">("single");
@@ -753,20 +812,17 @@ export default function FinancialHealth() {
       <PageHeader
         title="Financial Health"
         description="Ringkasan kesehatan keuanganmu bulan ini"
-      >
-        <div className="flex flex-wrap items-center gap-3">
-          {!online || mode === "local" ? (
-            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
-              Offline Mode
-            </span>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2 rounded-full border border-border bg-surface-1 p-1 text-xs font-semibold text-text shadow-sm">
+      />
+
+      <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-border-subtle bg-surface-1/60 p-3 shadow-sm md:flex-row md:items-center md:justify-between">
+        <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:gap-4">
+          <div className="inline-flex w-full items-center gap-2 rounded-full bg-muted/30 p-1 text-sm font-semibold text-text shadow-sm md:w-auto">
             <button
               type="button"
               onClick={() => setPeriodMode("single")}
-              className={`rounded-full px-3 py-1.5 transition ${
+              className={`inline-flex flex-1 items-center justify-center rounded-full px-3 py-2 transition md:flex-none ${
                 periodMode === "single"
-                  ? "bg-primary text-white shadow"
+                  ? "border border-primary/30 bg-primary/20 text-primary"
                   : "text-muted hover:text-text"
               }`}
             >
@@ -775,53 +831,47 @@ export default function FinancialHealth() {
             <button
               type="button"
               onClick={() => setPeriodMode("range")}
-              className={`rounded-full px-3 py-1.5 transition ${
+              className={`inline-flex flex-1 items-center justify-center rounded-full px-3 py-2 transition md:flex-none ${
                 periodMode === "range"
-                  ? "bg-primary text-white shadow"
+                  ? "border border-primary/30 bg-primary/20 text-primary"
                   : "text-muted hover:text-text"
               }`}
             >
               Rentang Bulan
             </button>
           </div>
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border-subtle bg-surface-1 px-3 py-2 text-xs text-muted shadow-sm">
-            {periodMode === "single" ? (
-              <>
-                <span className="text-[11px] font-semibold uppercase text-muted">
-                  Bulan
-                </span>
-                <input
-                  type="month"
-                  value={singleMonth}
-                  onChange={(event) => setSingleMonth(event.target.value)}
-                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
-                />
-              </>
-            ) : (
-              <>
-                <span className="text-[11px] font-semibold uppercase text-muted">
-                  Mulai
-                </span>
-                <input
-                  type="month"
-                  value={rangeStart}
-                  onChange={(event) => setRangeStart(event.target.value)}
-                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
-                />
-                <span className="text-[11px] font-semibold uppercase text-muted">
-                  Sampai
-                </span>
-                <input
-                  type="month"
-                  value={rangeEnd}
-                  onChange={(event) => setRangeEnd(event.target.value)}
-                  className="rounded-lg border border-border bg-surface-2 px-2 py-1 text-xs font-semibold text-text"
-                />
-              </>
-            )}
-          </div>
+          <PeriodPicker
+            mode={periodMode}
+            singleMonth={singleMonth}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onSingleMonthChange={setSingleMonth}
+            onRangeStartChange={setRangeStart}
+            onRangeEndChange={setRangeEnd}
+          />
         </div>
-      </PageHeader>
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 md:w-auto md:justify-end">
+          {!online || mode === "local" ? (
+            <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-700">
+              Offline Mode
+            </span>
+          ) : null}
+          {comparison ? (
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                comparison.direction === "up"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700"
+                  : comparison.direction === "down"
+                    ? "border-rose-500/30 bg-rose-500/10 text-rose-700"
+                    : "border-border-subtle bg-surface-2 text-muted"
+              }`}
+            >
+              {comparison.direction === "up" ? "▲" : comparison.direction === "down" ? "▼" : "•"}{" "}
+              {comparison.label}
+            </span>
+          ) : null}
+        </div>
+      </div>
 
       <div className="space-y-6">
         {isLoading ? (
@@ -864,8 +914,12 @@ export default function FinancialHealth() {
                     value={formatCurrency(snapshot.net)}
                     status={`${cashflowStatus} · income ${formatCurrency(snapshot.income)}`}
                     score={snapshot.cashflowScore}
-                    tooltip="Selisih pemasukan dan pengeluaran pada periode ini."
-                    description="Skor naik jika pemasukan lebih besar dari pengeluaran. Defisit menurunkan skor."
+                    infoTitle="Cashflow Health"
+                    infoPoints={[
+                      "Apa artinya: selisih pemasukan & pengeluaran.",
+                      "Cara hitung: (income - expense) dibanding income.",
+                      "Target sehat: surplus ≥20%.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Savings Rate"
@@ -873,8 +927,12 @@ export default function FinancialHealth() {
                     value={formatPercent(snapshot.savingsRate)}
                     status={`${savingsStatus} · target >20%`}
                     score={snapshot.savingsScore}
-                    tooltip="Persentase tabungan terhadap total pemasukan."
-                    description="Semakin besar rasio tabungan, semakin tinggi skor. Di bawah 10% dianggap rendah."
+                    infoTitle="Savings Rate"
+                    infoPoints={[
+                      "Apa artinya: porsi tabungan dari pemasukan.",
+                      "Cara hitung: (income - expense) / income.",
+                      "Target sehat: >20%.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Debt Ratio"
@@ -882,8 +940,12 @@ export default function FinancialHealth() {
                     value={formatPercent(snapshot.debtRatio)}
                     status={`${debtStatus} · batas 30%`}
                     score={snapshot.debtScore}
-                    tooltip="Total cicilan bulanan dibanding pemasukan."
-                    description="Rasio di atas 30% mengurangi skor karena beban cicilan terlalu tinggi."
+                    infoTitle="Debt Ratio"
+                    infoPoints={[
+                      "Apa artinya: cicilan bulanan dibanding pemasukan.",
+                      "Cara hitung: total cicilan / pemasukan bulanan.",
+                      "Target sehat: <30%.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Budget Discipline"
@@ -891,8 +953,12 @@ export default function FinancialHealth() {
                     value={`${snapshot.budgetOverCount}/${snapshot.budgetTotal} over-budget`}
                     status={budgetStatus}
                     score={snapshot.budgetScore}
-                    tooltip="Jumlah kategori yang melewati batas budget."
-                    description="Semakin sedikit kategori over-budget, semakin tinggi skornya."
+                    infoTitle="Budget Discipline"
+                    infoPoints={[
+                      "Apa artinya: kategori yang melewati batas budget.",
+                      "Cara hitung: jumlah over-budget / total kategori.",
+                      "Target sehat: 0 kategori over-budget.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Liquidity Buffer"
@@ -900,8 +966,25 @@ export default function FinancialHealth() {
                     value={formatPercent(snapshot.bufferRatio)}
                     status={bufferStatus}
                     score={snapshot.bufferScore}
-                    tooltip="Perbandingan saldo akun dengan rata-rata pengeluaran bulanan."
-                    description="Buffer ≥1x pengeluaran bulanan dianggap sehat. Di bawah 0.5x dianggap kritis."
+                    infoTitle="Liquidity Buffer"
+                    infoPoints={[
+                      "Apa artinya: saldo akun vs pengeluaran bulanan.",
+                      "Cara hitung: total saldo / rata-rata pengeluaran.",
+                      "Target sehat: ≥1x pengeluaran bulanan.",
+                    ]}
+                  />
+                  <IndicatorCard
+                    title="Subscription Burden"
+                    icon={<CreditCard className="h-5 w-5" />}
+                    value={formatPercent(snapshot.subscriptionRatio)}
+                    status="Target <15%"
+                    score={snapshot.subscriptionScore}
+                    infoTitle="Subscription Burden"
+                    infoPoints={[
+                      "Apa artinya: biaya langganan bulanan dibanding pemasukan.",
+                      "Cara hitung: total subscription / pemasukan bulanan.",
+                      "Target sehat: <15%.",
+                    ]}
                   />
                   <IndicatorCard
                     title="Subscription Burden"
