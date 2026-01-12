@@ -7,6 +7,7 @@ import {
   TrendingUp,
   Wallet,
   ListChecks,
+  Banknote,
 } from "lucide-react";
 import Page from "../layout/Page";
 import PageHeader from "../layout/PageHeader";
@@ -54,21 +55,17 @@ type HealthSnapshot = {
   net: number;
   savingsRate: number;
   debtRatio: number;
+  bufferRatio: number;
   budgetOverCount: number;
   budgetTotal: number;
   cashflowScore: number;
   savingsScore: number;
   debtScore: number;
   budgetScore: number;
+  bufferScore: number;
   totalScore: number;
   label: string;
 };
-
-const PERIOD_OPTIONS = [
-  { value: "1", label: "Bulan ini", months: 1 },
-  { value: "3", label: "3 bulan", months: 3 },
-  { value: "6", label: "6 bulan", months: 6 },
-];
 
 const SCORE_LABELS = [
   { min: 80, label: "Sangat Sehat" },
@@ -99,17 +96,18 @@ function getMonthLabel(key: string) {
   return MONTH_LABEL ? MONTH_LABEL.format(date) : key;
 }
 
-function getPeriodRange(months: number) {
-  const now = new Date();
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  const start = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-  return { start, end };
+function parseMonthInput(value: string) {
+  if (!value) return null;
+  const [year, month] = value.split("-").map((entry) => Number.parseInt(entry, 10));
+  if (!year || !month) return null;
+  return new Date(year, month - 1, 1);
 }
 
-function buildMonthRange(start: Date, months: number) {
-  const values = [];
+function buildMonthRange(start: Date, end: Date) {
+  const values: string[] = [];
   const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-  for (let i = 0; i < months; i += 1) {
+  const limit = new Date(end.getFullYear(), end.getMonth(), 1);
+  while (cursor <= limit) {
     values.push(getMonthKey(cursor));
     cursor.setMonth(cursor.getMonth() + 1);
   }
@@ -235,6 +233,14 @@ function computeBudgetScore(overCount: number, total: number) {
   return Math.max(0, 100 - ratio * 100);
 }
 
+function computeBufferScore(bufferRatio: number, monthlyExpense: number) {
+  if (monthlyExpense <= 0) return 50;
+  if (bufferRatio >= 1) return 100;
+  if (bufferRatio >= 0.5) return 70 + (bufferRatio - 0.5) * 60;
+  if (bufferRatio > 0) return 30 + bufferRatio * 80;
+  return 10;
+}
+
 function getHealthLabel(score: number) {
   const match = SCORE_LABELS.find((entry) => score >= entry.min);
   return match ? match.label : "Tidak Sehat";
@@ -244,11 +250,12 @@ function buildHealthSnapshot(params: {
   transactions: NormalizedTransaction[];
   budgets: NormalizedBudget[];
   debts: DebtLike[];
+  accounts: RawRecord[];
   months: string[];
   start: Date;
   end: Date;
 }): HealthSnapshot {
-  const { transactions, budgets, debts, months, start, end } = params;
+  const { transactions, budgets, debts, accounts, months, start, end } = params;
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
   const inRange = transactions.filter(
@@ -272,6 +279,12 @@ function buildHealthSnapshot(params: {
       return sum + amount / tenor;
     }, 0);
   const debtRatio = monthlyIncome > 0 ? debtMonthly / monthlyIncome : 0;
+  const monthlyExpense = months.length ? expense / months.length : expense;
+  const totalBalance = accounts.reduce(
+    (sum, account) => sum + safeNumber(account?.balance),
+    0
+  );
+  const bufferRatio = monthlyExpense > 0 ? totalBalance / monthlyExpense : 0;
 
   const monthsSet = new Set(months);
   const spendByMonthCategory = new Map<string, number>();
@@ -303,12 +316,14 @@ function buildHealthSnapshot(params: {
   const savingsScore = computeSavingsScore(savingsRate, income);
   const debtScore = computeDebtScore(debtRatio, income);
   const budgetScore = computeBudgetScore(overBudget.length, budgetsInRange.length);
+  const bufferScore = computeBufferScore(bufferRatio, monthlyExpense);
 
   const totalScore = Math.round(
     cashflowScore * 0.3 +
-      savingsScore * 0.25 +
-      debtScore * 0.25 +
-      budgetScore * 0.2
+      savingsScore * 0.2 +
+      debtScore * 0.2 +
+      budgetScore * 0.15 +
+      bufferScore * 0.15
   );
 
   return {
@@ -317,12 +332,14 @@ function buildHealthSnapshot(params: {
     net,
     savingsRate,
     debtRatio,
+    bufferRatio,
     budgetOverCount: overBudget.length,
     budgetTotal: budgetsInRange.length,
     cashflowScore,
     savingsScore,
     debtScore,
     budgetScore,
+    bufferScore,
     totalScore,
     label: getHealthLabel(totalScore),
   };
@@ -334,18 +351,41 @@ function formatPercent(value: number) {
 }
 
 export default function FinancialHealth() {
-  const [period, setPeriod] = useState("1");
-  const selectedPeriod =
-    PERIOD_OPTIONS.find((option) => option.value === period) ??
-    PERIOD_OPTIONS[0];
-  const { start, end } = useMemo(
-    () => getPeriodRange(selectedPeriod.months),
-    [selectedPeriod.months]
-  );
-  const months = useMemo(
-    () => buildMonthRange(start, selectedPeriod.months),
-    [start, selectedPeriod.months]
-  );
+  const currentMonth = getMonthKey(new Date());
+  const [periodMode, setPeriodMode] = useState<"single" | "range">("single");
+  const [singleMonth, setSingleMonth] = useState(currentMonth);
+  const [rangeStart, setRangeStart] = useState(currentMonth);
+  const [rangeEnd, setRangeEnd] = useState(currentMonth);
+
+  const { start, end, months } = useMemo(() => {
+    if (periodMode === "single") {
+      const monthDate = parseMonthInput(singleMonth) ?? new Date();
+      const rangeStartDate = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+      const rangeEndDate = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
+      return {
+        start: rangeStartDate,
+        end: rangeEndDate,
+        months: buildMonthRange(rangeStartDate, rangeEndDate),
+      };
+    }
+    const parsedStart = parseMonthInput(rangeStart) ?? new Date();
+    const parsedEnd = parseMonthInput(rangeEnd) ?? parsedStart;
+    const rangeStartDate = parsedStart <= parsedEnd ? parsedStart : parsedEnd;
+    const rangeEndDate = parsedStart <= parsedEnd ? parsedEnd : parsedStart;
+    const endOfRange = new Date(
+      rangeEndDate.getFullYear(),
+      rangeEndDate.getMonth() + 1,
+      0,
+      23,
+      59,
+      59
+    );
+    return {
+      start: rangeStartDate,
+      end: endOfRange,
+      months: buildMonthRange(rangeStartDate, rangeEndDate),
+    };
+  }, [periodMode, singleMonth, rangeStart, rangeEnd]);
   const online = useNetworkStatus();
   const { mode } = useDataMode();
   const repo = useRepo();
@@ -356,7 +396,7 @@ export default function FinancialHealth() {
   });
 
   const transactionsQuery = useQuery({
-    queryKey: ["financial-health", "transactions", mode, period],
+    queryKey: ["financial-health", "transactions", mode, start.toISOString(), end.toISOString()],
     queryFn: async () => {
       if (mode === "local") {
         return repo.transactions.list();
@@ -448,20 +488,23 @@ export default function FinancialHealth() {
       transactions: normalizedTransactions,
       budgets: normalizedBudgets,
       debts,
+      accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
       months,
       start,
       end,
     });
-  }, [normalizedTransactions, normalizedBudgets, debts, months, start, end]);
+  }, [normalizedTransactions, normalizedBudgets, debts, accountsQuery.data, months, start, end]);
 
   const comparison = useMemo(() => {
-    const previousStart = new Date(start.getFullYear(), start.getMonth() - selectedPeriod.months, 1);
+    const monthsCount = Math.max(1, months.length);
+    const previousStart = new Date(start.getFullYear(), start.getMonth() - monthsCount, 1);
     const previousEnd = new Date(start.getFullYear(), start.getMonth(), 0, 23, 59, 59);
-    const previousMonths = buildMonthRange(previousStart, selectedPeriod.months);
+    const previousMonths = buildMonthRange(previousStart, previousEnd);
     const previousSnapshot = buildHealthSnapshot({
       transactions: normalizedTransactions,
       budgets: normalizedBudgets,
       debts,
+      accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
       months: previousMonths,
       start: previousStart,
       end: previousEnd,
@@ -476,7 +519,15 @@ export default function FinancialHealth() {
       value: Math.abs(change),
       label: `vs ${getMonthLabel(previousMonths[previousMonths.length - 1])}`,
     };
-  }, [snapshot.totalScore, normalizedTransactions, normalizedBudgets, debts, start, selectedPeriod.months]);
+  }, [
+    snapshot.totalScore,
+    normalizedTransactions,
+    normalizedBudgets,
+    debts,
+    accountsQuery.data,
+    start,
+    months.length,
+  ]);
 
   const insights = useMemo(() => {
     const items: InsightItem[] = [];
@@ -609,18 +660,12 @@ export default function FinancialHealth() {
       }
     }
 
-    const accounts = Array.isArray(accountsQuery.data) ? accountsQuery.data : [];
-    const totalBalance = accounts.reduce(
-      (sum, account) => sum + safeNumber(account?.balance),
-      0
-    );
-    const monthlyExpense = months.length ? snapshot.expense / months.length : snapshot.expense;
-    if (monthlyExpense > 0 && totalBalance < monthlyExpense) {
+    if (snapshot.bufferRatio < 1 && snapshot.expense > 0) {
       items.push({
         id: "low-cash-buffer",
         title: "Buffer kas menipis",
         description: "Saldo akunmu lebih kecil dari rata-rata pengeluaran bulanan.",
-        severity: "medium",
+        severity: snapshot.bufferRatio < 0.5 ? "high" : "medium",
         ctaLabel: "Cek Akun",
         ctaHref: "/accounts",
       });
@@ -663,6 +708,12 @@ export default function FinancialHealth() {
       : snapshot.budgetOverCount === 0
         ? "Semua on-track"
         : `${snapshot.budgetOverCount} kategori over-budget`;
+  const bufferStatus =
+    snapshot.bufferRatio >= 1
+      ? "Buffer aman"
+      : snapshot.bufferRatio >= 0.5
+        ? "Perlu ditambah"
+        : "Kritis";
 
   return (
     <Page>
@@ -676,17 +727,42 @@ export default function FinancialHealth() {
               Offline Mode
             </span>
           ) : null}
-          <select
-            value={period}
-            onChange={(event) => setPeriod(event.target.value)}
-            className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
-          >
-            {PERIOD_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={periodMode}
+              onChange={(event) =>
+                setPeriodMode(event.target.value === "range" ? "range" : "single")
+              }
+              className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+            >
+              <option value="single">Per Bulan</option>
+              <option value="range">Rentang Bulan</option>
+            </select>
+            {periodMode === "single" ? (
+              <input
+                type="month"
+                value={singleMonth}
+                onChange={(event) => setSingleMonth(event.target.value)}
+                className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+              />
+            ) : (
+              <>
+                <input
+                  type="month"
+                  value={rangeStart}
+                  onChange={(event) => setRangeStart(event.target.value)}
+                  className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+                />
+                <span className="text-xs text-muted">s.d.</span>
+                <input
+                  type="month"
+                  value={rangeEnd}
+                  onChange={(event) => setRangeEnd(event.target.value)}
+                  className="rounded-full border border-border bg-surface-1 px-3 py-2 text-xs font-semibold text-text"
+                />
+              </>
+            )}
+          </div>
         </div>
       </PageHeader>
 
@@ -697,7 +773,13 @@ export default function FinancialHealth() {
           <ScoreCard
             score={snapshot.totalScore}
             label={snapshot.label}
-            subtitle={`Periode ${getMonthLabel(months[0])}`}
+            subtitle={
+              periodMode === "single"
+                ? `Periode ${getMonthLabel(months[0])}`
+                : `Periode ${getMonthLabel(months[0])} - ${getMonthLabel(
+                    months[months.length - 1]
+                  )}`
+            }
             comparison={comparison}
           />
         )}
@@ -711,6 +793,7 @@ export default function FinancialHealth() {
             <div className="grid gap-4 md:grid-cols-2">
               {isLoading ? (
                 <>
+                  <Skeleton className="h-28 w-full" />
                   <Skeleton className="h-28 w-full" />
                   <Skeleton className="h-28 w-full" />
                   <Skeleton className="h-28 w-full" />
@@ -749,6 +832,14 @@ export default function FinancialHealth() {
                     status={budgetStatus}
                     score={snapshot.budgetScore}
                     tooltip="Jumlah kategori yang melewati batas budget."
+                  />
+                  <IndicatorCard
+                    title="Liquidity Buffer"
+                    icon={<Banknote className="h-5 w-5" />}
+                    value={formatPercent(snapshot.bufferRatio)}
+                    status={bufferStatus}
+                    score={snapshot.bufferScore}
+                    tooltip="Perbandingan saldo akun dengan rata-rata pengeluaran bulanan."
                   />
                 </>
               )}
