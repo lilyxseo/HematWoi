@@ -13,12 +13,12 @@ import Page from "../layout/Page";
 import PageHeader from "../layout/PageHeader";
 import Card, { CardBody, CardHeader } from "../components/Card";
 import Skeleton from "../components/Skeleton";
-import ScoreCard from "../components/financial-health/ScoreCard";
+import FinancialHealthScoreCard from "../components/financial-health/FinancialHealthScoreCard";
 import IndicatorCard from "../components/financial-health/IndicatorCard";
 import InsightList, {
   type InsightItem,
 } from "../components/financial-health/InsightList";
-import PeriodPicker from "../components/financial-health/PeriodPicker";
+import PeriodToolbar from "../components/financial-health/PeriodToolbar";
 import { formatCurrency } from "../lib/format";
 import { listAccounts, listTransactions } from "../lib/api";
 import { listDebts } from "../lib/api-debts";
@@ -728,51 +728,24 @@ export default function FinancialHealth() {
               Offline Mode
             </span>
           ) : null}
-          <div className="flex w-full flex-col gap-3 md:w-auto md:flex-row md:items-center md:justify-end">
-            <div className="inline-flex w-full items-center gap-1 rounded-full bg-muted/30 p-1 text-xs font-semibold text-text shadow-sm md:w-auto md:shrink-0">
-              <button
-                type="button"
-                onClick={() => setPeriodMode("single")}
-                className={`inline-flex flex-1 items-center justify-center rounded-full px-3 py-2 text-sm transition md:flex-none ${
-                  periodMode === "single"
-                    ? "border border-white/10 bg-primary/20 text-text"
-                    : "text-muted hover:text-text"
-                }`}
-              >
-                Per Bulan
-              </button>
-              <button
-                type="button"
-                onClick={() => setPeriodMode("range")}
-                className={`inline-flex flex-1 items-center justify-center rounded-full px-3 py-2 text-sm transition md:flex-none ${
-                  periodMode === "range"
-                    ? "border border-white/10 bg-primary/20 text-text"
-                    : "text-muted hover:text-text"
-                }`}
-              >
-                Rentang Bulan
-              </button>
-            </div>
-            <div className="w-full md:w-[320px]">
-              <PeriodPicker
-                mode={periodMode}
-                singleMonth={singleMonth}
-                rangeStart={rangeStart}
-                rangeEnd={rangeEnd}
-                onSingleMonthChange={setSingleMonth}
-                onRangeStartChange={setRangeStart}
-                onRangeEndChange={setRangeEnd}
-              />
-            </div>
-          </div>
+          <PeriodToolbar
+            mode={periodMode}
+            singleMonth={singleMonth}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            onModeChange={setPeriodMode}
+            onSingleMonthChange={setSingleMonth}
+            onRangeStartChange={setRangeStart}
+            onRangeEndChange={setRangeEnd}
+          />
         </div>
       </PageHeader>
 
       <div className="space-y-6">
         {isLoading ? (
-          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-56 w-full" />
         ) : (
-          <ScoreCard
+          <FinancialHealthScoreCard
             score={snapshot.totalScore}
             label={snapshot.label}
             subtitle={
@@ -783,6 +756,43 @@ export default function FinancialHealth() {
                   )}`
             }
             comparison={comparison}
+            metrics={[
+              {
+                label: "Cashflow",
+                value: formatCurrency(snapshot.net),
+              },
+              {
+                label: "Savings Rate",
+                value: formatPercent(snapshot.savingsRate),
+              },
+              {
+                label: "Debt Ratio",
+                value: formatPercent(snapshot.debtRatio),
+              },
+              {
+                label: "Over-budget",
+                value: `${snapshot.budgetOverCount}/${snapshot.budgetTotal}`,
+              },
+            ]}
+            nextActions={
+              insights.length
+                ? [
+                    {
+                      label: insights[0].title,
+                      href: insights[0].ctaHref,
+                    },
+                    ...(insights[1]
+                      ? [
+                          {
+                            label: insights[1].title,
+                            href: insights[1].ctaHref,
+                          },
+                        ]
+                      : []),
+                  ]
+                : []
+            }
+            isEmpty={normalizedTransactions.length === 0}
           />
         )}
 
