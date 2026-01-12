@@ -56,6 +56,7 @@ type HealthSnapshot = {
   savingsRate: number;
   debtRatio: number;
   bufferRatio: number;
+  subscriptionRatio: number;
   budgetOverCount: number;
   budgetTotal: number;
   cashflowScore: number;
@@ -63,6 +64,7 @@ type HealthSnapshot = {
   debtScore: number;
   budgetScore: number;
   bufferScore: number;
+  subscriptionScore: number;
   totalScore: number;
   label: string;
 };
@@ -241,6 +243,37 @@ function computeBufferScore(bufferRatio: number, monthlyExpense: number) {
   return 10;
 }
 
+function computeSubscriptionScore(subscriptionRatio: number, income: number) {
+  if (income <= 0) return 0;
+  if (subscriptionRatio <= 0.05) return 100;
+  if (subscriptionRatio <= 0.15) {
+    return 100 - ((subscriptionRatio - 0.05) / 0.1) * 40;
+  }
+  if (subscriptionRatio <= 0.3) {
+    return 60 - ((subscriptionRatio - 0.15) / 0.15) * 40;
+  }
+  return 10;
+}
+
+function computeSubscriptionMonthly(subscriptions: RawRecord[] = []) {
+  return subscriptions.reduce((sum, sub) => {
+    if (!sub || sub.status === "canceled") return sum;
+    const amount = safeNumber(sub.amount);
+    const count = Math.max(1, safeNumber(sub.interval_count ?? 1));
+    switch (sub.interval_unit) {
+      case "year":
+        return sum + amount / 12 / count;
+      case "week":
+        return sum + (amount / count) * 4;
+      case "day":
+        return sum + (amount / count) * 30;
+      case "month":
+      default:
+        return sum + amount / count;
+    }
+  }, 0);
+}
+
 function getHealthLabel(score: number) {
   const match = SCORE_LABELS.find((entry) => score >= entry.min);
   return match ? match.label : "Tidak Sehat";
@@ -251,11 +284,12 @@ function buildHealthSnapshot(params: {
   budgets: NormalizedBudget[];
   debts: DebtLike[];
   accounts: RawRecord[];
+  subscriptions: RawRecord[];
   months: string[];
   start: Date;
   end: Date;
 }): HealthSnapshot {
-  const { transactions, budgets, debts, accounts, months, start, end } = params;
+  const { transactions, budgets, debts, accounts, subscriptions, months, start, end } = params;
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
   const inRange = transactions.filter(
@@ -279,6 +313,8 @@ function buildHealthSnapshot(params: {
       return sum + amount / tenor;
     }, 0);
   const debtRatio = monthlyIncome > 0 ? debtMonthly / monthlyIncome : 0;
+  const subscriptionMonthly = computeSubscriptionMonthly(subscriptions);
+  const subscriptionRatio = monthlyIncome > 0 ? subscriptionMonthly / monthlyIncome : 0;
   const monthlyExpense = months.length ? expense / months.length : expense;
   const totalBalance = accounts.reduce(
     (sum, account) => sum + safeNumber(account?.balance),
@@ -317,13 +353,15 @@ function buildHealthSnapshot(params: {
   const debtScore = computeDebtScore(debtRatio, income);
   const budgetScore = computeBudgetScore(overBudget.length, budgetsInRange.length);
   const bufferScore = computeBufferScore(bufferRatio, monthlyExpense);
+  const subscriptionScore = computeSubscriptionScore(subscriptionRatio, income);
 
   const totalScore = Math.round(
-    cashflowScore * 0.3 +
+    cashflowScore * 0.25 +
       savingsScore * 0.2 +
       debtScore * 0.2 +
       budgetScore * 0.15 +
-      bufferScore * 0.15
+      bufferScore * 0.1 +
+      subscriptionScore * 0.1
   );
 
   return {
@@ -333,6 +371,7 @@ function buildHealthSnapshot(params: {
     savingsRate,
     debtRatio,
     bufferRatio,
+    subscriptionRatio,
     budgetOverCount: overBudget.length,
     budgetTotal: budgetsInRange.length,
     cashflowScore,
@@ -340,6 +379,7 @@ function buildHealthSnapshot(params: {
     debtScore,
     budgetScore,
     bufferScore,
+    subscriptionScore,
     totalScore,
     label: getHealthLabel(totalScore),
   };
@@ -478,6 +518,11 @@ export default function FinancialHealth() {
     return normalizeBudgets(rows, categoriesById);
   }, [budgetsQuery.data, categoriesById]);
 
+  const subscriptions = useMemo(
+    () => (Array.isArray(subscriptionsQuery.data) ? subscriptionsQuery.data : []),
+    [subscriptionsQuery.data]
+  );
+
   const debts = useMemo(
     () => (Array.isArray(debtsQuery.data) ? debtsQuery.data : []),
     [debtsQuery.data]
@@ -489,11 +534,21 @@ export default function FinancialHealth() {
       budgets: normalizedBudgets,
       debts,
       accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
+      subscriptions,
       months,
       start,
       end,
     });
-  }, [normalizedTransactions, normalizedBudgets, debts, accountsQuery.data, months, start, end]);
+  }, [
+    normalizedTransactions,
+    normalizedBudgets,
+    debts,
+    accountsQuery.data,
+    subscriptions,
+    months,
+    start,
+    end,
+  ]);
 
   const comparison = useMemo(() => {
     const monthsCount = Math.max(1, months.length);
@@ -505,6 +560,7 @@ export default function FinancialHealth() {
       budgets: normalizedBudgets,
       debts,
       accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
+      subscriptions,
       months: previousMonths,
       start: previousStart,
       end: previousEnd,
@@ -525,6 +581,7 @@ export default function FinancialHealth() {
     normalizedBudgets,
     debts,
     accountsQuery.data,
+    subscriptions,
     start,
     months.length,
   ]);
@@ -625,39 +682,15 @@ export default function FinancialHealth() {
       });
     });
 
-    const subscriptions = Array.isArray(subscriptionsQuery.data)
-      ? subscriptionsQuery.data
-      : [];
-    const subscriptionMonthly = subscriptions.reduce((sum, sub) => {
-      if (!sub || sub.status === "canceled") return sum;
-      const amount = safeNumber(sub.amount);
-      const count = Math.max(1, safeNumber(sub.interval_count ?? 1));
-      switch (sub.interval_unit) {
-        case "year":
-          return sum + amount / 12 / count;
-        case "week":
-          return sum + (amount / count) * 4;
-        case "day":
-          return sum + (amount / count) * 30;
-        case "month":
-        default:
-          return sum + amount / count;
-      }
-    }, 0);
-
-    const monthlyIncome = months.length ? snapshot.income / months.length : snapshot.income;
-    if (subscriptionMonthly > 0 && monthlyIncome > 0) {
-      const ratio = subscriptionMonthly / monthlyIncome;
-      if (ratio > 0.15) {
-        items.push({
-          id: "subscription-heavy",
-          title: "Biaya subscription tinggi",
-          description: "Biaya langganan bulanan cukup besar dibanding pemasukan.",
-          severity: "medium",
-          ctaLabel: "Atur Subscription",
-          ctaHref: "/subscriptions",
-        });
-      }
+    if (snapshot.subscriptionRatio > 0.15) {
+      items.push({
+        id: "subscription-heavy",
+        title: "Biaya subscription tinggi",
+        description: "Biaya langganan bulanan cukup besar dibanding pemasukan.",
+        severity: "medium",
+        ctaLabel: "Atur Subscription",
+        ctaHref: "/subscriptions",
+      });
     }
 
     if (snapshot.bufferRatio < 1 && snapshot.expense > 0) {
@@ -869,6 +902,15 @@ export default function FinancialHealth() {
                     score={snapshot.bufferScore}
                     tooltip="Perbandingan saldo akun dengan rata-rata pengeluaran bulanan."
                     description="Buffer ≥1x pengeluaran bulanan dianggap sehat. Di bawah 0.5x dianggap kritis."
+                  />
+                  <IndicatorCard
+                    title="Subscription Burden"
+                    icon={<CreditCard className="h-5 w-5" />}
+                    value={formatPercent(snapshot.subscriptionRatio)}
+                    status="Target <15%"
+                    score={snapshot.subscriptionScore}
+                    tooltip="Biaya langganan bulanan dibanding pemasukan."
+                    description="Rasio subscription yang rendah membantu menjaga fleksibilitas cashflow."
                   />
                 </>
               )}
