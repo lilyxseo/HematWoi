@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import Page from '../../layout/Page';
 import PageHeader from '../../layout/PageHeader';
-import ReportFilters from '../../components/ReportFilters';
-import KPITiles from '../../components/KPITiles';
-import CategoryDonut from '../../components/CategoryDonut';
-import MonthlyTrendChart from '../../components/MonthlyTrendChart';
-import TopSpendsTable from '../../components/TopSpendsTable';
-import HeatmapCalendar from '../../components/HeatmapCalendar';
-import ExportReport from '../../components/ExportReport';
-import Card, { CardBody, CardFooter, CardHeader } from '../../components/Card';
+import Card, { CardBody, CardHeader } from '../../components/Card';
+import KpiCard from '../../components/KpiCard';
 import Skeleton from '../../components/Skeleton';
-import { useRepo } from '../../context/DataContext';
+import { useDataMode, useRepo } from '../../context/DataContext';
 import { formatCurrency } from '../../lib/format';
+import { downloadCsv, toCsv } from '../../lib/export/csv';
 
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
 
@@ -19,6 +16,31 @@ const MONTH_LABEL =
   typeof Intl !== 'undefined'
     ? new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' })
     : undefined;
+
+type RawRecord = Record<string, any>;
+
+type NormalizedTransaction = {
+  id?: string | number;
+  amount: number;
+  type: 'income' | 'expense' | 'transfer';
+  date: string;
+  accountKey: string;
+  accountName: string;
+  categoryKey: string;
+  categoryName: string;
+  merchant: string;
+  notes: string;
+};
+
+type ReportFilters = {
+  period: 'month' | 'custom';
+  month: string;
+  from: string;
+  to: string;
+  account: string;
+  category: string;
+  search: string;
+};
 
 function toMonthLabel(month: string) {
   if (!month) return '';
@@ -32,30 +54,36 @@ function toMonthLabel(month: string) {
   }
 }
 
-type RawRecord = Record<string, any>;
+function getMonthRange(month: string) {
+  const [year, monthIndex] = month.split('-').map((value) => Number.parseInt(value, 10));
+  if (!year || !monthIndex) {
+    return { from: `${CURRENT_MONTH}-01`, to: `${CURRENT_MONTH}-01` };
+  }
+  const lastDay = new Date(year, monthIndex, 0).getDate();
+  return {
+    from: `${month}-${String(1).padStart(2, '0')}`,
+    to: `${month}-${String(lastDay).padStart(2, '0')}`,
+  };
+}
 
-type NormalizedTransaction = {
-  id?: string | number;
-  amount: number;
-  type: 'income' | 'expense' | 'transfer';
-  date: string;
-  month: string;
-  categoryId?: string | number | null;
-  categoryKey?: string | number | null;
-  categoryName: string;
-  note?: string;
-};
+function normalizeDate(value: any) {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  if (typeof value === 'string') {
+    if (value.length >= 10) return value.slice(0, 10);
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10);
+  }
+  try {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  } catch {
+    /* noop */
+  }
+  return new Date().toISOString().slice(0, 10);
+}
 
-type NormalizedBudget = {
-  id?: string | number;
-  categoryId?: string | number | null;
-  categoryKey?: string | number | null;
-  categoryName: string;
-  cap: number;
-  period: string | null;
-};
-
-function getCategoryKey(value: any) {
+function getKey(value: any) {
   if (value == null) return null;
   if (typeof value === 'object') {
     return value.id ?? value.uuid ?? null;
@@ -73,13 +101,26 @@ function getCategoryName(record: RawRecord, categoriesById: Map<string | number,
   if (typeof directName === 'string' && directName.trim().length) {
     return directName;
   }
-  const key = getCategoryKey(
+  const key = getKey(
     record.category_id ?? record.categoryId ?? record.category_uuid ?? record.category
   );
   if (key != null && categoriesById.has(key)) {
     return categoriesById.get(key) ?? 'Lainnya';
   }
   return 'Lainnya';
+}
+
+function getAccountName(record: RawRecord) {
+  const directName =
+    record.account_name ||
+    record.accountName ||
+    record.account_label ||
+    record.account?.name ||
+    record.account?.label;
+  if (typeof directName === 'string' && directName.trim().length) {
+    return directName;
+  }
+  return 'Tanpa akun';
 }
 
 function normaliseTransactions(
@@ -94,23 +135,7 @@ function normaliseTransactions(
         tx.created_at ||
         tx.posted_at ||
         tx.createdAt;
-      const isoDate = (() => {
-        if (!rawDate) return new Date().toISOString();
-        if (typeof rawDate === 'string') {
-          if (rawDate.length >= 10) return rawDate;
-          const parsed = new Date(rawDate);
-          if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
-          return new Date().toISOString();
-        }
-        try {
-          const parsed = new Date(rawDate);
-          if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
-        } catch {
-          /* noop */
-        }
-        return new Date().toISOString();
-      })();
-      const month = isoDate.slice(0, 7);
+      const date = normalizeDate(rawDate);
       const typeValue = (tx.type || tx.transaction_type || '').toString();
       let type: NormalizedTransaction['type'];
       if (typeValue === 'income' || typeValue === 'expense' || typeValue === 'transfer') {
@@ -121,71 +146,37 @@ function normaliseTransactions(
         type = 'income';
       }
       const amount = Math.abs(Number(tx.amount) || 0);
-      const categoryKey = getCategoryKey(
+      const categoryKey = getKey(
         tx.category_id ?? tx.categoryId ?? tx.category_uuid ?? tx.category
+      );
+      const accountKey = getKey(
+        tx.account_id ?? tx.accountId ?? tx.account_uuid ?? tx.account
       );
       return {
         id: tx.id ?? tx.uuid ?? tx._id,
         amount,
         type,
-        date: isoDate,
-        month,
-        categoryId: tx.category_id ?? tx.categoryId ?? tx.category_uuid ?? null,
-        categoryKey,
+        date,
+        accountKey: accountKey != null ? String(accountKey) : 'none',
+        accountName: getAccountName(tx),
+        categoryKey: categoryKey != null ? String(categoryKey) : 'none',
         categoryName: getCategoryName(tx, categoriesById),
-        note: tx.note || tx.description || tx.title || '',
+        merchant:
+          tx.merchant?.name ||
+          tx.merchant_name ||
+          tx.merchantName ||
+          tx.merchant ||
+          '',
+        notes: tx.notes || tx.note || tx.title || '',
       };
     })
     .filter((tx) => Boolean(tx));
 }
 
-function normaliseBudgets(
-  budgets: RawRecord[] = [],
-  categoriesById: Map<string | number, string>
-): NormalizedBudget[] {
-  return budgets
-    .map((item) => {
-      const rawCap =
-        item.amount_planned ??
-        item.limit ??
-        item.cap ??
-        item.amount ??
-        item.budget ??
-        item.planned_amount ??
-        0;
-      const cap = Number(rawCap) || 0;
-      const periodSource =
-        item.period ??
-        item.month ??
-        item.for_month ??
-        item.date ??
-        item.created_at ??
-        item.updated_at;
-      const period = typeof periodSource === 'string' ? periodSource.slice(0, 7) : null;
-      const key = getCategoryKey(
-        item.category_id ?? item.categoryId ?? item.category_uuid ?? item.category
-      );
-      const name =
-        item.category?.name ||
-        item.category_name ||
-        (key != null ? categoriesById.get(key) : null) ||
-        'Tanpa kategori';
-      return {
-        id: item.id ?? item.uuid ?? item._id,
-        categoryId: item.category_id ?? item.categoryId ?? item.category_uuid ?? null,
-        categoryKey: key,
-        categoryName: name,
-        cap,
-        period,
-      };
-    })
-    .filter(Boolean);
-}
-
 function buildMonths(transactions: NormalizedTransaction[]) {
   const unique = new Set<string>();
   transactions.forEach((tx) => {
-    if (tx.month) unique.add(tx.month);
+    if (tx.date) unique.add(tx.date.slice(0, 7));
   });
   const list = Array.from(unique).sort((a, b) => b.localeCompare(a));
   if (!list.length) {
@@ -197,162 +188,67 @@ function buildMonths(transactions: NormalizedTransaction[]) {
   return list;
 }
 
-function computeDailyBreakdown(
-  transactions: NormalizedTransaction[],
-  month: string
-): { date: string; income: number; expense: number; balance: number }[] {
-  if (!month) return [];
-  const [year, monthIndex] = month.split('-').map((value) => Number.parseInt(value, 10));
-  if (!year || !monthIndex) return [];
-  const daysInMonth = new Date(year, monthIndex, 0).getDate();
-  const map = new Map<string, { income: number; expense: number }>();
-  transactions.forEach((tx) => {
-    if (tx.month !== month) return;
-    if (tx.type === 'transfer') return;
-    const day = tx.date.slice(8, 10);
-    const entry = map.get(day) || { income: 0, expense: 0 };
-    if (tx.type === 'income') {
-      entry.income += tx.amount;
-    } else if (tx.type === 'expense') {
-      entry.expense += tx.amount;
-    }
-    map.set(day, entry);
-  });
-  const rows = [];
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const key = String(day).padStart(2, '0');
-    const entry = map.get(key) || { income: 0, expense: 0 };
-    rows.push({
-      date: `${month}-${key}`,
-      income: entry.income,
-      expense: entry.expense,
-      balance: entry.income - entry.expense,
-    });
-  }
-  return rows;
+function getFiltersFromParams(params: URLSearchParams): ReportFilters {
+  const month = params.get('month') ?? CURRENT_MONTH;
+  const period = params.get('period') === 'custom' ? 'custom' : 'month';
+  const fallbackRange = getMonthRange(month);
+  return {
+    period,
+    month,
+    from: params.get('from') ?? fallbackRange.from,
+    to: params.get('to') ?? fallbackRange.to,
+    account: params.get('account') ?? 'all',
+    category: params.get('category') ?? 'all',
+    search: params.get('search') ?? '',
+  };
 }
 
-function computeMonthlyTrend(transactions: NormalizedTransaction[]) {
-  const map = new Map<
-    string,
-    { income: number; expense: number; net: number; month: string }
-  >();
-  transactions.forEach((tx) => {
-    if (!tx.month || tx.type === 'transfer') return;
-    const entry = map.get(tx.month) || { income: 0, expense: 0, net: 0, month: tx.month };
-    if (tx.type === 'income') {
-      entry.income += tx.amount;
-      entry.net += tx.amount;
-    } else if (tx.type === 'expense') {
-      entry.expense += tx.amount;
-      entry.net -= tx.amount;
-    }
-    map.set(tx.month, entry);
-  });
-  return Array.from(map.values())
-    .sort((a, b) => a.month.localeCompare(b.month))
-    .slice(-6)
-    .map((entry) => ({
-      month: toMonthLabel(entry.month),
-      net: entry.net,
-      income: entry.income,
-      expense: entry.expense,
-    }));
-}
-
-function computeBudgetsForMonth(
-  budgets: NormalizedBudget[],
-  transactions: NormalizedTransaction[],
-  month: string
-) {
-  return budgets
-    .filter((budget) => !budget.period || budget.period === month)
-    .map((budget) => {
-      const used = transactions
-        .filter((tx) => {
-          if (tx.type !== 'expense') return false;
-          if (tx.month !== month) return false;
-          if (budget.categoryKey != null) {
-            return String(tx.categoryKey) === String(budget.categoryKey);
-          }
-          return tx.categoryName === budget.categoryName;
-        })
-        .reduce((sum, tx) => sum + tx.amount, 0);
-      const remaining = Math.max(0, budget.cap - used);
-      const progress = budget.cap > 0 ? Math.min(1, used / budget.cap) : 0;
-      return {
-        id: budget.id,
-        category: budget.categoryName,
-        cap: budget.cap,
-        used,
-        remaining,
-        progress,
-      };
-    });
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return '0%';
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 export default function ReportsPage() {
   const repo = useRepo();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [transactions, setTransactions] = useState<RawRecord[]>([]);
-  const [categories, setCategories] = useState<RawRecord[]>([]);
-  const [budgets, setBudgets] = useState<RawRecord[]>([]);
-  const [month, setMonth] = useState<string>(CURRENT_MONTH);
-  const [comparePrev, setComparePrev] = useState(true);
-  const [refreshToken, setRefreshToken] = useState(0);
-  const [focusedTransaction, setFocusedTransaction] = useState<NormalizedTransaction | null>(null);
+  const { mode } = useDataMode();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-    const load = async () => {
-      try {
-        const [txRows, categoryRows, budgetRows] = await Promise.all([
-          repo.transactions.list(),
-          repo.categories.list(),
-          Promise.resolve()
-            .then(() => repo.budgets.list())
-            .catch((err) => {
-              console.warn('[Reports] Failed to load budgets', err);
-              return [];
-            }),
-        ]);
-        if (!active) return;
-        setTransactions(Array.isArray(txRows) ? txRows : []);
-        setCategories(Array.isArray(categoryRows) ? categoryRows : []);
-        setBudgets(Array.isArray(budgetRows) ? budgetRows : []);
-      } catch (err: any) {
-        if (!active) return;
-        const message = err?.message || 'Gagal memuat data laporan';
-        setError(message);
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    };
-    load();
-    return () => {
-      active = false;
-    };
-  }, [repo, refreshToken]);
+  const filters = useMemo(() => getFiltersFromParams(searchParams), [searchParams]);
+
+  const transactionsQuery = useQuery<RawRecord[]>({
+    queryKey: ['reports', 'transactions', mode],
+    queryFn: async () => {
+      const rows = await repo.transactions.list();
+      return Array.isArray(rows) ? rows : [];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const categoriesQuery = useQuery<RawRecord[]>({
+    queryKey: ['reports', 'categories', mode],
+    queryFn: async () => {
+      const rows = await repo.categories.list();
+      return Array.isArray(rows) ? rows : [];
+    },
+    staleTime: 5 * 60_000,
+  });
 
   const categoriesById = useMemo(() => {
     const map = new Map<string | number, string>();
-    categories.forEach((cat: RawRecord) => {
-      const key = getCategoryKey(cat.id ?? cat.uuid ?? cat.category_id ?? cat.key);
+    (categoriesQuery.data ?? []).forEach((cat: RawRecord) => {
+      const key = getKey(cat.id ?? cat.uuid ?? cat.category_id ?? cat.key);
       if (key != null) {
         map.set(key, cat.name || cat.label || cat.title || 'Tanpa nama');
       }
     });
     return map;
-  }, [categories]);
+  }, [categoriesQuery.data]);
 
   const normalizedTransactions = useMemo(
-    () => normaliseTransactions(transactions, categoriesById),
-    [transactions, categoriesById]
+    () => normaliseTransactions(transactionsQuery.data ?? [], categoriesById),
+    [transactionsQuery.data, categoriesById]
   );
 
   const availableMonths = useMemo(
@@ -361,39 +257,119 @@ export default function ReportsPage() {
   );
 
   useEffect(() => {
-    if (!availableMonths.includes(month)) {
-      setMonth(availableMonths[0] || CURRENT_MONTH);
+    if (!availableMonths.includes(filters.month)) {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        params.set('month', availableMonths[0] || CURRENT_MONTH);
+        return params;
+      });
     }
-  }, [availableMonths, month]);
+  }, [availableMonths, filters.month, setSearchParams]);
 
-  const normalizedBudgets = useMemo(
-    () => normaliseBudgets(budgets, categoriesById),
-    [budgets, categoriesById]
+  const accountOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    normalizedTransactions.forEach((tx) => {
+      if (!tx.accountKey || !tx.accountName) return;
+      if (!map.has(tx.accountKey)) {
+        map.set(tx.accountKey, tx.accountName || 'Tanpa akun');
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  }, [normalizedTransactions]);
+
+  const categoryOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    (categoriesQuery.data ?? []).forEach((cat) => {
+      const key = getKey(cat.id ?? cat.uuid ?? cat.category_id ?? cat.key);
+      if (key != null) {
+        map.set(String(key), cat.name || cat.label || cat.title || 'Tanpa nama');
+      }
+    });
+    normalizedTransactions.forEach((tx) => {
+      if (!map.has(tx.categoryKey)) {
+        map.set(tx.categoryKey, tx.categoryName || 'Lainnya');
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  }, [categoriesQuery.data, normalizedTransactions]);
+
+  const updateFilters = useCallback(
+    (patch: Partial<ReportFilters>) => {
+      setSearchParams((prev) => {
+        const params = new URLSearchParams(prev);
+        const current = getFiltersFromParams(params);
+        const next = { ...current, ...patch };
+        params.set('month', next.month);
+        if (next.period === 'custom') {
+          params.set('period', 'custom');
+          params.set('from', next.from);
+          params.set('to', next.to);
+        } else {
+          params.delete('period');
+          params.delete('from');
+          params.delete('to');
+        }
+        if (next.account && next.account !== 'all') {
+          params.set('account', next.account);
+        } else {
+          params.delete('account');
+        }
+        if (next.category && next.category !== 'all') {
+          params.set('category', next.category);
+        } else {
+          params.delete('category');
+        }
+        if (next.search) {
+          params.set('search', next.search);
+        } else {
+          params.delete('search');
+        }
+        return params;
+      });
+    },
+    [setSearchParams]
   );
 
-  const filteredTransactions = useMemo(
-    () => normalizedTransactions.filter((tx) => tx.month === month && tx.type !== 'transfer'),
-    [normalizedTransactions, month]
-  );
+  const effectiveRange = useMemo(() => {
+    if (filters.period === 'custom') {
+      return {
+        from: filters.from,
+        to: filters.to,
+      };
+    }
+    return getMonthRange(filters.month);
+  }, [filters]);
 
-  const dailyBreakdown = useMemo(
-    () => computeDailyBreakdown(normalizedTransactions, month),
-    [normalizedTransactions, month]
+  const filteredTransactions = useMemo(() => {
+    const query = filters.search.trim().toLowerCase();
+    return normalizedTransactions.filter((tx) => {
+      if (tx.date < effectiveRange.from || tx.date > effectiveRange.to) return false;
+      if (filters.account !== 'all' && tx.accountKey !== filters.account) return false;
+      if (filters.category !== 'all' && tx.categoryKey !== filters.category) return false;
+      if (query) {
+        const haystack = `${tx.merchant} ${tx.notes}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    });
+  }, [normalizedTransactions, filters, effectiveRange]);
+
+  const sortedTransactions = useMemo(
+    () => [...filteredTransactions].sort((a, b) => b.date.localeCompare(a.date)),
+    [filteredTransactions]
   );
 
   useEffect(() => {
-    if (typeof window === 'undefined') return undefined;
-    window.__hw_kpiSeries = {
-      income: dailyBreakdown.map((d) => d.income),
-      expense: dailyBreakdown.map((d) => d.expense),
-      balance: dailyBreakdown.map((d) => d.balance),
-    };
-    return () => {
-      if (window.__hw_kpiSeries) {
-        delete window.__hw_kpiSeries;
-      }
-    };
-  }, [dailyBreakdown]);
+    setPage(1);
+  }, [filters, pageSize]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedTransactions.length / pageSize));
+  const startIndex = (page - 1) * pageSize;
+  const pagedTransactions = sortedTransactions.slice(startIndex, startIndex + pageSize);
 
   const incomeTotal = useMemo(
     () =>
@@ -411,37 +387,8 @@ export default function ReportsPage() {
     [filteredTransactions]
   );
 
-  const prevMonth = useMemo(() => {
-    const [year, monthIndex] = month.split('-').map((value) => Number.parseInt(value, 10));
-    if (!year || !monthIndex) return null;
-    const prev = new Date(year, monthIndex - 2, 1);
-    const key = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
-    return availableMonths.includes(key) ? key : null;
-  }, [month, availableMonths]);
-
-  const prevTransactions = useMemo(
-    () =>
-      prevMonth
-        ? normalizedTransactions.filter((tx) => tx.month === prevMonth && tx.type !== 'transfer')
-        : [],
-    [normalizedTransactions, prevMonth]
-  );
-
-  const prevIncome = useMemo(
-    () =>
-      prevTransactions
-        .filter((tx) => tx.type === 'income')
-        .reduce((sum, tx) => sum + tx.amount, 0),
-    [prevTransactions]
-  );
-
-  const prevExpense = useMemo(
-    () =>
-      prevTransactions
-        .filter((tx) => tx.type === 'expense')
-        .reduce((sum, tx) => sum + tx.amount, 0),
-    [prevTransactions]
-  );
+  const netTotal = incomeTotal - expenseTotal;
+  const savingsRate = incomeTotal > 0 ? netTotal / incomeTotal : 0;
 
   const categoryBreakdown = useMemo(() => {
     const map = new Map<string, number>();
@@ -449,202 +396,395 @@ export default function ReportsPage() {
       if (tx.type !== 'expense') return;
       map.set(tx.categoryName, (map.get(tx.categoryName) || 0) + tx.amount);
     });
-    return Array.from(map.entries())
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
+    const sorted = Array.from(map.entries())
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount);
+    const top = sorted.slice(0, 10);
+    const remaining = sorted.slice(10);
+    const othersTotal = remaining.reduce((sum, item) => sum + item.amount, 0);
+    if (othersTotal > 0) {
+      top.push({ category: 'Others', amount: othersTotal });
+    }
+    return top;
   }, [filteredTransactions]);
 
-  const monthlyTrend = useMemo(
-    () => computeMonthlyTrend(normalizedTransactions),
-    [normalizedTransactions]
-  );
+  const topCategory = categoryBreakdown[0];
 
-  const budgetsForMonth = useMemo(
-    () => computeBudgetsForMonth(normalizedBudgets, normalizedTransactions, month),
-    [normalizedBudgets, normalizedTransactions, month]
-  );
+  const breakdownRows = useMemo(() => {
+    return categoryBreakdown.map((item) => ({
+      ...item,
+      share: expenseTotal > 0 ? (item.amount / expenseTotal) * 100 : 0,
+    }));
+  }, [categoryBreakdown, expenseTotal]);
 
-  const insights = useMemo(() => {
-    const totalDays = dailyBreakdown.length;
-    const noSpendDays = dailyBreakdown.filter((d) => d.expense === 0).length;
-    const activeDays = dailyBreakdown.filter((d) => d.expense > 0).length;
-    const avgExpense = activeDays ? expenseTotal / activeDays : 0;
-    const bestDay = dailyBreakdown.reduce((best, current) => {
-      if (!best) return current;
-      return current.balance > best.balance ? current : best;
-    }, dailyBreakdown[0]);
-    const heaviestDay = dailyBreakdown.reduce((worst, current) => {
-      if (!worst) return current;
-      return current.expense > worst.expense ? current : worst;
-    }, dailyBreakdown[0]);
-    const topCategory = categoryBreakdown[0];
-    return [
-      {
-        title: 'Hari tanpa pengeluaran',
-        value: `${noSpendDays} dari ${totalDays} hari`,
-        description:
-          'Jumlah hari dalam periode ini ketika tidak ada pengeluaran yang tercatat.',
-      },
-      {
-        title: 'Pengeluaran rata-rata aktif',
-        value: activeDays ? formatCurrency(avgExpense) : '—',
-        description:
-          'Rata-rata pengeluaran pada hari ketika ada transaksi keluar.',
-      },
-      {
-        title: 'Kategori terbesar',
-        value: topCategory ? `${topCategory.name} • ${formatCurrency(topCategory.value)}` : '—',
-        description:
-          'Kategori pengeluaran dengan nominal tertinggi pada bulan ini.',
-      },
-      {
-        title: 'Hari paling hemat',
-        value: bestDay ? `${bestDay.date} • ${formatCurrency(bestDay.balance)}` : '—',
-        description:
-          'Selisih pemasukan dan pengeluaran terbaik dalam satu hari.',
-      },
-      {
-        title: 'Hari pengeluaran tertinggi',
-        value: heaviestDay ? `${heaviestDay.date} • ${formatCurrency(heaviestDay.expense)}` : '—',
-        description:
-          'Total pengeluaran terbesar yang terjadi dalam satu hari pada periode ini.',
-      },
+  const handleExportCsv = useCallback(() => {
+    const metaLines = [
+      `# Period: ${effectiveRange.from} to ${effectiveRange.to}`,
+      `# Account: ${
+        filters.account === 'all'
+          ? 'All'
+          : accountOptions.find((item) => item.id === filters.account)?.name || 'Unknown'
+      }`,
+      `# Category: ${
+        filters.category === 'all'
+          ? 'All'
+          : categoryOptions.find((item) => item.id === filters.category)?.name || 'Unknown'
+      }`,
+      `# Search: ${filters.search || '-'}`,
     ];
-  }, [dailyBreakdown, expenseTotal, categoryBreakdown]);
 
-  const handleRefresh = useCallback(() => {
-    setRefreshToken((token) => token + 1);
-  }, []);
+    const txCsv = toCsv(sortedTransactions, [
+      { key: 'date', header: 'date' },
+      { key: 'accountName', header: 'account' },
+      { key: 'categoryName', header: 'category' },
+      { key: 'merchant', header: 'merchant' },
+      { key: 'notes', header: 'notes' },
+      { key: 'amount', header: 'amount' },
+      { key: 'type', header: 'type' },
+    ]);
 
-  const handleTransactionFocus = useCallback((tx: NormalizedTransaction) => {
-    setFocusedTransaction(tx);
-  }, []);
+    const breakdownCsv = toCsv(breakdownRows, [
+      { key: 'category', header: 'category' },
+      { key: 'amount', header: 'amount' },
+      {
+        key: 'share',
+        header: 'share_percent',
+        value: (row) => row.share.toFixed(2),
+      },
+    ]);
+
+    const csvContent = [metaLines.join('\n'), '', txCsv, '', breakdownCsv].join('\n');
+    const csvWithBom = `\uFEFF${csvContent}`;
+    const filename = `hematwoi_report_${effectiveRange.from}_to_${effectiveRange.to}.csv`;
+    downloadCsv(filename, csvWithBom);
+  }, [effectiveRange, filters, accountOptions, categoryOptions, sortedTransactions, breakdownRows]);
+
+  const handleReset = useCallback(() => {
+    updateFilters({
+      period: 'month',
+      month: CURRENT_MONTH,
+      from: getMonthRange(CURRENT_MONTH).from,
+      to: getMonthRange(CURRENT_MONTH).to,
+      account: 'all',
+      category: 'all',
+      search: '',
+    });
+  }, [updateFilters]);
+
+  const isLoading = transactionsQuery.isLoading || categoriesQuery.isLoading;
+  const isError = transactionsQuery.isError || categoriesQuery.isError;
+  const errorMessage =
+    (transactionsQuery.error as Error | undefined)?.message ||
+    (categoriesQuery.error as Error | undefined)?.message ||
+    'Gagal memuat data laporan.';
 
   return (
     <Page>
       <PageHeader
         title="Reports"
-        description="Pantau performa keuangan bulanan dengan ringkasan visual dan insight yang dapat diekspor."
+        description="Analisa transaksi dengan filter fleksibel, ringkasan KPI, dan export CSV siap pakai."
       >
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={handleRefresh}
-          disabled={loading}
-        >
-          Muat ulang
+        <button type="button" className="btn" onClick={handleExportCsv}>
+          Export CSV
         </button>
       </PageHeader>
 
       <div className="space-y-6">
-        <ReportFilters
-          month={month}
-          months={availableMonths}
-          onChange={(value: string) => setMonth(value || CURRENT_MONTH)}
-          comparePrev={comparePrev}
-          onToggleCompare={setComparePrev}
-        />
+        <Card>
+          <CardHeader title="Filter" subtext="Atur periode dan segmentasi laporan." />
+          <CardBody>
+            <div className="grid gap-4 lg:grid-cols-4">
+              <label className="space-y-1 text-sm text-muted">
+                <span className="text-xs font-semibold uppercase tracking-wide">Periode</span>
+                <select
+                  className="input"
+                  value={filters.period}
+                  onChange={(event) => {
+                    const nextPeriod = event.target.value === 'custom' ? 'custom' : 'month';
+                    if (nextPeriod === 'custom') {
+                      const range = getMonthRange(filters.month);
+                      updateFilters({
+                        period: 'custom',
+                        from: filters.from || range.from,
+                        to: filters.to || range.to,
+                      });
+                    } else {
+                      updateFilters({ period: 'month' });
+                    }
+                  }}
+                >
+                  <option value="month">Bulan</option>
+                  <option value="custom">Custom range</option>
+                </select>
+              </label>
 
-        {error ? (
+              <label className="space-y-1 text-sm text-muted">
+                <span className="text-xs font-semibold uppercase tracking-wide">Bulan</span>
+                <select
+                  className="input"
+                  value={filters.month}
+                  onChange={(event) => {
+                    const nextMonth = event.target.value || CURRENT_MONTH;
+                    if (filters.period === 'custom') {
+                      const range = getMonthRange(nextMonth);
+                      updateFilters({
+                        month: nextMonth,
+                        from: filters.from || range.from,
+                        to: filters.to || range.to,
+                      });
+                    } else {
+                      updateFilters({ month: nextMonth });
+                    }
+                  }}
+                >
+                  {availableMonths.map((month) => (
+                    <option key={month} value={month}>
+                      {toMonthLabel(month)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 text-sm text-muted">
+                <span className="text-xs font-semibold uppercase tracking-wide">Dari</span>
+                <input
+                  type="date"
+                  className="input"
+                  value={filters.from}
+                  onChange={(event) => updateFilters({ from: event.target.value })}
+                  disabled={filters.period !== 'custom'}
+                />
+              </label>
+
+              <label className="space-y-1 text-sm text-muted">
+                <span className="text-xs font-semibold uppercase tracking-wide">Sampai</span>
+                <input
+                  type="date"
+                  className="input"
+                  value={filters.to}
+                  onChange={(event) => updateFilters({ to: event.target.value })}
+                  disabled={filters.period !== 'custom'}
+                />
+              </label>
+
+              <label className="space-y-1 text-sm text-muted">
+                <span className="text-xs font-semibold uppercase tracking-wide">Akun</span>
+                <select
+                  className="input"
+                  value={filters.account}
+                  onChange={(event) => updateFilters({ account: event.target.value })}
+                >
+                  <option value="all">Semua akun</option>
+                  {accountOptions.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 text-sm text-muted">
+                <span className="text-xs font-semibold uppercase tracking-wide">Kategori</span>
+                <select
+                  className="input"
+                  value={filters.category}
+                  onChange={(event) => updateFilters({ category: event.target.value })}
+                >
+                  <option value="all">Semua kategori</option>
+                  {categoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 text-sm text-muted lg:col-span-2">
+                <span className="text-xs font-semibold uppercase tracking-wide">
+                  Search (merchant / notes)
+                </span>
+                <input
+                  type="search"
+                  className="input"
+                  value={filters.search}
+                  onChange={(event) => updateFilters({ search: event.target.value })}
+                  placeholder="Cari merchant atau catatan..."
+                />
+              </label>
+
+              <div className="flex items-end">
+                <button type="button" className="btn btn-secondary" onClick={handleReset}>
+                  Reset filter
+                </button>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        {isError ? (
           <div
             role="alert"
             className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger"
           >
-            {error}
+            {errorMessage}
           </div>
         ) : null}
 
-        {loading ? (
+        {isLoading ? (
           <div className="grid gap-4 md:grid-cols-2">
-            <Skeleton className="h-48" />
-            <Skeleton className="h-48" />
-            <Skeleton className="h-72 md:col-span-2" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-48 md:col-span-2" />
           </div>
         ) : (
           <>
-            <section id="report-capture" className="space-y-6">
-              <KPITiles
-                income={incomeTotal}
-                expense={expenseTotal}
-                prevIncome={comparePrev ? prevIncome : 0}
-                prevExpense={comparePrev ? prevExpense : 0}
+            <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <KpiCard label="Total Income" value={formatCurrency(incomeTotal)} variant="income" />
+              <KpiCard label="Total Expense" value={formatCurrency(expenseTotal)} variant="expense" />
+              <KpiCard
+                label="Net"
+                value={formatCurrency(netTotal)}
+                variant={netTotal >= 0 ? 'success' : 'danger'}
               />
-
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-                <MonthlyTrendChart data={monthlyTrend} />
-                <CategoryDonut data={categoryBreakdown} />
-              </div>
-
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-                <TopSpendsTable data={filteredTransactions} onSelect={handleTransactionFocus} />
-                <Card className="flex min-h-[360px] flex-col">
-                  <CardHeader
-                    title="Insight Cepat"
-                    subtext="Temuan utama berdasarkan transaksi bulan ini"
-                  />
-                  <CardBody>
-                    <ul className="space-y-3">
-                      {insights.map((item) => (
-                        <li key={item.title} className="rounded-2xl bg-surface-alt/70 p-4">
-                          <p className="text-xs uppercase tracking-wide text-muted">{item.title}</p>
-                          <p className="text-sm font-semibold text-text">{item.value}</p>
-                          <p className="text-xs text-muted/90">{item.description}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardBody>
-                  {focusedTransaction ? (
-                    <CardFooter>
-                      <div className="space-y-1 text-xs text-muted/90">
-                        <p className="font-semibold text-text">Transaksi terpilih</p>
-                        <p>
-                          {focusedTransaction.note || 'Tanpa catatan'} • {focusedTransaction.categoryName}
-                        </p>
-                        <p>
-                          {new Date(focusedTransaction.date).toLocaleDateString('id-ID')} •{' '}
-                          {formatCurrency(focusedTransaction.amount)}
-                        </p>
-                      </div>
-                    </CardFooter>
-                  ) : null}
-                </Card>
-              </div>
-
-              <HeatmapCalendar month={month} txs={filteredTransactions} />
+              <KpiCard label="Savings Rate" value={formatPercent(savingsRate)} variant="brand" />
+              <KpiCard
+                label="Top Category"
+                value={
+                  topCategory
+                    ? `${topCategory.category} • ${formatCurrency(topCategory.amount)}`
+                    : '—'
+                }
+                variant="brand"
+              />
             </section>
 
-            <ExportReport
-              month={month}
-              kpi={{
-                income: incomeTotal,
-                expense: expenseTotal,
-                balance: incomeTotal - expenseTotal,
-                savings: incomeTotal > 0 ? (incomeTotal - expenseTotal) / incomeTotal : 0,
-              }}
-              byCategory={categoryBreakdown.map((item) => ({
-                category: item.name,
-                total: item.value,
-              }))}
-              byDay={dailyBreakdown.map((item) => ({
-                date: item.date,
-                income: item.income,
-                expense: item.expense,
-              }))}
-              budgetsForMonth={budgetsForMonth}
-            />
+            <Card>
+              <CardHeader
+                title="Detail Transaksi"
+                subtext={`Periode ${effectiveRange.from} sampai ${effectiveRange.to}`}
+                actions={
+                  <div className="text-xs text-muted">
+                    {sortedTransactions.length} transaksi
+                  </div>
+                }
+              />
+              <CardBody>
+                {sortedTransactions.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border-subtle p-6 text-center text-sm text-muted">
+                    Tidak ada transaksi yang cocok dengan filter ini.
+                  </div>
+                ) : (
+                  <div className="table-wrap overflow-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-surface-1 sticky top-0">
+                        <tr className="text-left">
+                          <th className="p-2">Tanggal</th>
+                          <th className="p-2">Akun</th>
+                          <th className="p-2">Kategori</th>
+                          <th className="p-2">Merchant</th>
+                          <th className="p-2">Catatan</th>
+                          <th className="p-2 text-right">Jumlah</th>
+                          <th className="p-2">Tipe</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pagedTransactions.map((tx) => (
+                          <tr key={tx.id ?? `${tx.date}-${tx.notes}`} className="even:bg-surface-1/40">
+                            <td className="p-2 whitespace-nowrap">{tx.date}</td>
+                            <td className="p-2">{tx.accountName || '—'}</td>
+                            <td className="p-2">{tx.categoryName || '—'}</td>
+                            <td className="p-2">{tx.merchant || '—'}</td>
+                            <td className="p-2">{tx.notes || '—'}</td>
+                            <td
+                              className={`p-2 text-right font-semibold ${
+                                tx.type === 'income'
+                                  ? 'text-success'
+                                  : tx.type === 'expense'
+                                    ? 'text-danger'
+                                    : 'text-text'
+                              }`}
+                            >
+                              {formatCurrency(tx.amount)}
+                            </td>
+                            <td className="p-2 capitalize">{tx.type}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+                      <div>
+                        Menampilkan {startIndex + 1}-{Math.min(startIndex + pageSize, sortedTransactions.length)} dari{' '}
+                        {sortedTransactions.length}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select
+                          className="rounded-md border px-2 py-1"
+                          value={pageSize}
+                          onChange={(event) => setPageSize(Number(event.target.value))}
+                        >
+                          {[25, 50, 100].map((size) => (
+                            <option key={size} value={size}>
+                              {size}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                          disabled={page === 1}
+                        >
+                          Sebelumnya
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                          disabled={page === totalPages}
+                        >
+                          Berikutnya
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader title="Expense by Category" subtext="Top 10 kategori + Others" />
+              <CardBody>
+                {breakdownRows.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border-subtle p-6 text-center text-sm text-muted">
+                    Belum ada pengeluaran pada periode ini.
+                  </div>
+                ) : (
+                  <div className="table-wrap overflow-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-surface-1">
+                        <tr className="text-left">
+                          <th className="p-2">Kategori</th>
+                          <th className="p-2 text-right">Amount</th>
+                          <th className="p-2 text-right">Share %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {breakdownRows.map((row) => (
+                          <tr key={row.category} className="even:bg-surface-1/40">
+                            <td className="p-2">{row.category}</td>
+                            <td className="p-2 text-right">{formatCurrency(row.amount)}</td>
+                            <td className="p-2 text-right">{row.share.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardBody>
+            </Card>
           </>
         )}
       </div>
     </Page>
   );
-}
-
-declare global {
-  interface Window {
-    __hw_kpiSeries?: {
-      income: number[];
-      expense: number[];
-      balance: number[];
-    };
-  }
 }
