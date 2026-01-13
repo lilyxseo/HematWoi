@@ -9,8 +9,6 @@ import {
   Calendar,
   FileText,
   Loader2,
-  Receipt,
-  RotateCcw,
   Save,
   Star,
   Tag as TagIcon,
@@ -35,7 +33,6 @@ import {
   deleteTransactionTemplate,
   listTransactionTemplates,
 } from '../lib/transactionTemplatesApi';
-import { supabase } from '../lib/supabase';
 import { useAccountsQuery, useCategoriesQuery } from '../hooks/transactionFormQueries';
 
 const TYPE_OPTIONS = [
@@ -108,25 +105,6 @@ function parseAmount(value) {
   return Number.isFinite(parsed) ? parsed : NaN;
 }
 
-async function uploadReceipt(file, transactionId) {
-  const path = `receipts/${transactionId}/${Date.now()}_${file.name}`;
-  const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file, {
-    cacheControl: '3600',
-    upsert: true,
-  });
-  if (uploadError) throw uploadError;
-  const { data } = supabase.storage.from('receipts').getPublicUrl(path);
-  const publicUrl = data?.publicUrl ?? null;
-  if (publicUrl) {
-    const { error: updateError } = await supabase
-      .from('transactions')
-      .update({ receipt_url: publicUrl })
-      .eq('id', transactionId);
-    if (updateError) throw updateError;
-  }
-  return publicUrl;
-}
-
 export default function TransactionAdd({ onAdd }) {
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -141,9 +119,6 @@ export default function TransactionAdd({ onAdd }) {
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [errors, setErrors] = useState({});
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [receiptPreview, setReceiptPreview] = useState('');
-  const [dragOver, setDragOver] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templateName, setTemplateName] = useState('');
@@ -244,15 +219,6 @@ export default function TransactionAdd({ onAdd }) {
   }, [accountId, toAccountId, type]);
 
   useEffect(() => {
-    if (!receiptFile) return undefined;
-    const url = URL.createObjectURL(receiptFile);
-    setReceiptPreview(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [receiptFile]);
-
-  useEffect(() => {
     const handleKey = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -345,7 +311,6 @@ export default function TransactionAdd({ onAdd }) {
       ? `${trimmedNotes.slice(0, 77)}…`
       : trimmedNotes
     : 'Tidak ada catatan';
-  const hasReceipt = Boolean(receiptFile || receiptPreview);
   const typeDescription =
     type === 'income'
       ? 'Dana masuk ke akun sumber'
@@ -356,10 +321,6 @@ export default function TransactionAdd({ onAdd }) {
   const TypeIcon = typeMeta?.icon || TrendingDown;
   const categoryLabel = !isTransfer ? selectedCategory?.name || 'Belum dipilih' : null;
   const toAccountLabel = isTransfer ? selectedToAccount?.name || 'Belum dipilih' : null;
-  const receiptSummary = hasReceipt ? '1 file terlampir' : 'Belum ada struk';
-  const receiptDescription = hasReceipt
-    ? 'Struk akan tersimpan bersama transaksi ini.'
-    : 'Unggah struk untuk dokumentasi dan audit.';
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
 
   const handleAmountChange = (event) => {
@@ -378,19 +339,6 @@ export default function TransactionAdd({ onAdd }) {
   const handleDateSelect = (value) => {
     setDate(value);
     setErrors((prev) => ({ ...prev, date: undefined }));
-  };
-
-  const handleReceiptFiles = (files) => {
-    if (!files || !files.length) return;
-    const [file] = files;
-    if (!file) return;
-    setReceiptFile(file);
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-    setDragOver(false);
-    handleReceiptFiles(event.dataTransfer.files);
   };
 
   const handleSaveTemplate = async () => {
@@ -588,8 +536,6 @@ export default function TransactionAdd({ onAdd }) {
     setCategoryId('');
     setTitle('');
     setNotes('');
-    setReceiptFile(null);
-    setReceiptPreview('');
     setErrors({});
     if (accounts.length) {
       setAccountId(accounts[0].id);
@@ -618,15 +564,6 @@ export default function TransactionAdd({ onAdd }) {
         notes: trimmedNotes ? trimmedNotes : null,
       });
 
-      let receiptUrl = saved.receipt_url || null;
-      if (receiptFile) {
-        try {
-          receiptUrl = await uploadReceipt(receiptFile, saved.id);
-        } catch (err) {
-          addToast(err?.message || 'Struk gagal diunggah, tetapi transaksi tersimpan.', 'error');
-        }
-      }
-
       const timestamp = new Date().toISOString();
       const payload = {
         ...saved,
@@ -640,7 +577,7 @@ export default function TransactionAdd({ onAdd }) {
         title: saved.title ?? (trimmedTitle || null),
         notes: saved.notes ?? (trimmedNotes || null),
         note: saved.notes ?? (trimmedNotes || null),
-        receipt_url: receiptUrl,
+        receipt_url: saved.receipt_url || null,
         inserted_at: saved.inserted_at ?? timestamp,
         updated_at: saved.updated_at ?? timestamp,
         __persisted: true,
@@ -1064,56 +1001,6 @@ export default function TransactionAdd({ onAdd }) {
                 <p className="mt-1 text-xs text-muted">Tambahkan konteks supaya laporan lebih jelas.</p>
               </div>
 
-              <div>
-                <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                  <Receipt className="h-4 w-4" aria-hidden="true" />
-                  Upload struk (opsional)
-                </p>
-                <label
-                  htmlFor="receipt"
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setDragOver(true);
-                  }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={handleDrop}
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-8 text-center text-sm transition ${
-                    dragOver ? 'border-primary bg-primary/10 text-primary' : 'border-border-subtle text-muted hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  <Receipt className="h-8 w-8" aria-hidden="true" />
-                  <div>
-                    <p className="font-medium text-text">Tarik file ke sini atau klik untuk pilih</p>
-                    <p className="text-xs text-muted">Mendukung gambar atau PDF</p>
-                  </div>
-                  <input
-                    id="receipt"
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(event) => handleReceiptFiles(event.target.files)}
-                    className="sr-only"
-                  />
-                  {receiptFile ? (
-                    <p className="text-xs text-text">{receiptFile.name}</p>
-                  ) : null}
-                  {receiptPreview ? (
-                    <img src={receiptPreview} alt="Pratinjau struk" className="mt-2 max-h-40 rounded-xl object-cover" />
-                  ) : null}
-                </label>
-                {receiptFile ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReceiptFile(null);
-                      setReceiptPreview('');
-                    }}
-                    className="mt-2 inline-flex items-center gap-2 text-sm text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                    Hapus file
-                  </button>
-                ) : null}
-              </div>
               </CardBody>
             </Card>
 
@@ -1320,13 +1207,6 @@ export default function TransactionAdd({ onAdd }) {
                     <div>
                       <p className="font-medium text-text">{trimmedTitle || 'Belum ada judul'}</p>
                       <p className="text-xs text-muted">{notesDescription}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Receipt className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                    <div>
-                      <p className="font-medium text-text">{receiptSummary}</p>
-                      <p className="text-xs text-muted">{receiptDescription}</p>
                     </div>
                   </div>
                 </div>
