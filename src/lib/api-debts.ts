@@ -1105,3 +1105,57 @@ export async function deleteDebtPayment(options: DeleteDebtPaymentOptions): Prom
     return handleError(error, 'Gagal menghapus pembayaran');
   }
 }
+
+export async function syncDebtPaymentFromTransaction(
+  transactionId: string,
+  patch: Record<string, any>,
+): Promise<DebtRecord | null> {
+  try {
+    if (!transactionId) return null;
+    const userId = await getUserId();
+    const { data: paymentRow, error: fetchError } = await supabase
+      .from('debt_payments')
+      .select('id, debt_id')
+      .eq('transaction_id', transactionId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!paymentRow) return null;
+
+    const updates: Record<string, unknown> = {};
+    if ('amount' in patch) {
+      updates.amount = Math.max(0, safeNumber(patch.amount));
+    }
+    if ('date' in patch) {
+      const isoDate = toISODate(patch.date);
+      if (isoDate) updates.date = isoDate;
+    }
+    if ('account_id' in patch) {
+      updates.account_id = patch.account_id || null;
+    }
+    if ('note' in patch || 'notes' in patch) {
+      const rawNotes =
+        typeof patch.notes === 'string'
+          ? patch.notes
+          : typeof patch.note === 'string'
+          ? patch.note
+          : null;
+      const trimmedNotes = typeof rawNotes === 'string' ? rawNotes.trim() : '';
+      updates.notes = trimmedNotes ? trimmedNotes : null;
+    }
+
+    if (!Object.keys(updates).length) return null;
+
+    const { error: updateError } = await supabase
+      .from('debt_payments')
+      .update(updates)
+      .eq('id', paymentRow.id)
+      .eq('user_id', userId);
+    if (updateError) throw updateError;
+
+    return await recalculateDebtAggregates(String(paymentRow.debt_id), userId);
+  } catch (error) {
+    return handleError(error, 'Gagal memperbarui pembayaran hutang');
+  }
+}
