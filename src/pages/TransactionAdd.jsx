@@ -1065,7 +1065,7 @@ export default function TransactionAdd({ onAdd }) {
                         return (
                           <li
                             key={template.id}
-                            className="group flex flex-wrap items-center justify-between gap-3 px-4 py-3 transition hover:bg-muted/30"
+                            className="group flex flex-col gap-3 px-4 py-3 transition hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
                           >
                             <div className="min-w-0 flex-1 space-y-1">
                               <p className="truncate text-sm font-semibold text-text">{template.name || 'Tanpa judul'}</p>
@@ -1090,51 +1090,53 @@ export default function TransactionAdd({ onAdd }) {
                                 ) : null}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="min-w-[110px] text-right text-sm font-semibold text-text">
+                            <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end sm:gap-2">
+                              <span className="text-sm font-semibold text-text sm:min-w-[110px] sm:text-right">
                                 {formatAmountDisplay(template.amount)}
                               </span>
-                              <button
-                                type="button"
-                                onClick={() => handleToggleFavoriteTemplate(template.id)}
-                                className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                                  isFavorite
-                                    ? 'border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-400/40 dark:bg-amber-400/20 dark:text-amber-200'
-                                    : 'border-border-subtle text-muted hover:text-amber-600'
-                                }`}
-                                aria-label={isFavorite ? 'Hapus dari favorit' : 'Tambah ke favorit'}
-                                title={isFavorite ? 'Hapus dari favorit' : 'Tambah ke favorit'}
-                              >
-                                <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} aria-hidden="true" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleApplyTemplate(template)}
-                                disabled={Boolean(applyingTemplateId)}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
-                                aria-label="Gunakan template"
-                                title="Gunakan template"
-                              >
-                                {applyingTemplateId === template.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                                ) : (
-                                  <Wand2 className="h-4 w-4" aria-hidden="true" />
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteTemplate(template.id)}
-                                disabled={deletingTemplateId === template.id}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle text-muted transition hover:border-destructive/60 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
-                                aria-label="Hapus template"
-                                title="Hapus template"
-                              >
-                                {deletingTemplateId === template.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                )}
-                              </button>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleFavoriteTemplate(template.id)}
+                                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                                    isFavorite
+                                      ? 'border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-400/40 dark:bg-amber-400/20 dark:text-amber-200'
+                                      : 'border-border-subtle text-muted hover:text-amber-600'
+                                  }`}
+                                  aria-label={isFavorite ? 'Hapus dari favorit' : 'Tambah ke favorit'}
+                                  title={isFavorite ? 'Hapus dari favorit' : 'Tambah ke favorit'}
+                                >
+                                  <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplyTemplate(template)}
+                                  disabled={Boolean(applyingTemplateId)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Gunakan template"
+                                  title="Gunakan template"
+                                >
+                                  {applyingTemplateId === template.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                  ) : (
+                                    <Wand2 className="h-4 w-4" aria-hidden="true" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteTemplate(template.id)}
+                                  disabled={deletingTemplateId === template.id}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border-subtle text-muted transition hover:border-destructive/60 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                                  aria-label="Hapus template"
+                                  title="Hapus template"
+                                >
+                                  {deletingTemplateId === template.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" aria-hidden="true" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           </li>
                         );
