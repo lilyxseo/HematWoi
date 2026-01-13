@@ -859,6 +859,19 @@ export default function FinancialHealth() {
             }
             comparison={comparison}
             isEmpty={isEmpty}
+            net={snapshot.net}
+            savingsRate={snapshot.savingsRate}
+            debtRatio={snapshot.debtRatio}
+            budgetOverCount={snapshot.budgetOverCount}
+            budgetTotal={snapshot.budgetTotal}
+            cashflowScore={snapshot.cashflowScore}
+            savingsScore={snapshot.savingsScore}
+            debtScore={snapshot.debtScore}
+            budgetScore={snapshot.budgetScore}
+            expenseStabilityScore={snapshot.expenseStabilityScore}
+            expenseStabilityRatio={snapshot.expenseStabilityRatio}
+            expenseCoverageScore={snapshot.expenseCoverageScore}
+            expenseCoverageDays={snapshot.expenseCoverageDays}
           />
         )}
 
