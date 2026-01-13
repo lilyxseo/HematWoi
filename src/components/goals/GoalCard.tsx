@@ -174,7 +174,7 @@ export default function GoalCard({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,240px),1fr] md:items-center">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,240px),1fr] lg:items-center">
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted">Progress</span>
@@ -207,7 +207,7 @@ export default function GoalCard({
         </div>
 
         <div className="min-w-0 space-y-4">
-          <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1">
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Target</dt>
               <dd className="font-medium">{formatCurrency(goal.target_amount)}</dd>
