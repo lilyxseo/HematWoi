@@ -134,7 +134,7 @@ export default function GoalCard({
 
   return (
     <article
-      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-4 shadow-sm transition hover:border-border md:p-5 ${
+      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-5 shadow-sm transition hover:border-border md:p-6 ${
         className ?? ''
       }`}
     >
@@ -174,10 +174,10 @@ export default function GoalCard({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,240px),1fr] md:items-center">
-        <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-6">
+        <div className="flex flex-col gap-3 md:order-1">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Progress</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Progress</span>
             <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
               {Math.round(progress)}%
             </span>
@@ -195,69 +195,74 @@ export default function GoalCard({
               />
             ))}
           </div>
-          <div className="flex items-center justify-between text-xs text-muted">
+          <div className="flex items-center justify-between text-xs text-muted md:text-sm">
             <span>{formatCurrency(goal.saved_amount)} terkumpul</span>
             <span>{formatCurrency(goal.target_amount)} target</span>
           </div>
           {nextMilestone ? (
-            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted">
+            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted md:text-sm">
               Next milestone {formatCurrency(nextMilestone.amount)}
             </div>
           ) : null}
         </div>
 
-        <div className="min-w-0 space-y-4">
-          <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4">
-            <div className="space-y-1">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Target</dt>
-              <dd className="font-medium">{formatCurrency(goal.target_amount)}</dd>
-            </div>
-            <div className="space-y-1">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Terkumpul</dt>
-              <dd className="font-medium text-emerald-500 dark:text-emerald-300">
-                {formatCurrency(goal.saved_amount)}
-              </dd>
-            </div>
-            <div className="space-y-1">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa</dt>
-              <dd className="font-medium text-sky-500 dark:text-sky-300">
-                {formatCurrency(remaining)}
-              </dd>
-            </div>
-            <div className="space-y-1">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Deadline</dt>
-              <dd className="flex items-center gap-1 text-sm">
-                <CalendarDays className="h-4 w-4 text-muted" aria-hidden="true" />
-                {goal.due_date ? dateFormatter.format(new Date(goal.due_date)) : '—'}
-              </dd>
-              {overdue ? (
-                <span className="inline-flex items-center rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-500">
-                  Lewat jatuh tempo
-                </span>
-              ) : null}
-            </div>
-          </dl>
+        <div className="min-w-0 space-y-4 md:order-2">
+          <div className="space-y-3">
+            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Ringkasan</span>
+            <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4 md:grid-cols-2">
+              <div className="space-y-1">
+                <dt className="text-xs uppercase tracking-wide text-white/60">Target</dt>
+                <dd className="font-medium">{formatCurrency(goal.target_amount)}</dd>
+              </div>
+              <div className="space-y-1">
+                <dt className="text-xs uppercase tracking-wide text-white/60">Terkumpul</dt>
+                <dd className="font-medium text-emerald-500 dark:text-emerald-300">
+                  {formatCurrency(goal.saved_amount)}
+                </dd>
+              </div>
+              <div className="space-y-1">
+                <dt className="text-xs uppercase tracking-wide text-white/60">Sisa</dt>
+                <dd className="font-medium text-sky-500 dark:text-sky-300">
+                  {formatCurrency(remaining)}
+                </dd>
+              </div>
+              <div className="space-y-1">
+                <dt className="text-xs uppercase tracking-wide text-white/60">Deadline</dt>
+                <dd className="flex items-center gap-1 text-sm">
+                  <CalendarDays className="h-4 w-4 text-muted" aria-hidden="true" />
+                  {goal.due_date ? dateFormatter.format(new Date(goal.due_date)) : '—'}
+                </dd>
+                {overdue ? (
+                  <span className="inline-flex items-center rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-500">
+                    Lewat jatuh tempo
+                  </span>
+                ) : null}
+              </div>
+            </dl>
+          </div>
 
           {dailySuggestion != null ? (
             <div className="flex flex-wrap gap-3 text-sm">
-              <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand">
+              <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
                 <Flag className="h-4 w-4" aria-hidden="true" />
                 {formatCurrency(dailySuggestion)} / hari
               </span>
               {weeklySuggestion ? (
-                <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand">
+                <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
                   <PiggyBank className="h-4 w-4" aria-hidden="true" />
                   {formatCurrency(weeklySuggestion)} / minggu
                 </span>
               ) : null}
-              <span className="inline-flex items-center gap-1 rounded-xl bg-surface-2/70 px-3 py-1 font-medium text-muted">
+              <span className="inline-flex items-center gap-1 rounded-xl bg-surface-2/70 px-3 py-1 font-medium text-muted md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
                 Rata-rata saat ini: {formatCurrency(averagePerDay)} / hari
               </span>
             </div>
           ) : null}
           {onQuickAdd && goal.status === 'active' ? (
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted">
-              <span className="text-[11px] uppercase tracking-wide text-muted">Tambah cepat</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted md:flex-wrap md:gap-2">
+              <span className="text-[11px] uppercase tracking-wide text-muted md:text-xs md:text-white/60">
+                Tambah cepat
+              </span>
               {quickAddOptions.map((amount) => {
                 const key = `${goal.id}-${amount}`;
                 return (
@@ -266,7 +271,7 @@ export default function GoalCard({
                     type="button"
                     onClick={() => onQuickAdd(goal, amount)}
                     disabled={quickAddLoadingKey === key}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text transition hover:bg-border/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text transition hover:bg-border/60 disabled:cursor-not-allowed disabled:opacity-60 md:rounded-xl md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm"
                   >
                     <PiggyBank className="h-3 w-3" aria-hidden="true" />
                     {formatCurrency(amount)}
@@ -278,7 +283,7 @@ export default function GoalCard({
         </div>
       </div>
 
-      <footer className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+      <footer className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end md:flex-nowrap md:justify-end md:gap-3">
         <button
           type="button"
           onClick={() => onEdit(goal)}
@@ -299,7 +304,7 @@ export default function GoalCard({
           type="button"
           onClick={() => onToggleArchive(goal)}
           disabled={Boolean(archiveLoading)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60 md:h-[34px] md:px-3 md:text-xs"
         >
           <Archive className="h-4 w-4" aria-hidden="true" />
           {archiveLabel}
