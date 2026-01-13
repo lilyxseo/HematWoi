@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  CalendarDays,
   CreditCard,
+  LineChart,
   PiggyBank,
   TrendingDown,
   TrendingUp,
   Wallet,
   ListChecks,
-  Banknote,
 } from "lucide-react";
 import Page from "../layout/Page";
 import PageHeader from "../layout/PageHeader";
@@ -56,16 +57,16 @@ type HealthSnapshot = {
   net: number;
   savingsRate: number;
   debtRatio: number;
-  bufferRatio: number;
-  subscriptionRatio: number;
   budgetOverCount: number;
   budgetTotal: number;
   cashflowScore: number;
   savingsScore: number;
   debtScore: number;
   budgetScore: number;
-  bufferScore: number;
-  subscriptionScore: number;
+  expenseStabilityRatio: number | null;
+  expenseStabilityScore: number | null;
+  expenseCoverageDays: number | null;
+  expenseCoverageScore: number | null;
   totalScore: number;
   label: string;
 };
@@ -236,43 +237,61 @@ function computeBudgetScore(overCount: number, total: number) {
   return Math.max(0, 100 - ratio * 100);
 }
 
-function computeBufferScore(bufferRatio: number, monthlyExpense: number) {
-  if (monthlyExpense <= 0) return 50;
-  if (bufferRatio >= 1) return 100;
-  if (bufferRatio >= 0.5) return 70 + (bufferRatio - 0.5) * 60;
-  if (bufferRatio > 0) return 30 + bufferRatio * 80;
-  return 10;
+function computeStandardDeviation(values: number[]) {
+  if (values.length === 0) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance =
+    values.reduce((sum, value) => sum + (value - mean) ** 2, 0) /
+    values.length;
+  return Math.sqrt(variance);
 }
 
-function computeSubscriptionScore(subscriptionRatio: number, income: number) {
-  if (income <= 0) return 0;
-  if (subscriptionRatio <= 0.05) return 100;
-  if (subscriptionRatio <= 0.15) {
-    return 100 - ((subscriptionRatio - 0.05) / 0.1) * 40;
+function buildDailyExpenseSeries(
+  transactions: NormalizedTransaction[],
+  start: Date,
+  end: Date
+) {
+  const totals = new Map<string, number>();
+  transactions
+    .filter((tx) => tx.type === "expense")
+    .forEach((tx) => {
+      const key = tx.date.slice(0, 10);
+      totals.set(key, (totals.get(key) ?? 0) + tx.amount);
+    });
+
+  const values: number[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cursor <= endDate) {
+    const key = cursor.toISOString().slice(0, 10);
+    values.push(totals.get(key) ?? 0);
+    cursor.setDate(cursor.getDate() + 1);
   }
-  if (subscriptionRatio <= 0.3) {
-    return 60 - ((subscriptionRatio - 0.15) / 0.15) * 40;
-  }
-  return 10;
+  return values;
 }
 
-function computeSubscriptionMonthly(subscriptions: RawRecord[] = []) {
-  return subscriptions.reduce((sum, sub) => {
-    if (!sub || sub.status === "canceled") return sum;
-    const amount = safeNumber(sub.amount);
-    const count = Math.max(1, safeNumber(sub.interval_count ?? 1));
-    switch (sub.interval_unit) {
-      case "year":
-        return sum + amount / 12 / count;
-      case "week":
-        return sum + (amount / count) * 4;
-      case "day":
-        return sum + (amount / count) * 30;
-      case "month":
-      default:
-        return sum + amount / count;
-    }
-  }, 0);
+function computeExpenseStabilityScore(stabilityRatio: number) {
+  if (stabilityRatio < 0.3) {
+    return 90 + ((0.3 - stabilityRatio) / 0.3) * 10;
+  }
+  if (stabilityRatio < 0.6) {
+    return 60 + ((0.6 - stabilityRatio) / 0.3) * 29;
+  }
+  const normalized = Math.min((stabilityRatio - 0.6) / 0.6, 1);
+  return Math.max(0, 59 - normalized * 59);
+}
+
+function computeExpenseCoverageScore(coverageDays: number) {
+  if (coverageDays < 7) {
+    return 10 + (coverageDays / 7) * 20;
+  }
+  if (coverageDays < 30) {
+    return 31 + ((coverageDays - 7) / 23) * 29;
+  }
+  if (coverageDays < 90) {
+    return 61 + ((coverageDays - 30) / 60) * 24;
+  }
+  return 86 + Math.min((coverageDays - 90) / 90, 1) * 14;
 }
 
 function getHealthLabel(score: number) {
@@ -285,12 +304,11 @@ function buildHealthSnapshot(params: {
   budgets: NormalizedBudget[];
   debts: DebtLike[];
   accounts: RawRecord[];
-  subscriptions: RawRecord[];
   months: string[];
   start: Date;
   end: Date;
 }): HealthSnapshot {
-  const { transactions, budgets, debts, accounts, subscriptions, months, start, end } = params;
+  const { transactions, budgets, debts, accounts, months, start, end } = params;
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
   const inRange = transactions.filter(
@@ -314,14 +332,30 @@ function buildHealthSnapshot(params: {
       return sum + amount / tenor;
     }, 0);
   const debtRatio = monthlyIncome > 0 ? debtMonthly / monthlyIncome : 0;
-  const subscriptionMonthly = computeSubscriptionMonthly(subscriptions);
-  const subscriptionRatio = monthlyIncome > 0 ? subscriptionMonthly / monthlyIncome : 0;
-  const monthlyExpense = months.length ? expense / months.length : expense;
   const totalBalance = accounts.reduce(
     (sum, account) => sum + safeNumber(account?.balance),
     0
   );
-  const bufferRatio = monthlyExpense > 0 ? totalBalance / monthlyExpense : 0;
+
+  const dailyExpenses = buildDailyExpenseSeries(inRange, start, end);
+  const avgDailyExpense =
+    dailyExpenses.length > 0
+      ? dailyExpenses.reduce((sum, value) => sum + value, 0) / dailyExpenses.length
+      : 0;
+  const expenseDeviation = computeStandardDeviation(dailyExpenses);
+  const expenseStabilityRatio =
+    avgDailyExpense > 0 ? expenseDeviation / avgDailyExpense : null;
+  const expenseStabilityScore =
+    expenseStabilityRatio == null
+      ? null
+      : computeExpenseStabilityScore(expenseStabilityRatio);
+
+  const expenseCoverageDays =
+    avgDailyExpense > 0 ? totalBalance / avgDailyExpense : null;
+  const expenseCoverageScore =
+    expenseCoverageDays == null
+      ? null
+      : computeExpenseCoverageScore(expenseCoverageDays);
 
   const monthsSet = new Set(months);
   const spendByMonthCategory = new Map<string, number>();
@@ -353,17 +387,21 @@ function buildHealthSnapshot(params: {
   const savingsScore = computeSavingsScore(savingsRate, income);
   const debtScore = computeDebtScore(debtRatio, income);
   const budgetScore = computeBudgetScore(overBudget.length, budgetsInRange.length);
-  const bufferScore = computeBufferScore(bufferRatio, monthlyExpense);
-  const subscriptionScore = computeSubscriptionScore(subscriptionRatio, income);
-
-  const totalScore = Math.round(
-    cashflowScore * 0.25 +
-      savingsScore * 0.2 +
-      debtScore * 0.2 +
-      budgetScore * 0.15 +
-      bufferScore * 0.1 +
-      subscriptionScore * 0.1
-  );
+  const weightedScores = [
+    { score: cashflowScore, weight: 0.25 },
+    { score: savingsScore, weight: 0.2 },
+    { score: debtScore, weight: 0.2 },
+    { score: budgetScore, weight: 0.15 },
+    { score: expenseStabilityScore, weight: 0.1 },
+    { score: expenseCoverageScore, weight: 0.1 },
+  ].filter((entry) => entry.score != null);
+  const totalWeight = weightedScores.reduce((sum, entry) => sum + entry.weight, 0);
+  const totalScore = totalWeight
+    ? Math.round(
+        weightedScores.reduce((sum, entry) => sum + entry.score * entry.weight, 0) /
+          totalWeight
+      )
+    : 0;
 
   return {
     income,
@@ -371,16 +409,16 @@ function buildHealthSnapshot(params: {
     net,
     savingsRate,
     debtRatio,
-    bufferRatio,
-    subscriptionRatio,
     budgetOverCount: overBudget.length,
     budgetTotal: budgetsInRange.length,
     cashflowScore,
     savingsScore,
     debtScore,
     budgetScore,
-    bufferScore,
-    subscriptionScore,
+    expenseStabilityRatio,
+    expenseStabilityScore,
+    expenseCoverageDays,
+    expenseCoverageScore,
     totalScore,
     label: getHealthLabel(totalScore),
   };
@@ -471,13 +509,6 @@ export default function FinancialHealth() {
     placeholderData: (previous) => previous,
   });
 
-  const subscriptionsQuery = useQuery({
-    queryKey: ["financial-health", "subscriptions", mode],
-    queryFn: () => repo.subscriptions.list(),
-    staleTime: 5 * 60 * 1000,
-    placeholderData: (previous) => previous,
-  });
-
   const accountsQuery = useQuery({
     queryKey: ["financial-health", "accounts", mode],
     queryFn: () => listAccounts(),
@@ -504,7 +535,6 @@ export default function FinancialHealth() {
     budgetsQuery.isLoading ||
     categoriesQuery.isLoading ||
     goalsQuery.isLoading ||
-    subscriptionsQuery.isLoading ||
     accountsQuery.isLoading ||
     debtsQuery.isLoading;
 
@@ -533,11 +563,6 @@ export default function FinancialHealth() {
     return normalizeBudgets(rows, categoriesById);
   }, [budgetsQuery.data, categoriesById]);
 
-  const subscriptions = useMemo(
-    () => (Array.isArray(subscriptionsQuery.data) ? subscriptionsQuery.data : []),
-    [subscriptionsQuery.data]
-  );
-
   const debts = useMemo(
     () => (Array.isArray(debtsQuery.data) ? debtsQuery.data : []),
     [debtsQuery.data]
@@ -549,7 +574,6 @@ export default function FinancialHealth() {
       budgets: normalizedBudgets,
       debts,
       accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
-      subscriptions,
       months,
       start,
       end,
@@ -559,7 +583,6 @@ export default function FinancialHealth() {
     normalizedBudgets,
     debts,
     accountsQuery.data,
-    subscriptions,
     months,
     start,
     end,
@@ -575,7 +598,6 @@ export default function FinancialHealth() {
       budgets: normalizedBudgets,
       debts,
       accounts: Array.isArray(accountsQuery.data) ? accountsQuery.data : [],
-      subscriptions,
       months: previousMonths,
       start: previousStart,
       end: previousEnd,
@@ -596,7 +618,6 @@ export default function FinancialHealth() {
     normalizedBudgets,
     debts,
     accountsQuery.data,
-    subscriptions,
     start,
     months.length,
   ]);
@@ -703,28 +724,6 @@ export default function FinancialHealth() {
       });
     }
 
-    if (snapshot.subscriptionRatio > 0.15) {
-      items.push({
-        id: "subscription-heavy",
-        title: "Biaya subscription tinggi",
-        description: "Biaya langganan bulanan cukup besar dibanding pemasukan.",
-        severity: "medium",
-        ctaLabel: "Atur Subscription",
-        ctaHref: "/subscriptions",
-      });
-    }
-
-    if (snapshot.bufferRatio < 1 && snapshot.expense > 0) {
-      items.push({
-        id: "low-cash-buffer",
-        title: "Buffer kas menipis",
-        description: "Saldo akunmu lebih kecil dari rata-rata pengeluaran bulanan.",
-        severity: snapshot.bufferRatio < 0.5 ? "high" : "medium",
-        ctaLabel: "Cek Akun",
-        ctaHref: "/accounts",
-      });
-    }
-
     const goals = Array.isArray(goalsQuery.data) ? goalsQuery.data : [];
     if (snapshot.savingsRate > 0 && goals.length === 0) {
       items.push({
@@ -743,7 +742,6 @@ export default function FinancialHealth() {
     snapshot,
     normalizedBudgets,
     months,
-    subscriptionsQuery.data,
     accountsQuery.data,
     goalsQuery.data,
   ]);
@@ -751,23 +749,52 @@ export default function FinancialHealth() {
   const cashflowStatus = snapshot.net >= 0 ? "Surplus" : "Defisit";
   const savingsStatus =
     snapshot.savingsRate < 0.1
-      ? "Buruk"
+      ? "Perlu perhatian"
       : snapshot.savingsRate < 0.2
-        ? "Cukup"
+        ? "Bisa ditingkatkan"
         : "Baik";
-  const debtStatus = snapshot.debtRatio > 0.3 ? "Warning" : "Aman";
+  const debtStatus = snapshot.debtRatio > 0.3 ? "Perlu perhatian" : "Aman";
   const budgetStatus =
     snapshot.budgetTotal === 0
       ? "Belum ada budget"
       : snapshot.budgetOverCount === 0
         ? "Semua on-track"
         : `${snapshot.budgetOverCount} kategori over-budget`;
-  const bufferStatus =
-    snapshot.bufferRatio >= 1
-      ? "Buffer aman"
-      : snapshot.bufferRatio >= 0.5
-        ? "Perlu ditambah"
-        : "Kritis";
+  const expenseStabilityStatus =
+    snapshot.expenseStabilityScore == null
+      ? "Belum cukup data"
+      : snapshot.expenseStabilityRatio != null &&
+          snapshot.expenseStabilityRatio < 0.3
+        ? "Pengeluaran harian relatif konsisten"
+        : snapshot.expenseStabilityRatio != null &&
+            snapshot.expenseStabilityRatio < 0.6
+          ? "Masih ada variasi, tapi cukup terkendali"
+          : "Ada lonjakan pengeluaran di hari tertentu";
+  const expenseStabilityValue =
+    snapshot.expenseStabilityScore == null
+      ? "Belum cukup data"
+      : snapshot.expenseStabilityRatio != null &&
+          snapshot.expenseStabilityRatio < 0.3
+        ? "Stabil"
+        : snapshot.expenseStabilityRatio != null &&
+            snapshot.expenseStabilityRatio < 0.6
+          ? "Cukup Stabil"
+          : "Tidak Stabil";
+  const coverageDays = snapshot.expenseCoverageDays;
+  const expenseCoverageValue =
+    coverageDays == null
+      ? "Belum cukup data"
+      : `Saldo cukup untuk ±${Math.max(0, Math.round(coverageDays))} hari`;
+  const expenseCoverageStatus =
+    coverageDays == null
+      ? "Belum cukup data"
+      : coverageDays < 7
+        ? "Perlu perhatian"
+        : coverageDays < 30
+          ? "Bisa ditingkatkan"
+          : coverageDays < 90
+            ? "Aman"
+            : "Sangat aman";
   const isEmpty = normalizedTransactions.length === 0;
 
   return (
@@ -821,6 +848,7 @@ export default function FinancialHealth() {
             <div className="grid gap-4 md:grid-cols-2">
               {isLoading ? (
                 <>
+                  <Skeleton className="h-28 w-full" />
                   <Skeleton className="h-28 w-full" />
                   <Skeleton className="h-28 w-full" />
                   <Skeleton className="h-28 w-full" />
@@ -882,39 +910,30 @@ export default function FinancialHealth() {
                     ]}
                   />
                   <IndicatorCard
-                    title="Liquidity Buffer"
-                    icon={<Banknote className="h-5 w-5" />}
-                    value={formatPercent(snapshot.bufferRatio)}
-                    status={bufferStatus}
-                    score={snapshot.bufferScore}
-                    infoTitle="Liquidity Buffer"
+                    title="Expense Stability"
+                    icon={<LineChart className="h-5 w-5" />}
+                    value={expenseStabilityValue}
+                    status={expenseStabilityStatus}
+                    score={snapshot.expenseStabilityScore}
+                    infoTitle="Expense Stability"
                     infoPoints={[
-                      "Apa artinya: saldo akun vs pengeluaran bulanan.",
-                      "Cara hitung: total saldo / rata-rata pengeluaran.",
-                      "Target sehat: ≥1x pengeluaran bulanan.",
+                      "Apa artinya: konsistensi pengeluaran harian.",
+                      "Cara hitung: standar deviasi / rata-rata harian.",
+                      "Target sehat: rasio variasi <0.3.",
                     ]}
                   />
                   <IndicatorCard
-                    title="Subscription Burden"
-                    icon={<CreditCard className="h-5 w-5" />}
-                    value={formatPercent(snapshot.subscriptionRatio)}
-                    status="Target <15%"
-                    score={snapshot.subscriptionScore}
-                    infoTitle="Subscription Burden"
+                    title="Expense Coverage"
+                    icon={<CalendarDays className="h-5 w-5" />}
+                    value={expenseCoverageValue}
+                    status={expenseCoverageStatus}
+                    score={snapshot.expenseCoverageScore}
+                    infoTitle="Expense Coverage"
                     infoPoints={[
-                      "Apa artinya: biaya langganan bulanan dibanding pemasukan.",
-                      "Cara hitung: total subscription / pemasukan bulanan.",
-                      "Target sehat: <15%.",
+                      "Apa artinya: berapa lama saldo cukup menutup pengeluaran.",
+                      "Cara hitung: total saldo / pengeluaran harian rata-rata.",
+                      "Target sehat: ≥30 hari.",
                     ]}
-                  />
-                  <IndicatorCard
-                    title="Subscription Burden"
-                    icon={<CreditCard className="h-5 w-5" />}
-                    value={formatPercent(snapshot.subscriptionRatio)}
-                    status="Target <15%"
-                    score={snapshot.subscriptionScore}
-                    tooltip="Biaya langganan bulanan dibanding pemasukan."
-                    description="Rasio subscription yang rendah membantu menjaga fleksibilitas cashflow."
                   />
                 </>
               )}
