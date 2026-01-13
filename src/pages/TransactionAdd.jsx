@@ -57,16 +57,16 @@ const TYPE_OPTIONS = [
 ];
 
 const INPUT_CLASS =
-  'h-11 w-full rounded-2xl border bg-background px-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60';
+  'h-11 w-full rounded-2xl border border-border-subtle bg-background px-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60';
 
 const TEXTAREA_CLASS =
-  'w-full rounded-2xl border bg-background px-3 py-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60';
+  'w-full rounded-2xl border border-border-subtle bg-muted/30 px-3 py-3 text-sm text-text ring-2 ring-transparent transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60';
 
 const SEGMENTED_CLASS =
-  'inline-flex rounded-2xl border border-border-subtle bg-muted/40 p-1 text-sm font-medium text-muted';
+  'inline-flex rounded-2xl border border-border-subtle bg-muted/30 p-1 text-sm font-medium text-muted shadow-sm';
 
 const SEGMENT_ITEM_CLASS =
-  'flex items-center gap-2 rounded-xl px-3 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+  'flex items-center gap-2 rounded-xl px-3 py-2 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
 const QUICK_AMOUNT_OPTIONS = [1000, 5000, 10000, 50000, 100000, 500000];
 
@@ -125,6 +125,7 @@ export default function TransactionAdd({ onAdd }) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(true);
   const [favoriteTemplateIds, setFavoriteTemplateIds] = useState(() => {
     if (typeof window === 'undefined') return [];
     const stored = window.localStorage.getItem('favorite_transaction_templates');
@@ -304,6 +305,7 @@ export default function TransactionAdd({ onAdd }) {
 
   const isTransfer = type === 'transfer';
   const amountValue = parseAmount(amountInput);
+  const isAmountValid = Number.isFinite(amountValue) && amountValue > 0;
   const trimmedTitle = title.trim();
   const trimmedNotes = notes.trim();
   const notesPreview = trimmedNotes
@@ -618,389 +620,440 @@ export default function TransactionAdd({ onAdd }) {
         <button
           type="submit"
           form="add-transaction-form"
-          disabled={saving}
+          disabled={saving || !isAmountValid}
           className="flex h-11 items-center gap-2 rounded-2xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Save className="h-4 w-4" aria-hidden="true" />}
-          Simpan
+          Simpan Transaksi
         </button>
       </PageHeader>
 
       <Section first>
-        <form id="add-transaction-form" onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
+        <form
+          id="add-transaction-form"
+          onSubmit={handleSubmit}
+          className="grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]"
+        >
           <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
-              <CardBody className="space-y-6">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tipe</span>
-                  <div className="mt-2">
-                    <div className={SEGMENTED_CLASS} role="radiogroup" aria-label="Pilih tipe transaksi">
-                      {TYPE_OPTIONS.map((option) => {
-                        const Icon = option.icon;
-                        const active = type === option.value;
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            role="radio"
-                            aria-checked={active}
-                            tabIndex={active ? 0 : -1}
-                            onClick={() => {
-                              setType(option.value);
-                              setErrors((prev) => ({
-                                ...prev,
-                                category_id: undefined,
-                                to_account_id: undefined,
-                              }));
-                            }}
-                            className={`${SEGMENT_ITEM_CLASS} ${active ? 'bg-primary text-primary-foreground' : 'text-muted'}`}
-                          >
-                            <Icon className="h-4 w-4" aria-hidden="true" />
-                            <span>{option.label}</span>
-                          </button>
-                        );
-                      })}
+              <CardBody className="space-y-8">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-text">Informasi dasar</p>
+                      <p className="text-xs text-muted">Pilih tipe transaksi dan tanggal pencatatan.</p>
                     </div>
+                    <span className="hidden rounded-full border border-border-subtle px-3 py-1 text-[11px] font-semibold text-muted md:inline-flex">
+                      Step 1/4
+                    </span>
                   </div>
-                </div>
-                <div className="min-w-[200px]">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tanggal</span>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDateSelect(getDateWithOffset(0))}
-                      className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                        date === getDateWithOffset(0)
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border-subtle text-text hover:bg-muted/30'
-                      }`}
-                    >
-                      Hari ini
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDateSelect(getDateWithOffset(-1))}
-                      className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                        date === getDateWithOffset(-1)
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border-subtle text-text hover:bg-muted/30'
-                      }`}
-                    >
-                      Kemarin
-                    </button>
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={date}
-                        onChange={(event) => handleDateSelect(event.target.value)}
-                        className={INPUT_CLASS}
-                      />
-                    </div>
-                  </div>
-                  {errors.date ? <p className="mt-1 text-xs text-destructive">{errors.date}</p> : null}
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                  <Banknote className="h-4 w-4" aria-hidden="true" />
-                  Nominal
-                </label>
-                <div className="flex items-center gap-3 rounded-2xl border border-border-subtle bg-background px-4 py-4 ring-2 ring-transparent focus-within:ring-2 focus-within:ring-primary">
-                  <span className="text-sm font-semibold text-muted">Rp</span>
-                  <input
-                    value={amountInput}
-                    onChange={handleAmountChange}
-                    onBlur={() => validate()}
-                    inputMode="decimal"
-                    placeholder="Masukkan jumlah"
-                    className="w-full border-none bg-transparent text-3xl font-bold tracking-tight text-text focus:outline-none"
-                  />
-                </div>
-                {errors.amount ? <p className="mt-1 text-xs text-destructive">{errors.amount}</p> : null}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {QUICK_AMOUNT_OPTIONS.map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      onClick={() => handleQuickAmountSelect(value)}
-                      className="rounded-xl border border-border-subtle px-3 py-1.5 text-xs font-medium text-muted transition hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    >
-                      {`+${CURRENCY_FORMATTER.format(value)}`}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label htmlFor="account" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                    <Wallet className="h-4 w-4" aria-hidden="true" />
-                    Akun sumber
-                  </label>
-                  <Combobox
-                    value={selectedAccountOption}
-                    onChange={(option) => {
-                      setAccountId(option?.value || '');
-                      setErrors((prev) => ({ ...prev, account_id: undefined }));
-                    }}
-                    disabled={accountsLoading && accounts.length === 0}
-                  >
-                    <div className="relative">
-                      <Combobox.Input
-                        id="account"
-                        className={`${INPUT_CLASS} pr-16`}
-                        displayValue={(option) => option?.label || ''}
-                        placeholder={accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Akun sumber'}
-                        aria-invalid={Boolean(errors.account_id)}
-                        onClick={() => accountButtonRef.current?.click()}
-                        readOnly
-                      />
-                      <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
-                        <Combobox.Button
-                          ref={accountButtonRef}
-                          className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        >
-                          {accountsLoading ? (
-                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                          ) : (
-                            'Buka'
-                          )}
-                        </Combobox.Button>
-                      </div>
-                      <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
-                        {accountOptions.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-muted">
-                            {accountsLoading ? 'Memuat akun...' : 'Tidak ada akun'}
-                          </div>
-                        ) : (
-                          accountOptions.map((option) => (
-                            <Combobox.Option
-                              key={option.value}
-                              value={option}
-                              className={({ active }) =>
-                                `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
-                                  active ? 'bg-muted/60' : ''
-                                }`
-                              }
-                            >
-                              {option.label}
-                            </Combobox.Option>
-                          ))
-                        )}
-                      </Combobox.Options>
-                    </div>
-                  </Combobox>
-                  {errors.account_id ? <p className="mt-1 text-xs text-destructive">{errors.account_id}</p> : null}
-                  <div className="mt-2 space-y-1 text-xs text-muted">
-                    <div className="flex items-center justify-between gap-2">
-                      <span>Saldo tersedia</span>
-                      <span className="font-medium text-text">{availableBalanceLabel}</span>
-                    </div>
-                    {balancesError ? (
-                      <p className="text-xs text-destructive">Gagal memuat saldo.</p>
-                    ) : null}
-                  </div>
-                </div>
-                {isTransfer ? (
-                  <div>
-                    <label htmlFor="to-account" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                      Akun tujuan
-                    </label>
-                    <select
-                      id="to-account"
-                      value={toAccountId}
-                      onChange={(event) => {
-                        setToAccountId(event.target.value);
-                        setErrors((prev) => ({ ...prev, to_account_id: undefined }));
-                      }}
-                      className={INPUT_CLASS}
-                      disabled={accountsLoading && accounts.length === 0}
-                    >
-                      <option value="">
-                        {accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun tujuan'}
-                      </option>
-                      {accounts
-                        .filter((account) => account.id !== accountId)
-                        .map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.name || 'Tanpa nama'}
-                          </option>
-                        ))}
-                    </select>
-                    <p className="mt-1 text-xs text-muted">Pilih akun yang berbeda dari akun sumber.</p>
-                    {errors.to_account_id ? <p className="mt-1 text-xs text-destructive">{errors.to_account_id}</p> : null}
-                  </div>
-                ) : null}
-                {!isTransfer ? (
-                  <div>
-                    <label htmlFor="category" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                      <TagIcon className="h-4 w-4" aria-hidden="true" />
-                      Kategori
-                    </label>
-                    <Combobox
-                      value={selectedCategoryOption}
-                      onChange={(option) => {
-                        setCategoryId(option?.value || '');
-                        setErrors((prev) => ({ ...prev, category_id: undefined }));
-                      }}
-                      disabled={categoriesLoading && filteredCategories.length === 0}
-                    >
-                      <div className="relative">
-                        <Combobox.Input
-                          id="category"
-                          className={`${INPUT_CLASS} pr-16`}
-                          displayValue={(option) => option?.label || ''}
-                          placeholder="Pilih kategori"
-                          aria-invalid={Boolean(errors.category_id)}
-                          onClick={() => categoryButtonRef.current?.click()}
-                          readOnly
-                        />
-                        <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
-                          {selectedCategoryOption ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCategoryId('');
-                                setErrors((prev) => ({ ...prev, category_id: undefined }));
-                              }}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-subtle text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                              aria-label="Bersihkan kategori"
-                              title="Bersihkan kategori"
-                            >
-                              <X className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                          ) : null}
-                          <Combobox.Button
-                            ref={categoryButtonRef}
-                            className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                          >
-                            {categoriesLoading ? (
-                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                            ) : (
-                              'Pilih'
-                            )}
-                          </Combobox.Button>
-                        </div>
-                        <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
-                          {categoryOptions.length === 0 ? (
-                            <div className="px-3 py-2 text-xs text-muted">
-                              {categoriesLoading ? 'Memuat kategori...' : 'No categories found'}
-                            </div>
-                          ) : (
-                            categoryOptions.map((option) => (
-                              <Combobox.Option
+                  <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-muted/20 p-4">
+                    <div>
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tipe</span>
+                      <div className="mt-2">
+                        <div className={SEGMENTED_CLASS} role="radiogroup" aria-label="Pilih tipe transaksi">
+                          {TYPE_OPTIONS.map((option) => {
+                            const Icon = option.icon;
+                            const active = type === option.value;
+                            const activeClass =
+                              option.value === 'income'
+                                ? 'bg-emerald-500/90 text-white shadow-md shadow-emerald-500/30'
+                                : option.value === 'transfer'
+                                  ? 'bg-blue-500/90 text-white shadow-md shadow-blue-500/30'
+                                  : 'bg-rose-500/90 text-white shadow-md shadow-rose-500/30';
+                            return (
+                              <button
                                 key={option.value}
-                                value={option}
-                                className={({ active }) =>
-                                  `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
-                                    active ? 'bg-muted/60' : ''
-                                  }`
-                                }
+                                type="button"
+                                role="radio"
+                                aria-checked={active}
+                                tabIndex={active ? 0 : -1}
+                                onClick={() => {
+                                  setType(option.value);
+                                  setErrors((prev) => ({
+                                    ...prev,
+                                    category_id: undefined,
+                                    to_account_id: undefined,
+                                  }));
+                                }}
+                                className={`${SEGMENT_ITEM_CLASS} ${active ? activeClass : 'text-muted hover:text-text'}`}
                               >
-                                {option.label}
-                              </Combobox.Option>
-                            ))
-                          )}
-                        </Combobox.Options>
+                                <Icon className="h-4 w-4" aria-hidden="true" />
+                                <span>{option.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </Combobox>
-                    <p className="mt-1 text-xs text-muted">Kategori membantu analisis pengeluaran & pemasukan.</p>
-                    {errors.category_id ? (
-                      <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
-                    ) : categoriesError ? (
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-destructive">
-                        <span>{categoriesError.message || 'Gagal memuat kategori.'}</span>
+                    </div>
+                    <div className="min-w-[200px]">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tanggal</span>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            void categoriesQuery.refetch();
-                          }}
-                          className="rounded-lg border border-destructive px-2 py-1 text-xs font-medium transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive"
+                          onClick={() => handleDateSelect(getDateWithOffset(0))}
+                          className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                            date === getDateWithOffset(0)
+                              ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                              : 'border-border-subtle text-text hover:bg-muted/30'
+                          }`}
                         >
-                          Coba lagi
+                          Hari ini
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDateSelect(getDateWithOffset(-1))}
+                          className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                            date === getDateWithOffset(-1)
+                              ? 'border-primary bg-primary/10 text-primary shadow-sm'
+                              : 'border-border-subtle text-text hover:bg-muted/30'
+                          }`}
+                        >
+                          Kemarin
+                        </button>
+                        <div className="relative">
+                          <input
+                            type="date"
+                            value={date}
+                            onChange={(event) => handleDateSelect(event.target.value)}
+                            className={`${INPUT_CLASS} h-9`}
+                          />
+                        </div>
                       </div>
-                    ) : (
-                      <>
-                        {categoriesLoading ? (
-                          <p className="mt-1 flex items-center gap-2 text-xs text-muted">
-                            <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                            Memuat kategori...
-                          </p>
-                        ) : null}
-                        {!categoriesLoading && filteredCategories.length === 0 ? (
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-                            <span>
-                              {type === 'income'
-                                ? 'Belum ada kategori pemasukan.'
-                                : 'Belum ada kategori pengeluaran.'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => navigate('/categories')}
-                              className="rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-text transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                      {errors.date ? <p className="mt-1 text-xs text-destructive">{errors.date}</p> : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-text">Nominal transaksi</p>
+                    <p className="text-xs text-muted">Nominal menjadi fokus utama untuk memvalidasi transaksi.</p>
+                  </div>
+                  <div className="rounded-2xl border border-border-subtle bg-gradient-to-br from-primary/15 via-background to-background px-4 py-5 shadow-[0_0_30px_rgba(59,130,246,0.15)]">
+                    <label className="mb-3 flex items-center gap-2 text-sm font-medium text-muted">
+                      <Banknote className="h-4 w-4" aria-hidden="true" />
+                      Nominal
+                    </label>
+                    <div className="flex items-center gap-3 rounded-2xl border border-border-subtle bg-background/80 px-4 py-4 ring-2 ring-transparent focus-within:ring-2 focus-within:ring-primary">
+                      <span className="text-sm font-semibold text-muted">Rp</span>
+                      <input
+                        value={amountInput}
+                        onChange={handleAmountChange}
+                        onBlur={() => validate()}
+                        inputMode="decimal"
+                        placeholder="Contoh: 250.000"
+                        className="w-full border-none bg-transparent text-3xl font-semibold tracking-tight text-text focus:outline-none"
+                      />
+                    </div>
+                    {errors.amount ? <p className="mt-2 text-xs text-destructive">{errors.amount}</p> : null}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {QUICK_AMOUNT_OPTIONS.map((value) => (
+                        <button
+                          type="button"
+                          key={value}
+                          onClick={() => handleQuickAmountSelect(value)}
+                          className="rounded-full border border-border-subtle px-3 py-1.5 text-xs font-medium text-muted transition hover:-translate-y-0.5 hover:border-primary hover:text-primary hover:shadow-[0_8px_20px_rgba(59,130,246,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        >
+                          {`+${CURRENCY_FORMATTER.format(value)}`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-text">Sumber & kategori</p>
+                    <p className="text-xs text-muted">Pilih akun, kategori, atau akun tujuan jika transfer.</p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-border-subtle bg-muted/20 p-4">
+                      <label htmlFor="account" className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
+                        <Wallet className="h-4 w-4" aria-hidden="true" />
+                        Akun sumber
+                      </label>
+                      <Combobox
+                        value={selectedAccountOption}
+                        onChange={(option) => {
+                          setAccountId(option?.value || '');
+                          setErrors((prev) => ({ ...prev, account_id: undefined }));
+                        }}
+                        disabled={accountsLoading && accounts.length === 0}
+                      >
+                        <div className="relative">
+                          <Combobox.Input
+                            id="account"
+                            className={`${INPUT_CLASS} pr-16`}
+                            displayValue={(option) => option?.label || ''}
+                            placeholder={accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Akun sumber'}
+                            aria-invalid={Boolean(errors.account_id)}
+                            onClick={() => accountButtonRef.current?.click()}
+                            readOnly
+                          />
+                          <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                            <Combobox.Button
+                              ref={accountButtonRef}
+                              className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                             >
-                              Tambah Kategori
-                            </button>
+                              {accountsLoading ? (
+                                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                              ) : (
+                                'Buka'
+                              )}
+                            </Combobox.Button>
+                          </div>
+                          <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
+                            {accountOptions.length === 0 ? (
+                              <div className="px-3 py-2 text-xs text-muted">
+                                {accountsLoading ? 'Memuat akun...' : 'Tidak ada akun'}
+                              </div>
+                            ) : (
+                              accountOptions.map((option) => (
+                                <Combobox.Option
+                                  key={option.value}
+                                  value={option}
+                                  className={({ active }) =>
+                                    `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
+                                      active ? 'bg-muted/60' : ''
+                                    }`
+                                  }
+                                >
+                                  {option.label}
+                                </Combobox.Option>
+                              ))
+                            )}
+                          </Combobox.Options>
+                        </div>
+                      </Combobox>
+                      {errors.account_id ? (
+                        <p className="mt-1 text-xs text-destructive">{errors.account_id}</p>
+                      ) : null}
+                      <div className="mt-3 space-y-1 text-xs text-muted">
+                        <div className="flex items-center justify-between gap-2">
+                          <span>Saldo tersedia</span>
+                          <span className="font-medium text-text">{availableBalanceLabel}</span>
+                        </div>
+                        {balancesError ? (
+                          <p className="text-xs text-destructive">Gagal memuat saldo.</p>
+                        ) : null}
+                      </div>
+                    </div>
+                    {isTransfer ? (
+                      <div className="rounded-2xl border border-border-subtle bg-muted/20 p-4">
+                        <label
+                          htmlFor="to-account"
+                          className="mb-2 flex items-center gap-2 text-sm font-medium text-muted"
+                        >
+                          <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                          Akun tujuan
+                        </label>
+                        <select
+                          id="to-account"
+                          value={toAccountId}
+                          onChange={(event) => {
+                            setToAccountId(event.target.value);
+                            setErrors((prev) => ({ ...prev, to_account_id: undefined }));
+                          }}
+                          className={INPUT_CLASS}
+                          disabled={accountsLoading && accounts.length === 0}
+                        >
+                          <option value="">
+                            {accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun tujuan'}
+                          </option>
+                          {accounts
+                            .filter((account) => account.id !== accountId)
+                            .map((account) => (
+                              <option key={account.id} value={account.id}>
+                                {account.name || 'Tanpa nama'}
+                              </option>
+                            ))}
+                        </select>
+                        <p className="mt-2 text-xs text-muted">Pilih akun yang berbeda dari akun sumber.</p>
+                        {errors.to_account_id ? (
+                          <p className="mt-1 text-xs text-destructive">{errors.to_account_id}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {!isTransfer ? (
+                      <div className="rounded-2xl border border-border-subtle bg-muted/20 p-4">
+                        <label
+                          htmlFor="category"
+                          className="mb-2 flex items-center gap-2 text-sm font-medium text-muted"
+                        >
+                          <TagIcon className="h-4 w-4" aria-hidden="true" />
+                          Kategori
+                        </label>
+                        <Combobox
+                          value={selectedCategoryOption}
+                          onChange={(option) => {
+                            setCategoryId(option?.value || '');
+                            setErrors((prev) => ({ ...prev, category_id: undefined }));
+                          }}
+                          disabled={categoriesLoading && filteredCategories.length === 0}
+                        >
+                          <div className="relative">
+                            <Combobox.Input
+                              id="category"
+                              className={`${INPUT_CLASS} pr-16`}
+                              displayValue={(option) => option?.label || ''}
+                              placeholder="Pilih kategori"
+                              aria-invalid={Boolean(errors.category_id)}
+                              onClick={() => categoryButtonRef.current?.click()}
+                              readOnly
+                            />
+                            <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                              {selectedCategoryOption ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCategoryId('');
+                                    setErrors((prev) => ({ ...prev, category_id: undefined }));
+                                  }}
+                                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-subtle text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                  aria-label="Bersihkan kategori"
+                                  title="Bersihkan kategori"
+                                >
+                                  <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                              ) : null}
+                              <Combobox.Button
+                                ref={categoryButtonRef}
+                                className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                              >
+                                {categoriesLoading ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                                ) : (
+                                  'Pilih'
+                                )}
+                              </Combobox.Button>
+                            </div>
+                            <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
+                              {categoryOptions.length === 0 ? (
+                                <div className="px-3 py-2 text-xs text-muted">
+                                  {categoriesLoading ? 'Memuat kategori...' : 'No categories found'}
+                                </div>
+                              ) : (
+                                categoryOptions.map((option) => (
+                                  <Combobox.Option
+                                    key={option.value}
+                                    value={option}
+                                    className={({ active }) =>
+                                      `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
+                                        active ? 'bg-muted/60' : ''
+                                      }`
+                                    }
+                                  >
+                                    {option.label}
+                                  </Combobox.Option>
+                                ))
+                              )}
+                            </Combobox.Options>
+                          </div>
+                        </Combobox>
+                        <p className="mt-2 text-xs text-muted">
+                          Kategori membantu analisis pengeluaran & pemasukan.
+                        </p>
+                        {errors.category_id ? (
+                          <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
+                        ) : categoriesError ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-destructive">
+                            <span>{categoriesError.message || 'Gagal memuat kategori.'}</span>
                             <button
                               type="button"
                               onClick={() => {
                                 void categoriesQuery.refetch();
                               }}
-                              className="rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-text transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                              className="rounded-lg border border-destructive px-2 py-1 text-xs font-medium transition hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-destructive"
                             >
-                              Refresh
+                              Coba lagi
                             </button>
                           </div>
-                        ) : null}
-                      </>
-                    )}
+                        ) : (
+                          <>
+                            {categoriesLoading ? (
+                              <p className="mt-1 flex items-center gap-2 text-xs text-muted">
+                                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                                Memuat kategori...
+                              </p>
+                            ) : null}
+                            {!categoriesLoading && filteredCategories.length === 0 ? (
+                              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                                <span>
+                                  {type === 'income'
+                                    ? 'Belum ada kategori pemasukan.'
+                                    : 'Belum ada kategori pengeluaran.'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => navigate('/categories')}
+                                  className="rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-text transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                                >
+                                  Tambah Kategori
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    void categoriesQuery.refetch();
+                                  }}
+                                  className="rounded-lg border border-border-subtle px-2 py-1 text-xs font-medium text-text transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+                                >
+                                  Refresh
+                                </button>
+                              </div>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
+                </div>
 
-              <label className="flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-background px-4 py-3 text-sm text-text">
-                <span className="font-medium">Tetap di halaman tambah setelah simpan</span>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={stayOnAddAfterSave}
-                  onChange={(event) => {
-                    const nextValue = event.target.checked;
-                    setStayOnAddAfterSave(nextValue);
-                    updatePrefs({ stayOnAddAfterSave: nextValue });
-                  }}
-                />
-              </label>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm font-semibold text-text">Detail tambahan</p>
+                    <p className="text-xs text-muted">Opsional, tetapi membantu pencarian & laporan.</p>
+                  </div>
+                  <div className="grid gap-4">
+                    <div>
+                      <input
+                        id="title"
+                        aria-label="Judul (opsional)"
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Contoh: Makan siang tim"
+                        className={INPUT_CLASS}
+                      />
+                      <p className="mt-1 text-xs text-muted">Judul singkat memudahkan pencarian transaksi.</p>
+                    </div>
+                    <div>
+                      <textarea
+                        id="notes"
+                        aria-label="Catatan (opsional)"
+                        value={notes}
+                        onChange={(event) => setNotes(event.target.value)}
+                        rows={4}
+                        placeholder="Catatan tambahan"
+                        className={TEXTAREA_CLASS}
+                      />
+                      <p className="mt-1 text-xs text-muted">Tambahkan konteks supaya laporan lebih jelas.</p>
+                    </div>
+                  </div>
+                </div>
 
-              <div>
-                <input
-                  id="title"
-                  aria-label="Judul (opsional)"
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Contoh: Makan siang tim"
-                  className={INPUT_CLASS}
-                />
-                <p className="mt-1 text-xs text-muted">Judul singkat memudahkan pencarian transaksi.</p>
-              </div>
-
-              <div>
-                <textarea
-                  id="notes"
-                  aria-label="Catatan (opsional)"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  rows={4}
-                  placeholder="Catatan tambahan"
-                  className={TEXTAREA_CLASS}
-                />
-                <p className="mt-1 text-xs text-muted">Tambahkan konteks supaya laporan lebih jelas.</p>
-              </div>
-
+                <label className="flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-background px-4 py-3 text-sm text-text">
+                  <span className="font-medium">Tetap di halaman tambah setelah simpan</span>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={stayOnAddAfterSave}
+                    onChange={(event) => {
+                      const nextValue = event.target.checked;
+                      setStayOnAddAfterSave(nextValue);
+                      updatePrefs({ stayOnAddAfterSave: nextValue });
+                    }}
+                  />
+                </label>
               </CardBody>
             </Card>
 
@@ -1148,72 +1201,82 @@ export default function TransactionAdd({ onAdd }) {
             </Card>
           </div>
 
-          <div className="space-y-6">
-            <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
-              <CardBody className="space-y-5">
-                <div>
-                  <h2 className="text-base font-semibold text-text">Ringkasan cepat</h2>
-                  <p className="mt-1 text-sm text-muted">
-                    Pastikan detail berikut sudah sesuai sebelum menyimpan transaksi.
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border-subtle bg-background/60 p-4 text-sm text-muted">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${typeBadgeClass}`}>
-                        <TypeIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                        {typeLabel}
-                      </span>
-                      <span className="text-xs text-muted">{typeDescription}</span>
-                    </div>
-                    <div className="rounded-2xl bg-primary/10 px-4 py-2 text-right">
-                      <p className="text-xs text-primary">Nominal transaksi</p>
-                      <p className="text-lg font-semibold text-text">{formatAmountDisplay(amountValue)}</p>
-                    </div>
+          <div className="space-y-4">
+            <button
+              type="button"
+              onClick={() => setPreviewOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between rounded-2xl border border-border-subtle bg-muted/30 px-4 py-3 text-sm font-semibold text-text transition hover:bg-muted/40 md:hidden"
+            >
+              <span>Ringkasan cepat</span>
+              <span className="text-xs text-muted">{previewOpen ? 'Sembunyikan' : 'Lihat ringkasan'}</span>
+            </button>
+            <div className={`${previewOpen ? 'block' : 'hidden'} md:block`}>
+              <Card className="rounded-2xl border border-border-subtle bg-white/30 p-5 shadow-[0_20px_50px_rgba(15,23,42,0.12)] backdrop-blur dark:bg-slate-900/40 md:p-6">
+                <CardBody className="space-y-5">
+                  <div>
+                    <h2 className="text-base font-semibold text-text">Ringkasan cepat</h2>
+                    <p className="mt-1 text-sm text-muted">
+                      Pastikan detail berikut sudah sesuai sebelum menyimpan transaksi.
+                    </p>
                   </div>
-                </div>
-                <div className="space-y-3 text-sm text-muted">
-                  <div className="flex items-start gap-3">
-                    <Calendar className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                    <div>
-                      <p className="font-medium text-text">{date}</p>
-                      <p className="text-xs text-muted">Tanggal disimpan di zona waktu Asia/Jakarta</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Wallet className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                    <div>
-                      <p className="font-medium text-text">{selectedAccount?.name || 'Belum dipilih'}</p>
-                      <p className="text-xs text-muted">Saldo akan bergerak dari akun ini</p>
-                    </div>
-                  </div>
-                  {isTransfer ? (
-                    <div className="flex items-start gap-3">
-                      <ArrowRight className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                      <div>
-                        <p className="font-medium text-text">{toAccountLabel}</p>
-                        <p className="text-xs text-muted">Saldo akan diterima oleh akun tujuan</p>
+                  <div className="rounded-2xl border border-border-subtle bg-background/60 p-4 text-sm text-muted">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${typeBadgeClass}`}>
+                          <TypeIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                          {typeLabel}
+                        </span>
+                        <span className="text-xs text-muted">{typeDescription}</span>
+                      </div>
+                      <div className="rounded-2xl bg-primary/10 px-4 py-2 text-right">
+                        <p className="text-xs text-primary">Nominal transaksi</p>
+                        <p className="text-lg font-semibold text-text">{formatAmountDisplay(amountValue)}</p>
                       </div>
                     </div>
-                  ) : (
+                  </div>
+                  <div className="space-y-3 text-sm text-muted">
                     <div className="flex items-start gap-3">
-                      <TagIcon className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                      <Calendar className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
                       <div>
-                        <p className="font-medium text-text">{categoryLabel}</p>
-                        <p className="text-xs text-muted">Kategori membantu analisis transaksi</p>
+                        <p className="font-medium text-text">{date}</p>
+                        <p className="text-xs text-muted">Tanggal disimpan di zona waktu Asia/Jakarta</p>
                       </div>
                     </div>
-                  )}
-                  <div className="flex items-start gap-3">
-                    <FileText className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                    <div>
-                      <p className="font-medium text-text">{trimmedTitle || 'Belum ada judul'}</p>
-                      <p className="text-xs text-muted">{notesDescription}</p>
+                    <div className="flex items-start gap-3">
+                      <Wallet className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                      <div>
+                        <p className="font-medium text-text">{selectedAccount?.name || 'Belum dipilih'}</p>
+                        <p className="text-xs text-muted">Saldo akan bergerak dari akun ini</p>
+                      </div>
+                    </div>
+                    {isTransfer ? (
+                      <div className="flex items-start gap-3">
+                        <ArrowRight className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                        <div>
+                          <p className="font-medium text-text">{toAccountLabel}</p>
+                          <p className="text-xs text-muted">Saldo akan diterima oleh akun tujuan</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-3">
+                        <TagIcon className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                        <div>
+                          <p className="font-medium text-text">{categoryLabel}</p>
+                          <p className="text-xs text-muted">Kategori membantu analisis transaksi</p>
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-start gap-3">
+                      <FileText className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
+                      <div>
+                        <p className="font-medium text-text">{trimmedTitle || 'Belum ada judul'}</p>
+                        <p className="text-xs text-muted">{notesDescription}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardBody>
-            </Card>
+                </CardBody>
+              </Card>
+            </div>
           </div>
         </form>
       </Section>
