@@ -9,9 +9,8 @@ import {
   Calendar,
   FileText,
   Loader2,
-  Receipt,
-  RotateCcw,
   Save,
+  Star,
   Tag as TagIcon,
   Trash2,
   TrendingDown,
@@ -34,7 +33,6 @@ import {
   deleteTransactionTemplate,
   listTransactionTemplates,
 } from '../lib/transactionTemplatesApi';
-import { supabase } from '../lib/supabase';
 import { useAccountsQuery, useCategoriesQuery } from '../hooks/transactionFormQueries';
 
 const TYPE_OPTIONS = [
@@ -68,7 +66,7 @@ const SEGMENTED_CLASS =
   'inline-flex rounded-2xl border border-border-subtle bg-muted/40 p-1 text-sm font-medium text-muted';
 
 const SEGMENT_ITEM_CLASS =
-  'flex items-center gap-2 rounded-xl px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+  'flex items-center gap-2 rounded-xl px-3 text-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
 const QUICK_AMOUNT_OPTIONS = [1000, 5000, 10000, 50000, 100000, 500000];
 
@@ -107,25 +105,6 @@ function parseAmount(value) {
   return Number.isFinite(parsed) ? parsed : NaN;
 }
 
-async function uploadReceipt(file, transactionId) {
-  const path = `receipts/${transactionId}/${Date.now()}_${file.name}`;
-  const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file, {
-    cacheControl: '3600',
-    upsert: true,
-  });
-  if (uploadError) throw uploadError;
-  const { data } = supabase.storage.from('receipts').getPublicUrl(path);
-  const publicUrl = data?.publicUrl ?? null;
-  if (publicUrl) {
-    const { error: updateError } = await supabase
-      .from('transactions')
-      .update({ receipt_url: publicUrl })
-      .eq('id', transactionId);
-    if (updateError) throw updateError;
-  }
-  return publicUrl;
-}
-
 export default function TransactionAdd({ onAdd }) {
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -140,15 +119,21 @@ export default function TransactionAdd({ onAdd }) {
   const [notes, setNotes] = useState('');
   const [accounts, setAccounts] = useState([]);
   const [errors, setErrors] = useState({});
-  const [receiptFile, setReceiptFile] = useState(null);
-  const [receiptPreview, setReceiptPreview] = useState('');
-  const [dragOver, setDragOver] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templateName, setTemplateName] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
   const [applyingTemplateId, setApplyingTemplateId] = useState(null);
+  const [favoriteTemplateIds, setFavoriteTemplateIds] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    const stored = window.localStorage.getItem('favorite_transaction_templates');
+    if (!stored) return [];
+    return stored
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+  });
   const [stayOnAddAfterSave, setStayOnAddAfterSave] = useState(
     () => getPrefs().stayOnAddAfterSave,
   );
@@ -234,15 +219,6 @@ export default function TransactionAdd({ onAdd }) {
   }, [accountId, toAccountId, type]);
 
   useEffect(() => {
-    if (!receiptFile) return undefined;
-    const url = URL.createObjectURL(receiptFile);
-    setReceiptPreview(url);
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [receiptFile]);
-
-  useEffect(() => {
     const handleKey = (event) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -310,6 +286,21 @@ export default function TransactionAdd({ onAdd }) {
     () => TYPE_OPTIONS.find((option) => option.value === type),
     [type],
   );
+  const typeBadgeClass =
+    type === 'income'
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200'
+      : type === 'transfer'
+        ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-200'
+        : 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200';
+  const sortedTemplates = useMemo(() => {
+    if (!templates.length) return [];
+    const favorites = new Set(favoriteTemplateIds);
+    return [...templates].sort((a, b) => {
+      const favoriteDiff = Number(favorites.has(b.id)) - Number(favorites.has(a.id));
+      if (favoriteDiff !== 0) return favoriteDiff;
+      return String(a.name || '').localeCompare(String(b.name || ''));
+    });
+  }, [templates, favoriteTemplateIds]);
 
   const isTransfer = type === 'transfer';
   const amountValue = parseAmount(amountInput);
@@ -320,7 +311,6 @@ export default function TransactionAdd({ onAdd }) {
       ? `${trimmedNotes.slice(0, 77)}…`
       : trimmedNotes
     : 'Tidak ada catatan';
-  const hasReceipt = Boolean(receiptFile || receiptPreview);
   const typeDescription =
     type === 'income'
       ? 'Dana masuk ke akun sumber'
@@ -331,10 +321,6 @@ export default function TransactionAdd({ onAdd }) {
   const TypeIcon = typeMeta?.icon || TrendingDown;
   const categoryLabel = !isTransfer ? selectedCategory?.name || 'Belum dipilih' : null;
   const toAccountLabel = isTransfer ? selectedToAccount?.name || 'Belum dipilih' : null;
-  const receiptSummary = hasReceipt ? '1 file terlampir' : 'Belum ada struk';
-  const receiptDescription = hasReceipt
-    ? 'Struk akan tersimpan bersama transaksi ini.'
-    : 'Unggah struk untuk dokumentasi dan audit.';
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
 
   const handleAmountChange = (event) => {
@@ -353,19 +339,6 @@ export default function TransactionAdd({ onAdd }) {
   const handleDateSelect = (value) => {
     setDate(value);
     setErrors((prev) => ({ ...prev, date: undefined }));
-  };
-
-  const handleReceiptFiles = (files) => {
-    if (!files || !files.length) return;
-    const [file] = files;
-    if (!file) return;
-    setReceiptFile(file);
-  };
-
-  const handleDrop = (event) => {
-    event.preventDefault();
-    setDragOver(false);
-    handleReceiptFiles(event.dataTransfer.files);
   };
 
   const handleSaveTemplate = async () => {
@@ -410,6 +383,18 @@ export default function TransactionAdd({ onAdd }) {
     } finally {
       setSavingTemplate(false);
     }
+  };
+
+  const handleToggleFavoriteTemplate = (templateId) => {
+    setFavoriteTemplateIds((prev) => {
+      const next = prev.includes(templateId)
+        ? prev.filter((id) => id !== templateId)
+        : [...prev, templateId];
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('favorite_transaction_templates', next.join(','));
+      }
+      return next;
+    });
   };
 
   const handleApplyTemplate = async (template) => {
@@ -551,8 +536,6 @@ export default function TransactionAdd({ onAdd }) {
     setCategoryId('');
     setTitle('');
     setNotes('');
-    setReceiptFile(null);
-    setReceiptPreview('');
     setErrors({});
     if (accounts.length) {
       setAccountId(accounts[0].id);
@@ -581,15 +564,6 @@ export default function TransactionAdd({ onAdd }) {
         notes: trimmedNotes ? trimmedNotes : null,
       });
 
-      let receiptUrl = saved.receipt_url || null;
-      if (receiptFile) {
-        try {
-          receiptUrl = await uploadReceipt(receiptFile, saved.id);
-        } catch (err) {
-          addToast(err?.message || 'Struk gagal diunggah, tetapi transaksi tersimpan.', 'error');
-        }
-      }
-
       const timestamp = new Date().toISOString();
       const payload = {
         ...saved,
@@ -603,7 +577,7 @@ export default function TransactionAdd({ onAdd }) {
         title: saved.title ?? (trimmedTitle || null),
         notes: saved.notes ?? (trimmedNotes || null),
         note: saved.notes ?? (trimmedNotes || null),
-        receipt_url: receiptUrl,
+        receipt_url: saved.receipt_url || null,
         inserted_at: saved.inserted_at ?? timestamp,
         updated_at: saved.updated_at ?? timestamp,
         __persisted: true,
@@ -856,6 +830,7 @@ export default function TransactionAdd({ onAdd }) {
                           </option>
                         ))}
                     </select>
+                    <p className="mt-1 text-xs text-muted">Pilih akun yang berbeda dari akun sumber.</p>
                     {errors.to_account_id ? <p className="mt-1 text-xs text-destructive">{errors.to_account_id}</p> : null}
                   </div>
                 ) : null}
@@ -932,6 +907,7 @@ export default function TransactionAdd({ onAdd }) {
                         </Combobox.Options>
                       </div>
                     </Combobox>
+                    <p className="mt-1 text-xs text-muted">Kategori membantu analisis pengeluaran & pemasukan.</p>
                     {errors.category_id ? (
                       <p className="mt-1 text-xs text-destructive">{errors.category_id}</p>
                     ) : categoriesError ? (
@@ -1009,6 +985,7 @@ export default function TransactionAdd({ onAdd }) {
                   placeholder="Contoh: Makan siang tim"
                   className={INPUT_CLASS}
                 />
+                <p className="mt-1 text-xs text-muted">Judul singkat memudahkan pencarian transaksi.</p>
               </div>
 
               <div>
@@ -1021,63 +998,12 @@ export default function TransactionAdd({ onAdd }) {
                   placeholder="Catatan tambahan"
                   className={TEXTAREA_CLASS}
                 />
+                <p className="mt-1 text-xs text-muted">Tambahkan konteks supaya laporan lebih jelas.</p>
               </div>
 
-              <div>
-                <p className="mb-2 flex items-center gap-2 text-sm font-medium text-muted">
-                  <Receipt className="h-4 w-4" aria-hidden="true" />
-                  Upload struk (opsional)
-                </p>
-                <label
-                  htmlFor="receipt"
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    setDragOver(true);
-                  }}
-                  onDragLeave={() => setDragOver(false)}
-                  onDrop={handleDrop}
-                  className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-8 text-center text-sm transition ${
-                    dragOver ? 'border-primary bg-primary/10 text-primary' : 'border-border-subtle text-muted hover:border-primary hover:text-primary'
-                  }`}
-                >
-                  <Receipt className="h-8 w-8" aria-hidden="true" />
-                  <div>
-                    <p className="font-medium text-text">Tarik file ke sini atau klik untuk pilih</p>
-                    <p className="text-xs text-muted">Mendukung gambar atau PDF</p>
-                  </div>
-                  <input
-                    id="receipt"
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(event) => handleReceiptFiles(event.target.files)}
-                    className="sr-only"
-                  />
-                  {receiptFile ? (
-                    <p className="text-xs text-text">{receiptFile.name}</p>
-                  ) : null}
-                  {receiptPreview ? (
-                    <img src={receiptPreview} alt="Pratinjau struk" className="mt-2 max-h-40 rounded-xl object-cover" />
-                  ) : null}
-                </label>
-                {receiptFile ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReceiptFile(null);
-                      setReceiptPreview('');
-                    }}
-                    className="mt-2 inline-flex items-center gap-2 text-sm text-muted hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    <RotateCcw className="h-4 w-4" aria-hidden="true" />
-                    Hapus file
-                  </button>
-                ) : null}
-              </div>
               </CardBody>
             </Card>
-          </div>
 
-          <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-5">
                 <div>
@@ -1123,7 +1049,7 @@ export default function TransactionAdd({ onAdd }) {
                     </p>
                   ) : (
                     <ul className="divide-y divide-border-subtle rounded-2xl border border-border-subtle bg-background/60">
-                      {templates.map((template) => {
+                      {sortedTemplates.map((template) => {
                         const accountName = accounts.find((item) => item.id === template.account_id)?.name || 'Akun tidak ditemukan';
                         const toAccountName = template.to_account_id
                           ? accounts.find((item) => item.id === template.to_account_id)?.name || 'Akun tidak ditemukan'
@@ -1135,6 +1061,7 @@ export default function TransactionAdd({ onAdd }) {
                           template.type === 'transfer'
                             ? `Ke ${toAccountName || '—'}`
                             : categoryName || '—';
+                        const isFavorite = favoriteTemplateIds.includes(template.id);
                         return (
                           <li
                             key={template.id}
@@ -1155,12 +1082,31 @@ export default function TransactionAdd({ onAdd }) {
                                   )}
                                   <span className="truncate">{metaLabel}</span>
                                 </span>
+                                {isFavorite ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-400/20 dark:text-amber-200">
+                                    <Star className="h-3 w-3" aria-hidden="true" />
+                                    Favorit
+                                  </span>
+                                ) : null}
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <span className="min-w-[110px] text-right text-sm font-semibold text-text">
                                 {formatAmountDisplay(template.amount)}
                               </span>
+                              <button
+                                type="button"
+                                onClick={() => handleToggleFavoriteTemplate(template.id)}
+                                className={`inline-flex h-9 w-9 items-center justify-center rounded-full border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                                  isFavorite
+                                    ? 'border-amber-300 bg-amber-100 text-amber-700 dark:border-amber-400/40 dark:bg-amber-400/20 dark:text-amber-200'
+                                    : 'border-border-subtle text-muted hover:text-amber-600'
+                                }`}
+                                aria-label={isFavorite ? 'Hapus dari favorit' : 'Tambah ke favorit'}
+                                title={isFavorite ? 'Hapus dari favorit' : 'Tambah ke favorit'}
+                              >
+                                <Star className={`h-4 w-4 ${isFavorite ? 'fill-current' : ''}`} aria-hidden="true" />
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleApplyTemplate(template)}
@@ -1198,6 +1144,9 @@ export default function TransactionAdd({ onAdd }) {
                 </div>
               </CardBody>
             </Card>
+          </div>
+
+          <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-5">
                 <div>
@@ -1206,21 +1155,22 @@ export default function TransactionAdd({ onAdd }) {
                     Pastikan detail berikut sudah sesuai sebelum menyimpan transaksi.
                   </p>
                 </div>
+                <div className="rounded-2xl border border-border-subtle bg-background/60 p-4 text-sm text-muted">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${typeBadgeClass}`}>
+                        <TypeIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                        {typeLabel}
+                      </span>
+                      <span className="text-xs text-muted">{typeDescription}</span>
+                    </div>
+                    <div className="rounded-2xl bg-primary/10 px-4 py-2 text-right">
+                      <p className="text-xs text-primary">Nominal transaksi</p>
+                      <p className="text-lg font-semibold text-text">{formatAmountDisplay(amountValue)}</p>
+                    </div>
+                  </div>
+                </div>
                 <div className="space-y-3 text-sm text-muted">
-                  <div className="flex items-start gap-3">
-                    <TypeIcon className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                    <div>
-                      <p className="font-medium text-text">{typeLabel}</p>
-                      <p className="text-xs text-muted">{typeDescription}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Banknote className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                    <div>
-                      <p className="font-medium text-text">{formatAmountDisplay(amountValue)}</p>
-                      <p className="text-xs text-muted">Nominal transaksi</p>
-                    </div>
-                  </div>
                   <div className="flex items-start gap-3">
                     <Calendar className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
                     <div>
@@ -1257,13 +1207,6 @@ export default function TransactionAdd({ onAdd }) {
                     <div>
                       <p className="font-medium text-text">{trimmedTitle || 'Belum ada judul'}</p>
                       <p className="text-xs text-muted">{notesDescription}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <Receipt className="mt-0.5 h-4 w-4 text-primary" aria-hidden="true" />
-                    <div>
-                      <p className="font-medium text-text">{receiptSummary}</p>
-                      <p className="text-xs text-muted">{receiptDescription}</p>
                     </div>
                   </div>
                 </div>
