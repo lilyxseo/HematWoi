@@ -1,5 +1,6 @@
 // src/lib/api.js
 import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabase";
+import { syncDebtPaymentFromTransaction } from "./api-debts";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
@@ -680,6 +681,11 @@ export async function updateTransaction(id, patch = {}) {
     } catch (err) {
       console.error("Failed to update receipts", err);
     }
+  }
+  try {
+    await syncDebtPaymentFromTransaction(id, patch);
+  } catch (err) {
+    console.error("Failed to sync debt payment from transaction", err);
   }
   return mapTransactionRow(saved);
 }
