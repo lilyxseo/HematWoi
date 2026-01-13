@@ -336,6 +336,15 @@ export default function TransactionAdd({ onAdd }) {
     ? 'Struk akan tersimpan bersama transaksi ini.'
     : 'Unggah struk untuk dokumentasi dan audit.';
   const notesDescription = trimmedNotes ? `Catatan: ${notesPreview}` : 'Catatan belum diisi';
+  const requiredChecks = [
+    Number.isFinite(amountValue) && amountValue > 0,
+    Boolean(date),
+    Boolean(accountId),
+    isTransfer ? Boolean(toAccountId) : type === 'expense' ? Boolean(categoryId) : true,
+  ];
+  const completionCount = requiredChecks.filter(Boolean).length;
+  const completionTotal = requiredChecks.length;
+  const completionPercent = Math.round((completionCount / completionTotal) * 100);
 
   const handleAmountChange = (event) => {
     const formatted = formatAmountInputValue(event.target.value);
@@ -626,7 +635,10 @@ export default function TransactionAdd({ onAdd }) {
 
   return (
     <Page>
-      <PageHeader title="Tambah Transaksi">
+      <PageHeader
+        title="Tambah Transaksi"
+        description="Catat pemasukan, pengeluaran, atau transfer dengan tampilan yang rapi dan profesional."
+      >
         <button
           type="button"
           onClick={() => navigate('/transactions')}
@@ -657,6 +669,29 @@ export default function TransactionAdd({ onAdd }) {
           <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-background/80 p-4 shadow-sm">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">Progress input</p>
+                    <p className="text-lg font-semibold text-text">{completionPercent}% lengkap</p>
+                    <p className="text-xs text-muted">
+                      {completionPercent === 100
+                        ? 'Semua data wajib sudah terisi.'
+                        : 'Lengkapi data wajib untuk mempercepat proses simpan.'}
+                    </p>
+                  </div>
+                  <div className="w-full max-w-[220px]">
+                    <div className="flex items-center justify-between text-xs text-muted">
+                      <span>{completionCount} dari {completionTotal} langkah</span>
+                      <span className="font-medium text-text">{completionPercent}%</span>
+                    </div>
+                    <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-muted/60">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all"
+                        style={{ width: `${completionPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tipe</span>
@@ -1009,6 +1044,7 @@ export default function TransactionAdd({ onAdd }) {
                   placeholder="Contoh: Makan siang tim"
                   className={INPUT_CLASS}
                 />
+                <p className="mt-1 text-xs text-muted">Judul membantu pencarian transaksi lebih cepat.</p>
               </div>
 
               <div>
@@ -1021,6 +1057,7 @@ export default function TransactionAdd({ onAdd }) {
                   placeholder="Catatan tambahan"
                   className={TEXTAREA_CLASS}
                 />
+                <p className="mt-1 text-xs text-muted">Gunakan catatan untuk detail merchant atau tujuan transaksi.</p>
               </div>
 
               <div>
@@ -1267,6 +1304,19 @@ export default function TransactionAdd({ onAdd }) {
                     </div>
                   </div>
                 </div>
+              </CardBody>
+            </Card>
+            <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
+              <CardBody className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Wand2 className="h-4 w-4 text-primary" aria-hidden="true" />
+                  <h2 className="text-base font-semibold text-text">Tips premium</h2>
+                </div>
+                <ul className="space-y-2 text-sm text-muted">
+                  <li>Gunakan template untuk transaksi rutin agar input lebih cepat.</li>
+                  <li>Isi judul yang spesifik supaya laporan lebih mudah dibaca.</li>
+                  <li>Unggah struk untuk audit atau klaim reimbursement.</li>
+                </ul>
               </CardBody>
             </Card>
           </div>
