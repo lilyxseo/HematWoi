@@ -635,10 +635,14 @@ export default function ReportsProPage() {
     transactionsQuery.error || categoriesQuery.error || accountsQuery.error;
 
   return (
-    <Page className="flex h-full min-h-0 flex-col">
-      <PageHeader title="Reports Pro" description="Analisis detail cashflow dan breakdown laporan." />
+    <Page className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain touch-pan-y"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        <PageHeader title="Reports Pro" description="Analisis detail cashflow dan breakdown laporan." />
 
-      <section className="flex min-h-0 flex-1 flex-col gap-6">
+        <section className="flex flex-col gap-6">
         <div className="shrink-0 space-y-6">
           <Card className="space-y-5">
             <CardHeader
@@ -920,7 +924,7 @@ export default function ReportsProPage() {
           )}
         </div>
 
-        <Card className="flex min-h-0 flex-1 flex-col">
+        <Card className="flex flex-col">
           <CardHeader
             title="Detail Report"
             className="shrink-0"
@@ -930,7 +934,7 @@ export default function ReportsProPage() {
               </div>
             }
           />
-          <CardBody className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto pb-24">
+          <CardBody className="flex flex-col gap-6 pb-24">
             {activeTab === 'categories' && (
               <div className="space-y-4">
                 <div className="overflow-hidden rounded-3xl ring-1 ring-slate-800">
@@ -1243,6 +1247,7 @@ export default function ReportsProPage() {
           </CardBody>
         </Card>
       </section>
+      </div>
     </Page>
   );
 }
