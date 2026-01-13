@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { diffInCalendarDays } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import {
   CalendarDays,
@@ -256,7 +257,7 @@ function buildDailyExpenseSeries(
     .filter((tx) => tx.type === "expense")
     .forEach((tx) => {
       const key = tx.date.slice(0, 10);
-      totals.set(key, (totals.get(key) ?? 0) + tx.amount);
+      totals.set(key, (totals.get(key) ?? 0) + Math.abs(tx.amount));
     });
 
   const values: number[] = [];
@@ -343,7 +344,7 @@ function buildHealthSnapshot(params: {
     .reduce((sum, tx) => sum + tx.amount, 0);
   const expense = inRange
     .filter((tx) => tx.type === "expense")
-    .reduce((sum, tx) => sum + tx.amount, 0);
+    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
   const net = income - expense;
   const savingsRate = income > 0 ? net / income : 0;
 
@@ -361,11 +362,12 @@ function buildHealthSnapshot(params: {
     0
   );
 
+  const days = Math.max(1, diffInCalendarDays(end, start) + 1);
+  const totalExpense = inRange
+    .filter((tx) => tx.type === "expense")
+    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
   const dailyExpenses = buildDailyExpenseSeries(inRange, start, end);
-  const avgDailyExpense =
-    dailyExpenses.length > 0
-      ? dailyExpenses.reduce((sum, value) => sum + value, 0) / dailyExpenses.length
-      : 0;
+  const avgDailyExpense = days > 0 ? totalExpense / days : 0;
   const expenseDeviation = computeStandardDeviation(dailyExpenses);
   const expenseStabilityRatio =
     avgDailyExpense > 0 ? expenseDeviation / avgDailyExpense : null;
@@ -375,6 +377,13 @@ function buildHealthSnapshot(params: {
       : computeExpenseStabilityScore(expenseStabilityRatio);
 
   const expenseCoverageDays = computeCoverageDays(totalBalance, avgDailyExpense);
+  console.debug("[FinancialHealth] Expense coverage", {
+    totalBalance,
+    totalExpense,
+    days,
+    avgDailyExpense,
+    coverageDays: expenseCoverageDays,
+  });
   const expenseCoverageScore =
     expenseCoverageDays == null
       ? null
