@@ -28,6 +28,7 @@ import { useToast } from '../context/ToastContext';
 import { createTransaction } from '../lib/transactionsApi';
 import { getPrefs, updatePrefs } from '../lib/preferences';
 import { formatCurrency } from '../lib/format';
+import useDashboardBalances from '../hooks/useDashboardBalances';
 import {
   createTransactionTemplate,
   deleteTransactionTemplate,
@@ -159,6 +160,18 @@ export default function TransactionAdd({ onAdd }) {
   const categoriesLoading = categoriesQuery.isLoading;
   const categoriesError = categoriesQuery.error;
 
+  const balanceRange = useMemo(() => {
+    const today = getDateWithOffset(0);
+    return { start: today, end: today };
+  }, []);
+  const {
+    cashBalance,
+    nonCashBalance,
+    loading: balancesLoading,
+    error: balancesError,
+    refresh: refreshBalances,
+  } = useDashboardBalances(balanceRange);
+
   const accountsQuery = useAccountsQuery();
   const accountsLoading = accountsQuery.isLoading;
   const accountsError = accountsQuery.error;
@@ -200,6 +213,10 @@ export default function TransactionAdd({ onAdd }) {
   useEffect(() => {
     loadTemplates();
   }, [loadTemplates]);
+
+  useEffect(() => {
+    refreshBalances(balanceRange);
+  }, [balanceRange, refreshBalances]);
 
   useEffect(() => {
     if (type !== 'transfer') {
@@ -280,11 +297,14 @@ export default function TransactionAdd({ onAdd }) {
   }, [categoriesByType, categoryId, type]);
 
   const selectedAccount = accounts.find((item) => item.id === accountId);
-  const selectedAccountBalanceLabel = useMemo(() => {
-    if (!selectedAccount) return '—';
-    const currency = selectedAccount.currency ?? 'IDR';
-    return formatCurrency(selectedAccount.balance ?? 0, currency);
-  }, [selectedAccount]);
+  const cashBalanceLabel = useMemo(() => {
+    if (balancesLoading) return 'Memuat...';
+    return formatCurrency(cashBalance ?? 0, 'IDR');
+  }, [balancesLoading, cashBalance]);
+  const nonCashBalanceLabel = useMemo(() => {
+    if (balancesLoading) return 'Memuat...';
+    return formatCurrency(nonCashBalance ?? 0, 'IDR');
+  }, [balancesLoading, nonCashBalance]);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const selectedCategoryName = selectedCategory?.name || '';
@@ -801,9 +821,19 @@ export default function TransactionAdd({ onAdd }) {
                     </div>
                   </Combobox>
                   {errors.account_id ? <p className="mt-1 text-xs text-destructive">{errors.account_id}</p> : null}
-                  <p className="mt-2 text-xs text-muted">
-                    Saldo tersedia: <span className="font-medium text-text">{selectedAccountBalanceLabel}</span>
-                  </p>
+                  <div className="mt-2 space-y-1 text-xs text-muted">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Saldo tunai</span>
+                      <span className="font-medium text-text">{cashBalanceLabel}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Saldo non-tunai</span>
+                      <span className="font-medium text-text">{nonCashBalanceLabel}</span>
+                    </div>
+                    {balancesError ? (
+                      <p className="text-xs text-destructive">Gagal memuat saldo.</p>
+                    ) : null}
+                  </div>
                 </div>
                 {isTransfer ? (
                   <div>
