@@ -281,17 +281,41 @@ function computeExpenseStabilityScore(stabilityRatio: number) {
   return Math.max(0, 59 - normalized * 59);
 }
 
-function computeExpenseCoverageScore(coverageDays: number) {
-  if (coverageDays < 7) {
-    return 10 + (coverageDays / 7) * 20;
+function computeCoverageDays(totalBalance: number, avgDailyExpense: number) {
+  if (avgDailyExpense <= 0) return null;
+  if (totalBalance <= 0) return 0;
+  const coverageDays = totalBalance / avgDailyExpense;
+  if (!Number.isFinite(coverageDays)) return null;
+  return coverageDays < 0 ? 0 : coverageDays;
+}
+
+function scoreCoverageDays(coverageDays: number) {
+  const normalizedDays = Math.max(0, coverageDays);
+  const anchors = [
+    { days: 0, score: 5 },
+    { days: 7, score: 25 },
+    { days: 30, score: 55 },
+    { days: 60, score: 75 },
+    { days: 90, score: 90 },
+    { days: 120, score: 100 },
+  ];
+
+  if (normalizedDays <= anchors[0].days) {
+    return anchors[0].score;
   }
-  if (coverageDays < 30) {
-    return 31 + ((coverageDays - 7) / 23) * 29;
+
+  for (let i = 1; i < anchors.length; i += 1) {
+    const current = anchors[i];
+    const previous = anchors[i - 1];
+    if (normalizedDays <= current.days) {
+      const ratio =
+        (normalizedDays - previous.days) / (current.days - previous.days || 1);
+      const score = previous.score + ratio * (current.score - previous.score);
+      return Math.min(100, Math.max(0, score));
+    }
   }
-  if (coverageDays < 90) {
-    return 61 + ((coverageDays - 30) / 60) * 24;
-  }
-  return 86 + Math.min((coverageDays - 90) / 90, 1) * 14;
+
+  return 100;
 }
 
 function getHealthLabel(score: number) {
@@ -350,12 +374,11 @@ function buildHealthSnapshot(params: {
       ? null
       : computeExpenseStabilityScore(expenseStabilityRatio);
 
-  const expenseCoverageDays =
-    avgDailyExpense > 0 ? totalBalance / avgDailyExpense : null;
+  const expenseCoverageDays = computeCoverageDays(totalBalance, avgDailyExpense);
   const expenseCoverageScore =
     expenseCoverageDays == null
       ? null
-      : computeExpenseCoverageScore(expenseCoverageDays);
+      : scoreCoverageDays(expenseCoverageDays);
 
   const monthsSet = new Set(months);
   const spendByMonthCategory = new Map<string, number>();
@@ -784,17 +807,17 @@ export default function FinancialHealth() {
   const expenseCoverageValue =
     coverageDays == null
       ? "Belum cukup data"
-      : `Saldo cukup untuk ±${Math.max(0, Math.round(coverageDays))} hari`;
+      : `±${Math.max(0, Math.round(coverageDays))} hari`;
   const expenseCoverageStatus =
     coverageDays == null
       ? "Belum cukup data"
       : coverageDays < 7
-        ? "Perlu perhatian"
+        ? "Kritis"
         : coverageDays < 30
-          ? "Bisa ditingkatkan"
+          ? "Perlu Perhatian"
           : coverageDays < 90
             ? "Aman"
-            : "Sangat aman";
+            : "Sangat Aman";
   const isEmpty = normalizedTransactions.length === 0;
 
   return (
@@ -839,7 +862,7 @@ export default function FinancialHealth() {
           />
         )}
 
-        <Card>
+        <Card className="overflow-visible">
           <CardHeader
             title="Breakdown Indikator"
             subtext="Lihat faktor utama yang memengaruhi skor finansialmu."
