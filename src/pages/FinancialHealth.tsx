@@ -270,6 +270,20 @@ function buildDailyExpenseSeries(
   return values;
 }
 
+function diffInCalendarDays(laterDate: Date, earlierDate: Date) {
+  const start = Date.UTC(
+    earlierDate.getFullYear(),
+    earlierDate.getMonth(),
+    earlierDate.getDate()
+  );
+  const end = Date.UTC(
+    laterDate.getFullYear(),
+    laterDate.getMonth(),
+    laterDate.getDate()
+  );
+  return Math.floor((end - start) / (24 * 60 * 60 * 1000));
+}
+
 function computeExpenseStabilityScore(stabilityRatio: number) {
   if (stabilityRatio < 0.3) {
     return 90 + ((0.3 - stabilityRatio) / 0.3) * 10;
@@ -282,11 +296,11 @@ function computeExpenseStabilityScore(stabilityRatio: number) {
 }
 
 function computeCoverageDays(totalBalance: number, avgDailyExpense: number) {
-  if (avgDailyExpense <= 0) return null;
   if (totalBalance <= 0) return 0;
+  if (avgDailyExpense <= 0) return null;
   const coverageDays = totalBalance / avgDailyExpense;
   if (!Number.isFinite(coverageDays)) return null;
-  return coverageDays < 0 ? 0 : coverageDays;
+  return Math.max(0, coverageDays);
 }
 
 function scoreCoverageDays(coverageDays: number) {
@@ -361,14 +375,22 @@ function buildHealthSnapshot(params: {
     0
   );
 
+  const totalExpense = inRange
+    .filter((tx) => tx.type === "expense")
+    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  const days = Math.max(1, diffInCalendarDays(end, start) + 1);
+  const avgDailyExpense = totalExpense / days;
+
   const dailyExpenses = buildDailyExpenseSeries(inRange, start, end);
-  const avgDailyExpense =
+  const avgDailyStabilityExpense =
     dailyExpenses.length > 0
       ? dailyExpenses.reduce((sum, value) => sum + value, 0) / dailyExpenses.length
       : 0;
   const expenseDeviation = computeStandardDeviation(dailyExpenses);
   const expenseStabilityRatio =
-    avgDailyExpense > 0 ? expenseDeviation / avgDailyExpense : null;
+    avgDailyStabilityExpense > 0
+      ? expenseDeviation / avgDailyStabilityExpense
+      : null;
   const expenseStabilityScore =
     expenseStabilityRatio == null
       ? null
@@ -379,6 +401,14 @@ function buildHealthSnapshot(params: {
     expenseCoverageDays == null
       ? null
       : scoreCoverageDays(expenseCoverageDays);
+
+  console.debug("Expense coverage debug", {
+    totalBalance,
+    totalExpense,
+    days,
+    avgDailyExpense,
+    coverageDays: expenseCoverageDays,
+  });
 
   const monthsSet = new Set(months);
   const spendByMonthCategory = new Map<string, number>();
@@ -804,18 +834,22 @@ export default function FinancialHealth() {
           ? "Cukup Stabil"
           : "Tidak Stabil";
   const coverageDays = snapshot.expenseCoverageDays;
+  const normalizedCoverageDays =
+    coverageDays != null && Number.isFinite(coverageDays)
+      ? Math.max(0, coverageDays)
+      : null;
   const expenseCoverageValue =
-    coverageDays == null
+    normalizedCoverageDays == null
       ? "Belum cukup data"
-      : `±${Math.max(0, Math.round(coverageDays))} hari`;
+      : `±${Math.round(normalizedCoverageDays)} hari`;
   const expenseCoverageStatus =
-    coverageDays == null
+    normalizedCoverageDays == null
       ? "Belum cukup data"
-      : coverageDays < 7
+      : normalizedCoverageDays < 7
         ? "Kritis"
-        : coverageDays < 30
+        : normalizedCoverageDays < 30
           ? "Perlu Perhatian"
-          : coverageDays < 90
+          : normalizedCoverageDays < 90
             ? "Aman"
             : "Sangat Aman";
   const isEmpty = normalizedTransactions.length === 0;
