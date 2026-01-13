@@ -297,14 +297,12 @@ export default function TransactionAdd({ onAdd }) {
   }, [categoriesByType, categoryId, type]);
 
   const selectedAccount = accounts.find((item) => item.id === accountId);
-  const cashBalanceLabel = useMemo(() => {
+  const availableBalanceLabel = useMemo(() => {
     if (balancesLoading) return 'Memuat...';
-    return formatCurrency(cashBalance ?? 0, 'IDR');
-  }, [balancesLoading, cashBalance]);
-  const nonCashBalanceLabel = useMemo(() => {
-    if (balancesLoading) return 'Memuat...';
-    return formatCurrency(nonCashBalance ?? 0, 'IDR');
-  }, [balancesLoading, nonCashBalance]);
+    const isCashAccount = selectedAccount?.type === 'cash';
+    const balanceValue = isCashAccount ? cashBalance : nonCashBalance;
+    return formatCurrency(balanceValue ?? 0, 'IDR');
+  }, [balancesLoading, cashBalance, nonCashBalance, selectedAccount?.type]);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const selectedCategoryName = selectedCategory?.name || '';
@@ -823,12 +821,8 @@ export default function TransactionAdd({ onAdd }) {
                   {errors.account_id ? <p className="mt-1 text-xs text-destructive">{errors.account_id}</p> : null}
                   <div className="mt-2 space-y-1 text-xs text-muted">
                     <div className="flex items-center justify-between gap-2">
-                      <span>Saldo tunai</span>
-                      <span className="font-medium text-text">{cashBalanceLabel}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <span>Saldo non-tunai</span>
-                      <span className="font-medium text-text">{nonCashBalanceLabel}</span>
+                      <span>Saldo tersedia</span>
+                      <span className="font-medium text-text">{availableBalanceLabel}</span>
                     </div>
                     {balancesError ? (
                       <p className="text-xs text-destructive">Gagal memuat saldo.</p>
