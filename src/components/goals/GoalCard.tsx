@@ -134,80 +134,82 @@ export default function GoalCard({
 
   return (
     <article
-      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-4 shadow-sm transition hover:border-border md:p-5 ${
+      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-4 shadow-sm transition hover:border-border md:max-w-[720px] md:gap-6 md:p-5 ${
         className ?? ''
       }`}
     >
-      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
-          <div
-            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-base font-semibold"
-            style={{ backgroundColor: `${goal.color}1f`, color: goal.color }}
-            aria-hidden="true"
-          >
-            {iconLabel}
-          </div>
-          <div className="min-w-0 space-y-1">
-            <h3 className="truncate text-lg font-semibold text-text" title={goal.title}>
-              {goal.title}
-            </h3>
-            {goal.description ? (
-              <p className="line-clamp-2 text-sm text-muted">{goal.description}</p>
+      <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-6">
+        <div className="flex min-w-0 flex-col gap-4">
+          <header className="flex flex-col gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <div
+                className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-base font-semibold"
+                style={{ backgroundColor: `${goal.color}1f`, color: goal.color }}
+                aria-hidden="true"
+              >
+                {iconLabel}
+              </div>
+              <div className="min-w-0 space-y-1">
+                <h3 className="truncate text-lg font-semibold text-text" title={goal.title}>
+                  {goal.title}
+                </h3>
+                {goal.description ? (
+                  <p className="line-clamp-2 text-sm text-muted">{goal.description}</p>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                  STATUS_CLASSES[goal.status]
+                }`}
+              >
+                {STATUS_LABELS[goal.status]}
+              </span>
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+                  PRIORITY_CLASSES[goal.priority]
+                }`}
+              >
+                {PRIORITY_LABELS[goal.priority]}
+              </span>
+            </div>
+          </header>
+
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Progress</span>
+              <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
+                {Math.round(progress)}%
+              </span>
+            </div>
+            <div className="relative h-2 w-full rounded-full bg-border/60">
+              <div
+                className="h-2 rounded-full bg-gradient-to-r from-brand/60 via-brand to-brand"
+                style={{ width: `${progress}%` }}
+              />
+              {milestoneDots.map((dot) => (
+                <span
+                  key={dot.id}
+                  className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-white bg-card shadow-sm"
+                  style={{ left: `${dot.percent}%`, transform: 'translate(-50%, -50%)' }}
+                />
+              ))}
+            </div>
+            <div className="flex items-center justify-between text-xs text-muted">
+              <span>{formatCurrency(goal.saved_amount)} terkumpul</span>
+              <span>{formatCurrency(goal.target_amount)} target</span>
+            </div>
+            {nextMilestone ? (
+              <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted">
+                Next milestone {formatCurrency(nextMilestone.amount)}
+              </div>
             ) : null}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-              STATUS_CLASSES[goal.status]
-            }`}
-          >
-            {STATUS_LABELS[goal.status]}
-          </span>
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-              PRIORITY_CLASSES[goal.priority]
-            }`}
-          >
-            {PRIORITY_LABELS[goal.priority]}
-          </span>
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,240px),1fr] md:items-center">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Progress</span>
-            <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
-              {Math.round(progress)}%
-            </span>
-          </div>
-          <div className="relative h-2 w-full rounded-full bg-border/60">
-            <div
-              className="h-2 rounded-full bg-gradient-to-r from-brand/60 via-brand to-brand"
-              style={{ width: `${progress}%` }}
-            />
-            {milestoneDots.map((dot) => (
-              <span
-                key={dot.id}
-                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-white bg-card shadow-sm"
-                style={{ left: `${dot.percent}%`, transform: 'translate(-50%, -50%)' }}
-              />
-            ))}
-          </div>
-          <div className="flex items-center justify-between text-xs text-muted">
-            <span>{formatCurrency(goal.saved_amount)} terkumpul</span>
-            <span>{formatCurrency(goal.target_amount)} target</span>
-          </div>
-          {nextMilestone ? (
-            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted">
-              Next milestone {formatCurrency(nextMilestone.amount)}
-            </div>
-          ) : null}
-        </div>
 
         <div className="min-w-0 space-y-4">
-          <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4 md:grid-cols-2 md:gap-4">
             <div className="space-y-1">
               <dt className="text-xs font-semibold uppercase tracking-wide text-muted">Target</dt>
               <dd className="font-medium">{formatCurrency(goal.target_amount)}</dd>
@@ -276,43 +278,43 @@ export default function GoalCard({
             </div>
           ) : null}
         </div>
-      </div>
 
-      <footer className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-        <button
-          type="button"
-          onClick={() => onEdit(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-        >
-          <Pencil className="h-4 w-4" aria-hidden="true" />
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={() => onOpenEntries(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-        >
-          <ListPlus className="h-4 w-4" aria-hidden="true" />
-          Setoran & Riwayat
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggleArchive(goal)}
-          disabled={Boolean(archiveLoading)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Archive className="h-4 w-4" aria-hidden="true" />
-          {archiveLabel}
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-        >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
-          Hapus
-        </button>
-      </footer>
+        <footer className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end md:col-start-2 md:row-start-2 md:flex-nowrap md:justify-start">
+          <button
+            type="button"
+            onClick={() => onEdit(goal)}
+            className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          >
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => onOpenEntries(goal)}
+            className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          >
+            <ListPlus className="h-4 w-4" aria-hidden="true" />
+            Setoran & Riwayat
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleArchive(goal)}
+            disabled={Boolean(archiveLoading)}
+            className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60 md:h-9 md:px-3 md:text-xs md:text-muted"
+          >
+            <Archive className="h-4 w-4" aria-hidden="true" />
+            {archiveLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(goal)}
+            className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] md:h-9 md:bg-danger/10 md:px-3 md:text-xs md:text-danger md:shadow-none"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden="true" />
+            Hapus
+          </button>
+        </footer>
+      </div>
     </article>
   );
 }
