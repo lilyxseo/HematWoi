@@ -27,6 +27,7 @@ import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { createTransaction } from '../lib/transactionsApi';
 import { getPrefs, updatePrefs } from '../lib/preferences';
+import { formatCurrency } from '../lib/format';
 import {
   createTransactionTemplate,
   deleteTransactionTemplate,
@@ -279,6 +280,11 @@ export default function TransactionAdd({ onAdd }) {
   }, [categoriesByType, categoryId, type]);
 
   const selectedAccount = accounts.find((item) => item.id === accountId);
+  const selectedAccountBalanceLabel = useMemo(() => {
+    if (!selectedAccount) return '—';
+    const currency = selectedAccount.currency ?? 'IDR';
+    return formatCurrency(selectedAccount.balance ?? 0, currency);
+  }, [selectedAccount]);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const selectedCategoryName = selectedCategory?.name || '';
@@ -629,11 +635,11 @@ export default function TransactionAdd({ onAdd }) {
       </PageHeader>
 
       <Section first>
-        <form id="add-transaction-form" onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_320px]">
+        <form id="add-transaction-form" onSubmit={handleSubmit} className="grid gap-6 md:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tipe</span>
                   <div className="mt-2">
@@ -795,6 +801,9 @@ export default function TransactionAdd({ onAdd }) {
                     </div>
                   </Combobox>
                   {errors.account_id ? <p className="mt-1 text-xs text-destructive">{errors.account_id}</p> : null}
+                  <p className="mt-2 text-xs text-muted">
+                    Saldo tersedia: <span className="font-medium text-text">{selectedAccountBalanceLabel}</span>
+                  </p>
                 </div>
                 {isTransfer ? (
                   <div>
@@ -1042,7 +1051,9 @@ export default function TransactionAdd({ onAdd }) {
               </div>
               </CardBody>
             </Card>
+          </div>
 
+          <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-5">
                 <div>
@@ -1163,9 +1174,6 @@ export default function TransactionAdd({ onAdd }) {
                 </div>
               </CardBody>
             </Card>
-          </div>
-
-          <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-5">
                 <div>
