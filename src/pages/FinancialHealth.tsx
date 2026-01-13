@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { addMonths, endOfMonth, startOfDay, startOfMonth } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import {
   CalendarDays,
@@ -65,7 +66,9 @@ type HealthSnapshot = {
   budgetScore: number;
   expenseStabilityRatio: number | null;
   expenseStabilityScore: number | null;
-  expenseCoverageDays: number | null;
+  expenseCoverageDailyAllowance: number;
+  expenseCoverageAvgDailyExpense: number;
+  expenseCoverageRatio: number | null;
   expenseCoverageScore: number | null;
   totalScore: number;
   label: string;
@@ -295,41 +298,12 @@ function computeExpenseStabilityScore(stabilityRatio: number) {
   return Math.max(0, 59 - normalized * 59);
 }
 
-function computeCoverageDays(totalBalance: number, avgDailyExpense: number) {
-  if (totalBalance <= 0) return 0;
-  if (avgDailyExpense <= 0) return null;
-  const coverageDays = totalBalance / avgDailyExpense;
-  if (!Number.isFinite(coverageDays)) return null;
-  return Math.max(0, coverageDays);
-}
-
-function scoreCoverageDays(coverageDays: number) {
-  const normalizedDays = Math.max(0, coverageDays);
-  const anchors = [
-    { days: 0, score: 5 },
-    { days: 7, score: 25 },
-    { days: 30, score: 55 },
-    { days: 60, score: 75 },
-    { days: 90, score: 90 },
-    { days: 120, score: 100 },
-  ];
-
-  if (normalizedDays <= anchors[0].days) {
-    return anchors[0].score;
+function scoreCoverageRatio(ratio: number) {
+  const clamped = Math.min(2, Math.max(0, ratio));
+  if (clamped <= 1) {
+    return Math.max(0, Math.min(100, 5 + clamped * 65));
   }
-
-  for (let i = 1; i < anchors.length; i += 1) {
-    const current = anchors[i];
-    const previous = anchors[i - 1];
-    if (normalizedDays <= current.days) {
-      const ratio =
-        (normalizedDays - previous.days) / (current.days - previous.days || 1);
-      const score = previous.score + ratio * (current.score - previous.score);
-      return Math.min(100, Math.max(0, score));
-    }
-  }
-
-  return 100;
+  return Math.max(0, Math.min(100, 70 + (clamped - 1) * 30));
 }
 
 function getHealthLabel(score: number) {
@@ -374,12 +348,26 @@ function buildHealthSnapshot(params: {
     (sum, account) => sum + safeNumber(account?.balance),
     0
   );
-
-  const totalExpense = inRange
-    .filter((tx) => tx.type === "expense")
+  const safeBalance = Math.max(0, totalBalance);
+  const today = startOfDay(new Date());
+  const endNextMonth = endOfMonth(addMonths(today, 1));
+  const remainingDays = Math.max(1, diffInCalendarDays(endNextMonth, today) + 1);
+  const monthStart = startOfMonth(today);
+  const monthStartIso = monthStart.toISOString().slice(0, 10);
+  const todayIso = today.toISOString().slice(0, 10);
+  const totalExpense = transactions
+    .filter(
+      (tx) =>
+        tx.type === "expense" &&
+        tx.date.slice(0, 10) >= monthStartIso &&
+        tx.date.slice(0, 10) <= todayIso
+    )
     .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
-  const days = Math.max(1, diffInCalendarDays(end, start) + 1);
-  const avgDailyExpense = totalExpense / days;
+  const daysElapsed = Math.max(1, diffInCalendarDays(today, monthStart) + 1);
+  const avgDailyExpense = totalExpense / daysElapsed;
+  const dailyAllowance = safeBalance / remainingDays;
+  const expenseCoverageRatio =
+    avgDailyExpense > 0 ? dailyAllowance / avgDailyExpense : null;
 
   const dailyExpenses = buildDailyExpenseSeries(inRange, start, end);
   const avgDailyStabilityExpense =
@@ -396,18 +384,16 @@ function buildHealthSnapshot(params: {
       ? null
       : computeExpenseStabilityScore(expenseStabilityRatio);
 
-  const expenseCoverageDays = computeCoverageDays(totalBalance, avgDailyExpense);
   const expenseCoverageScore =
-    expenseCoverageDays == null
-      ? null
-      : scoreCoverageDays(expenseCoverageDays);
+    expenseCoverageRatio == null ? null : scoreCoverageRatio(expenseCoverageRatio);
 
   console.debug("Expense coverage debug", {
+    remainingDays,
     totalBalance,
     totalExpense,
-    days,
     avgDailyExpense,
-    coverageDays: expenseCoverageDays,
+    dailyAllowance,
+    ratio: expenseCoverageRatio,
   });
 
   const monthsSet = new Set(months);
@@ -470,7 +456,9 @@ function buildHealthSnapshot(params: {
     budgetScore,
     expenseStabilityRatio,
     expenseStabilityScore,
-    expenseCoverageDays,
+    expenseCoverageDailyAllowance: dailyAllowance,
+    expenseCoverageAvgDailyExpense: avgDailyExpense,
+    expenseCoverageRatio,
     expenseCoverageScore,
     totalScore,
     label: getHealthLabel(totalScore),
@@ -833,25 +821,26 @@ export default function FinancialHealth() {
             snapshot.expenseStabilityRatio < 0.6
           ? "Cukup Stabil"
           : "Tidak Stabil";
-  const coverageDays = snapshot.expenseCoverageDays;
-  const normalizedCoverageDays =
-    coverageDays != null && Number.isFinite(coverageDays)
-      ? Math.max(0, coverageDays)
-      : null;
-  const expenseCoverageValue =
-    normalizedCoverageDays == null
-      ? "Belum cukup data"
-      : `±${Math.round(normalizedCoverageDays)} hari`;
+  const expenseCoverageRatio = snapshot.expenseCoverageRatio;
+  const expenseCoverageValue = `Batas aman: ${formatCurrency(
+    snapshot.expenseCoverageDailyAllowance
+  )}/hari`;
+  const expenseCoverageSecondary =
+    snapshot.expenseCoverageAvgDailyExpense > 0
+      ? `Rata-rata pengeluaran: ${formatCurrency(
+          snapshot.expenseCoverageAvgDailyExpense
+        )}/hari`
+      : "Belum cukup data pengeluaran";
   const expenseCoverageStatus =
-    normalizedCoverageDays == null
-      ? "Belum cukup data"
-      : normalizedCoverageDays < 7
-        ? "Kritis"
-        : normalizedCoverageDays < 30
-          ? "Perlu Perhatian"
-          : normalizedCoverageDays < 90
-            ? "Aman"
-            : "Sangat Aman";
+    expenseCoverageRatio == null
+      ? "Belum cukup data pengeluaran"
+      : expenseCoverageRatio >= 1.2
+        ? "Aman"
+        : expenseCoverageRatio >= 0.9
+          ? "Cukup"
+          : expenseCoverageRatio >= 0.6
+            ? "Perlu perhatian"
+            : "Kritis";
   const isEmpty = normalizedTransactions.length === 0;
 
   return (
@@ -983,13 +972,14 @@ export default function FinancialHealth() {
                     title="Expense Coverage"
                     icon={<CalendarDays className="h-5 w-5" />}
                     value={expenseCoverageValue}
+                    secondaryValue={expenseCoverageSecondary}
                     status={expenseCoverageStatus}
                     score={snapshot.expenseCoverageScore}
                     infoTitle="Expense Coverage"
                     infoPoints={[
-                      "Apa artinya: berapa lama saldo cukup menutup pengeluaran.",
-                      "Cara hitung: total saldo / pengeluaran harian rata-rata.",
-                      "Target sehat: ≥30 hari.",
+                      "Apa artinya: batas aman pengeluaran harian berdasarkan saldo.",
+                      "Cara hitung: saldo aman / sisa hari sampai akhir bulan depan.",
+                      "Bandingkan dengan rata-rata pengeluaran harian bulan ini.",
                     ]}
                   />
                 </>

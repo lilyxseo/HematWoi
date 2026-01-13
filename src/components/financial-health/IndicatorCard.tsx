@@ -7,7 +7,8 @@ import { createPortal } from "react-dom";
 interface IndicatorCardProps {
   title: string;
   icon: ReactNode;
-  value: string;
+  value: ReactNode;
+  secondaryValue?: ReactNode;
   status: string;
   score: number | null;
   infoTitle: string;
@@ -26,6 +27,7 @@ export default function IndicatorCard({
   title,
   icon,
   value,
+  secondaryValue,
   status,
   score,
   infoTitle,
@@ -207,7 +209,10 @@ export default function IndicatorCard({
           <p className="text-[11px] text-muted">Skor</p>
         </div>
       </div>
-      <div className="mt-4 text-lg font-semibold text-text">{value}</div>
+      <div className="mt-4 space-y-1">
+        <div className="text-lg font-semibold text-text">{value}</div>
+        {secondaryValue ? <div className="text-sm text-muted">{secondaryValue}</div> : null}
+      </div>
     </div>
   );
 }
