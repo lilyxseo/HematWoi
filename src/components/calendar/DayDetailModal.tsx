@@ -146,7 +146,7 @@ export default function DayDetailModal({
         </Transition.Child>
 
         <div className="fixed inset-0 overflow-y-auto">
-          <div className="flex min-h-full items-end justify-center px-4 py-6 text-center sm:items-center sm:p-6 lg:justify-end">
+          <div className="flex min-h-full items-end justify-center px-4 py-6 text-center sm:items-center sm:p-6">
             <Transition.Child
               as={Fragment}
               enter="ease-out duration-200"
@@ -156,7 +156,7 @@ export default function DayDetailModal({
               leaveFrom="opacity-100 sm:scale-100"
               leaveTo="opacity-0 sm:translate-y-4 sm:scale-95"
             >
-              <Dialog.Panel className="flex h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-left align-middle shadow-xl transition-all sm:h-[80vh] lg:mr-4 lg:h-[88vh]">
+              <Dialog.Panel className="flex h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 text-left align-middle shadow-xl transition-all sm:h-[80vh] lg:h-[88vh]">
                 <div className="flex items-start justify-between border-b border-slate-800 px-4 py-4 sm:px-6">
                   <div className="min-w-0">
                     <Dialog.Title className="text-lg font-semibold text-slate-100">

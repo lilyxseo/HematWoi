@@ -156,13 +156,13 @@ export default function Filters({
             <RotateCcw className="h-4 w-4" /> Reset
           </button>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
           <div className="flex min-w-0 flex-col gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipe kalender</span>
             <div className="relative">
               <div
                 ref={segmentedRef}
-                className="relative flex w-full justify-between gap-1 rounded-full bg-slate-800/60 px-2 py-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:w-fit sm:px-1 sm:py-1"
+                className="relative flex w-full justify-between gap-1 rounded-full bg-slate-800/60 px-2 py-1 ring-1 ring-slate-700/70 backdrop-blur-sm sm:px-1 sm:py-1"
               >
                 <span
                   className="pointer-events-none absolute inset-y-1 left-0 z-0 rounded-full bg-[var(--accent)] shadow-md transition-[transform,width,opacity] duration-300 ease-in-out"
@@ -181,7 +181,7 @@ export default function Filters({
                       type="button"
                       onClick={() => handleTypeChange(option.value)}
                       className={
-                        'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] sm:flex-none'
+                        'relative z-10 flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]'
                         + (isActive
                           ? ' text-white drop-shadow-sm'
                           : ' text-slate-300 hover:text-slate-100')
