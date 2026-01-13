@@ -8,12 +8,13 @@ interface IndicatorCardProps {
   icon: ReactNode;
   value: string;
   status: string;
-  score: number;
+  score: number | null;
   infoTitle: string;
   infoPoints: string[];
 }
 
-function getScoreTone(score: number) {
+function getScoreTone(score: number | null) {
+  if (score == null) return "text-muted";
   if (score >= 80) return "text-emerald-600";
   if (score >= 60) return "text-lime-600";
   if (score >= 40) return "text-amber-600";
@@ -144,7 +145,7 @@ export default function IndicatorCard({
         </div>
         <div className="text-right">
           <p className={clsx("text-sm font-semibold", getScoreTone(score))}>
-            {Math.round(score)}
+            {score == null ? "—" : Math.round(score)}
           </p>
           <p className="text-[11px] text-muted">Skor</p>
         </div>
