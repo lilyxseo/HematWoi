@@ -1116,9 +1116,7 @@ export default function TransactionAdd({ onAdd }) {
               </div>
               </CardBody>
             </Card>
-          </div>
 
-          <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-5">
                 <div>
@@ -1259,6 +1257,9 @@ export default function TransactionAdd({ onAdd }) {
                 </div>
               </CardBody>
             </Card>
+          </div>
+
+          <div className="space-y-6">
             <Card className="rounded-2xl border bg-gradient-to-b from-white/80 to-white/50 p-5 shadow-sm backdrop-blur dark:from-zinc-900/60 dark:to-zinc-900/30 md:p-6">
               <CardBody className="space-y-5">
                 <div>
