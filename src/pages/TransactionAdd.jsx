@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Combobox } from '@headlessui/react';
+import { Combobox, Popover } from '@headlessui/react';
 import {
   ArrowRight,
   ArrowLeftRight,
@@ -71,6 +71,10 @@ const SEGMENT_ITEM_CLASS =
 const QUICK_AMOUNT_OPTIONS = [1000, 5000, 10000, 50000, 100000, 500000];
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta' });
+const DATE_LABEL_FORMATTER = new Intl.DateTimeFormat('id-ID', {
+  dateStyle: 'medium',
+  timeZone: 'Asia/Jakarta',
+});
 const CURRENCY_FORMATTER = new Intl.NumberFormat('id-ID', { minimumFractionDigits: 0 });
 
 function formatAmountInputValue(raw) {
@@ -87,6 +91,13 @@ function getDateWithOffset(offset = 0) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offset);
   return DATE_FORMATTER.format(date);
+}
+
+function formatDateLabel(value) {
+  if (!value) return 'Pilih tanggal';
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return DATE_LABEL_FORMATTER.format(date);
 }
 
 function formatAmountDisplay(value) {
@@ -168,6 +179,7 @@ export default function TransactionAdd({ onAdd }) {
 
   const accountButtonRef = useRef(null);
   const categoryButtonRef = useRef(null);
+  const toAccountButtonRef = useRef(null);
 
   useEffect(() => {
     if (accountsError) {
@@ -247,6 +259,10 @@ export default function TransactionAdd({ onAdd }) {
     () => accounts.map((account) => ({ value: account.id, label: account.name || 'Tanpa nama' })),
     [accounts],
   );
+  const toAccountOptions = useMemo(
+    () => accountOptions.filter((option) => option.value !== accountId),
+    [accountOptions, accountId],
+  );
 
   const categoryOptions = useMemo(
     () => filteredCategories.map((category) => ({ value: category.id, label: category.name })),
@@ -256,6 +272,10 @@ export default function TransactionAdd({ onAdd }) {
   const selectedAccountOption = useMemo(
     () => accountOptions.find((option) => option.value === accountId) || null,
     [accountOptions, accountId],
+  );
+  const selectedToAccountOption = useMemo(
+    () => toAccountOptions.find((option) => option.value === toAccountId) || null,
+    [toAccountOptions, toAccountId],
   );
 
   const selectedCategoryOption = useMemo(
@@ -585,6 +605,11 @@ export default function TransactionAdd({ onAdd }) {
 
       onAdd?.(payload);
       addToast('Transaksi tersimpan', 'success');
+      try {
+        await refreshBalances(balanceRange);
+      } catch (err) {
+        addToast(err?.message || 'Gagal memperbarui saldo.', 'error');
+      }
 
       if (stayOnAddAfterSave) {
         handleReset();
@@ -666,38 +691,57 @@ export default function TransactionAdd({ onAdd }) {
                 </div>
                 <div className="min-w-[200px]">
                   <span className="text-xs font-semibold uppercase tracking-wide text-muted">Tanggal</span>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleDateSelect(getDateWithOffset(0))}
-                      className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                        date === getDateWithOffset(0)
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border-subtle text-text hover:bg-muted/30'
-                      }`}
-                    >
-                      Hari ini
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDateSelect(getDateWithOffset(-1))}
-                      className={`h-9 rounded-xl border px-3 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                        date === getDateWithOffset(-1)
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-border-subtle text-text hover:bg-muted/30'
-                      }`}
-                    >
-                      Kemarin
-                    </button>
-                    <div className="relative">
-                      <input
-                        type="date"
-                        value={date}
-                        onChange={(event) => handleDateSelect(event.target.value)}
-                        className={INPUT_CLASS}
-                      />
-                    </div>
-                  </div>
+                  <Popover className="relative mt-2">
+                    {({ close }) => (
+                      <>
+                        <Popover.Button
+                          className="flex w-full items-center justify-between gap-2 rounded-2xl border border-border-subtle bg-background px-4 py-2 text-left text-sm text-text shadow-sm transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          aria-invalid={Boolean(errors.date)}
+                        >
+                          <span className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-primary" aria-hidden="true" />
+                            <span className="font-medium">{formatDateLabel(date)}</span>
+                          </span>
+                          <span className="text-xs text-muted">Ubah</span>
+                        </Popover.Button>
+                        <Popover.Panel className="absolute z-20 mt-2 w-full rounded-2xl border border-border-subtle bg-background p-3 shadow-lg">
+                          <div className="grid gap-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              {[
+                                { label: 'Hari ini', value: getDateWithOffset(0) },
+                                { label: 'Kemarin', value: getDateWithOffset(-1) },
+                              ].map((preset) => (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => {
+                                    handleDateSelect(preset.value);
+                                    close();
+                                  }}
+                                  className={`rounded-xl border px-3 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                                    date === preset.value
+                                      ? 'border-primary bg-primary text-primary-foreground'
+                                      : 'border-border-subtle text-text hover:bg-muted/30'
+                                  }`}
+                                >
+                                  {preset.label}
+                                </button>
+                              ))}
+                            </div>
+                            <label className="text-xs font-medium uppercase tracking-wide text-muted">
+                              Pilih tanggal lain
+                            </label>
+                            <input
+                              type="date"
+                              value={date}
+                              onChange={(event) => handleDateSelect(event.target.value)}
+                              className={INPUT_CLASS}
+                            />
+                          </div>
+                        </Popover.Panel>
+                      </>
+                    )}
+                  </Popover>
                   {errors.date ? <p className="mt-1 text-xs text-destructive">{errors.date}</p> : null}
                 </div>
               </div>
@@ -809,27 +853,59 @@ export default function TransactionAdd({ onAdd }) {
                       <ArrowRight className="h-4 w-4" aria-hidden="true" />
                       Akun tujuan
                     </label>
-                    <select
-                      id="to-account"
-                      value={toAccountId}
-                      onChange={(event) => {
-                        setToAccountId(event.target.value);
+                    <Combobox
+                      value={selectedToAccountOption}
+                      onChange={(option) => {
+                        setToAccountId(option?.value || '');
                         setErrors((prev) => ({ ...prev, to_account_id: undefined }));
                       }}
-                      className={INPUT_CLASS}
                       disabled={accountsLoading && accounts.length === 0}
                     >
-                      <option value="">
-                        {accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun tujuan'}
-                      </option>
-                      {accounts
-                        .filter((account) => account.id !== accountId)
-                        .map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.name || 'Tanpa nama'}
-                          </option>
-                        ))}
-                    </select>
+                      <div className="relative">
+                        <Combobox.Input
+                          id="to-account"
+                          className={`${INPUT_CLASS} pr-16`}
+                          displayValue={(option) => option?.label || ''}
+                          placeholder={accountsLoading && accounts.length === 0 ? 'Memuat akun...' : 'Pilih akun tujuan'}
+                          aria-invalid={Boolean(errors.to_account_id)}
+                          onClick={() => toAccountButtonRef.current?.click()}
+                          readOnly
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
+                          <Combobox.Button
+                            ref={toAccountButtonRef}
+                            className="rounded-lg border border-border-subtle px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          >
+                            {accountsLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                            ) : (
+                              'Buka'
+                            )}
+                          </Combobox.Button>
+                        </div>
+                        <Combobox.Options className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-2xl border border-border-subtle bg-background p-1 text-sm shadow-lg focus:outline-none">
+                          {toAccountOptions.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-muted">
+                              {accountsLoading ? 'Memuat akun...' : 'Tidak ada akun'}
+                            </div>
+                          ) : (
+                            toAccountOptions.map((option) => (
+                              <Combobox.Option
+                                key={option.value}
+                                value={option}
+                                className={({ active }) =>
+                                  `cursor-pointer rounded-xl px-3 py-2 text-sm text-text transition ${
+                                    active ? 'bg-muted/60' : ''
+                                  }`
+                                }
+                              >
+                                {option.label}
+                              </Combobox.Option>
+                            ))
+                          )}
+                        </Combobox.Options>
+                      </div>
+                    </Combobox>
                     <p className="mt-1 text-xs text-muted">Pilih akun yang berbeda dari akun sumber.</p>
                     {errors.to_account_id ? <p className="mt-1 text-xs text-destructive">{errors.to_account_id}</p> : null}
                   </div>
