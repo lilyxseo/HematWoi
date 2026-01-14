@@ -126,7 +126,17 @@ function buildMonthRange(start: Date, end: Date) {
   return values;
 }
 
+function parseIDNumber(value: string) {
+  const normalized = value.replace(/[^\d-]/g, "");
+  if (!normalized || normalized === "-") return 0;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function safeNumber(value: any) {
+  if (typeof value === "string") {
+    return parseIDNumber(value);
+  }
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -402,7 +412,7 @@ function buildHealthSnapshot(params: {
         tx.date.slice(0, 10) >= monthStartIso &&
         tx.date.slice(0, 10) <= todayIso
     )
-    .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    .reduce((sum, tx) => sum + Math.abs(safeNumber(tx.amount)), 0);
   const daysElapsed = Math.max(1, diffInCalendarDays(today, monthStart) + 1);
   const avgDailyExpense = totalExpense / daysElapsed;
   const dailyAllowance = safeBalance / remainingDays;
