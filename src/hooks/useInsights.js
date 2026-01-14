@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { isTransactionDeleted } from "../lib/transactionUtils";
 
 const JAKARTA_TIMEZONE = "Asia/Jakarta";
@@ -172,6 +172,13 @@ export default function useInsights(txs = [], options = {}) {
     () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
     [txs],
   );
+  useEffect(() => {
+    if (typeof import.meta === "undefined" || !import.meta.env?.DEV) return;
+    console.debug("[distribusi-kategori:source]", {
+      queryKey: null,
+      txCount: sanitizedTxs.length,
+    });
+  }, [sanitizedTxs.length]);
   const rangeKey = range?.start && range?.end ? `${range.start}:${range.end}` : "current";
   const key = `${rangeKey}|${sanitizedTxs.map((t) => `${t.id || t.date}-${t.amount}-${t.type}`).join("|")}`;
   return useMemo(() => {

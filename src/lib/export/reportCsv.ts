@@ -1,3 +1,5 @@
+import { isTransactionDeleted } from '../transactionUtils';
+
 type PeriodFilters = {
   preset: 'month' | 'custom';
   month: string;
@@ -188,6 +190,7 @@ function normalizeTransactions(
   const accountMap = new Map(accounts.map((acc) => [acc.id, acc.name]));
 
   return transactions
+    .filter((tx) => !isTransactionDeleted(tx))
     .map((tx) => {
       const id = safeString(tx.id ?? tx.uuid ?? tx._id);
       if (!id) return null;

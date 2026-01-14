@@ -60,6 +60,7 @@ import {
   markCloudDataFetched,
   shouldFetchCloudData,
 } from "./lib/cloudCache";
+import { onDataInvalidation } from "./lib/dataInvalidation";
 
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
@@ -1075,6 +1076,37 @@ function AppShell({ prefs, setPrefs }) {
     window.addEventListener("online", handleOnline);
     return () => window.removeEventListener("online", handleOnline);
   }, [useCloud, sessionUser, refreshCloudData]);
+
+  useEffect(() => {
+    const unsubscribe = onDataInvalidation((detail) => {
+      if (!detail) return;
+      if (detail.entity === "transactions" && Array.isArray(detail.ids)) {
+        const idSet = new Set(detail.ids.map((id) => String(id)));
+        setData((d) => ({
+          ...d,
+          txs: d.txs.filter((tx) => !idSet.has(String(tx.id))),
+        }));
+      }
+      if (detail.entity === "budgets" && Array.isArray(detail.ids)) {
+        const idSet = new Set(detail.ids.map((id) => String(id)));
+        setData((d) => ({
+          ...d,
+          budgets: d.budgets.filter((row) => !idSet.has(String(row.id))),
+        }));
+      }
+      if (detail.entity === "goals" && Array.isArray(detail.ids)) {
+        const idSet = new Set(detail.ids.map((id) => String(id)));
+        setData((d) => ({
+          ...d,
+          goals: d.goals.filter((row) => !idSet.has(String(row.id))),
+        }));
+      }
+      if (useCloud && sessionUser) {
+        void refreshCloudData({ force: true });
+      }
+    });
+    return () => unsubscribe();
+  }, [refreshCloudData, sessionUser, useCloud]);
 
   const addTx = async (tx) => {
     const alreadyPersisted = Boolean(tx && tx.__persisted);

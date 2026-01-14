@@ -22,11 +22,14 @@ import WeeklyBudgetFormModal, { type WeeklyBudgetFormValues } from './components
 import MonthlyFromWeeklySummary from './components/MonthlyFromWeeklySummary';
 import { useBudgets } from '../../hooks/useBudgets';
 import { useWeeklyBudgets } from '../../hooks/useWeeklyBudgets';
+import { useHighlightBudgets, HIGHLIGHT_BUDGETS_QUERY_KEY } from '../../hooks/useHighlightBudgets';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { emitDataInvalidation } from '../../lib/dataInvalidation';
+import { invalidateBudgetQueries } from '../../lib/queryInvalidation';
 import {
   deleteBudget,
   deleteWeeklyBudget,
   listCategoriesExpense,
-  listHighlightBudgets,
   toggleHighlight,
   upsertBudget,
   upsertWeeklyBudget,
@@ -118,6 +121,7 @@ function formatWeekOptionLabel(week: WeeklyBudgetPeriod): string {
 export default function BudgetsPage() {
   const navigate = useNavigate();
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [tab, setTab] = useState<TabValue>('monthly');
   const [period, setPeriod] = useState<string>(getCurrentPeriod());
   const [monthlyModalOpen, setMonthlyModalOpen] = useState(false);
@@ -128,12 +132,12 @@ export default function BudgetsPage() {
   const [submittingWeekly, setSubmittingWeekly] = useState(false);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [highlightSelections, setHighlightSelections] = useState<HighlightBudgetSelection[]>([]);
-  const [highlightLoading, setHighlightLoading] = useState(true);
   const [selectedWeekStart, setSelectedWeekStart] = useState<string | null>(null);
 
   const monthly = useBudgets(period);
   const weekly = useWeeklyBudgets(period);
+  const highlightQuery = useHighlightBudgets();
+  const highlightSelections = highlightQuery.data ?? [];
 
   useEffect(() => {
     let active = true;
@@ -158,26 +162,13 @@ export default function BudgetsPage() {
   }, [addToast]);
 
   useEffect(() => {
-    let active = true;
-    setHighlightLoading(true);
-    listHighlightBudgets()
-      .then((data) => {
-        if (!active) return;
-        setHighlightSelections(data);
-      })
-      .catch((err) => {
-        if (!active) return;
-        const message = err instanceof Error ? err.message : 'Gagal memuat highlight';
-        addToast(message, 'error');
-      })
-      .finally(() => {
-        if (!active) return;
-        setHighlightLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [addToast]);
+    if (!highlightQuery.error) return;
+    const message =
+      highlightQuery.error instanceof Error
+        ? highlightQuery.error.message
+        : 'Gagal memuat highlight';
+    addToast(message, 'error');
+  }, [addToast, highlightQuery.error]);
 
   useEffect(() => {
     if (tab === 'monthly' && monthly.error) {
@@ -459,14 +450,122 @@ export default function BudgetsPage() {
     setWeeklyModalOpen(true);
   };
 
+  const deleteMonthlyMutation = useMutation({
+    mutationFn: (row: BudgetWithSpent) => deleteBudget(row.id),
+    onMutate: async (row) => {
+      await queryClient.cancelQueries({ queryKey: HIGHLIGHT_BUDGETS_QUERY_KEY });
+      const previous =
+        queryClient.getQueryData<HighlightBudgetSelection[]>(HIGHLIGHT_BUDGETS_QUERY_KEY) ?? [];
+      const next = previous.filter(
+        (item) =>
+          !(item.budget_type === 'monthly' && String(item.budget_id) === String(row.id)),
+      );
+      queryClient.setQueryData(HIGHLIGHT_BUDGETS_QUERY_KEY, next);
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug('[delete:budget]', { before: previous.length, after: next.length });
+      }
+      return { previous };
+    },
+    onError: (error, _row, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(HIGHLIGHT_BUDGETS_QUERY_KEY, context.previous);
+      }
+      const message = error instanceof Error ? error.message : 'Gagal menghapus anggaran';
+      addToast(message, 'error');
+    },
+    onSuccess: (_data, row) => {
+      invalidateBudgetQueries(queryClient);
+      emitDataInvalidation({ entity: 'budgets', ids: [String(row.id)] });
+      addToast('Anggaran dihapus', 'success');
+    },
+    onSettled: async () => {
+      await monthly.refresh();
+    },
+  });
+
+  const deleteWeeklyMutation = useMutation({
+    mutationFn: (row: WeeklyBudgetWithSpent) => deleteWeeklyBudget(row.id),
+    onMutate: async (row) => {
+      await queryClient.cancelQueries({ queryKey: HIGHLIGHT_BUDGETS_QUERY_KEY });
+      const previous =
+        queryClient.getQueryData<HighlightBudgetSelection[]>(HIGHLIGHT_BUDGETS_QUERY_KEY) ?? [];
+      const next = previous.filter(
+        (item) =>
+          !(item.budget_type === 'weekly' && String(item.budget_id) === String(row.id)),
+      );
+      queryClient.setQueryData(HIGHLIGHT_BUDGETS_QUERY_KEY, next);
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug('[delete:weekly-budget]', { before: previous.length, after: next.length });
+      }
+      return { previous };
+    },
+    onError: (error, _row, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(HIGHLIGHT_BUDGETS_QUERY_KEY, context.previous);
+      }
+      const message = error instanceof Error ? error.message : 'Gagal menghapus anggaran mingguan';
+      addToast(message, 'error');
+    },
+    onSuccess: (_data, row) => {
+      invalidateBudgetQueries(queryClient);
+      emitDataInvalidation({ entity: 'budgets', ids: [String(row.id)] });
+      addToast('Anggaran mingguan dihapus', 'success');
+    },
+    onSettled: async () => {
+      await weekly.refresh();
+    },
+  });
+
+  const toggleHighlightMutation = useMutation({
+    mutationFn: toggleHighlight,
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: HIGHLIGHT_BUDGETS_QUERY_KEY });
+      const previous =
+        queryClient.getQueryData<HighlightBudgetSelection[]>(HIGHLIGHT_BUDGETS_QUERY_KEY) ?? [];
+      const exists = previous.find(
+        (item) =>
+          item.budget_type === payload.type &&
+          String(item.budget_id) === String(payload.id),
+      );
+      const next = exists
+        ? previous.filter((item) => item.id !== exists.id)
+        : [
+            ...previous,
+            {
+              id: `optimistic-${payload.type}-${payload.id}`,
+              user_id: null,
+              budget_type: payload.type,
+              budget_id: payload.id,
+            } as HighlightBudgetSelection,
+          ];
+      queryClient.setQueryData(HIGHLIGHT_BUDGETS_QUERY_KEY, next);
+      return { previous };
+    },
+    onError: (error, _payload, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(HIGHLIGHT_BUDGETS_QUERY_KEY, context.previous);
+      }
+      const message = error instanceof Error ? error.message : 'Gagal memperbarui highlight';
+      addToast(message, 'error');
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(HIGHLIGHT_BUDGETS_QUERY_KEY, result.highlights);
+      invalidateBudgetQueries(queryClient);
+      emitDataInvalidation({ entity: 'highlights' });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: HIGHLIGHT_BUDGETS_QUERY_KEY });
+    },
+  });
+
   const handleDeleteMonthly = async (row: BudgetWithSpent) => {
     const confirmed = window.confirm(`Hapus anggaran untuk ${row.category?.name ?? 'kategori ini'}?`);
     if (!confirmed) return;
     try {
       setSubmittingMonthly(true);
-      await deleteBudget(row.id);
-      await monthly.refresh();
-      addToast('Anggaran dihapus', 'success');
+      await deleteMonthlyMutation.mutateAsync(row);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Gagal menghapus anggaran';
       addToast(message, 'error');
@@ -480,9 +579,7 @@ export default function BudgetsPage() {
     if (!confirmed) return;
     try {
       setSubmittingWeekly(true);
-      await deleteWeeklyBudget(row.id);
-      await weekly.refresh();
-      addToast('Anggaran mingguan dihapus', 'success');
+      await deleteWeeklyMutation.mutateAsync(row);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Gagal menghapus anggaran';
       addToast(message, 'error');
@@ -608,7 +705,6 @@ export default function BudgetsPage() {
     categoryId?: string | null
   ) => {
     try {
-      setHighlightLoading(true);
       if (type === 'weekly' && categoryId) {
         const normalizedCategoryId = String(categoryId);
         const selectionForCategory = highlightSelections.find((selection) => {
@@ -619,21 +715,20 @@ export default function BudgetsPage() {
         });
 
         if (selectionForCategory && String(selectionForCategory.budget_id) !== String(id)) {
-          const result = await toggleHighlight({ type, id: String(selectionForCategory.budget_id) });
-          setHighlightSelections(result.highlights);
+          const result = await toggleHighlightMutation.mutateAsync({
+            type,
+            id: String(selectionForCategory.budget_id),
+          });
           addToast(result.highlighted ? 'Highlight ditambahkan' : 'Highlight dihapus', 'success');
           return;
         }
       }
 
-      const result = await toggleHighlight({ type, id });
-      setHighlightSelections(result.highlights);
+      const result = await toggleHighlightMutation.mutateAsync({ type, id });
       addToast(result.highlighted ? 'Highlight ditambahkan' : 'Highlight dihapus', 'success');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Gagal memperbarui highlight';
       addToast(message, 'error');
-    } finally {
-      setHighlightLoading(false);
     }
   };
 

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
+import { remove as removeSync } from './sync/SyncEngine';
 
 export type GoalStatus = 'active' | 'paused' | 'achieved' | 'archived';
 export type GoalPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -607,6 +608,10 @@ export async function updateGoal(id: string, patch: GoalPayload): Promise<GoalRe
 export async function deleteGoal(id: string): Promise<void> {
   try {
     const userId = await getUserId();
+    if (!navigator.onLine || window.__sync?.fakeOffline) {
+      await removeSync('goals', id);
+      return;
+    }
     const { error } = await supabase.from('goals').delete().eq('id', id).eq('user_id', userId);
     if (error) throw error;
   } catch (error) {

@@ -12,6 +12,8 @@ import Card, { CardBody, CardFooter, CardHeader } from '../../components/Card';
 import Skeleton from '../../components/Skeleton';
 import { useRepo } from '../../context/DataContext';
 import { formatCurrency } from '../../lib/format';
+import { onDataInvalidation } from '../../lib/dataInvalidation';
+import { isTransactionDeleted } from '../../lib/transactionUtils';
 
 const CURRENT_MONTH = new Date().toISOString().slice(0, 7);
 
@@ -87,6 +89,7 @@ function normaliseTransactions(
   categoriesById: Map<string | number, string>
 ): NormalizedTransaction[] {
   return transactions
+    .filter((tx) => !isTransactionDeleted(tx))
     .map((tx) => {
       const rawDate =
         tx.date ||
@@ -339,6 +342,15 @@ export default function ReportsPage() {
     };
   }, [repo, refreshToken]);
 
+  useEffect(() => {
+    return onDataInvalidation((detail) => {
+      if (!detail) return;
+      if (['transactions', 'categories', 'budgets'].includes(detail.entity)) {
+        setRefreshToken((token) => token + 1);
+      }
+    });
+  }, []);
+
   const categoriesById = useMemo(() => {
     const map = new Map<string | number, string>();
     categories.forEach((cat: RawRecord) => {
@@ -453,6 +465,14 @@ export default function ReportsPage() {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
   }, [filteredTransactions]);
+
+  useEffect(() => {
+    if (typeof import.meta === 'undefined' || !import.meta.env?.DEV) return;
+    console.debug('[distribusi-kategori:reports]', {
+      queryKey: null,
+      txCount: filteredTransactions.length,
+    });
+  }, [filteredTransactions.length]);
 
   const monthlyTrend = useMemo(
     () => computeMonthlyTrend(normalizedTransactions),
