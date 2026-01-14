@@ -179,27 +179,47 @@ export default function AdminSettingsTab() {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="text-sm font-semibold text-muted-foreground">
                 Warna Primer
-                <input
-                  value={branding.primary}
-                  onChange={(event) =>
-                    setBrandingState((prev) => ({ ...prev, primary: event.target.value }))
-                  }
-                  className={clsx(INPUT_CLASS, 'mt-1')}
-                  placeholder="#1E40AF"
-                />
-                <span className="mt-2 inline-flex h-6 w-16 rounded-full border border-border/60" style={{ backgroundColor: branding.primary }} />
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={branding.primary}
+                    onChange={(event) =>
+                      setBrandingState((prev) => ({ ...prev, primary: event.target.value }))
+                    }
+                    className="h-11 w-12 cursor-pointer rounded-xl border border-border/60 bg-transparent p-1"
+                    aria-label="Pilih warna primer"
+                  />
+                  <input
+                    value={branding.primary}
+                    onChange={(event) =>
+                      setBrandingState((prev) => ({ ...prev, primary: event.target.value }))
+                    }
+                    className={INPUT_CLASS}
+                    placeholder="#1E40AF"
+                  />
+                </div>
               </label>
               <label className="text-sm font-semibold text-muted-foreground">
                 Warna Sekunder
-                <input
-                  value={branding.secondary}
-                  onChange={(event) =>
-                    setBrandingState((prev) => ({ ...prev, secondary: event.target.value }))
-                  }
-                  className={clsx(INPUT_CLASS, 'mt-1')}
-                  placeholder="#0EA5E9"
-                />
-                <span className="mt-2 inline-flex h-6 w-16 rounded-full border border-border/60" style={{ backgroundColor: branding.secondary }} />
+                <div className="mt-1 flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={branding.secondary}
+                    onChange={(event) =>
+                      setBrandingState((prev) => ({ ...prev, secondary: event.target.value }))
+                    }
+                    className="h-11 w-12 cursor-pointer rounded-xl border border-border/60 bg-transparent p-1"
+                    aria-label="Pilih warna sekunder"
+                  />
+                  <input
+                    value={branding.secondary}
+                    onChange={(event) =>
+                      setBrandingState((prev) => ({ ...prev, secondary: event.target.value }))
+                    }
+                    className={INPUT_CLASS}
+                    placeholder="#0EA5E9"
+                  />
+                </div>
               </label>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
@@ -217,6 +237,52 @@ export default function AdminSettingsTab() {
           </form>
         </div>
       )}
+
+      {!loading ? (
+        <div className="rounded-2xl border border-border/60 bg-background p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold">Preview Branding</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Lihat gambaran cepat tampilan warna pada elemen utama aplikasi.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <span className="inline-flex h-6 w-10 rounded-full border border-border/60" style={{ backgroundColor: branding.primary }} />
+              <span className="inline-flex h-6 w-10 rounded-full border border-border/60" style={{ backgroundColor: branding.secondary }} />
+            </div>
+          </div>
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground">Header</p>
+                  <p className="mt-1 text-sm font-semibold">Admin Preview</p>
+                </div>
+                <div className="h-8 w-8 rounded-2xl" style={{ backgroundColor: branding.primary }} />
+              </div>
+              <div className="mt-4 space-y-2">
+                <div className="h-3 w-32 rounded-full bg-muted/40" />
+                <div className="h-3 w-40 rounded-full bg-muted/40" />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
+              <p className="text-xs font-semibold text-muted-foreground">Button</p>
+              <button
+                type="button"
+                className="mt-3 w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white shadow-sm"
+                style={{ background: `linear-gradient(135deg, ${branding.primary}, ${branding.secondary})` }}
+              >
+                Simpan Perubahan
+              </button>
+              <div className="mt-4 flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: branding.secondary }} />
+                <span className="text-xs text-muted-foreground">Highlight sekunder</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
