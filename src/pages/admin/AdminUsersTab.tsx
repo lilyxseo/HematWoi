@@ -84,6 +84,13 @@ export default function AdminUsersTab() {
   const [drafts, setDrafts] = useState<UserDraftMap>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<'created_at' | 'username' | 'role' | 'status'>('created_at');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [bulkAction, setBulkAction] = useState<'activate' | 'deactivate' | 'make-admin' | 'make-user' | 'export' | ''>('');
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -107,6 +114,7 @@ export default function AdminUsersTab() {
   }, [filters.search]);
 
   useEffect(() => {
+    setPage(1);
     let mounted = true;
     const load = async () => {
       setLoading(true);
@@ -135,10 +143,123 @@ export default function AdminUsersTab() {
     void load();
   }, [debouncedSearch, filters.role, filters.status]);
 
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [debouncedSearch, filters.role, filters.status]);
+
   const activeAdminCount = useMemo(
     () => users.filter((user) => user.role === 'admin' && user.is_active).length,
     [users]
   );
+
+  const processedUsers = useMemo(() => {
+    const sorted = [...users].sort((a, b) => {
+      const direction = sortDir === 'asc' ? 1 : -1;
+      if (sortBy === 'username') {
+        return direction * (a.username ?? a.email ?? '').localeCompare(b.username ?? b.email ?? '');
+      }
+      if (sortBy === 'role') {
+        return direction * a.role.localeCompare(b.role);
+      }
+      if (sortBy === 'status') {
+        const statusA = a.is_active ? 1 : 0;
+        const statusB = b.is_active ? 1 : 0;
+        return direction * (statusA - statusB);
+      }
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return direction * (timeA - timeB);
+    });
+    return sorted;
+  }, [users, sortBy, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(processedUsers.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageUsers = processedUsers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, totalPages));
+  }, [totalPages]);
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (!checked) {
+      setSelectedIds(new Set());
+      return;
+    }
+    const next = new Set(selectedIds);
+    pageUsers.forEach((user) => next.add(user.id));
+    setSelectedIds(next);
+  };
+
+  const toggleSelectOne = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const handleBulkApply = async () => {
+    if (!bulkAction || selectedIds.size === 0 || bulkLoading) return;
+    if (bulkAction === 'export') {
+      const selected = users.filter((user) => selectedIds.has(user.id));
+      const header = ['id', 'username', 'email', 'role', 'status', 'created_at'];
+      const rows = selected.map((user) => [
+        user.id,
+        user.username ?? '',
+        user.email ?? '',
+        user.role,
+        user.is_active ? 'active' : 'inactive',
+        user.created_at ?? '',
+      ]);
+      const csv = [header, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `users-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      addToast('CSV pengguna berhasil diunduh', 'success');
+      return;
+    }
+
+    setBulkLoading(true);
+    try {
+      const updates: UpdateUserProfileInput = {};
+      if (bulkAction === 'activate') updates.is_active = true;
+      if (bulkAction === 'deactivate') updates.is_active = false;
+      if (bulkAction === 'make-admin') updates.role = 'admin';
+      if (bulkAction === 'make-user') updates.role = 'user';
+
+      const targets = users.filter((user) => selectedIds.has(user.id));
+      const results = await Promise.allSettled(
+        targets.map((user) => updateUserProfile(user.id, updates))
+      );
+      const success = results.filter((result) => result.status === 'fulfilled') as PromiseFulfilledResult<UserProfileRecord>[];
+      const failures = results.filter((result) => result.status === 'rejected') as PromiseRejectedResult[];
+
+      if (success.length > 0) {
+        setUsers((prev) =>
+          prev.map((user) => success.find((item) => item.value.id === user.id)?.value ?? user)
+        );
+        addToast(`Berhasil memperbarui ${success.length} pengguna`, 'success');
+        setSelectedIds(new Set());
+      }
+      if (failures.length > 0) {
+        addToast(`${failures.length} pengguna gagal diperbarui`, 'error');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal memperbarui pengguna';
+      addToast(message, 'error');
+    } finally {
+      setBulkLoading(false);
+    }
+  };
 
   const updateDraft = (id: string, patch: UpdateUserProfileInput) => {
     setDrafts((prev) => {
@@ -228,8 +349,21 @@ export default function AdminUsersTab() {
     const disableSelf = isSelf && user.role === 'admin' && user.is_active && activeAdminCount <= 1;
 
     return (
-      <div key={user.id} className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm">
+      <div
+        key={user.id}
+        className={clsx(
+          'rounded-2xl border border-border/60 bg-background p-4 shadow-sm transition',
+          isDirty ? 'border-primary/50 bg-primary/5' : 'hover:border-primary/40'
+        )}
+      >
         <div className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-2 h-4 w-4 rounded border-border/60 text-primary focus:ring-primary"
+            checked={selectedIds.has(user.id)}
+            onChange={(event) => toggleSelectOne(user.id, event.target.checked)}
+            aria-label={`Pilih ${user.username || user.email || 'pengguna'}`}
+          />
           <Avatar user={user} />
           <div className="flex-1 space-y-1">
             <div className="flex flex-col">
@@ -240,6 +374,24 @@ export default function AdminUsersTab() {
               <span>{dateFormatter.format(new Date(user.created_at ?? Date.now()))}</span>
               <span>•</span>
               <span>ID: {user.id.slice(0, 8)}…</span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <span
+                className={clsx(
+                  'rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide',
+                  role === 'admin' ? 'bg-primary/10 text-primary' : 'bg-muted/40 text-muted-foreground'
+                )}
+              >
+                {role}
+              </span>
+              <span
+                className={clsx(
+                  'rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide',
+                  isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'
+                )}
+              >
+                {isActive ? 'Aktif' : 'Nonaktif'}
+              </span>
             </div>
           </div>
         </div>
@@ -296,6 +448,15 @@ export default function AdminUsersTab() {
         <table className="min-w-full divide-y divide-border/60 text-sm">
           <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
+              <th className="px-4 py-3 text-left font-semibold">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-border/60 text-primary focus:ring-primary"
+                  checked={pageUsers.length > 0 && pageUsers.every((user) => selectedIds.has(user.id))}
+                  onChange={(event) => toggleSelectAll(event.target.checked)}
+                  aria-label="Pilih semua pengguna"
+                />
+              </th>
               <th className="px-4 py-3 text-left font-semibold">Pengguna</th>
               <th className="px-4 py-3 text-left font-semibold">Peran</th>
               <th className="px-4 py-3 text-left font-semibold">Status</th>
@@ -304,7 +465,7 @@ export default function AdminUsersTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/40">
-            {users.map((user) => {
+            {pageUsers.map((user) => {
               const draft = drafts[user.id];
               const role = draft?.role ?? user.role;
               const isActive =
@@ -314,7 +475,16 @@ export default function AdminUsersTab() {
               const disableSelf = isSelf && user.role === 'admin' && user.is_active && activeAdminCount <= 1;
 
               return (
-                <tr key={user.id} className="odd:bg-muted/10">
+                <tr key={user.id} className={clsx('odd:bg-muted/10', isDirty && 'bg-primary/5')}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-border/60 text-primary focus:ring-primary"
+                      checked={selectedIds.has(user.id)}
+                      onChange={(event) => toggleSelectOne(user.id, event.target.checked)}
+                      aria-label={`Pilih ${user.username || user.email || 'pengguna'}`}
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar user={user} />
@@ -336,12 +506,22 @@ export default function AdminUsersTab() {
                     </select>
                   </td>
                   <td className="px-4 py-3">
-                    <ToggleSwitch
-                      checked={isActive}
-                      onChange={(value) => updateDraft(user.id, { is_active: value })}
-                      disabled={disableSelf}
-                      label="Status aktif"
-                    />
+                    <div className="flex items-center gap-2">
+                      <ToggleSwitch
+                        checked={isActive}
+                        onChange={(value) => updateDraft(user.id, { is_active: value })}
+                        disabled={disableSelf}
+                        label="Status aktif"
+                      />
+                      <span
+                        className={clsx(
+                          'rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide',
+                          isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'
+                        )}
+                      >
+                        {isActive ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-sm text-muted-foreground">
                     {user.created_at ? dateFormatter.format(new Date(user.created_at)) : '—'}
@@ -384,7 +564,7 @@ export default function AdminUsersTab() {
         </p>
       </div>
 
-      <div className="grid gap-3 rounded-2xl border border-border/60 bg-muted/10 p-4 md:grid-cols-4 md:p-6">
+      <div className="grid gap-3 rounded-2xl border border-border/60 bg-muted/10 p-4 md:grid-cols-6 md:p-6">
         <label className="md:col-span-2">
           <span className="text-xs font-semibold text-muted-foreground">Cari</span>
           <input
@@ -420,6 +600,62 @@ export default function AdminUsersTab() {
             <option value="inactive">Nonaktif</option>
           </select>
         </label>
+        <label>
+          <span className="text-xs font-semibold text-muted-foreground">Urutkan</span>
+          <select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value as typeof sortBy)}
+            className={clsx(SELECT_CLASS, 'mt-1')}
+          >
+            <option value="created_at">Tanggal Dibuat</option>
+            <option value="username">Nama</option>
+            <option value="role">Peran</option>
+            <option value="status">Status</option>
+          </select>
+        </label>
+        <label>
+          <span className="text-xs font-semibold text-muted-foreground">Arah</span>
+          <select
+            value={sortDir}
+            onChange={(event) => setSortDir(event.target.value as 'asc' | 'desc')}
+            className={clsx(SELECT_CLASS, 'mt-1')}
+          >
+            <option value="desc">Terbaru</option>
+            <option value="asc">Terlama</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background p-4 shadow-sm">
+        <div className="text-sm text-muted-foreground">
+          {selectedIds.size > 0 ? (
+            <span>{selectedIds.size} pengguna dipilih</span>
+          ) : (
+            <span>Pilih pengguna untuk aksi massal</span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={bulkAction}
+            onChange={(event) => setBulkAction(event.target.value as typeof bulkAction)}
+            className={clsx(SELECT_CLASS, 'h-10 w-44')}
+          >
+            <option value="">Aksi Massal</option>
+            <option value="activate">Aktifkan</option>
+            <option value="deactivate">Nonaktifkan</option>
+            <option value="make-admin">Jadikan Admin</option>
+            <option value="make-user">Jadikan User</option>
+            <option value="export">Export CSV</option>
+          </select>
+          <button
+            type="button"
+            onClick={handleBulkApply}
+            className="h-10 rounded-2xl bg-primary px-4 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+            disabled={!bulkAction || selectedIds.size === 0 || bulkLoading}
+          >
+            Terapkan
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -428,14 +664,53 @@ export default function AdminUsersTab() {
         </div>
       ) : loading ? (
         renderSkeleton()
-      ) : users.length === 0 ? (
+      ) : processedUsers.length === 0 ? (
         renderEmpty()
       ) : (
         <>
           <div className="grid gap-3 md:hidden">
-            {users.map((user) => renderUserCard(user))}
+            {pageUsers.map((user) => renderUserCard(user))}
           </div>
           {renderDesktopTable()}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/10 px-4 py-3 text-sm text-muted-foreground">
+            <span>
+              Menampilkan {pageUsers.length} dari {processedUsers.length} pengguna
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={pageSize}
+                onChange={(event) => setPageSize(Number(event.target.value))}
+                className={clsx(SELECT_CLASS, 'h-9 w-24')}
+              >
+                {[10, 20, 50].map((size) => (
+                  <option key={size} value={size}>
+                    {size} / halaman
+                  </option>
+                ))}
+              </select>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                  className="h-9 rounded-2xl border border-border/60 px-3 text-sm font-medium transition hover:border-primary hover:text-primary disabled:opacity-50"
+                  disabled={currentPage <= 1}
+                >
+                  Sebelumnya
+                </button>
+                <span>
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                  className="h-9 rounded-2xl border border-border/60 px-3 text-sm font-medium transition hover:border-primary hover:text-primary disabled:opacity-50"
+                  disabled={currentPage >= totalPages}
+                >
+                  Berikutnya
+                </button>
+              </div>
+            </div>
+          </div>
         </>
       )}
     </div>

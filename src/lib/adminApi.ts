@@ -615,3 +615,20 @@ export async function listAuditLog(limit = 10): Promise<AuditEntry[]> {
     throw new Error('Gagal memuat log perubahan');
   }
 }
+
+export async function reorderSidebarItems(orderedIds: string[]): Promise<SidebarItemRecord[]> {
+  try {
+    const updates = orderedIds.map((id, index) =>
+      supabase.from('app_sidebar_items').update({ position: index + 1 }).eq('id', id)
+    );
+
+    const results = await Promise.all(updates);
+    const error = results.find((result) => result.error)?.error;
+    if (error) throw error;
+
+    return listSidebarItems();
+  } catch (error) {
+    console.error('[adminApi] reorderSidebarItems failed', error);
+    throw new Error('Gagal menyimpan urutan menu');
+  }
+}

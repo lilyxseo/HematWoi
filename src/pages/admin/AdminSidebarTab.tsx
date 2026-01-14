@@ -7,6 +7,7 @@ import {
   deleteSidebarItem,
   listSidebarItems,
   moveSidebarItem,
+  reorderSidebarItems,
   SidebarAccessLevel,
   SidebarItemRecord,
   updateSidebarItem,
@@ -130,6 +131,10 @@ export default function AdminSidebarTab() {
   const [form, setForm] = useState<SidebarFormState>(EMPTY_FORM);
   const [editDraft, setEditDraft] = useState<SidebarFormState | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [iconSearch, setIconSearch] = useState('');
+  const [showIconPicker, setShowIconPicker] = useState(false);
+  const [showEditIconPicker, setShowEditIconPicker] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -164,6 +169,39 @@ export default function AdminSidebarTab() {
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
+    setIconSearch('');
+    setShowIconPicker(false);
+  };
+
+  const filteredIcons = useMemo(() => {
+    const query = iconSearch.trim().toLowerCase();
+    if (!query) return ICON_NAMES;
+    return ICON_NAMES.filter((name) => name.toLowerCase().includes(query));
+  }, [iconSearch]);
+
+  const reorderItems = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return items;
+    const list = [...items];
+    const sourceIndex = list.findIndex((item) => item.id === sourceId);
+    const targetIndex = list.findIndex((item) => item.id === targetId);
+    if (sourceIndex === -1 || targetIndex === -1) return items;
+    const [moved] = list.splice(sourceIndex, 1);
+    list.splice(targetIndex, 0, moved);
+    return list.map((item, index) => ({ ...item, position: index + 1 }));
+  };
+
+  const handleDrop = async (sourceId: string, targetId: string) => {
+    const reordered = reorderItems(sourceId, targetId);
+    setItems(reordered);
+    setDraggingId(null);
+    try {
+      const updated = await reorderSidebarItems(reordered.map((item) => item.id));
+      setItems(updated);
+      addToast('Urutan menu diperbarui', 'success');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal mengubah urutan';
+      addToast(message, 'error');
+    }
   };
 
   const handleCreate = async (event: FormEvent<HTMLFormElement>) => {
@@ -304,7 +342,24 @@ export default function AdminSidebarTab() {
   const renderMobileCards = () => (
     <div className="grid gap-3 md:hidden">
       {items.map((item) => (
-        <div key={item.id} className="rounded-2xl border border-border/60 bg-background p-4 shadow-sm">
+        <div
+          key={item.id}
+          className={clsx(
+            'rounded-2xl border border-border/60 bg-background p-4 shadow-sm transition',
+            draggingId === item.id && 'border-primary/50 bg-primary/5'
+          )}
+          draggable
+          onDragStart={() => setDraggingId(item.id)}
+          onDragEnd={() => setDraggingId(null)}
+          onDragOver={(event) => {
+            event.preventDefault();
+          }}
+          onDrop={() => {
+            if (draggingId) {
+              void handleDrop(draggingId, item.id);
+            }
+          }}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted/40">
@@ -318,9 +373,12 @@ export default function AdminSidebarTab() {
                 </p>
               </div>
             </div>
-            <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
-              {ACCESS_LABEL[item.access_level]}
-            </span>
+            <div className="flex items-center gap-2">
+              <Icon name="ellipsis-vertical" className="h-4 w-4 text-muted-foreground" />
+              <span className="rounded-full bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                {ACCESS_LABEL[item.access_level]}
+              </span>
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>Posisi #{item.position}</span>
@@ -359,6 +417,7 @@ export default function AdminSidebarTab() {
         <table className="min-w-full divide-y divide-border/60 text-sm">
           <thead className="bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
+              <th className="px-4 py-3 text-left font-semibold">Urut</th>
               <th className="px-4 py-3 text-left font-semibold">Pos</th>
               <th className="px-4 py-3 text-left font-semibold">Ikon</th>
               <th className="px-4 py-3 text-left font-semibold">Judul</th>
@@ -371,7 +430,27 @@ export default function AdminSidebarTab() {
           </thead>
           <tbody className="divide-y divide-border/40">
             {items.map((item) => (
-              <tr key={item.id} className="odd:bg-muted/10">
+              <tr
+                key={item.id}
+                className={clsx(
+                  'odd:bg-muted/10 transition',
+                  draggingId === item.id && 'bg-primary/5'
+                )}
+                draggable
+                onDragStart={() => setDraggingId(item.id)}
+                onDragEnd={() => setDraggingId(null)}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                }}
+                onDrop={() => {
+                  if (draggingId) {
+                    void handleDrop(draggingId, item.id);
+                  }
+                }}
+              >
+                <td className="px-4 py-3 text-muted-foreground">
+                  <Icon name="ellipsis-vertical" className="h-4 w-4" />
+                </td>
                 <td className="px-4 py-3 text-sm font-semibold text-muted-foreground">#{item.position}</td>
                 <td className="px-4 py-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-muted/40">
@@ -477,6 +556,41 @@ export default function AdminSidebarTab() {
               Gunakan nama ikon Tabler (slug seperti di tabler.io). Contoh: <code>home</code>, <code>brand-github</code>,
               atau <code>wallet</code>.
             </span>
+            <div className="mt-3">
+              <button
+                type="button"
+                onClick={() => setShowIconPicker((prev) => !prev)}
+                className="rounded-2xl border border-border/60 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:border-primary hover:text-primary"
+              >
+                {showIconPicker ? 'Tutup Picker' : 'Pilih Ikon'}
+              </button>
+            </div>
+            {showIconPicker ? (
+              <div className="mt-3 space-y-3 rounded-2xl border border-border/60 bg-background p-3">
+                <input
+                  value={iconSearch}
+                  onChange={(event) => setIconSearch(event.target.value)}
+                  className={clsx(INPUT_CLASS, 'h-10')}
+                  placeholder="Cari ikon..."
+                />
+                <div className="grid max-h-40 grid-cols-6 gap-2 overflow-auto pr-1">
+                  {filteredIcons.slice(0, 60).map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => {
+                        setForm((prev) => ({ ...prev, icon_name: name }));
+                        setShowIconPicker(false);
+                      }}
+                      className="flex h-10 items-center justify-center rounded-xl border border-border/60 text-muted-foreground transition hover:border-primary hover:text-primary"
+                      title={name}
+                    >
+                      <Icon name={name} className="h-4 w-4" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </label>
           <label className="text-sm font-semibold text-muted-foreground">
             Akses
@@ -614,6 +728,41 @@ export default function AdminSidebarTab() {
               <span className="mt-1 block text-xs font-normal text-muted-foreground/80">
                 Gunakan nama ikon Tabler (slug seperti di tabler.io), misalnya <code>home</code> atau <code>brand-github</code>.
               </span>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowEditIconPicker((prev) => !prev)}
+                  className="rounded-2xl border border-border/60 px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:border-primary hover:text-primary"
+                >
+                  {showEditIconPicker ? 'Tutup Picker' : 'Pilih Ikon'}
+                </button>
+              </div>
+              {showEditIconPicker ? (
+                <div className="mt-3 space-y-3 rounded-2xl border border-border/60 bg-background p-3">
+                  <input
+                    value={iconSearch}
+                    onChange={(event) => setIconSearch(event.target.value)}
+                    className={clsx(INPUT_CLASS, 'h-10')}
+                    placeholder="Cari ikon..."
+                  />
+                  <div className="grid max-h-40 grid-cols-6 gap-2 overflow-auto pr-1">
+                    {filteredIcons.slice(0, 60).map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => {
+                          setEditDraft((prev) => (prev ? { ...prev, icon_name: name } : prev));
+                          setShowEditIconPicker(false);
+                        }}
+                        className="flex h-10 items-center justify-center rounded-xl border border-border/60 text-muted-foreground transition hover:border-primary hover:text-primary"
+                        title={name}
+                      >
+                        <Icon name={name} className="h-4 w-4" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </label>
             <label className="text-sm font-semibold text-muted-foreground">
               Akses
