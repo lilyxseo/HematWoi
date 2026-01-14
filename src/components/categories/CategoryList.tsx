@@ -1,4 +1,5 @@
-import { ArrowDown, ArrowUp, Loader2, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, EllipsisVertical, Loader2, Pencil, Trash2 } from "lucide-react";
+import { type DragEvent, useCallback, useMemo, useState } from "react";
 import CategoryForm from "./CategoryForm";
 import type { CategoryRecord, CategoryType } from "../../lib/api-categories";
 
@@ -18,6 +19,7 @@ interface CategoryListProps {
   onDelete: (category: CategoryRecord) => void;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
+  onReorder: (orderedIds: string[]) => void;
 }
 
 const TYPE_TITLES: Record<CategoryType, string> = {
@@ -38,8 +40,57 @@ export default function CategoryList({
   onDelete,
   onMoveUp,
   onMoveDown,
+  onReorder,
 }: CategoryListProps) {
   const resolvedTitle = title ?? TYPE_TITLES[type] ?? "Kategori";
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const orderedIds = useMemo(() => items.map((item) => item.id), [items]);
+
+  const handleDragStart = useCallback(
+    (id: string) => (event: DragEvent<HTMLLIElement>) => {
+      setDraggingId(id);
+      setDragOverId(null);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", id);
+    },
+    []
+  );
+
+  const handleDragOver = useCallback(
+    (id: string) => (event: DragEvent<HTMLLIElement>) => {
+      if (!draggingId || draggingId === id) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setDragOverId(id);
+    },
+    [draggingId]
+  );
+
+  const handleDrop = useCallback(
+    (id: string) => (event: DragEvent<HTMLLIElement>) => {
+      event.preventDefault();
+      const sourceId = event.dataTransfer.getData("text/plain") || draggingId;
+      setDraggingId(null);
+      setDragOverId(null);
+      if (!sourceId || sourceId === id) return;
+      const sourceIndex = orderedIds.indexOf(sourceId);
+      const targetIndex = orderedIds.indexOf(id);
+      if (sourceIndex < 0 || targetIndex < 0) return;
+      const next = [...orderedIds];
+      next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, sourceId);
+      if (next.join("|") !== orderedIds.join("|")) {
+        onReorder(next);
+      }
+    },
+    [draggingId, onReorder, orderedIds]
+  );
+
+  const handleDragEnd = useCallback(() => {
+    setDraggingId(null);
+    setDragOverId(null);
+  }, []);
 
   return (
     <section className="flex h-full min-w-0 flex-col rounded-2xl border border-border/60 bg-surface-1/60 p-4 shadow-sm">
@@ -68,10 +119,19 @@ export default function CategoryList({
             const isFirst = index === 0;
             const isLast = index === items.length - 1;
             const isBusy = pendingIds.has(item.id);
+            const isDragging = draggingId === item.id;
+            const isDropTarget = dragOverId === item.id;
             return (
               <li
                 key={item.id}
-                className="rounded-xl border border-border/60 bg-surface-1/80 p-3 shadow-sm"
+                draggable={!isEditing && !isBusy}
+                onDragStart={handleDragStart(item.id)}
+                onDragOver={handleDragOver(item.id)}
+                onDrop={handleDrop(item.id)}
+                onDragEnd={handleDragEnd}
+                className={`rounded-xl border border-border/60 bg-surface-1/80 p-3 shadow-sm transition ${
+                  isDropTarget ? "border-brand/60 ring-1 ring-brand/40" : ""
+                } ${isDragging ? "opacity-60" : ""}`}
               >
                 {isEditing ? (
                   <CategoryForm
@@ -84,6 +144,12 @@ export default function CategoryList({
                   />
                 ) : (
                   <div className="flex min-w-0 items-center gap-3">
+                    <span
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 text-muted"
+                      aria-hidden="true"
+                    >
+                      <EllipsisVertical className="h-4 w-4" />
+                    </span>
                     <span
                       className="h-3.5 w-3.5 rounded-full border border-white/20"
                       style={{ backgroundColor: item.color || "#64748B" }}

@@ -343,6 +343,32 @@ export default function Categories() {
     [addPending, addToast, categories, grouped, removePending]
   );
 
+  const handleReorder = useCallback(
+    async (type: CategoryType, orderedIds: string[]) => {
+      if (!orderedIds.length) return;
+      const snapshot = categories;
+      const orderMap = new Map(orderedIds.map((catId, index) => [catId, index]));
+      setCategories((prev) =>
+        prev.map((cat) =>
+          cat.type === type && orderMap.has(cat.id)
+            ? { ...cat, sort_order: orderMap.get(cat.id)! }
+            : cat
+        )
+      );
+      addPending(orderedIds);
+      try {
+        await reorderCategories(type, orderedIds);
+      } catch (err) {
+        setCategories(snapshot);
+        logDevError("reorderCategories", err);
+        addToast(toMessage(err, "Gagal mengurutkan kategori."), "error");
+      } finally {
+        removePending(orderedIds);
+      }
+    },
+    [addPending, addToast, categories, removePending]
+  );
+
   const handleDeleteCategory = useCallback(
     async (category: CategoryRecord) => {
       const snapshot = categories;
@@ -421,6 +447,7 @@ export default function Categories() {
             onDelete={(category) => setConfirming(category)}
             onMoveUp={(id) => handleMove("income", id, "up")}
             onMoveDown={(id) => handleMove("income", id, "down")}
+            onReorder={(orderedIds) => handleReorder("income", orderedIds)}
           />
           <CategoryList
             type="expense"
@@ -435,6 +462,7 @@ export default function Categories() {
             onDelete={(category) => setConfirming(category)}
             onMoveUp={(id) => handleMove("expense", id, "up")}
             onMoveDown={(id) => handleMove("expense", id, "down")}
+            onReorder={(orderedIds) => handleReorder("expense", orderedIds)}
           />
         </div>
       </div>
