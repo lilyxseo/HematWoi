@@ -564,21 +564,39 @@ export async function reorderCategories(
 
   const normalizedType = normalizeType(type);
   const sortColumn = getCategorySortColumn();
-  const payload = orderedIds.map((id, index) => ({
-    id,
-    user_id: userId,
-    type: normalizedType,
-    [sortColumn]: index,
-  }));
+  const now = nowISO();
+  const orderMap = new Map(orderedIds.map((id, index) => [id, index]));
 
   try {
-    const { data, error } = await supabase
-      .from("categories")
-      .upsert(payload, { onConflict: "id" })
-      .select(getCategorySelectColumns());
-    if (error) throw error;
-    if (data) {
-      await dbCache.bulkSet("categories", data.map((row) => mapCategoryRow(row)));
+    const updates = await Promise.all(
+      orderedIds.map((id) =>
+        supabase
+          .from("categories")
+          .update({
+            type: normalizedType,
+            [sortColumn]: orderMap.get(id) ?? 0,
+            updated_at: now,
+          })
+          .eq("id", id)
+          .eq("user_id", userId)
+      )
+    );
+    for (const { error } of updates) {
+      if (error) throw error;
+    }
+    const cached = await dbCache.list("categories");
+    if (cached.length) {
+      const next = cached.map((row) => {
+        const rowId = String((row as { id?: string }).id ?? "");
+        if (!orderMap.has(rowId)) return mapCategoryRow(row as CategoryRecord);
+        return mapCategoryRow({
+          ...(row as CategoryRecord),
+          type: normalizedType,
+          [sortColumn]: orderMap.get(rowId) ?? 0,
+          updated_at: now,
+        } as CategoryRecord);
+      });
+      await dbCache.bulkSet("categories", next);
     }
   } catch (error) {
     if (handleMissingCategoryColor(error)) {
