@@ -74,6 +74,11 @@ type HealthSnapshot = {
   label: string;
 };
 
+type BudgetStats = {
+  budgetsInRange: NormalizedBudget[];
+  overBudgets: NormalizedBudget[];
+};
+
 const SCORE_LABELS = [
   { min: 80, label: "Sangat Sehat" },
   { min: 60, label: "Cukup Sehat" },
@@ -252,15 +257,18 @@ function computeStandardDeviation(values: number[]) {
 function buildDailyExpenseSeries(
   transactions: NormalizedTransaction[],
   start: Date,
-  end: Date
+  end: Date,
+  totalsOverride?: Map<string, number>
 ) {
-  const totals = new Map<string, number>();
-  transactions
-    .filter((tx) => tx.type === "expense")
-    .forEach((tx) => {
-      const key = tx.date.slice(0, 10);
-      totals.set(key, (totals.get(key) ?? 0) + tx.amount);
-    });
+  const totals = totalsOverride ?? new Map<string, number>();
+  if (!totalsOverride) {
+    transactions
+      .filter((tx) => tx.type === "expense")
+      .forEach((tx) => {
+        const key = tx.date.slice(0, 10);
+        totals.set(key, (totals.get(key) ?? 0) + tx.amount);
+      });
+  }
 
   const values: number[] = [];
   const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
@@ -319,19 +327,51 @@ function buildHealthSnapshot(params: {
   months: string[];
   start: Date;
   end: Date;
+  transactionsInRange?: NormalizedTransaction[];
+  budgetStats?: BudgetStats;
 }): HealthSnapshot {
-  const { transactions, budgets, debts, accounts, months, start, end } = params;
+  const {
+    transactions,
+    budgets,
+    debts,
+    accounts,
+    months,
+    start,
+    end,
+    transactionsInRange,
+    budgetStats,
+  } = params;
   const startIso = start.toISOString().slice(0, 10);
   const endIso = end.toISOString().slice(0, 10);
-  const inRange = transactions.filter(
-    (tx) => tx.date.slice(0, 10) >= startIso && tx.date.slice(0, 10) <= endIso
-  );
-  const income = inRange
-    .filter((tx) => tx.type === "income")
-    .reduce((sum, tx) => sum + tx.amount, 0);
-  const expense = inRange
-    .filter((tx) => tx.type === "expense")
-    .reduce((sum, tx) => sum + tx.amount, 0);
+  const inRange =
+    transactionsInRange ??
+    transactions.filter(
+      (tx) => tx.date.slice(0, 10) >= startIso && tx.date.slice(0, 10) <= endIso
+    );
+
+  let income = 0;
+  let expense = 0;
+  const dailyTotals = new Map<string, number>();
+  const shouldTrackBudget = !budgetStats;
+  const spendByMonthCategory = shouldTrackBudget
+    ? new Map<string, number>()
+    : null;
+  inRange.forEach((tx) => {
+    if (tx.type === "income") {
+      income += tx.amount;
+    } else if (tx.type === "expense") {
+      expense += tx.amount;
+      const dateKey = tx.date.slice(0, 10);
+      dailyTotals.set(dateKey, (dailyTotals.get(dateKey) ?? 0) + tx.amount);
+      if (spendByMonthCategory) {
+        const budgetKey = `${tx.month}:${tx.categoryKey ?? "uncat"}`;
+        spendByMonthCategory.set(
+          budgetKey,
+          (spendByMonthCategory.get(budgetKey) ?? 0) + tx.amount
+        );
+      }
+    }
+  });
   const net = income - expense;
   const savingsRate = income > 0 ? net / income : 0;
 
@@ -369,7 +409,12 @@ function buildHealthSnapshot(params: {
   const expenseCoverageRatio =
     avgDailyExpense > 0 ? dailyAllowance / avgDailyExpense : null;
 
-  const dailyExpenses = buildDailyExpenseSeries(inRange, start, end);
+  const dailyExpenses = buildDailyExpenseSeries(
+    inRange,
+    start,
+    end,
+    dailyTotals
+  );
   const avgDailyStabilityExpense =
     dailyExpenses.length > 0
       ? dailyExpenses.reduce((sum, value) => sum + value, 0) / dailyExpenses.length
@@ -387,40 +432,24 @@ function buildHealthSnapshot(params: {
   const expenseCoverageScore =
     expenseCoverageRatio == null ? null : scoreCoverageRatio(expenseCoverageRatio);
 
-  console.debug("Expense coverage debug", {
-    remainingDays,
-    totalBalance,
-    totalExpense,
-    avgDailyExpense,
-    dailyAllowance,
-    ratio: expenseCoverageRatio,
-  });
-
-  const monthsSet = new Set(months);
-  const spendByMonthCategory = new Map<string, number>();
-  inRange
-    .filter((tx) => tx.type === "expense")
-    .forEach((tx) => {
-      const key = `${tx.month}:${tx.categoryKey ?? "uncat"}`;
-      spendByMonthCategory.set(
-        key,
-        (spendByMonthCategory.get(key) ?? 0) + tx.amount
-      );
+  const budgetEntries = budgetStats
+    ? []
+    : budgets.map((budget) => ({
+        ...budget,
+        period:
+          budget.period ?? months[months.length - 1] ?? getMonthKey(new Date()),
+      }));
+  const budgetsInRange =
+    budgetStats?.budgetsInRange ??
+    budgetEntries.filter((budget) => months.includes(String(budget.period)));
+  const overBudget =
+    budgetStats?.overBudgets ??
+    budgetsInRange.filter((budget) => {
+      if (!budget.cap || budget.cap <= 0) return false;
+      const key = `${budget.period}:${budget.categoryKey ?? "uncat"}`;
+      const spent = spendByMonthCategory?.get(key) ?? 0;
+      return spent > budget.cap;
     });
-
-  const budgetEntries = budgets.map((budget) => ({
-    ...budget,
-    period: budget.period ?? months[months.length - 1] ?? getMonthKey(new Date()),
-  }));
-  const budgetsInRange = budgetEntries.filter((budget) =>
-    monthsSet.has(String(budget.period))
-  );
-  const overBudget = budgetsInRange.filter((budget) => {
-    if (!budget.cap || budget.cap <= 0) return false;
-    const key = `${budget.period}:${budget.categoryKey ?? "uncat"}`;
-    const spent = spendByMonthCategory.get(key) ?? 0;
-    return spent > budget.cap;
-  });
 
   const cashflowScore = computeCashflowScore(net, income, expense);
   const savingsScore = computeSavingsScore(savingsRate, income);
@@ -604,6 +633,44 @@ export default function FinancialHealth() {
     return normalizeBudgets(rows, categoriesById);
   }, [budgetsQuery.data, categoriesById]);
 
+  const startIso = useMemo(() => start.toISOString().slice(0, 10), [start]);
+  const endIso = useMemo(() => end.toISOString().slice(0, 10), [end]);
+
+  const transactionsInRange = useMemo(() => {
+    if (!normalizedTransactions.length) return [];
+    return normalizedTransactions.filter(
+      (tx) => tx.date.slice(0, 10) >= startIso && tx.date.slice(0, 10) <= endIso
+    );
+  }, [normalizedTransactions, startIso, endIso]);
+
+  const spendByMonthCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    transactionsInRange
+      .filter((tx) => tx.type === "expense")
+      .forEach((tx) => {
+        const key = `${tx.month}:${tx.categoryKey ?? "uncat"}`;
+        map.set(key, (map.get(key) ?? 0) + tx.amount);
+      });
+    return map;
+  }, [transactionsInRange]);
+
+  const budgetStats = useMemo<BudgetStats>(() => {
+    const budgetEntries = normalizedBudgets.map((budget) => ({
+      ...budget,
+      period: budget.period ?? months[months.length - 1] ?? getMonthKey(new Date()),
+    }));
+    const budgetsInRange = budgetEntries.filter((budget) =>
+      months.includes(String(budget.period))
+    );
+    const overBudgets = budgetsInRange.filter((budget) => {
+      if (!budget.cap || budget.cap <= 0) return false;
+      const key = `${budget.period}:${budget.categoryKey ?? "uncat"}`;
+      const spent = spendByMonthCategory.get(key) ?? 0;
+      return spent > budget.cap;
+    });
+    return { budgetsInRange, overBudgets };
+  }, [normalizedBudgets, months, spendByMonthCategory]);
+
   const debts = useMemo(
     () => (Array.isArray(debtsQuery.data) ? debtsQuery.data : []),
     [debtsQuery.data]
@@ -618,6 +685,8 @@ export default function FinancialHealth() {
       months,
       start,
       end,
+      transactionsInRange,
+      budgetStats,
     });
   }, [
     normalizedTransactions,
@@ -627,6 +696,8 @@ export default function FinancialHealth() {
     months,
     start,
     end,
+    transactionsInRange,
+    budgetStats,
   ]);
 
   const comparison = useMemo(() => {
@@ -719,10 +790,7 @@ export default function FinancialHealth() {
       });
     }
 
-    const budgetsInRange = normalizedBudgets.filter((budget) =>
-      months.includes(String(budget.period ?? months[months.length - 1]))
-    );
-    if (budgetsInRange.length === 0) {
+    if (budgetStats.budgetsInRange.length === 0) {
       items.push({
         id: "no-budgets",
         title: "Belum ada budget",
@@ -733,23 +801,8 @@ export default function FinancialHealth() {
       });
     }
 
-    const spendByMonthCategory = new Map<string, number>();
-    normalizedTransactions
-      .filter((tx) => tx.type === "expense")
-      .forEach((tx) => {
-        const key = `${tx.month}:${tx.categoryKey ?? "uncat"}`;
-        spendByMonthCategory.set(
-          key,
-          (spendByMonthCategory.get(key) ?? 0) + tx.amount
-        );
-      });
-    const overBudgets = budgetsInRange.filter((budget) => {
-      if (!budget.cap || budget.cap <= 0) return false;
-      const key = `${budget.period ?? months[months.length - 1]}:${budget.categoryKey ?? "uncat"}`;
-      return (spendByMonthCategory.get(key) ?? 0) > budget.cap;
-    });
-    if (overBudgets.length > 0) {
-      const budgetNames = overBudgets
+    if (budgetStats.overBudgets.length > 0) {
+      const budgetNames = budgetStats.overBudgets
         .map((budget) => budget.categoryName)
         .filter(Boolean)
         .join(", ");
@@ -781,10 +834,8 @@ export default function FinancialHealth() {
   }, [
     normalizedTransactions,
     snapshot,
-    normalizedBudgets,
-    months,
-    accountsQuery.data,
     goalsQuery.data,
+    budgetStats,
   ]);
 
   const cashflowStatus = snapshot.net >= 0 ? "Surplus" : "Defisit";
