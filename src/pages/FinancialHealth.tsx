@@ -27,6 +27,7 @@ import { listDebts } from "../lib/api-debts";
 import { dbCache } from "../lib/sync/localdb";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import { useRepo, useDataMode } from "../context/DataContext";
+import { isTransactionDeleted } from "../lib/transactionUtils";
 
 type RawRecord = Record<string, any>;
 
@@ -152,6 +153,7 @@ function normalizeTransactions(
   categoriesById: Map<string | number, string>
 ): NormalizedTransaction[] {
   return transactions
+    .filter((tx) => !isTransactionDeleted(tx))
     .map((tx) => {
       const rawDate =
         tx.date || tx.transaction_date || tx.created_at || tx.posted_at || tx.createdAt;

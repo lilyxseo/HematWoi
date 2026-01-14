@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import clsx from "clsx";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -33,7 +33,7 @@ import {
 } from "../hooks/transactionFormQueries";
 import { useToast } from "../context/ToastContext";
 import PageHeader from "../layout/PageHeader";
-import { addTransaction, listAccounts, updateTransaction } from "../lib/api";
+import { addTransaction, deleteTransaction as softDeleteTransaction, listAccounts, updateTransaction } from "../lib/api";
 import { getCurrentUserId } from "../lib/session";
 import { supabase } from "../lib/supabase";
 import {
@@ -46,6 +46,8 @@ import {
 import { formatCurrency } from "../lib/format";
 import { flushQueue, onStatusChange, pending } from "../lib/sync/SyncEngine";
 import { parseCSV } from "../lib/statement";
+import { emitDataInvalidation } from "../lib/dataInvalidation";
+import { invalidateTransactionQueries } from "../lib/queryInvalidation";
 
 const TYPE_LABELS = {
   income: "Pemasukan",
@@ -197,6 +199,7 @@ export default function Transactions() {
   const online = useNetworkStatus();
   const navigate = useNavigate();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const { prefetchAddForm, prefetchEditForm } = useTransactionFormPrefetch();
   const [items, setItems] = useState(queryItems);
   const [optimisticItems, setOptimisticItems] = useState(() => []);
@@ -662,12 +665,84 @@ export default function Transactions() {
     setConfirmState(null);
   }, [deleteInProgress]);
 
+  const deleteMutation = useMutation({
+    mutationFn: async ({ ids }) => {
+      if (!ids.length) return { ids };
+      if (!online || window.__sync?.fakeOffline) {
+        await Promise.all(ids.map((id) => softDeleteTransaction(id)));
+        return { ids };
+      }
+      if (ids.length === 1) {
+        const success = await removeTransaction(ids[0]);
+        if (!success) {
+          throw new Error("Gagal menghapus. Cek koneksi lalu coba lagi.");
+        }
+        return { ids };
+      }
+      const deletedCount = await removeTransactionsBulk(ids);
+      if (deletedCount < ids.length) {
+        throw new Error("Gagal menghapus. Cek koneksi lalu coba lagi.");
+      }
+      return { ids };
+    },
+    onMutate: async ({ ids, removalRecords }) => {
+      await queryClient.cancelQueries({ queryKey: ["transactions"] });
+      const prevItems = items.slice();
+      const prevSelected = new Set(selectedIds);
+      const idSet = new Set(ids);
+      setItems(prevItems.filter((item) => !idSet.has(item.id)));
+      const nextSelected = new Set(prevSelected);
+      ids.forEach((id) => nextSelected.delete(id));
+      setSelectedIds(nextSelected);
+      ids.forEach((id) => {
+        queryClient.removeQueries({ queryKey: getTransactionDetailQueryKey(id) });
+      });
+      if (typeof import.meta !== "undefined" && import.meta.env?.DEV) {
+        console.debug("[delete:transactions]", {
+          ids,
+          before: prevItems.length,
+          after: prevItems.length - (removalRecords?.length ?? 0),
+        });
+      }
+      return { prevItems, prevSelected };
+    },
+    onError: (error, _variables, context) => {
+      if (context?.prevItems) {
+        setItems(context.prevItems);
+      }
+      if (context?.prevSelected) {
+        setSelectedIds(context.prevSelected);
+      }
+      addToast(
+        error instanceof Error ? error.message : "Gagal menghapus. Cek koneksi lalu coba lagi.",
+        "error",
+      );
+    },
+    onSuccess: (_data, variables) => {
+      lastSelectedIdRef.current = null;
+      refresh({ keepPage: true });
+      showUndoSnackbar({
+        ids: variables.ids,
+        records: variables.removalRecords.map((record) => ({
+          id: record.id,
+          item: record.item,
+          index: record.index,
+        })),
+      });
+      invalidateTransactionQueries(queryClient);
+      emitDataInvalidation({ entity: "transactions", ids: variables.ids });
+    },
+    onSettled: () => {
+      setConfirmState(null);
+      setDeleteInProgress(false);
+    },
+  });
+
   const handleConfirmDelete = useCallback(async () => {
     if (!confirmState || deleteInProgress) return;
     const ids = confirmState.ids;
     const idSet = new Set(ids);
     const prevItems = items.slice();
-    const prevSelected = new Set(selectedIds);
     const removalRecords = prevItems
       .map((item, index) => (idSet.has(item.id) ? { id: item.id, item, index } : null))
       .filter(Boolean);
@@ -676,52 +751,12 @@ export default function Transactions() {
       return;
     }
     setDeleteInProgress(true);
-    setItems(prevItems.filter((item) => !idSet.has(item.id)));
-    const nextSelected = new Set(prevSelected);
-    ids.forEach((id) => nextSelected.delete(id));
-    setSelectedIds(nextSelected);
-
-    try {
-      if (ids.length === 1) {
-        const success = await removeTransaction(ids[0]);
-        if (!success) {
-          throw new Error('Gagal menghapus. Cek koneksi lalu coba lagi.');
-        }
-      } else {
-        const deletedCount = await removeTransactionsBulk(ids);
-        if (deletedCount < ids.length) {
-          throw new Error('Gagal menghapus. Cek koneksi lalu coba lagi.');
-        }
-      }
-      lastSelectedIdRef.current = null;
-      refresh({ keepPage: true });
-      showUndoSnackbar({
-        ids,
-        records: removalRecords.map((record) => ({
-          id: record.id,
-          item: record.item,
-          index: record.index,
-        })),
-      });
-    } catch (error) {
-      setItems(prevItems);
-      setSelectedIds(prevSelected);
-      addToast(
-        error instanceof Error ? error.message : 'Gagal menghapus. Cek koneksi lalu coba lagi.',
-        'error',
-      );
-    } finally {
-      setConfirmState(null);
-      setDeleteInProgress(false);
-    }
+    deleteMutation.mutate({ ids, removalRecords });
   }, [
     confirmState,
     deleteInProgress,
     items,
-    selectedIds,
-    refresh,
-    showUndoSnackbar,
-    addToast,
+    deleteMutation,
   ]);
 
   const handleBulkUpdateField = useCallback(

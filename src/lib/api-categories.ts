@@ -2,6 +2,7 @@ import { supabase } from "./supabase";
 import { dbCache } from "./sync/localdb";
 import { getCurrentUserId } from "./session";
 import { LocalDriver } from "./data-driver";
+import { remove as removeSync } from "./sync/SyncEngine";
 
 type CategoryType = "income" | "expense";
 type CategorySortColumn = "sort_order" | "order_index";
@@ -617,6 +618,11 @@ export async function deleteCategory(id: string): Promise<void> {
   const userId = await resolveUserId();
   if (!userId) {
     await deleteGuestCategory(id);
+    return;
+  }
+
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    await removeSync("categories", id);
     return;
   }
 

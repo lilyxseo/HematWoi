@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { AlertTriangle, ArrowRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useBudgets } from '../../hooks/useBudgets';
 import { useWeeklyBudgets } from '../../hooks/useWeeklyBudgets';
-import {
-  listHighlightBudgets,
-  type HighlightBudgetSelection,
-} from '../../lib/budgetApi';
+import { type HighlightBudgetSelection } from '../../lib/budgetApi';
 import { formatCurrency } from '../../lib/format';
 import type { PeriodRange } from './PeriodPicker';
+import { useHighlightBudgets } from '../../hooks/useHighlightBudgets';
 
 interface DashboardHighlightedBudgetsProps {
   period: PeriodRange;
@@ -110,9 +108,10 @@ function HighlightSkeleton() {
 }
 
 export default function DashboardHighlightedBudgets({ period }: DashboardHighlightedBudgetsProps) {
-  const [highlights, setHighlights] = useState<HighlightBudgetSelection[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const highlightQuery = useHighlightBudgets();
+  const highlights = highlightQuery.data ?? [];
+  const loading = highlightQuery.isLoading;
+  const error = highlightQuery.error instanceof Error ? highlightQuery.error.message : null;
 
   const budgetPeriod = useMemo(() => getBudgetPeriod(period), [period]);
   const referenceDateIso = period?.end || period?.start || new Date().toISOString().slice(0, 10);
@@ -122,29 +121,6 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
   );
   const monthly = useBudgets(budgetPeriod);
   const weekly = useWeeklyBudgets(budgetPeriod);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-    listHighlightBudgets()
-      .then((data) => {
-        if (!active) return;
-        setHighlights(data);
-      })
-      .catch((err) => {
-        if (!active) return;
-        const message = err instanceof Error ? err.message : 'Gagal memuat highlight';
-        setError(message);
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   const cards = useMemo<HighlightCardData[]>(() => {
     if (loading || monthly.loading || weekly.loading) return [];

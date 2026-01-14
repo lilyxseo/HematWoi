@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import clsx from 'clsx';
 import { ChevronDown, Download, Plus, Target } from 'lucide-react';
 import Page from '../layout/Page';
@@ -24,6 +25,8 @@ import {
   type GoalsSummary,
 } from '../lib/api-goals';
 import { listCategories } from '../lib/api-categories';
+import { emitDataInvalidation } from '../lib/dataInvalidation';
+import { invalidateGoalQueries } from '../lib/queryInvalidation';
 
 interface CategoryOption {
   id: string;
@@ -59,6 +62,7 @@ function escapeCsv(value: string | number | null | undefined) {
 
 export default function Goals() {
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<GoalsFilterState>(INITIAL_FILTERS);
   const [goals, setGoals] = useState<GoalRecord[]>([]);
   const [summary, setSummary] = useState<GoalsSummary | null>(null);
@@ -258,22 +262,48 @@ export default function Goals() {
     setPendingEntryDelete(entry);
   };
 
-  const handleConfirmDeleteEntry = async () => {
-    if (!pendingEntryDelete || !selectedGoal) return;
-    setEntryDeletingId(pendingEntryDelete.id);
-    try {
-      await deleteEntry(pendingEntryDelete.id);
-      addToast('Setoran berhasil dihapus', 'success');
-      const list = await listGoalEntries(selectedGoal.id);
-      setEntries(list);
-      await refreshGoals();
-    } catch (error) {
+  const deleteEntryMutation = useMutation({
+    mutationFn: (entry: GoalEntryRecord) => deleteEntry(entry.id),
+    onMutate: (entry) => {
+      const snapshot = entries;
+      const nextEntries = snapshot.filter((item) => item.id !== entry.id);
+      setEntries(nextEntries);
+      setEntryDeletingId(entry.id);
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug('[delete:goal-entry]', {
+          before: snapshot.length,
+          after: nextEntries.length,
+        });
+      }
+      return { snapshot };
+    },
+    onError: (error, _entry, context) => {
+      if (context?.snapshot) {
+        setEntries(context.snapshot);
+      }
       logError('deleteEntry', error);
       addToast('Gagal menghapus setoran', 'error');
-    } finally {
+    },
+    onSuccess: async (_data, _entry) => {
+      addToast('Setoran berhasil dihapus', 'success');
+      if (selectedGoal?.id) {
+        const list = await listGoalEntries(selectedGoal.id);
+        setEntries(list);
+      }
+      await refreshGoals();
+      invalidateGoalQueries(queryClient);
+      emitDataInvalidation({ entity: 'goals' });
+    },
+    onSettled: () => {
       setEntryDeletingId(null);
       setPendingEntryDelete(null);
-    }
+    },
+  });
+
+  const handleConfirmDeleteEntry = async () => {
+    if (!pendingEntryDelete || !selectedGoal) return;
+    await deleteEntryMutation.mutateAsync(pendingEntryDelete);
   };
 
   const handleToggleArchive = async (goal: GoalRecord) => {
@@ -296,21 +326,44 @@ export default function Goals() {
     setPendingGoalDelete(goal);
   };
 
-  const handleConfirmDeleteGoal = async () => {
-    if (!pendingGoalDelete) return;
-    setDeleteLoading(true);
-    try {
-      await deleteGoal(pendingGoalDelete.id);
-      setGoals((prev) => prev.filter((item) => item.id !== pendingGoalDelete.id));
-      addToast('Goal berhasil dihapus', 'success');
-      await refreshGoals();
-    } catch (error) {
+  const deleteGoalMutation = useMutation({
+    mutationFn: (goal: GoalRecord) => deleteGoal(goal.id),
+    onMutate: (goal) => {
+      const snapshot = goals;
+      const nextGoals = snapshot.filter((item) => item.id !== goal.id);
+      setGoals(nextGoals);
+      setDeleteLoading(true);
+      if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
+        // eslint-disable-next-line no-console
+        console.debug('[delete:goal]', {
+          before: snapshot.length,
+          after: nextGoals.length,
+        });
+      }
+      return { snapshot };
+    },
+    onError: (error, _goal, context) => {
+      if (context?.snapshot) {
+        setGoals(context.snapshot);
+      }
       logError('deleteGoal', error);
       addToast('Gagal menghapus goal', 'error');
-    } finally {
+    },
+    onSuccess: async (_data, goal) => {
+      addToast('Goal berhasil dihapus', 'success');
+      await refreshGoals();
+      invalidateGoalQueries(queryClient);
+      emitDataInvalidation({ entity: 'goals', ids: [String(goal.id)] });
+    },
+    onSettled: () => {
       setDeleteLoading(false);
       setPendingGoalDelete(null);
-    }
+    },
+  });
+
+  const handleConfirmDeleteGoal = async () => {
+    if (!pendingGoalDelete) return;
+    await deleteGoalMutation.mutateAsync(pendingGoalDelete);
   };
 
   const handleExportCsv = () => {

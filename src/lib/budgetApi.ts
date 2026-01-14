@@ -5,6 +5,7 @@ import { getCurrentUserId, getUserToken } from './session';
 import { listCategories as listAllCategories } from './api-categories';
 import type { CategoryRecord } from './api-categories';
 import { buildSupabaseHeaders, createRestUrl } from './supabaseRest';
+import { remove as removeSync } from './sync/SyncEngine';
 
 type UUID = string;
 
@@ -1120,6 +1121,10 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
 export async function deleteWeeklyBudget(id: UUID): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    await removeSync('budgets_weekly', id);
+    return;
+  }
   const { error } = await supabase.from('budgets_weekly').delete().eq('user_id', userId).eq('id', id);
   if (error) throw error;
 }
@@ -1314,6 +1319,10 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
 export async function deleteBudget(id: UUID): Promise<void> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    await removeSync('budgets', id);
+    return;
+  }
   const { error } = await supabase.from('budgets').delete().eq('user_id', userId).eq('id', id);
   if (error) throw error;
 }

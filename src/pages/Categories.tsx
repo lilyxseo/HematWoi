@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { createPortal } from "react-dom";
 import CategoryForm from "../components/categories/CategoryForm";
@@ -16,6 +17,8 @@ import {
   updateCategory,
 } from "../lib/api-categories";
 import { useLockBodyScroll } from "../hooks/useLockBodyScroll";
+import { emitDataInvalidation } from "../lib/dataInvalidation";
+import { invalidateCategoryQueries } from "../lib/queryInvalidation";
 
 function toMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message;
@@ -140,6 +143,7 @@ function resequenceType(records: CategoryRecord[], type: CategoryType): Category
 
 export default function Categories() {
   const { addToast } = useToast();
+  const queryClient = useQueryClient();
   const [categories, setCategories] = useState<CategoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -369,33 +373,47 @@ export default function Categories() {
     [addPending, addToast, categories, removePending]
   );
 
-  const handleDeleteCategory = useCallback(
-    async (category: CategoryRecord) => {
+  const deleteMutation = useMutation({
+    mutationFn: (category: CategoryRecord) => deleteCategory(category.id),
+    onMutate: (category) => {
       const snapshot = categories;
       const remaining = snapshot.filter((cat) => cat.id !== category.id);
       const resequenced = resequenceType(remaining, category.type);
       setCategories(resequenced);
       addPending([category.id]);
-      try {
-        await deleteCategory(category.id);
-        addToast("Kategori dihapus.", "success");
-      } catch (err) {
-        setCategories(snapshot);
-        logDevError("deleteCategory", err);
-        addToast(toMessage(err, "Gagal menghapus kategori."), "error");
-      } finally {
+      if (typeof import.meta !== "undefined" && import.meta.env?.DEV) {
+        console.debug("[delete:category]", {
+          before: snapshot.length,
+          after: resequenced.length,
+        });
+      }
+      return { snapshot };
+    },
+    onError: (err, _category, context) => {
+      if (context?.snapshot) {
+        setCategories(context.snapshot);
+      }
+      logDevError("deleteCategory", err);
+      addToast(toMessage(err, "Gagal menghapus kategori."), "error");
+    },
+    onSuccess: (_data, category) => {
+      addToast("Kategori dihapus.", "success");
+      invalidateCategoryQueries(queryClient);
+      emitDataInvalidation({ entity: "categories", ids: [String(category.id)] });
+    },
+    onSettled: (_data, category) => {
+      if (category?.id) {
         removePending([category.id]);
       }
     },
-    [addPending, addToast, categories, removePending]
-  );
+  });
 
   const handleConfirmDelete = useCallback(async () => {
     if (!confirming) return;
     const target = confirming;
-    await handleDeleteCategory(target);
+    deleteMutation.mutate(target);
     setConfirming(null);
-  }, [confirming, handleDeleteCategory]);
+  }, [confirming, deleteMutation]);
 
   return (
     <Page maxWidthClassName="max-w-[1400px]" paddingClassName="px-3 sm:px-4 md:px-6">
