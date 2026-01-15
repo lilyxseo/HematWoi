@@ -168,9 +168,10 @@ export default function PaymentDrawer({
   const defaultCategoryId = useMemo(() => {
     if (!filteredCategories.length) return '';
     const targetName = transactionType === 'income' ? 'piutang' : 'hutang';
-    const directMatch = filteredCategories.find(
-      (category) => category.name.trim().toLowerCase() === targetName,
-    );
+    const directMatch = filteredCategories.find((category) => {
+      const normalizedName = category.name.trim().toLowerCase();
+      return normalizedName === targetName || normalizedName.includes(targetName);
+    });
     if (directMatch) return directMatch.id;
     return filteredCategories[0]?.id ?? '';
   }, [filteredCategories, transactionType]);
