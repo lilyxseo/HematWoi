@@ -44,14 +44,22 @@ export default function ScoreCard({
       : comparison?.direction === "down"
         ? TrendingDown
         : Minus;
+  const scoreDescription =
+    safeScore >= 90
+      ? "Keuanganmu berada di kondisi yang sangat baik. Pertahankan kebiasaan ini agar tetap stabil."
+      : safeScore >= 75
+        ? "Kondisi keuanganmu cukup stabil, masih ada beberapa area kecil yang bisa ditingkatkan."
+        : safeScore >= 60
+          ? "Keuanganmu berjalan cukup baik, namun ada beberapa hal yang perlu diperhatikan."
+          : safeScore >= 40
+            ? "Ada kebiasaan finansial yang perlu diperbaiki agar kondisi keuangan tetap aman."
+            : "Kondisi keuanganmu berisiko. Fokuskan perhatian pada arus kas dan pengeluaran.";
 
   return (
     <div className="flex flex-col gap-6 rounded-3xl border border-border-subtle bg-surface-1 p-6 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-text">
-            Financial Health Score
-          </h2>
+          <h2 className="text-lg font-semibold text-text">Financial Health</h2>
           <p className="text-sm text-muted">{subtitle}</p>
         </div>
         {comparison ? (
@@ -110,14 +118,7 @@ export default function ScoreCard({
           <p className="text-sm text-muted">Kondisi</p>
           <p className="text-2xl font-semibold text-text">{label}</p>
           <p className="mt-2 max-w-xs text-sm text-muted">
-            {safeScore >= 80 &&
-              "Pertahankan kebiasaan finansialmu. Kamu sudah di jalur yang tepat."}
-            {safeScore >= 60 && safeScore < 80 &&
-              "Kondisi keuangan cukup stabil, tetap jaga disiplin pengeluaran."}
-            {safeScore >= 40 && safeScore < 60 &&
-              "Mulai cek pos pengeluaran utama agar cashflow tetap aman."}
-            {safeScore < 40 &&
-              "Perlu segera perbaiki cashflow dan kendalikan cicilan."}
+            {scoreDescription}
           </p>
         </div>
       </div>

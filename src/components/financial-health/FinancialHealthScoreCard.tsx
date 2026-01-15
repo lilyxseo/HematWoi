@@ -27,6 +27,7 @@ interface FinancialHealthScoreCardProps {
   score: number;
   label: string;
   subtitle: string;
+  periodLabel?: string;
   comparison?: ScoreComparison | null;
   isEmpty: boolean;
 };
@@ -35,6 +36,7 @@ export default function FinancialHealthScoreCard({
   score,
   label,
   subtitle,
+  periodLabel,
   comparison,
   isEmpty,
 }: FinancialHealthScoreCardProps) {
@@ -61,14 +63,28 @@ export default function FinancialHealthScoreCard({
         ? "border-rose-500/30 bg-rose-500/10 text-rose-500"
         : "border-border bg-surface-2 text-muted";
 
+  const scoreDescription =
+    safeScore >= 90
+      ? "Keuanganmu berada di kondisi yang sangat baik. Pertahankan kebiasaan ini agar tetap stabil."
+      : safeScore >= 75
+        ? "Kondisi keuanganmu cukup stabil, masih ada beberapa area kecil yang bisa ditingkatkan."
+        : safeScore >= 60
+          ? "Keuanganmu berjalan cukup baik, namun ada beberapa hal yang perlu diperhatikan."
+          : safeScore >= 40
+            ? "Ada kebiasaan finansial yang perlu diperbaiki agar kondisi keuangan tetap aman."
+            : "Kondisi keuanganmu berisiko. Fokuskan perhatian pada arus kas dan pengeluaran.";
+
   return (
     <div className="rounded-3xl border border-border-subtle bg-surface-1 p-6 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-text">
-            Financial Health Score
+            Financial Health
           </h2>
           <p className="text-sm text-muted">{subtitle}</p>
+          {periodLabel ? (
+            <p className="mt-1 text-xs text-muted">{periodLabel}</p>
+          ) : null}
         </div>
         {comparison ? (
           <div
@@ -100,17 +116,17 @@ export default function FinancialHealthScoreCard({
           <Circle className="h-8 w-8 text-muted" />
           <div>
             <p className="text-sm font-semibold text-text">
-              Belum ada data untuk periode ini
+              Belum Cukup Data
             </p>
             <p className="mt-1 text-sm text-muted">
-              Tambahkan transaksi agar skor finansial dan insight bisa dihitung.
+              Tambahkan beberapa transaksi agar kami bisa menghitung kondisi keuanganmu.
             </p>
           </div>
           <Link
             to="/transaction/add"
             className="inline-flex items-center justify-center rounded-full border border-primary/30 bg-primary/15 px-4 py-2 text-xs font-semibold text-primary transition hover:bg-primary/25"
           >
-            Tambah transaksi
+            Tambah Transaksi
           </Link>
         </div>
       ) : (
@@ -153,18 +169,7 @@ export default function FinancialHealthScoreCard({
           <div className="space-y-4">
             <div>
               <p className="text-sm text-muted">Ringkasan kondisi</p>
-              <p className="mt-1 text-sm text-muted">
-                {safeScore >= 80 &&
-                  "Pertahankan kebiasaan finansialmu. Kamu sudah di jalur yang tepat."}
-                {safeScore >= 60 &&
-                  safeScore < 80 &&
-                  "Kondisi keuangan cukup stabil, tetap jaga disiplin pengeluaran."}
-                {safeScore >= 40 &&
-                  safeScore < 60 &&
-                  "Mulai cek pos pengeluaran utama agar cashflow tetap aman."}
-                {safeScore < 40 &&
-                  "Perlu segera perbaiki cashflow dan kendalikan cicilan."}
-              </p>
+              <p className="mt-1 text-sm text-muted">{scoreDescription}</p>
             </div>
 
           </div>

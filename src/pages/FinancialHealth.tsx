@@ -6,11 +6,10 @@ import {
   CreditCard,
   LineChart,
   PiggyBank,
-  TrendingDown,
-  TrendingUp,
   Wallet,
   ListChecks,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import Page from "../layout/Page";
 import PageHeader from "../layout/PageHeader";
 import Card, { CardBody, CardHeader } from "../components/Card";
@@ -81,7 +80,8 @@ type BudgetStats = {
 };
 
 const SCORE_LABELS = [
-  { min: 80, label: "Sangat Sehat" },
+  { min: 90, label: "Sangat Sehat" },
+  { min: 75, label: "Sehat" },
   { min: 60, label: "Cukup Sehat" },
   { min: 40, label: "Perlu Perhatian" },
   { min: 0, label: "Tidak Sehat" },
@@ -864,16 +864,6 @@ export default function FinancialHealth() {
       : snapshot.budgetOverCount === 0
         ? "Semua on-track"
         : `${snapshot.budgetOverCount} kategori over-budget`;
-  const expenseStabilityStatus =
-    snapshot.expenseStabilityScore == null
-      ? "Belum cukup data"
-      : snapshot.expenseStabilityRatio != null &&
-          snapshot.expenseStabilityRatio < 0.3
-        ? "Pengeluaran harian relatif konsisten"
-        : snapshot.expenseStabilityRatio != null &&
-            snapshot.expenseStabilityRatio < 0.6
-          ? "Masih ada variasi, tapi cukup terkendali"
-          : "Ada lonjakan pengeluaran di hari tertentu";
   const expenseStabilityValue =
     snapshot.expenseStabilityScore == null
       ? "Belum cukup data"
@@ -884,16 +874,24 @@ export default function FinancialHealth() {
             snapshot.expenseStabilityRatio < 0.6
           ? "Cukup Stabil"
           : "Tidak Stabil";
+  const expenseStabilityStatus =
+    snapshot.expenseStabilityScore == null
+      ? "Belum cukup data"
+      : expenseStabilityValue === "Stabil"
+        ? "Stabil · Pengeluaran harianmu cenderung konsisten."
+        : expenseStabilityValue === "Cukup Stabil"
+          ? "Cukup Stabil · Masih ada variasi, tapi masih terkendali."
+          : "Tidak Stabil · Ada lonjakan pengeluaran di beberapa hari.";
   const expenseCoverageRatio = snapshot.expenseCoverageRatio;
   const expenseCoverageValue = `Batas aman: ${formatCurrency(
     snapshot.expenseCoverageDailyAllowance
-  )}/hari`;
-  const expenseCoverageSecondary =
+  )} / hari`;
+  const expenseCoverageComparison =
     snapshot.expenseCoverageAvgDailyExpense > 0
-      ? `Rata-rata pengeluaran: ${formatCurrency(
+      ? `Rata-rata pengeluaranmu: ${formatCurrency(
           snapshot.expenseCoverageAvgDailyExpense
-        )}/hari`
-      : "Belum cukup data pengeluaran";
+        )} / hari`
+      : "Rata-rata pengeluaranmu: belum cukup data";
   const expenseCoverageStatus =
     expenseCoverageRatio == null
       ? "Belum cukup data pengeluaran"
@@ -902,9 +900,122 @@ export default function FinancialHealth() {
         : expenseCoverageRatio >= 0.9
           ? "Cukup"
           : expenseCoverageRatio >= 0.6
-            ? "Perlu perhatian"
+            ? "Perlu Perhatian"
             : "Kritis";
   const isEmpty = normalizedTransactions.length === 0;
+  const periodLabel =
+    periodMode === "single"
+      ? `Periode ${getMonthLabel(months[0])}`
+      : `Periode ${getMonthLabel(months[0])} - ${getMonthLabel(
+          months[months.length - 1]
+        )}`;
+  const miniKpis = [
+    {
+      key: "cashflow",
+      label: "Cashflow Bulan Ini",
+      value: formatCurrency(snapshot.net),
+      helper: "Selisih pemasukan dan pengeluaran bulan ini.",
+    },
+    {
+      key: "savings",
+      label: "Tingkat Tabungan",
+      value: formatPercent(snapshot.savingsRate),
+      helper: "Persentase uang yang berhasil kamu sisihkan.",
+    },
+    {
+      key: "debt",
+      label: "Rasio Hutang",
+      value: formatPercent(snapshot.debtRatio),
+      helper: "Perbandingan cicilan bulanan terhadap pemasukan.",
+    },
+    {
+      key: "budget",
+      label: "Kepatuhan Budget",
+      value: `${snapshot.budgetOverCount}/${snapshot.budgetTotal}`,
+      helper: "Jumlah kategori yang melebihi batas anggaran.",
+    },
+  ];
+  const driverCandidates = isEmpty
+    ? []
+    : [
+        {
+          key: "cashflow",
+          score: snapshot.cashflowScore,
+          label:
+            snapshot.net < 0
+              ? `Cashflow defisit (${formatCurrency(Math.abs(snapshot.net))})`
+              : `Cashflow tipis (${formatCurrency(snapshot.net)})`,
+        },
+        {
+          key: "savings",
+          score: snapshot.savingsScore,
+          label: `Tabungan rendah (${formatPercent(snapshot.savingsRate)})`,
+        },
+        {
+          key: "debt",
+          score: snapshot.debtScore,
+          label: `Rasio hutang tinggi (${formatPercent(snapshot.debtRatio)})`,
+        },
+        {
+          key: "budget",
+          score: snapshot.budgetScore,
+          label: `Kategori over-budget (${snapshot.budgetOverCount}/${snapshot.budgetTotal})`,
+        },
+        {
+          key: "expense-stability",
+          score: snapshot.expenseStabilityScore,
+          label:
+            snapshot.expenseStabilityScore == null
+              ? null
+              : `Stabilitas pengeluaran ${expenseStabilityValue.toLowerCase()}`,
+        },
+        {
+          key: "expense-coverage",
+          score: snapshot.expenseCoverageScore,
+          label:
+            snapshot.expenseCoverageScore == null
+              ? null
+              : `Daya tahan saldo ${expenseCoverageStatus.toLowerCase()}`,
+        },
+      ]
+        .filter((item) => item.score != null && item.label)
+        .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
+        .slice(0, 2);
+  const actionCandidates = isEmpty
+    ? []
+    : [
+        {
+          key: "budget",
+          score: snapshot.budgetScore,
+          title: "Rapikan budget bulan ini",
+          description: "Cek kategori yang melewati batas anggaran.",
+          href: "/budgets",
+        },
+        {
+          key: "debt",
+          score: snapshot.debtScore,
+          title: "Pantau rasio hutang",
+          description: "Lihat daftar cicilan dan atur prioritas pelunasan.",
+          href: "/debts",
+        },
+        {
+          key: "cashflow",
+          score: snapshot.cashflowScore,
+          title: "Perkuat arus kas",
+          description: "Cek transaksi agar pemasukan tetap lebih besar dari pengeluaran.",
+          href: "/transactions",
+        },
+        {
+          key: "savings",
+          score: snapshot.savingsScore,
+          title: "Dorong tabungan rutin",
+          description: "Buat target tabungan agar lebih konsisten.",
+          href: "/goals",
+        },
+      ]
+        .filter((item) => item.score != null)
+        .sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
+        .slice(0, 2);
 
   return (
     <Page>
@@ -936,22 +1047,42 @@ export default function FinancialHealth() {
           <FinancialHealthScoreCard
             score={snapshot.totalScore}
             label={snapshot.label}
-            subtitle={
-              periodMode === "single"
-                ? `Periode ${getMonthLabel(months[0])}`
-                : `Periode ${getMonthLabel(months[0])} - ${getMonthLabel(
-                    months[months.length - 1]
-                  )}`
-            }
+            subtitle="Ringkasan kondisi keuanganmu berdasarkan aktivitas dan kebiasaan belanja."
+            periodLabel={periodLabel}
             comparison={comparison}
             isEmpty={isEmpty}
           />
         )}
 
+        <Card>
+          <CardHeader
+            title="Ringkasan Singkat"
+            subtext="Empat metrik utama untuk membaca kondisi keuanganmu hari ini."
+          />
+          <CardBody>
+            <div className="grid gap-4 md:grid-cols-2">
+              {isLoading
+                ? Array.from({ length: 4 }).map((_, index) => (
+                    <Skeleton key={`mini-kpi-${index}`} className="h-24 w-full" />
+                  ))
+                : miniKpis.map((item) => (
+                    <div
+                      key={item.key}
+                      className="rounded-2xl border border-border-subtle bg-surface-1 p-4 shadow-sm"
+                    >
+                      <div className="text-xs font-semibold text-text">{item.label}</div>
+                      <div className="mt-2 text-lg font-semibold text-text">{item.value}</div>
+                      <p className="mt-1 text-xs text-muted">{item.helper}</p>
+                    </div>
+                  ))}
+            </div>
+          </CardBody>
+        </Card>
+
         <Card className="overflow-visible">
           <CardHeader
             title="Breakdown Indikator"
-            subtext="Lihat faktor utama yang memengaruhi skor finansialmu."
+            subtext="Detail tiap indikator untuk membantu memahami skor."
           />
           <CardBody>
             <div className="grid gap-4 md:grid-cols-2">
@@ -967,82 +1098,90 @@ export default function FinancialHealth() {
               ) : (
                 <>
                   <IndicatorCard
-                    title="Cashflow Health"
+                    title="Cashflow Bulan Ini"
                     icon={<Wallet className="h-5 w-5" />}
                     value={formatCurrency(snapshot.net)}
-                    status={`${cashflowStatus} · income ${formatCurrency(snapshot.income)}`}
+                    status={`${cashflowStatus} · pemasukan ${formatCurrency(snapshot.income)}`}
                     score={snapshot.cashflowScore}
-                    infoTitle="Cashflow Health"
+                    infoTitle="Apa itu Cashflow Bulan Ini?"
                     infoPoints={[
-                      "Apa artinya: selisih pemasukan & pengeluaran.",
-                      "Cara hitung: (income - expense) dibanding income.",
-                      "Target sehat: surplus ≥20%.",
+                      "Mengukur selisih pemasukan dan pengeluaran bulan ini.",
+                      "Penting untuk memastikan arus kas tetap positif.",
+                      "Surplus yang sehat akan menaikkan skor cashflow.",
                     ]}
                   />
                   <IndicatorCard
-                    title="Savings Rate"
+                    title="Tingkat Tabungan"
                     icon={<PiggyBank className="h-5 w-5" />}
                     value={formatPercent(snapshot.savingsRate)}
-                    status={`${savingsStatus} · target >20%`}
+                    status={`${savingsStatus} · idealnya di atas 20%`}
                     score={snapshot.savingsScore}
-                    infoTitle="Savings Rate"
+                    infoTitle="Apa itu Tingkat Tabungan?"
                     infoPoints={[
-                      "Apa artinya: porsi tabungan dari pemasukan.",
-                      "Cara hitung: (income - expense) / income.",
-                      "Target sehat: >20%.",
+                      "Mengukur porsi uang yang kamu sisihkan dari pemasukan.",
+                      "Penting untuk membangun dana darurat dan tujuan finansial.",
+                      "Semakin besar persentase, skor tabungan ikut naik.",
                     ]}
                   />
                   <IndicatorCard
-                    title="Debt Ratio"
+                    title="Rasio Hutang"
                     icon={<CreditCard className="h-5 w-5" />}
                     value={formatPercent(snapshot.debtRatio)}
-                    status={`${debtStatus} · batas 30%`}
+                    status={`${debtStatus} · idealnya di bawah 30%`}
                     score={snapshot.debtScore}
-                    infoTitle="Debt Ratio"
+                    infoTitle="Apa itu Rasio Hutang?"
                     infoPoints={[
-                      "Apa artinya: cicilan bulanan dibanding pemasukan.",
-                      "Cara hitung: total cicilan / pemasukan bulanan.",
-                      "Target sehat: <30%.",
+                      "Mengukur porsi cicilan bulanan terhadap pemasukan.",
+                      "Penting agar cicilan tidak menekan arus kas.",
+                      "Rasio tinggi menurunkan skor kesehatan finansial.",
                     ]}
                   />
                   <IndicatorCard
-                    title="Budget Discipline"
+                    title="Kepatuhan Budget"
                     icon={<ListChecks className="h-5 w-5" />}
-                    value={`${snapshot.budgetOverCount}/${snapshot.budgetTotal} over-budget`}
+                    value={`${snapshot.budgetOverCount}/${snapshot.budgetTotal} kategori`}
                     status={budgetStatus}
                     score={snapshot.budgetScore}
-                    infoTitle="Budget Discipline"
+                    infoTitle="Apa itu Kepatuhan Budget?"
                     infoPoints={[
-                      "Apa artinya: kategori yang melewati batas budget.",
-                      "Cara hitung: jumlah over-budget / total kategori.",
-                      "Target sehat: 0 kategori over-budget.",
+                      "Mengukur seberapa sering kategori belanja melewati batas.",
+                      "Penting untuk menjaga disiplin pengeluaran.",
+                      "Semakin sedikit over-budget, skor makin baik.",
                     ]}
                   />
                   <IndicatorCard
-                    title="Expense Stability"
+                    title="Stabilitas Pengeluaran"
                     icon={<LineChart className="h-5 w-5" />}
                     value={expenseStabilityValue}
+                    secondaryValue="Mengukur seberapa konsisten pengeluaran harianmu."
                     status={expenseStabilityStatus}
                     score={snapshot.expenseStabilityScore}
-                    infoTitle="Expense Stability"
+                    infoTitle="Apa itu Stabilitas Pengeluaran?"
                     infoPoints={[
-                      "Apa artinya: konsistensi pengeluaran harian.",
-                      "Cara hitung: standar deviasi / rata-rata harian.",
-                      "Target sehat: rasio variasi <0.3.",
+                      "Mengukur seberapa konsisten pengeluaran harianmu.",
+                      "Penting untuk menjaga pola belanja yang stabil.",
+                      "Semakin stabil, skor pengeluaran makin tinggi.",
                     ]}
                   />
                   <IndicatorCard
-                    title="Expense Coverage"
+                    title="Daya Tahan Saldo"
                     icon={<CalendarDays className="h-5 w-5" />}
                     value={expenseCoverageValue}
-                    secondaryValue={expenseCoverageSecondary}
+                    secondaryValue={
+                      <span className="space-y-1">
+                        <span className="block">
+                          Berdasarkan saldo saat ini hingga akhir bulan depan.
+                        </span>
+                        <span className="block">{expenseCoverageComparison}</span>
+                      </span>
+                    }
                     status={expenseCoverageStatus}
                     score={snapshot.expenseCoverageScore}
-                    infoTitle="Expense Coverage"
+                    infoTitle="Apa itu Daya Tahan Saldo?"
                     infoPoints={[
-                      "Apa artinya: batas aman pengeluaran harian berdasarkan saldo.",
-                      "Cara hitung: saldo aman / sisa hari sampai akhir bulan depan.",
-                      "Bandingkan dengan rata-rata pengeluaran harian bulan ini.",
+                      "Mengukur batas aman pengeluaran harian berdasarkan saldo.",
+                      "Penting untuk memastikan saldo cukup sampai akhir bulan depan.",
+                      "Bila batas aman di bawah rata-rata harian, skor turun.",
                     ]}
                   />
                 </>
@@ -1063,56 +1202,65 @@ export default function FinancialHealth() {
 
         <Card>
           <CardHeader
-            title="Ringkasan Action"
-            subtext="Rekomendasi praktis untuk meningkatkan skor finansialmu."
+            title="Faktor yang Paling Berpengaruh"
+            subtext="Kami hanya menampilkan faktor yang paling berpengaruh agar kamu bisa fokus."
           />
           <CardBody>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
-                <div className="flex items-center gap-3">
-                  <TrendingUp className="h-5 w-5 text-emerald-500" />
-                  <div>
-                    <p className="text-sm font-semibold text-text">Naikkan savings rate</p>
-                    <p className="text-xs text-muted">
-                      Sisihkan minimal 10% dari pemasukan setiap bulan.
-                    </p>
-                  </div>
-                </div>
+            {isLoading ? (
+              <Skeleton className="h-24 w-full" />
+            ) : driverCandidates.length ? (
+              <ul className="space-y-2 text-sm text-text">
+                {driverCandidates.map((item) => (
+                  <li key={item.key} className="flex items-start gap-2">
+                    <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary/70" />
+                    <span>{item.label}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-sm text-muted">
+                Belum ada faktor yang bisa dihitung untuk periode ini.
               </div>
-              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
-                <div className="flex items-center gap-3">
-                  <TrendingDown className="h-5 w-5 text-amber-500" />
-                  <div>
-                    <p className="text-sm font-semibold text-text">Kontrol cicilan</p>
-                    <p className="text-xs text-muted">
-                      Pastikan rasio hutang di bawah 30% pemasukan.
-                    </p>
-                  </div>
-                </div>
+            )}
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Langkah yang Bisa Kamu Lakukan"
+            subtext="Pilih langkah paling relevan untuk memperbaiki skor."
+          />
+          <CardBody>
+            {isLoading ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
               </div>
-              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
-                <div className="flex items-center gap-3">
-                  <ListChecks className="h-5 w-5 text-blue-500" />
-                  <div>
-                    <p className="text-sm font-semibold text-text">Disiplin budget</p>
-                    <p className="text-xs text-muted">
-                      Kurangi kategori yang over-budget agar cashflow stabil.
-                    </p>
+            ) : actionCandidates.length ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                {actionCandidates.map((item, index) => (
+                  <div
+                    key={item.key}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-surface-1 p-4"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-text">{item.title}</p>
+                      <p className="mt-1 text-xs text-muted">{item.description}</p>
+                    </div>
+                    <Link
+                      to={item.href}
+                      className="inline-flex items-center justify-center rounded-full border border-primary/30 bg-primary/15 px-4 py-2 text-xs font-semibold text-primary transition hover:bg-primary/25"
+                    >
+                      {index === 0 ? "Perbaiki Sekarang" : "Lihat Detail"}
+                    </Link>
                   </div>
-                </div>
+                ))}
               </div>
-              <div className="rounded-2xl border border-border-subtle bg-surface-1 p-4">
-                <div className="flex items-center gap-3">
-                  <Wallet className="h-5 w-5 text-violet-500" />
-                  <div>
-                    <p className="text-sm font-semibold text-text">Bangun dana darurat</p>
-                    <p className="text-xs text-muted">
-                      Siapkan minimal 1x pengeluaran bulanan di saldo akun.
-                    </p>
-                  </div>
-                </div>
+            ) : (
+              <div className="text-sm text-muted">
+                Belum ada langkah yang perlu ditampilkan untuk periode ini.
               </div>
-            </div>
+            )}
           </CardBody>
         </Card>
       </div>
