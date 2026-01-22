@@ -25,7 +25,7 @@ import Section from '../layout/Section';
 import Card, { CardBody } from '../components/Card';
 import { useToast } from '../context/ToastContext';
 import { createTransaction } from '../lib/transactionsApi';
-import { getPrefs, updatePrefs } from '../lib/preferences';
+import { getPrefs } from '../lib/preferences';
 import { formatCurrency } from '../lib/format';
 import useDashboardBalances from '../hooks/useDashboardBalances';
 import {
@@ -145,9 +145,7 @@ export default function TransactionAdd({ onAdd }) {
       .map((id) => id.trim())
       .filter(Boolean);
   });
-  const [stayOnAddAfterSave, setStayOnAddAfterSave] = useState(
-    () => getPrefs().stayOnAddAfterSave,
-  );
+  const stayOnAddAfterSave = useMemo(() => getPrefs().stayOnAddAfterSave, []);
 
   const categoryTypes = useMemo(() => ['expense', 'income'], []);
 
@@ -1037,20 +1035,6 @@ export default function TransactionAdd({ onAdd }) {
                   </div>
                 ) : null}
               </div>
-
-              <label className="flex items-center justify-between gap-4 rounded-2xl border border-border-subtle bg-background px-4 py-3 text-sm text-text">
-                <span className="font-medium">Tetap di halaman tambah setelah simpan</span>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={stayOnAddAfterSave}
-                  onChange={(event) => {
-                    const nextValue = event.target.checked;
-                    setStayOnAddAfterSave(nextValue);
-                    updatePrefs({ stayOnAddAfterSave: nextValue });
-                  }}
-                />
-              </label>
 
               <div>
                 <input

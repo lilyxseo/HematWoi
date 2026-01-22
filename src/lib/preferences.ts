@@ -11,7 +11,7 @@ export const defaultPrefs = {
   firstDay: 1,
   pinLock: false,
   incognito: false,
-  stayOnAddAfterSave: false,
+  stayOnAddAfterSave: true,
 };
 
 export function getPrefs() {
