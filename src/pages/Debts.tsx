@@ -776,7 +776,16 @@ export default function Debts() {
 
   const handleViewTransaction = (transactionId: string) => {
     handleClosePayment();
-    navigate(`/transactions?transactionId=${transactionId}`);
+    const params = new URLSearchParams();
+    params.set('transactionId', transactionId);
+    const targetCategoryName = paymentDebt?.type === 'receivable' ? 'piutang' : 'hutang';
+    const matchedCategory = categories.find(
+      (category) => category.name.trim().toLowerCase() === targetCategoryName,
+    );
+    if (matchedCategory?.id) {
+      params.set('categories', matchedCategory.id);
+    }
+    navigate({ pathname: '/transactions', search: `?${params.toString()}` });
   };
 
   const pageDescription = useMemo(
