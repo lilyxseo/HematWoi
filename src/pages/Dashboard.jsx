@@ -52,7 +52,7 @@ export default function Dashboard({ stats, txs }) {
 
   const digest = useShowDigestOnLogin({
     transactions: txs,
-    balanceHint: stats?.balance ?? null,
+    balanceHint: totalBalance ?? null,
   });
 
   useEffect(() => {
