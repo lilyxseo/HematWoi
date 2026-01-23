@@ -9,6 +9,7 @@ import {
   Tag,
   X,
 } from 'lucide-react';
+import { isPrivacyModeEnabled } from '../../lib/privacy-mode';
 
 const TYPE_OPTIONS = [
   { value: 'income', label: 'Pemasukan' },
@@ -367,6 +368,7 @@ function normalizeAmountInput(value: string) {
 
 function formatCurrency(value: number | string | null | undefined) {
   if (value == null || value === '') return '';
+  if (isPrivacyModeEnabled()) return '••••••';
   const number = Number(value);
   if (!Number.isFinite(number)) return '';
   return new Intl.NumberFormat('id-ID').format(number);

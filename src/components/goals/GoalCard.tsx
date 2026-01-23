@@ -1,16 +1,11 @@
 import { CalendarDays, Flag, Pencil, PiggyBank, Archive, Trash2, ListPlus } from 'lucide-react';
 import type { GoalRecord } from '../../lib/api-goals';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 const dateFormatter = new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' });
 
 function formatCurrency(value: number) {
-  return currencyFormatter.format(Math.max(0, value));
+  return formatMoney(Math.max(0, value), 'IDR');
 }
 
 function calculateProgress(goal: GoalRecord) {
@@ -196,12 +191,12 @@ export default function GoalCard({
             ))}
           </div>
           <div className="flex items-center justify-between text-xs text-muted md:text-sm">
-            <span>{formatCurrency(goal.saved_amount)} terkumpul</span>
-            <span>{formatCurrency(goal.target_amount)} target</span>
+            <span className="hw-money">{formatCurrency(goal.saved_amount)} terkumpul</span>
+            <span className="hw-money">{formatCurrency(goal.target_amount)} target</span>
           </div>
           {nextMilestone ? (
             <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted md:text-sm">
-              Next milestone {formatCurrency(nextMilestone.amount)}
+              <span className="hw-money">Next milestone {formatCurrency(nextMilestone.amount)}</span>
             </div>
           ) : null}
         </div>
@@ -212,18 +207,18 @@ export default function GoalCard({
             <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4 md:grid-cols-2">
               <div className="space-y-1">
                 <dt className="text-xs uppercase tracking-wide text-white/60">Target</dt>
-                <dd className="font-medium">{formatCurrency(goal.target_amount)}</dd>
+                <dd className="font-medium hw-money">{formatCurrency(goal.target_amount)}</dd>
               </div>
               <div className="space-y-1">
                 <dt className="text-xs uppercase tracking-wide text-white/60">Terkumpul</dt>
                 <dd className="font-medium text-emerald-500 dark:text-emerald-300">
-                  {formatCurrency(goal.saved_amount)}
+                  <span className="hw-money">{formatCurrency(goal.saved_amount)}</span>
                 </dd>
               </div>
               <div className="space-y-1">
                 <dt className="text-xs uppercase tracking-wide text-white/60">Sisa</dt>
                 <dd className="font-medium text-sky-500 dark:text-sky-300">
-                  {formatCurrency(remaining)}
+                  <span className="hw-money">{formatCurrency(remaining)}</span>
                 </dd>
               </div>
               <div className="space-y-1">
@@ -245,16 +240,16 @@ export default function GoalCard({
             <div className="flex flex-wrap gap-3 text-sm">
               <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
                 <Flag className="h-4 w-4" aria-hidden="true" />
-                {formatCurrency(dailySuggestion)} / hari
+                <span className="hw-money">{formatCurrency(dailySuggestion)} / hari</span>
               </span>
               {weeklySuggestion ? (
                 <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
                   <PiggyBank className="h-4 w-4" aria-hidden="true" />
-                  {formatCurrency(weeklySuggestion)} / minggu
+                  <span className="hw-money">{formatCurrency(weeklySuggestion)} / minggu</span>
                 </span>
               ) : null}
               <span className="inline-flex items-center gap-1 rounded-xl bg-surface-2/70 px-3 py-1 font-medium text-muted md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
-                Rata-rata saat ini: {formatCurrency(averagePerDay)} / hari
+                <span className="hw-money">Rata-rata saat ini: {formatCurrency(averagePerDay)} / hari</span>
               </span>
             </div>
           ) : null}
@@ -274,7 +269,7 @@ export default function GoalCard({
                     className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text transition hover:bg-border/60 disabled:cursor-not-allowed disabled:opacity-60 md:rounded-xl md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm"
                   >
                     <PiggyBank className="h-3 w-3" aria-hidden="true" />
-                    {formatCurrency(amount)}
+                    <span className="hw-money">{formatCurrency(amount)}</span>
                   </button>
                 );
               })}

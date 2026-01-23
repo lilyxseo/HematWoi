@@ -1,14 +1,9 @@
 import { Sparkles, Target, TrendingUp } from 'lucide-react';
 import type { GoalsSummary } from '../../lib/api-goals';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 function formatCurrency(value?: number | null) {
-  return currencyFormatter.format(Math.max(0, Number(value ?? 0)));
+  return formatMoney(Math.max(0, Number(value ?? 0)), 'IDR');
 }
 
 interface SummaryCardsProps {
@@ -45,7 +40,7 @@ export default function SummaryCards({ summary, nearestGoalTitle }: SummaryCards
             <Sparkles className="h-4 w-4" aria-hidden="true" />
           </span>
         </div>
-        <p className="text-2xl font-bold tracking-tight text-emerald-500 dark:text-emerald-300 md:text-3xl">
+        <p className="text-2xl font-bold tracking-tight text-emerald-500 dark:text-emerald-300 md:text-3xl hw-money">
           {formatCurrency(totalSavedThisMonth)}
         </p>
         <p className="text-xs text-muted">Akumulasi setoran dari goal selama bulan berjalan.</p>
@@ -53,7 +48,7 @@ export default function SummaryCards({ summary, nearestGoalTitle }: SummaryCards
 
       <article className="card min-w-0 space-y-2 rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-sm md:p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Menuju Target Terdekat</p>
-        <p className="text-2xl font-bold tracking-tight text-sky-500 dark:text-sky-300 md:text-3xl">
+        <p className="text-2xl font-bold tracking-tight text-sky-500 dark:text-sky-300 md:text-3xl hw-money">
           {nearestRemaining != null ? formatCurrency(nearestRemaining) : '—'}
         </p>
         <p className="text-xs text-muted">

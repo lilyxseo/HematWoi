@@ -4,14 +4,7 @@ import clsx from "clsx";
 import Segmented from "./ui/Segmented";
 import Card, { CardBody, CardHeader } from "./Card";
 import { isTransactionDeleted } from "../lib/transactionUtils";
-
-function formatCurrency(n = 0) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n);
-}
+import { formatMoney } from "../lib/format";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -160,8 +153,8 @@ export default function RecentTransactions({ txs = [] }) {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={clsx("text-sm font-semibold", meta.amountClass)}>
-                        {formatCurrency(amount)}
+                      <p className={clsx("text-sm font-semibold hw-money", meta.amountClass)}>
+                        {formatMoney(amount, "IDR")}
                       </p>
                     </div>
                   </div>

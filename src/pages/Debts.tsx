@@ -28,6 +28,7 @@ import {
 } from '../lib/api-debts';
 import useSupabaseUser from '../hooks/useSupabaseUser';
 import { listAccounts, type AccountRecord } from '../lib/api';
+import { formatMoney } from '../lib/format';
 import { listCategories, type CategoryRecord } from '../lib/api-categories';
 
 const INITIAL_FILTERS: DebtsFilterState = {
@@ -59,11 +60,7 @@ function computeStatus(amount: number, paid: number, dueDate: string | null) {
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    maximumFractionDigits: 0,
-  }).format(Math.max(0, value));
+  return formatMoney(Math.max(0, value), 'IDR');
 }
 
 const FILTER_DATE_FORMATTER = new Intl.DateTimeFormat('id-ID', {
@@ -911,7 +908,7 @@ export default function Debts() {
           {dateFilterSummary ? (
             <div className="rounded-3xl border border-border/60 bg-surface-1/90 px-4 py-3 text-sm text-muted-foreground">
               <span>{dateFilterSummary.description}:</span>{' '}
-              <span className="font-semibold text-foreground">{formatCurrency(dateFilterSummary.total)}</span>
+              <span className="font-semibold text-foreground hw-money">{formatCurrency(dateFilterSummary.total)}</span>
             </div>
           ) : null}
 

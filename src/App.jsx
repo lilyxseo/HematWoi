@@ -65,6 +65,7 @@ import { onDataInvalidation } from "./lib/dataInvalidation";
 import CategoryProvider from "./context/CategoryContext";
 import ToastProvider, { useToast } from "./context/ToastContext";
 import UserProfileProvider from "./context/UserProfileContext.jsx";
+import { PrivacyProvider } from "./context/PrivacyContext";
 import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
 import { ModeProvider, useMode } from "./hooks/useMode";
@@ -1584,7 +1585,9 @@ export default function App() {
       <UserProfileProvider>
         <ToastProvider>
           <DataProvider>
-            <AppContent />
+            <PrivacyProvider>
+              <AppContent />
+            </PrivacyProvider>
           </DataProvider>
         </ToastProvider>
       </UserProfileProvider>

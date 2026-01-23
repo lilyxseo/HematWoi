@@ -1,9 +1,7 @@
+import { formatMoney } from '../lib/format';
+
 function toRupiah(n = 0) {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-  }).format(n);
+  return formatMoney(n, 'IDR');
 }
 
 export default function Summary({ stats }) {
@@ -11,19 +9,19 @@ export default function Summary({ stats }) {
     <div className="grid gap-4 sm:grid-cols-3">
       <div className="card text-center">
         <div className="text-sm">Pemasukan</div>
-        <div className="text-lg font-semibold text-success">
+        <div className="text-lg font-semibold text-success hw-money">
           {toRupiah(stats?.income || 0)}
         </div>
       </div>
       <div className="card text-center">
         <div className="text-sm">Pengeluaran</div>
-        <div className="text-lg font-semibold text-danger">
+        <div className="text-lg font-semibold text-danger hw-money">
           {toRupiah(stats?.expense || 0)}
         </div>
       </div>
       <div className="card text-center">
         <div className="text-sm">Saldo</div>
-        <div className="text-lg font-semibold">
+        <div className="text-lg font-semibold hw-money">
           {toRupiah(stats?.balance || 0)}
         </div>
       </div>

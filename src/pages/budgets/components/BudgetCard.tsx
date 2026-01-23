@@ -12,15 +12,10 @@ import {
   Trash2,
 } from 'lucide-react';
 import type { BudgetWithSpent } from '../../../lib/budgetApi';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../../lib/format';
 
 function formatCurrency(value: number) {
-  return currencyFormatter.format(Number.isFinite(value) ? value : 0);
+  return formatMoney(Number.isFinite(value) ? value : 0, 'IDR');
 }
 
 function getStatus(remaining: number, progress: number) {
@@ -84,7 +79,7 @@ function StatItem({
   return (
     <div className="min-w-0 space-y-1">
       <p className="text-xs md:text-sm leading-snug text-muted-foreground whitespace-nowrap">{label}</p>
-      <p className={clsx('text-lg md:text-xl font-bold tabular-nums truncate', valueClassName)}>{value}</p>
+      <p className={clsx('text-lg md:text-xl font-bold tabular-nums truncate hw-money', valueClassName)}>{value}</p>
       {description ? (
         <p className="text-xs md:text-sm leading-snug text-muted-foreground/90 line-clamp-1">{description}</p>
       ) : null}

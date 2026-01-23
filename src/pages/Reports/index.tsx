@@ -11,7 +11,7 @@ import ExportReport from '../../components/ExportReport';
 import Card, { CardBody, CardFooter, CardHeader } from '../../components/Card';
 import Skeleton from '../../components/Skeleton';
 import { useRepo } from '../../context/DataContext';
-import { formatCurrency } from '../../lib/format';
+import { formatMoney } from '../../lib/format';
 import { onDataInvalidation } from '../../lib/dataInvalidation';
 import { isTransactionDeleted } from '../../lib/transactionUtils';
 
@@ -507,25 +507,37 @@ export default function ReportsPage() {
       },
       {
         title: 'Pengeluaran rata-rata aktif',
-        value: activeDays ? formatCurrency(avgExpense) : '—',
+        value: activeDays ? <span className="hw-money">{formatMoney(avgExpense, 'IDR')}</span> : '—',
         description:
           'Rata-rata pengeluaran pada hari ketika ada transaksi keluar.',
       },
       {
         title: 'Kategori terbesar',
-        value: topCategory ? `${topCategory.name} • ${formatCurrency(topCategory.value)}` : '—',
+        value: topCategory ? (
+          <>
+            {topCategory.name} • <span className="hw-money">{formatMoney(topCategory.value, 'IDR')}</span>
+          </>
+        ) : '—',
         description:
           'Kategori pengeluaran dengan nominal tertinggi pada bulan ini.',
       },
       {
         title: 'Hari paling hemat',
-        value: bestDay ? `${bestDay.date} • ${formatCurrency(bestDay.balance)}` : '—',
+        value: bestDay ? (
+          <>
+            {bestDay.date} • <span className="hw-money">{formatMoney(bestDay.balance, 'IDR')}</span>
+          </>
+        ) : '—',
         description:
           'Selisih pemasukan dan pengeluaran terbaik dalam satu hari.',
       },
       {
         title: 'Hari pengeluaran tertinggi',
-        value: heaviestDay ? `${heaviestDay.date} • ${formatCurrency(heaviestDay.expense)}` : '—',
+        value: heaviestDay ? (
+          <>
+            {heaviestDay.date} • <span className="hw-money">{formatMoney(heaviestDay.expense, 'IDR')}</span>
+          </>
+        ) : '—',
         description:
           'Total pengeluaran terbesar yang terjadi dalam satu hari pada periode ini.',
       },
@@ -622,7 +634,7 @@ export default function ReportsPage() {
                         </p>
                         <p>
                           {new Date(focusedTransaction.date).toLocaleDateString('id-ID')} •{' '}
-                          {formatCurrency(focusedTransaction.amount)}
+                          <span className="hw-money">{formatMoney(focusedTransaction.amount, 'IDR')}</span>
                         </p>
                       </div>
                     </CardFooter>

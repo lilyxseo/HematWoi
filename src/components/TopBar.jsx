@@ -3,16 +3,7 @@ import Logo from "./Logo";
 import SignIn from "./SignIn";
 import { supabase } from "../lib/supabase";
 import { Sun, Moon } from "lucide-react";
-
-function formatCurrency(n = 0) {
-  const pref = window.__hw_prefs?.currency === "USD" ? "USD" : "IDR";
-  const locale = pref === "USD" ? "en-US" : "id-ID";
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: pref,
-    minimumFractionDigits: 0,
-  }).format(n);
-}
+import { formatMoney } from "../lib/format";
 
 export default function TopBar({
   stats,
@@ -102,7 +93,7 @@ export default function TopBar({
           Cloud
         </label>
         <div className="font-semibold hidden sm:block">
-          Saldo: {formatCurrency(stats?.balance || 0)}
+          Saldo: <span className="hw-money">{formatMoney(stats?.balance || 0, window.__hw_prefs?.currency === "USD" ? "USD" : "IDR")}</span>
         </div>
         <button
           className="btn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"

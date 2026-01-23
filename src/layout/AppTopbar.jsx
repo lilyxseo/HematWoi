@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, LogIn, LogOut, Menu, Settings, UserRound } from "lucide-react";
+import { Bell, Eye, EyeOff, LogIn, LogOut, Menu, Settings, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { usePrivacyMode } from "../context/PrivacyContext";
 
 function getDisplayName(user) {
   if (!user) return "Masuk";
@@ -20,6 +21,7 @@ export default function AppTopbar() {
   const profileButtonRef = useRef(null);
   const navigate = useNavigate();
   const isAuthenticated = Boolean(user);
+  const { isPrivacyMode, togglePrivacyMode } = usePrivacyMode();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -104,6 +106,28 @@ export default function AppTopbar() {
           <span className="text-base font-semibold text-text">HematWoi</span>
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2">
+            <div className="sr-only">
+              <span id="privacy-mode-label">Mode Privasi</span>
+              <span id="privacy-mode-desc">Sembunyikan nilai keuangan di layar</span>
+            </div>
+            <button
+              type="button"
+              onClick={togglePrivacyMode}
+              className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-surface-1 text-text transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95"
+              aria-labelledby="privacy-mode-label"
+              aria-describedby="privacy-mode-desc"
+              aria-pressed={isPrivacyMode}
+              title="Sembunyikan / tampilkan nilai keuangan"
+            >
+              {isPrivacyMode ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+            </button>
+            {isPrivacyMode ? (
+              <span className="hidden items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 sm:inline-flex">
+                Privacy On
+              </span>
+            ) : null}
+          </div>
           <button
             type="button"
             className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-surface-1 text-text transition-all duration-200 ease-out hover:-translate-y-0.5 hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-95"

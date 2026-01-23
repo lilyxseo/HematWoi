@@ -11,12 +11,7 @@ import {
   Wallet,
 } from 'lucide-react';
 import type { DebtRecord } from '../../lib/api-debts';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 const percentFormatter = new Intl.NumberFormat('id-ID', {
   minimumFractionDigits: 0,
@@ -72,7 +67,7 @@ interface DebtsGridProps {
 const GRID_CLASS = 'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6';
 
 function formatCurrency(value: number) {
-  return currencyFormatter.format(Number.isFinite(value) ? value : 0);
+  return formatMoney(Number.isFinite(value) ? value : 0, 'IDR');
 }
 
 function formatPercent(value: number | null) {
@@ -236,14 +231,16 @@ export default function DebtsGrid({
                 <div className="flex min-w-0 flex-col gap-1 rounded-xl bg-slate-800/50 p-3">
                   <span className="text-xs opacity-70">Jumlah Bayar / Total</span>
                   <span className="text-lg font-semibold tabular-nums text-slate-100 sm:text-xl">
-                    {formatCurrency(debt.amount)}
+                    <span className="hw-money">{formatCurrency(debt.amount)}</span>
                   </span>
-                  <span className="text-xs text-slate-400">Terbayar {formatCurrency(debt.paid_total)}</span>
+                  <span className="text-xs text-slate-400">
+                    Terbayar <span className="hw-money">{formatCurrency(debt.paid_total)}</span>
+                  </span>
                 </div>
                 <div className="flex min-w-0 flex-col gap-1 rounded-xl bg-slate-800/50 p-3">
                   <span className="text-xs opacity-70">Sisa</span>
                   <span className={clsx('text-lg font-semibold tabular-nums sm:text-xl', remainingTone)}>
-                    {formatCurrency(remaining)}
+                    <span className="hw-money">{formatCurrency(remaining)}</span>
                   </span>
                 </div>
               </div>
@@ -296,7 +293,10 @@ export default function DebtsGrid({
                   />
                 </div>
                 {progress > 1 ? (
-                  <p className="text-xs text-emerald-300">Pembayaran melebihi jumlah hutang sebesar {formatCurrency(debt.paid_total - debt.amount)}</p>
+                  <p className="text-xs text-emerald-300">
+                    Pembayaran melebihi jumlah hutang sebesar{' '}
+                    <span className="hw-money">{formatCurrency(debt.paid_total - debt.amount)}</span>
+                  </p>
                 ) : null}
               </div>
 
