@@ -35,14 +35,11 @@ import {
   exportZipCsv,
   type ReportFilters,
 } from '../../lib/export/reportCsv';
+import { formatMoney } from '../../lib/format';
 
 const DEFAULT_TAB = 'categories';
 
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+const formatCurrency = (value: number) => formatMoney(value, 'IDR');
 
 function currentMonthValue() {
   const now = new Date();
@@ -383,7 +380,7 @@ function TrendTooltip({ active, payload, label }: any) {
       <div className="font-medium text-text">{label}</div>
       {payload.map((item: any) => (
         <div key={item.dataKey} className="text-slate-600 dark:text-slate-200">
-          {item.name}: {currencyFormatter.format(item.value ?? 0)}
+          {item.name}: {formatCurrency(item.value ?? 0)}
         </div>
       ))}
     </div>
@@ -554,17 +551,17 @@ export default function ReportsProPage() {
   const kpiCards = [
     {
       label: 'Income',
-      value: currencyFormatter.format(reportData.summary.total_income),
+      value: formatCurrency(reportData.summary.total_income),
       tone: 'text-emerald-400',
     },
     {
       label: 'Expense',
-      value: currencyFormatter.format(reportData.summary.total_expense),
+      value: formatCurrency(reportData.summary.total_expense),
       tone: 'text-rose-400',
     },
     {
       label: 'Net',
-      value: currencyFormatter.format(reportData.summary.net),
+      value: formatCurrency(reportData.summary.net),
       tone: reportData.summary.net >= 0 ? 'text-emerald-400' : 'text-rose-400',
     },
     {
@@ -574,12 +571,12 @@ export default function ReportsProPage() {
     },
     {
       label: 'Avg Daily Expense',
-      value: currencyFormatter.format(reportData.summary.avg_daily_expense),
+      value: formatCurrency(reportData.summary.avg_daily_expense),
       tone: 'text-slate-100',
     },
     {
       label: 'Largest Expense',
-      value: currencyFormatter.format(reportData.summary.largest_expense_amount),
+      value: formatCurrency(reportData.summary.largest_expense_amount),
       helper: reportData.summary.largest_expense_date || '-',
       tone: 'text-slate-100',
     },
@@ -592,7 +589,7 @@ export default function ReportsProPage() {
     },
     {
       label: 'Cashflow Volatility',
-      value: currencyFormatter.format(reportData.summary.cashflow_volatility),
+      value: formatCurrency(reportData.summary.cashflow_volatility),
       tone: 'text-slate-100',
     },
   ];
@@ -984,13 +981,13 @@ export default function ReportsProPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 text-right text-emerald-300">
-                            {currencyFormatter.format(row.total_income)}
+                            {formatCurrency(row.total_income)}
                           </td>
                           <td className="px-4 py-3 text-right text-rose-300">
-                            {currencyFormatter.format(row.total_expense)}
+                            {formatCurrency(row.total_expense)}
                           </td>
                           <td className="px-4 py-3 text-right text-slate-200">
-                            {currencyFormatter.format(row.average_amount)}
+                            {formatCurrency(row.average_amount)}
                           </td>
                           <td className="px-4 py-3 text-right text-slate-200">
                             {row.transaction_count}
@@ -1026,7 +1023,7 @@ export default function ReportsProPage() {
                               </p>
                             </div>
                             <div className="text-sm font-semibold text-rose-300">
-                              {currencyFormatter.format(tx.amount)}
+                              {formatCurrency(tx.amount)}
                             </div>
                           </div>
                         ))}
@@ -1127,16 +1124,16 @@ export default function ReportsProPage() {
                         <tr key={row.date} className="hover:bg-slate-900/60">
                           <td className="px-4 py-3 text-slate-200">{row.date}</td>
                           <td className="px-4 py-3 text-right text-emerald-300">
-                            {currencyFormatter.format(row.income)}
+                            {formatCurrency(row.income)}
                           </td>
                           <td className="px-4 py-3 text-right text-rose-300">
-                            {currencyFormatter.format(row.expense)}
+                            {formatCurrency(row.expense)}
                           </td>
                           <td className="px-4 py-3 text-right text-slate-200">
-                            {currencyFormatter.format(row.net)}
+                            {formatCurrency(row.net)}
                           </td>
                           <td className="px-4 py-3 text-right text-slate-200">
-                            {currencyFormatter.format(row.cumulative_net)}
+                            {formatCurrency(row.cumulative_net)}
                           </td>
                         </tr>
                       ))}
@@ -1204,7 +1201,7 @@ export default function ReportsProPage() {
                               row.type === 'income' ? 'text-emerald-300' : 'text-rose-300',
                             )}
                           >
-                            {currencyFormatter.format(row.amount)}
+                            {formatCurrency(row.amount)}
                           </td>
                           <td className="px-4 py-3 text-slate-200">{row.type}</td>
                           <td className="px-4 py-3 text-slate-400">

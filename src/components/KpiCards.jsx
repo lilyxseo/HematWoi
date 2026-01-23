@@ -1,12 +1,5 @@
 import KpiCard from "./KpiCard";
-
-function toRupiah(n = 0) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n);
-}
+import { formatMoney } from "../lib/format";
 
 export default function KpiCards({
   income = 0,
@@ -18,23 +11,22 @@ export default function KpiCards({
     <div className="grid gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-3 lg:gap-8">
       <KpiCard
         label="Pemasukan"
-        value={toRupiah(income)}
+        value={<span className="hw-money">{formatMoney(income, "IDR")}</span>}
         variant="success"
         loading={loading}
       />
       <KpiCard
         label="Pengeluaran"
-        value={toRupiah(expense)}
+        value={<span className="hw-money">{formatMoney(expense, "IDR")}</span>}
         variant="danger"
         loading={loading}
       />
       <KpiCard
         label={net < 0 ? "Defisit" : "Saldo"}
-        value={toRupiah(net)}
+        value={<span className="hw-money">{formatMoney(net, "IDR")}</span>}
         variant={net < 0 ? "danger" : "brand"}
         loading={loading}
       />
     </div>
   );
 }
-

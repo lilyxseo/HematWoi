@@ -8,13 +8,10 @@ import {
   YAxis,
   Tooltip,
 } from "recharts";
+import { formatMoney } from "../lib/format";
 
 function toRupiah(n = 0) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n);
+  return formatMoney(n, "IDR");
 }
 
 function InsightCard({ title, value, badge }) {
@@ -22,7 +19,7 @@ function InsightCard({ title, value, badge }) {
     <div className="card">
       <div className="text-sm mb-1">{title}</div>
       <div className="text-lg font-semibold flex items-center gap-2">
-        <span>{value}</span>
+        <span className="hw-money">{value}</span>
         {badge}
       </div>
     </div>

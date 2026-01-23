@@ -1,13 +1,6 @@
 import { useMemo, useState } from "react";
 import Card, { CardBody, CardHeader } from "./Card";
-
-function toRupiah(n = 0) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n);
-}
+import { formatMoney } from "../lib/format";
 
 function formatDate(value) {
   if (!value) return "-";
@@ -77,7 +70,7 @@ export default function TopSpendsTable({ data = [], onSelect }) {
                 {sort === "asc" ? "Nominal terkecil" : "Nominal terbesar"}
               </span>{" "}
               <span className="text-muted/90">
-                {toRupiah(highlighted.amount)} • {highlighted.note || highlighted.category || "Tanpa catatan"}
+                <span className="hw-money">{formatMoney(highlighted.amount, "IDR")}</span> • {highlighted.note || highlighted.category || "Tanpa catatan"}
               </span>
             </div>
           ) : null}
@@ -111,8 +104,8 @@ export default function TopSpendsTable({ data = [], onSelect }) {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-semibold text-danger">
-                          {toRupiah(row.amount)}
+                        <p className="text-sm font-semibold text-danger hw-money">
+                          {formatMoney(row.amount, "IDR")}
                         </p>
                         <p className="text-xs text-muted/80">{contribution}% dari total</p>
                       </div>
@@ -137,4 +130,3 @@ export default function TopSpendsTable({ data = [], onSelect }) {
     </Card>
   );
 }
-

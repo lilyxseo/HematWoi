@@ -1,13 +1,6 @@
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Label } from "recharts";
 import ChartCard from "./dashboard/ChartCard";
-
-function toRupiah(n = 0) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n);
-}
+import { formatMoney } from "../lib/format";
 
 const FALLBACK_COLORS = [
   "#dc2626",
@@ -37,7 +30,7 @@ export default function CategoryDonut({ data = [] }) {
     return (
       <div className="rounded-lg border border-white/10 bg-white/95 px-3 py-2 text-xs text-text shadow-lg dark:bg-slate-900/90">
         <div className="font-medium text-text">{p.name}</div>
-        <div className="text-brand">{toRupiah(p.value)}</div>
+        <div className="text-brand hw-money">{formatMoney(p.value, "IDR")}</div>
       </div>
     );
   };
@@ -57,7 +50,7 @@ export default function CategoryDonut({ data = [] }) {
                   style={{ backgroundColor: resolveColor(item, index) }}
                 />
                 <span className="truncate">
-                  {item.name} · {toRupiah(item.value)}
+                  {item.name} · <span className="hw-money">{formatMoney(item.value, "IDR")}</span>
                 </span>
               </li>
             ))}
@@ -90,9 +83,9 @@ export default function CategoryDonut({ data = [] }) {
                         x={cx}
                         y={cy - 4}
                         style={{ fontSize: "1.5rem", fontWeight: 600 }}
-                        className="fill-slate-900 dark:fill-slate-100"
+                        className="hw-money fill-slate-900 dark:fill-slate-100"
                       >
-                        {toRupiah(total)}
+                        {formatMoney(total, "IDR")}
                       </tspan>
                       <tspan
                         x={cx}
@@ -114,4 +107,3 @@ export default function CategoryDonut({ data = [] }) {
     </ChartCard>
   );
 }
-

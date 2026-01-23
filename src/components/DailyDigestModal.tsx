@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { DailyDigestModalData } from '../hooks/useShowDigestOnLogin';
 import { useLockBodyScroll } from '../hooks/useLockBodyScroll';
+import { formatMoney } from '../lib/format';
 
 interface DailyDigestModalProps {
   open: boolean;
@@ -19,14 +20,6 @@ const focusableSelectors = [
   'select',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('id-ID', {
-    style: 'currency',
-    currency: 'IDR',
-    minimumFractionDigits: 0,
-  }).format(Math.round(value));
-}
 
 function formatDaysLabel(days: number): string {
   if (days <= 0) return 'Hari ini';
@@ -113,7 +106,7 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
         </div>
         <div className="rounded-2xl border border-border-subtle bg-surface-alt/70 px-4 py-3 text-right">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Saldo total</p>
-          <p className="text-lg font-semibold text-text">{formatCurrency(data!.balance)}</p>
+          <p className="text-lg font-semibold text-text hw-money">{formatMoney(data!.balance, 'IDR')}</p>
         </div>
       </header>
 
@@ -123,12 +116,12 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted">Aktivitas hari ini</p>
               <p className="mt-2 text-2xl font-semibold text-text">
-                <span className="text-danger">-{formatCurrency(data!.todayExpense)}</span>
+                <span className="text-danger hw-money">-{formatMoney(data!.todayExpense, 'IDR')}</span>
                 <span className="mx-2 text-muted">/</span>
-                <span className="text-success">+{formatCurrency(data!.todayIncome)}</span>
+                <span className="text-success hw-money">+{formatMoney(data!.todayIncome, 'IDR')}</span>
               </p>
               <p className="mt-1 text-xs text-muted">
-                {data!.todayCount} transaksi · Net {formatCurrency(data!.todayNet)}
+                {data!.todayCount} transaksi · Net <span className="hw-money">{formatMoney(data!.todayNet, 'IDR')}</span>
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -148,7 +141,7 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
                 {data!.topTodayExpenses.map((item) => (
                   <li key={item.name} className="flex items-center justify-between">
                     <span className="font-medium">{item.name}</span>
-                    <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
+                    <span className="font-semibold text-danger hw-money">-{formatMoney(item.amount, 'IDR')}</span>
                   </li>
                 ))}
               </ul>
@@ -162,7 +155,7 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
           <div className="rounded-2xl border border-border-subtle bg-surface p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">Ringkasan kemarin</p>
             <p className="mt-2 text-xl font-semibold text-danger">
-              -{formatCurrency(data!.yesterdayExpense)}
+              <span className="hw-money">-{formatMoney(data!.yesterdayExpense, 'IDR')}</span>
             </p>
             {data!.yesterdayCount > 0 ? (
               <p className="mt-1 text-xs text-muted">{data!.yesterdayCount} transaksi tercatat kemarin.</p>
@@ -178,7 +171,7 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
                 {data!.topYesterdayExpenses.map((item) => (
                   <li key={item.name} className="flex items-center justify-between">
                     <span className="font-medium">{item.name}</span>
-                    <span className="font-semibold text-danger">-{formatCurrency(item.amount)}</span>
+                    <span className="font-semibold text-danger hw-money">-{formatMoney(item.amount, 'IDR')}</span>
                   </li>
                 ))}
               </ul>
@@ -210,7 +203,7 @@ export default function DailyDigestModal({ open, data, loading, onClose }: Daily
                     <p className="text-xs text-muted">{formatDaysLabel(item.days)}</p>
                   </div>
                   <span className="text-sm font-semibold text-brand">
-                    {formatCurrency(item.amount)}
+                    <span className="hw-money">{formatMoney(item.amount, 'IDR')}</span>
                   </span>
                 </div>
               ))}

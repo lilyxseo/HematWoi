@@ -1,12 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { DebtPaymentRecord } from '../../lib/api-debts';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 const dateFormatter = new Intl.DateTimeFormat('id-ID', {
   dateStyle: 'medium',
@@ -49,7 +44,7 @@ export default function PaymentDeleteDialog({
 
   if (!open || !payment) return null;
 
-  const amountLabel = currencyFormatter.format(payment.amount ?? 0);
+  const amountLabel = formatMoney(payment.amount ?? 0, 'IDR');
   const dateLabel = payment.date ? dateFormatter.format(new Date(payment.date)) : '-';
   const hasTransaction = Boolean(payment.transaction_id);
 
@@ -62,7 +57,7 @@ export default function PaymentDeleteDialog({
             <h2 className="text-lg font-semibold">Hapus pembayaran?</h2>
           </div>
           <div className="rounded-2xl border border-border-subtle bg-surface-alt/70 p-3 text-sm text-muted">
-            <p className="font-semibold text-text">{amountLabel}</p>
+            <p className="font-semibold text-text hw-money">{amountLabel}</p>
             <p className="text-xs text-muted">{dateLabel}</p>
             {payment.account_name ? <p className="text-xs text-muted">Akun: {payment.account_name}</p> : null}
           </div>

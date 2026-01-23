@@ -883,14 +883,19 @@ export default function FinancialHealth() {
           ? "Cukup Stabil · Masih ada variasi, tapi masih terkendali."
           : "Tidak Stabil · Ada lonjakan pengeluaran di beberapa hari.";
   const expenseCoverageRatio = snapshot.expenseCoverageRatio;
-  const expenseCoverageValue = `Batas aman: ${formatCurrency(
-    snapshot.expenseCoverageDailyAllowance
-  )} / hari`;
+  const expenseCoverageValue = (
+    <>
+      Batas aman: <span className="hw-money">{formatCurrency(snapshot.expenseCoverageDailyAllowance)}</span> / hari
+    </>
+  );
   const expenseCoverageComparison =
     snapshot.expenseCoverageAvgDailyExpense > 0
-      ? `Rata-rata pengeluaranmu: ${formatCurrency(
-          snapshot.expenseCoverageAvgDailyExpense
-        )} / hari`
+      ? (
+          <>
+            Rata-rata pengeluaranmu:{' '}
+            <span className="hw-money">{formatCurrency(snapshot.expenseCoverageAvgDailyExpense)}</span> / hari
+          </>
+        )
       : "Rata-rata pengeluaranmu: belum cukup data";
   const expenseCoverageStatus =
     expenseCoverageRatio == null
@@ -913,7 +918,7 @@ export default function FinancialHealth() {
     {
       key: "cashflow",
       label: "Cashflow Bulan Ini",
-      value: formatCurrency(snapshot.net),
+      value: <span className="hw-money">{formatCurrency(snapshot.net)}</span>,
       helper: "Selisih pemasukan dan pengeluaran bulan ini.",
     },
     {
@@ -942,9 +947,15 @@ export default function FinancialHealth() {
           key: "cashflow",
           score: snapshot.cashflowScore,
           label:
-            snapshot.net < 0
-              ? `Cashflow defisit (${formatCurrency(Math.abs(snapshot.net))})`
-              : `Cashflow tipis (${formatCurrency(snapshot.net)})`,
+            snapshot.net < 0 ? (
+              <>
+                Cashflow defisit (<span className="hw-money">{formatCurrency(Math.abs(snapshot.net))}</span>)
+              </>
+            ) : (
+              <>
+                Cashflow tipis (<span className="hw-money">{formatCurrency(snapshot.net)}</span>)
+              </>
+            ),
         },
         {
           key: "savings",
@@ -1100,8 +1111,12 @@ export default function FinancialHealth() {
                   <IndicatorCard
                     title="Cashflow Bulan Ini"
                     icon={<Wallet className="h-5 w-5" />}
-                    value={formatCurrency(snapshot.net)}
-                    status={`${cashflowStatus} · pemasukan ${formatCurrency(snapshot.income)}`}
+                    value={<span className="hw-money">{formatCurrency(snapshot.net)}</span>}
+                    status={
+                      <>
+                        {cashflowStatus} · pemasukan <span className="hw-money">{formatCurrency(snapshot.income)}</span>
+                      </>
+                    }
                     score={snapshot.cashflowScore}
                     infoTitle="Apa itu Cashflow Bulan Ini?"
                     infoPoints={[

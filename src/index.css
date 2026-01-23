@@ -459,4 +459,13 @@
     background-size: 3px 3px;
     opacity: 0.2;
   }
+
+  .hw-money {
+    transition: opacity 150ms ease, filter 150ms ease;
+  }
+
+  .hw-privacy-mode .hw-money {
+    filter: blur(4px);
+    opacity: 0.6;
+  }
 }

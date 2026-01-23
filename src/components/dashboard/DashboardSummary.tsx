@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import type { ReactNode } from "react"
 import { Banknote, CreditCard, TrendingDown, TrendingUp, Wallet } from "lucide-react"
-import { formatCurrency } from "../../lib/format.js"
+import { formatMoney } from "../../lib/format.js"
 import type { PeriodRange } from "./PeriodPicker"
 import { formatPeriodLabel } from "./PeriodPicker"
 
@@ -41,7 +41,7 @@ function SkeletonBar() {
 }
 
 function formatValue(value: number) {
-  return formatCurrency(Math.trunc(value ?? 0), "IDR")
+  return formatMoney(Math.trunc(value ?? 0), "IDR")
 }
 
 const SPARKLINE_WIDTH = 120
@@ -173,7 +173,7 @@ function DashboardSummary({
               <SkeletonBar />
             ) : (
               <div className="flex items-baseline justify-between gap-2">
-                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-emerald-600 tabular-nums dark:text-emerald-400 sm:text-xl md:text-2xl max-[400px]:text-base hw-money">
                   {formatValue(income)}
                 </p>
                 {renderMoM(incomeMoM)}
@@ -198,7 +198,7 @@ function DashboardSummary({
               <SkeletonBar />
             ) : (
               <div className="flex items-baseline justify-between gap-2">
-                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-rose-600 tabular-nums dark:text-rose-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-rose-600 tabular-nums dark:text-rose-400 sm:text-xl md:text-2xl max-[400px]:text-base hw-money">
                   {formatValue(expense)}
                 </p>
                 {renderMoM(expenseMoM)}
@@ -235,7 +235,7 @@ function DashboardSummary({
                     {loading ? (
                       <SkeletonBar />
                     ) : (
-                      <span className="break-words whitespace-normal text-lg font-semibold text-amber-600 tabular-nums dark:text-amber-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                      <span className="break-words whitespace-normal text-lg font-semibold text-amber-600 tabular-nums dark:text-amber-400 sm:text-xl md:text-2xl max-[400px]:text-base hw-money">
                         {formatValue(cashBalance)}
                       </span>
                     )}
@@ -257,7 +257,7 @@ function DashboardSummary({
                     {loading ? (
                       <SkeletonBar />
                     ) : (
-                      <span className="break-words whitespace-normal text-lg font-semibold text-sky-600 tabular-nums dark:text-sky-400 sm:text-xl md:text-2xl max-[400px]:text-base">
+                      <span className="break-words whitespace-normal text-lg font-semibold text-sky-600 tabular-nums dark:text-sky-400 sm:text-xl md:text-2xl max-[400px]:text-base hw-money">
                         {formatValue(nonCashBalance)}
                       </span>
                     )}
@@ -282,7 +282,7 @@ function DashboardSummary({
               <SkeletonBar />
             ) : (
               <div className="flex items-baseline justify-between gap-2">
-                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-foreground tabular-nums sm:text-xl md:text-2xl max-[400px]:text-base">
+                <p className="break-words whitespace-normal text-lg font-bold tracking-tight text-foreground tabular-nums sm:text-xl md:text-2xl max-[400px]:text-base hw-money">
                   {formatValue(totalBalance)}
                 </p>
                 {renderMoM(balanceMoM)}
