@@ -9,7 +9,7 @@ interface IndicatorCardProps {
   icon: ReactNode;
   value: ReactNode;
   secondaryValue?: ReactNode;
-  status: string;
+  status: ReactNode;
   score: number | null;
   infoTitle: string;
   infoPoints: string[];

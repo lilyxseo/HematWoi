@@ -6,12 +6,7 @@ import PaymentsList from './PaymentsList';
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll';
 import type { AccountRecord } from '../../lib/api';
 import type { CategoryRecord } from '../../lib/api-categories';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 const dateFormatter = new Intl.DateTimeFormat('id-ID', {
   dateStyle: 'medium',
@@ -227,12 +222,12 @@ export default function PaymentDrawer({
     return Math.max(0, remainingBefore - Math.max(parsedAmount, 0));
   }, [parsedAmount, remainingBefore]);
 
-  const remainingLabel = useMemo(() => currencyFormatter.format(Math.max(0, remainingBefore)), [remainingBefore]);
-  const remainingAfterLabel = useMemo(() => currencyFormatter.format(Math.max(0, remainingAfter)), [remainingAfter]);
+  const remainingLabel = useMemo(() => formatMoney(Math.max(0, remainingBefore), 'IDR'), [remainingBefore]);
+  const remainingAfterLabel = useMemo(() => formatMoney(Math.max(0, remainingAfter), 'IDR'), [remainingAfter]);
 
   const totalPaidLabel = useMemo(() => {
-    if (!debt) return currencyFormatter.format(0);
-    return currencyFormatter.format(Math.max(0, debt.paid_total));
+    if (!debt) return formatMoney(0, 'IDR');
+    return formatMoney(Math.max(0, debt.paid_total), 'IDR');
   }, [debt]);
 
   const tenorLabel = useMemo(() => {
@@ -345,11 +340,11 @@ export default function PaymentDrawer({
             <section className="grid min-w-0 grid-cols-2 gap-3 rounded-3xl border border-border-subtle bg-surface-alt/80 p-4 shadow-sm sm:gap-4">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Tagihan</p>
-                <p className="mt-1 text-lg font-semibold text-text tabular-nums">{remainingLabel}</p>
+                <p className="mt-1 text-lg font-semibold text-text tabular-nums hw-money">{remainingLabel}</p>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Total Terbayar</p>
-                <p className="mt-1 text-lg font-semibold text-text tabular-nums">{totalPaidLabel}</p>
+                <p className="mt-1 text-lg font-semibold text-text tabular-nums hw-money">{totalPaidLabel}</p>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Status</p>
@@ -610,7 +605,7 @@ export default function PaymentDrawer({
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa setelah pembayaran</p>
-                    <p className="mt-1 text-lg font-semibold text-text tabular-nums">{remainingAfterLabel}</p>
+                    <p className="mt-1 text-lg font-semibold text-text tabular-nums hw-money">{remainingAfterLabel}</p>
                   </div>
                   <label className="inline-flex items-center gap-2 text-sm font-medium text-text">
                     <input

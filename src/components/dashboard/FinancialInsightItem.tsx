@@ -12,8 +12,8 @@ export interface InsightBadge {
 
 interface FinancialInsightItemProps {
   icon: ReactNode
-  title: string
-  subtitle?: string
+  title: ReactNode
+  subtitle?: ReactNode
   badge?: InsightBadge
   onClick?: () => void
   tone?: InsightTone
@@ -120,7 +120,7 @@ export default function FinancialInsightItem({
         disabled ? 'pointer-events-none opacity-60' : 'focus-visible:ring-[color:var(--brand-ring)]'
       )}
       onClick={onClick}
-      aria-label={ariaLabel ?? title}
+      aria-label={ariaLabel ?? (typeof title === 'string' ? title : 'Insight')}
     >
       {content}
     </button>

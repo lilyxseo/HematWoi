@@ -1,15 +1,10 @@
 import type { CSSProperties } from 'react';
 
 import type { DebtSummary } from '../../lib/api-debts';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 function formatCurrency(value?: number | null) {
-  return currencyFormatter.format(Math.max(0, Number(value ?? 0)));
+  return formatMoney(Math.max(0, Number(value ?? 0)), 'IDR');
 }
 
 interface SummaryCardsProps {
@@ -85,7 +80,7 @@ export default function SummaryCards({ summary }: SummaryCardsProps) {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               {card.label}
             </p>
-            <p className={`text-xl font-bold tracking-tight tabular-nums md:text-2xl ${card.tone}`}>
+            <p className={`text-xl font-bold tracking-tight tabular-nums md:text-2xl ${card.tone} hw-money`}>
               {formatCurrency(value)}
             </p>
             <p className="text-xs text-muted">{card.description}</p>

@@ -14,12 +14,7 @@ import {
   getWeeklyTrend,
 } from '../../lib/api-insights'
 import type { BudgetProgressInsight, DueItemInsight } from '../../lib/api-insights'
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-})
+import { formatMoney } from '../../lib/format'
 
 const percentageFormatter = new Intl.NumberFormat('id-ID', {
   style: 'percent',
@@ -146,9 +141,12 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
             <FinancialInsightItem
               icon={<Flame className="h-5 w-5 text-rose-500" aria-hidden="true" />}
               title={`Pengeluaran terbesar: ${topSpending.categoryName}`}
-              subtitle={`Total ${currencyFormatter.format(topSpending.amount)}${
-                topSpending.share ? ` • ${percentageFormatter.format(topSpending.share)}` : ''
-              }`}
+              subtitle={
+                <>
+                  Total <span className="hw-money">{formatMoney(topSpending.amount, 'IDR')}</span>
+                  {topSpending.share ? ` • ${percentageFormatter.format(topSpending.share)}` : ''}
+                </>
+              }
               tone="accent"
               onClick={() => navigate('/transactions?filter=top-spending')}
               ariaLabel={`Lihat pengeluaran terbesar kategori ${topSpending.categoryName}`}
@@ -207,7 +205,12 @@ export default function FinancialInsights({ periodEnd }: FinancialInsightsProps)
                   ? 'Pengeluaran naik dibanding minggu lalu'
                   : 'Pengeluaran turun dibanding minggu lalu'
               }
-              subtitle={`MTD ${formatAmount(weeklyTrend.current)} • Minggu lalu ${formatAmount(Math.abs(weeklyTrend.previous))}`}
+              subtitle={
+                <>
+                  MTD <span className="hw-money">{formatMoney(weeklyTrend.current, 'IDR')}</span> • Minggu lalu{' '}
+                  <span className="hw-money">{formatMoney(Math.abs(weeklyTrend.previous), 'IDR')}</span>
+                </>
+              }
               badge={{
                 label: `${weeklyTrend.changePct >= 0 ? '+' : ''}${weeklyTrend.changePct.toFixed(0)}%`,
                 tone: weeklyTrend.changePct >= 0 ? 'danger' : 'accent',
@@ -267,7 +270,12 @@ function BudgetInsightRow({
   periodMonth?: string
 }) {
   const progressLabel = percentageFormatter.format(Math.min(item.progress, 1))
-  const subtitle = `${formatAmount(item.actual)} dari ${formatAmount(item.planned)} terpakai`
+  const subtitle = (
+    <>
+      <span className="hw-money">{formatMoney(item.actual, 'IDR')}</span> dari{' '}
+      <span className="hw-money">{formatMoney(item.planned, 'IDR')}</span> terpakai
+    </>
+  )
   const handleClick = () => {
     const params = new URLSearchParams()
     params.set('range', 'month')
@@ -305,7 +313,11 @@ function DebtInsightRow({ item, navigate }: { item: DueItemInsight; navigate: (t
     <FinancialInsightItem
       icon={<CalendarClock className="h-5 w-5 text-[color:var(--accent-dark)]" aria-hidden="true" />}
       title={`${item.kind === 'subscription' ? 'Tagihan' : 'Hutang'} jatuh tempo ${item.daysLeft === 0 ? 'hari ini' : `H-${item.daysLeft}`}`}
-      subtitle={`${subtitle} • ${formatAmount(item.amount)}`}
+      subtitle={
+        <>
+          {subtitle} • <span className="hw-money">{formatMoney(item.amount, 'IDR')}</span>
+        </>
+      }
       badge={{ label: item.daysLeft === 0 ? 'Hari ini' : `H-${item.daysLeft}`, tone: item.daysLeft <= 1 ? 'danger' : 'warning' }}
       tone={item.daysLeft <= 1 ? 'danger' : 'warning'}
       onClick={() => navigate('/debts?filter=due-7')}

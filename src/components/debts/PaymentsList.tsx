@@ -1,11 +1,6 @@
 import { Eye, Sparkles, Trash2 } from 'lucide-react';
 import type { DebtPaymentRecord } from '../../lib/api-debts';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 const dateFormatter = new Intl.DateTimeFormat('id-ID', {
   dateStyle: 'medium',
@@ -26,7 +21,7 @@ export default function PaymentsList({ payments, onDelete, deletingId, onViewTra
   return (
     <ul className="flex flex-col gap-3">
       {payments.map((payment) => {
-        const amountLabel = currencyFormatter.format(payment.amount ?? 0);
+        const amountLabel = formatMoney(payment.amount ?? 0, 'IDR');
         const dateLabel = payment.date ? dateFormatter.format(new Date(payment.date)) : '-';
         const isDeleting = deletingId === payment.id;
         return (
@@ -36,7 +31,7 @@ export default function PaymentsList({ payments, onDelete, deletingId, onViewTra
           >
             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-text">{amountLabel}</p>
+                <p className="text-sm font-semibold text-text hw-money">{amountLabel}</p>
                 <p className="text-xs text-muted">{dateLabel}</p>
                 {payment.account_name ? (
                   <p className="mt-1 text-xs text-muted">Akun: {payment.account_name}</p>

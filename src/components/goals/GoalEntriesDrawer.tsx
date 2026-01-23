@@ -3,12 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Trash2 } from 'lucide-react';
 import type { GoalEntryRecord, GoalRecord } from '../../lib/api-goals';
 import { useLockBodyScroll } from '../../hooks/useLockBodyScroll';
-
-const currencyFormatter = new Intl.NumberFormat('id-ID', {
-  style: 'currency',
-  currency: 'IDR',
-  maximumFractionDigits: 0,
-});
+import { formatMoney } from '../../lib/format';
 
 const dateFormatter = new Intl.DateTimeFormat('id-ID', {
   dateStyle: 'medium',
@@ -180,7 +175,7 @@ export default function GoalEntriesDrawer({
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Setoran Goal</p>
                 <h2 className="mt-1 truncate text-lg font-semibold text-text">{goal.title}</h2>
                 <p className="text-xs text-muted">
-                  Total setoran tercatat: {currencyFormatter.format(totalEntries)}
+                  Total setoran tercatat: <span className="hw-money">{formatMoney(totalEntries, 'IDR')}</span>
                 </p>
               </div>
               <button
@@ -266,7 +261,7 @@ export default function GoalEntriesDrawer({
                     >
                       <div className="min-w-0 space-y-1">
                         <p className="text-sm font-semibold text-text">
-                          {currencyFormatter.format(Number(entry.amount ?? 0))}
+                          <span className="hw-money">{formatMoney(Number(entry.amount ?? 0), 'IDR')}</span>
                         </p>
                         <p className="text-xs text-muted">
                           {dateFormatter.format(new Date(entry.date ?? entry.created_at))}
@@ -292,7 +287,7 @@ export default function GoalEntriesDrawer({
           <footer className="border-t border-border/60 bg-card/95 px-6 py-4">
             <div className="flex items-center justify-between text-sm text-muted">
               <span>Total setoran</span>
-              <span className="font-semibold text-text">{currencyFormatter.format(totalEntries)}</span>
+              <span className="font-semibold text-text hw-money">{formatMoney(totalEntries, 'IDR')}</span>
             </div>
           </footer>
         </div>

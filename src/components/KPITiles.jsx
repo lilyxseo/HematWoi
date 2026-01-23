@@ -1,13 +1,6 @@
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis } from "recharts";
-
-function toRupiah(n = 0) {
-  return new Intl.NumberFormat("id-ID", {
-    style: "currency",
-    currency: "IDR",
-    minimumFractionDigits: 0,
-  }).format(n);
-}
+import { formatMoney } from "../lib/format";
 
 function toPercent(n = 0) {
   return (n || 0).toLocaleString("id-ID", {
@@ -81,19 +74,19 @@ export default function KPITiles({ income = 0, expense = 0, prevIncome = 0, prev
       <div className="grid gap-4 text-center sm:grid-cols-4">
         <div className="space-y-1">
           <div className="text-sm">Pemasukan</div>
-          <div className="text-lg font-semibold text-success">{toRupiah(income)}</div>
+          <div className="text-lg font-semibold text-success hw-money">{formatMoney(income, "IDR")}</div>
           <div className="text-xs">{renderDelta(incomeDelta)}</div>
           <Sparkline data={incomeSeries} color="#16a34a" />
         </div>
         <div className="space-y-1">
           <div className="text-sm">Pengeluaran</div>
-          <div className="text-lg font-semibold text-danger">{toRupiah(expense)}</div>
+          <div className="text-lg font-semibold text-danger hw-money">{formatMoney(expense, "IDR")}</div>
           <div className="text-xs">{renderDelta(expenseDelta)}</div>
           <Sparkline data={expenseSeries} color="#dc2626" />
         </div>
         <div className="space-y-1">
           <div className="text-sm">Saldo</div>
-          <div className="text-lg font-semibold text-brand">{toRupiah(balance)}</div>
+          <div className="text-lg font-semibold text-brand hw-money">{formatMoney(balance, "IDR")}</div>
           <div className="text-xs">{renderDelta(balanceDelta)}</div>
           <Sparkline data={balanceSeries} color="#3898f8" />
         </div>
@@ -106,4 +99,3 @@ export default function KPITiles({ income = 0, expense = 0, prevIncome = 0, prev
     </div>
   );
 }
-
