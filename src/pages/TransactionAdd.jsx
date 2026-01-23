@@ -498,7 +498,6 @@ export default function TransactionAdd({ onAdd }) {
 
       onAdd?.(payload);
       addToast('Transaksi dibuat dari template.', 'success');
-      navigate('/transactions', { state: { recentTransaction: payload } });
     } catch (err) {
       addToast(err?.message || 'Gagal membuat transaksi dari template.', 'error');
     } finally {
