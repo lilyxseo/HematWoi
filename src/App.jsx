@@ -70,6 +70,7 @@ import { loadSubscriptions, findUpcoming } from "./lib/subscriptions";
 import { allocateIncome } from "./lib/goals";
 import { ModeProvider, useMode } from "./hooks/useMode";
 import AuthCallback from "./pages/AuthCallback";
+import SaveWoiHome from "./pages/Home";
 import MobileGoogleCallback from "./routes/MobileGoogleCallback";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
@@ -1382,6 +1383,7 @@ function AppShell({ prefs, setPrefs }) {
       <BootGate>
         <>
           <Routes>
+            <Route path="/" element={<SaveWoiHome />} />
             <Route path="/auth" element={<AuthLogin />} />
             <Route path="/login" element={<AuthLogin />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -1389,7 +1391,7 @@ function AppShell({ prefs, setPrefs }) {
             <Route path="/auth/mobile/google" element={<MobileGoogleCallback />} />
             <Route element={<AuthGuard />}>
               <Route
-                path="/"
+                path="/app"
                 element={
                   <ProtectedAppContainer
                     theme={theme}
@@ -1508,8 +1510,8 @@ function AppShell({ prefs, setPrefs }) {
                   path="profile"
                   element={<ProfilePage transactions={data.txs} challenges={challenges} />}
                 />
-                <Route path="dashboard" element={<Navigate to="/" replace />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="dashboard" element={<Navigate to="/app" replace />} />
+                <Route path="*" element={<Navigate to="/app" replace />} />
               </Route>
             </Route>
           </Routes>
