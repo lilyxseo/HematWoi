@@ -106,6 +106,13 @@ function getCurrentPeriod() {
   return `${year}-${month}`;
 }
 
+function getNextPeriod(referenceDate: Date = new Date()) {
+  const nextMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 1);
+  const year = nextMonth.getFullYear();
+  const month = `${nextMonth.getMonth() + 1}`.padStart(2, '0');
+  return `${year}-${month}`;
+}
+
 function toMonthStart(period: string) {
   if (/^\d{4}-\d{2}$/.test(period)) return `${period}-01`;
   if (/^\d{4}-\d{2}-\d{2}$/.test(period)) return `${period.slice(0, 7)}-01`;
@@ -164,7 +171,7 @@ export default function SalarySimulationPage() {
   const { user, loading: userLoading } = useSupabaseUser();
 
   const [salaryAmount, setSalaryAmount] = useState<number>(0);
-  const [period, setPeriod] = useState<string>(getCurrentPeriod());
+  const [period, setPeriod] = useState<string>(getNextPeriod());
   const [title, setTitle] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [items, setItems] = useState<AllocationItem[]>([]);
@@ -333,7 +340,7 @@ export default function SalarySimulationPage() {
       const payload = JSON.parse(raw) as DraftPayload;
       if (payload) {
         setSalaryAmount(payload.salaryAmount ?? 0);
-        setPeriod(payload.period ?? getCurrentPeriod());
+        setPeriod(payload.period ?? getNextPeriod());
         setTitle(payload.title ?? '');
         setNotes(payload.notes ?? '');
         setItems(sortItems(payload.items ?? []));
@@ -570,7 +577,7 @@ export default function SalarySimulationPage() {
 
   const handleReset = useCallback(() => {
     setSalaryAmount(0);
-    setPeriod(getCurrentPeriod());
+    setPeriod(getNextPeriod());
     setTitle('');
     setNotes('');
     setItems([]);
