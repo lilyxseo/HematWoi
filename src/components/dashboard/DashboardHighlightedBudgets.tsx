@@ -1,12 +1,15 @@
 import { useMemo } from 'react';
 import { AlertTriangle, ArrowRight, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useBudgets } from '../../hooks/useBudgets';
 import { useWeeklyBudgets } from '../../hooks/useWeeklyBudgets';
 import { type HighlightBudgetSelection } from '../../lib/budgetApi';
 import { formatCurrency } from '../../lib/format';
 import type { PeriodRange } from './PeriodPicker';
 import { useHighlightBudgets } from '../../hooks/useHighlightBudgets';
+import useSupabaseUser from '../../hooks/useSupabaseUser';
+import { getSalarySimulations } from '../../lib/salarySimulationApi';
 
 interface DashboardHighlightedBudgetsProps {
   period: PeriodRange;
@@ -86,6 +89,21 @@ function formatMonthLabel(period: string) {
   }
 }
 
+function getNextPeriod(referenceDate: Date = new Date()) {
+  const nextMonth = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 1);
+  const year = nextMonth.getFullYear();
+  const month = `${nextMonth.getMonth() + 1}`.padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+function isNearMonthEnd(referenceDate: Date = new Date(), thresholdDays = 7) {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const daysRemaining = lastDayOfMonth - referenceDate.getDate();
+  return daysRemaining <= thresholdDays;
+}
+
 function HighlightSkeleton() {
   return (
     <div className="grid gap-3 sm:grid-cols-2">
@@ -108,12 +126,15 @@ function HighlightSkeleton() {
 }
 
 export default function DashboardHighlightedBudgets({ period }: DashboardHighlightedBudgetsProps) {
+  const { user } = useSupabaseUser();
   const highlightQuery = useHighlightBudgets();
   const highlights = highlightQuery.data ?? [];
   const loading = highlightQuery.isLoading;
   const error = highlightQuery.error instanceof Error ? highlightQuery.error.message : null;
 
   const budgetPeriod = useMemo(() => getBudgetPeriod(period), [period]);
+  const nextBudgetPeriod = useMemo(() => getNextPeriod(), []);
+  const nearMonthEnd = useMemo(() => isNearMonthEnd(), []);
   const referenceDateIso = period?.end || period?.start || new Date().toISOString().slice(0, 10);
   const activeWeekStart = useMemo(
     () => getWeekRangeForIsoDate(referenceDateIso).start,
@@ -121,6 +142,14 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
   );
   const monthly = useBudgets(budgetPeriod);
   const weekly = useWeeklyBudgets(budgetPeriod);
+  const nextSimulationQuery = useQuery({
+    queryKey: ['salary-simulations', 'next', nextBudgetPeriod, user?.id],
+    queryFn: () => getSalarySimulations(user?.id, { periodMonth: nextBudgetPeriod }),
+    enabled: Boolean(user?.id && nearMonthEnd),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
 
   const cards = useMemo<HighlightCardData[]>(() => {
     if (loading || monthly.loading || weekly.loading) return [];
@@ -204,6 +233,12 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
 
   const isLoading = loading || monthly.loading || weekly.loading;
   const displayError = error || monthly.error || weekly.error;
+  const shouldShowSimulationReminder =
+    nearMonthEnd &&
+    Boolean(user?.id) &&
+    !nextSimulationQuery.isLoading &&
+    !nextSimulationQuery.error &&
+    (nextSimulationQuery.data?.length ?? 0) === 0;
 
   return (
     <section className="relative overflow-hidden rounded-[32px] border border-border/60 bg-gradient-to-br from-white/90 via-white/70 to-primary/10 p-6 shadow-sm transition dark:border-border/40 dark:from-slate-900/80 dark:via-slate-900/60 dark:to-primary/15 sm:p-8">
@@ -225,7 +260,28 @@ export default function DashboardHighlightedBudgets({ period }: DashboardHighlig
         </Link>
       </header>
 
-      <div className="mt-6">
+      <div className="mt-6 space-y-4">
+        {shouldShowSimulationReminder ? (
+          <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-amber-200/80 bg-amber-50/80 p-4 text-sm text-amber-700 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4" />
+              <div>
+                <p className="font-semibold">Bulan baru sudah dekat.</p>
+                <p>
+                  Simulasi anggaran untuk {formatMonthLabel(nextBudgetPeriod)} belum dibuat. Siapkan dari sekarang agar
+                  budget bulan depan lebih siap.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/budgets/simulation/salary"
+              className="inline-flex items-center gap-2 rounded-full border border-amber-300/70 bg-amber-100/80 px-4 py-2 text-xs font-semibold text-amber-700 transition hover:border-amber-400 hover:bg-amber-100 dark:border-amber-400/60 dark:bg-amber-500/10 dark:text-amber-100"
+            >
+              Buat simulasi
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+        ) : null}
         {isLoading ? (
           <HighlightSkeleton />
         ) : displayError ? (
