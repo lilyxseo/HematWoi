@@ -478,6 +478,26 @@ function parseIsoDate(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);
 }
 
+function normalizeTransactionDate(value: string): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const parsed = new Date(trimmed);
+    if (Number.isNaN(parsed.getTime())) {
+      const fallback = trimmed.slice(0, 10);
+      return fallback.length === 10 ? fallback : null;
+    }
+    return formatIsoDateUTC(parsed);
+  } catch {
+    const fallback = trimmed.slice(0, 10);
+    return fallback.length === 10 ? fallback : null;
+  }
+}
+
 function getWeekStartOnOrAfter(date: Date): string {
   const result = new Date(date);
   const day = result.getUTCDay();
@@ -954,8 +974,10 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     if (!Number.isFinite(amount)) continue;
     const dateValue = typeof row?.date === 'string' ? row.date : null;
     if (!dateValue) continue;
+    const normalizedDate = normalizeTransactionDate(dateValue);
+    if (!normalizedDate) continue;
     const list = transactionsByCategory.get(categoryId) ?? [];
-    list.push({ date: dateValue, amount });
+    list.push({ date: normalizedDate, amount });
     transactionsByCategory.set(categoryId, list);
   }
 
