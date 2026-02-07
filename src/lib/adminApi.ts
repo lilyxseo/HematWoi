@@ -1,5 +1,6 @@
 import type { PostgrestSingleResponse } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { getSupabaseAdminClient } from './supabaseAdmin';
 
 export type SidebarAccessLevel = 'public' | 'user' | 'admin';
 
@@ -45,7 +46,10 @@ export type ListUsersParams = {
   status?: 'active' | 'inactive' | 'all';
 };
 
-export type UpdateUserProfileInput = Partial<Pick<UserProfileRecord, 'role' | 'is_active'>>;
+export type UpdateUserProfileInput =
+  Partial<Pick<UserProfileRecord, 'role' | 'is_active' | 'username' | 'email'>> & {
+    password?: string;
+  };
 
 export type AppDescriptionSetting = {
   text: string;
@@ -381,6 +385,31 @@ export async function listUsers(params: ListUsersParams = {}): Promise<UserProfi
   }
 }
 
+async function fetchUserById(id: string): Promise<UserProfileRecord> {
+  const columns = 'id, email, username, role, is_active, created_at, updated_at';
+  const fallbackColumns = 'id, username, role, is_active, created_at, updated_at';
+
+  const runQuery = async (selection: string) =>
+    supabase
+      .from('user_profiles')
+      .select(selection)
+      .eq('id', id)
+      .maybeSingle();
+
+  let response = await runQuery(columns);
+
+  if (response.error && isUnknownColumnError(response.error)) {
+    response = await runQuery(fallbackColumns);
+  }
+
+  if (response.error) throw response.error;
+  if (!response.data) {
+    throw new Error('Pengguna tidak ditemukan');
+  }
+
+  return mapUserRow(response.data);
+}
+
 export async function updateUserProfile(
   id: string,
   updates: UpdateUserProfileInput
@@ -422,29 +451,107 @@ export async function updateUserProfile(
       }
     }
 
-    const payload: Record<string, unknown> = {};
+    const profilePayload: Record<string, unknown> = {};
 
     if (updates.role === 'admin' || updates.role === 'user') {
-      payload.role = updates.role;
+      profilePayload.role = updates.role;
     }
 
     if (typeof updates.is_active === 'boolean') {
-      payload.is_active = updates.is_active;
+      profilePayload.is_active = updates.is_active;
     }
 
-    const response = await supabase
-      .from('user_profiles')
-      .update(payload)
-      .eq('id', id)
-      .select('id, email, username, role, is_active, created_at, updated_at')
-      .single();
+    if (Object.prototype.hasOwnProperty.call(updates, 'username')) {
+      profilePayload.username = updates.username ?? null;
+    }
 
-    const data = ensureResponse(response);
-    return mapUserRow(data);
+    if (Object.prototype.hasOwnProperty.call(updates, 'email')) {
+      profilePayload.email = updates.email ?? null;
+    }
+
+    const password = typeof updates.password === 'string' ? updates.password.trim() : '';
+    const emailForAuth =
+      Object.prototype.hasOwnProperty.call(updates, 'email') && typeof updates.email === 'string'
+        ? updates.email.trim()
+        : '';
+    const shouldUpdateAuth = Boolean(password || emailForAuth);
+
+    if (Object.keys(profilePayload).length > 0) {
+      const { email: _email, ...withoutEmail } = profilePayload;
+
+      let updateResponse = await supabase
+        .from('user_profiles')
+        .update(profilePayload)
+        .eq('id', id);
+
+      if (updateResponse.error && isUnknownColumnError(updateResponse.error) && 'email' in profilePayload) {
+        updateResponse = await supabase.from('user_profiles').update(withoutEmail).eq('id', id);
+      }
+
+      if (updateResponse.error) {
+        throw updateResponse.error;
+      }
+    }
+
+    if (shouldUpdateAuth) {
+      const adminClient = getSupabaseAdminClient();
+      const adminPayload: { email?: string; password?: string } = {};
+
+      if (emailForAuth) {
+        adminPayload.email = emailForAuth;
+      }
+
+      if (password) {
+        adminPayload.password = password;
+      }
+
+      if (Object.keys(adminPayload).length > 0) {
+        const { error: adminError } = await adminClient.auth.admin.updateUserById(id, adminPayload);
+        if (adminError) throw adminError;
+      }
+    }
+
+    return await fetchUserById(id);
   } catch (error) {
     console.error('[adminApi] updateUserProfile failed', error);
     const message = error instanceof Error ? error.message : 'Gagal memperbarui pengguna';
     throw new Error(message || 'Gagal memperbarui pengguna');
+  }
+}
+
+export async function impersonateUser(email: string): Promise<void> {
+  try {
+    if (!email) {
+      throw new Error('Pengguna tidak memiliki email yang valid');
+    }
+
+    const adminClient = getSupabaseAdminClient();
+    const { data, error } = await adminClient.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+    });
+
+    if (error) throw error;
+
+    const otp = data?.properties?.email_otp;
+    if (!otp) {
+      throw new Error('Kode OTP tidak tersedia untuk pengguna ini');
+    }
+
+    await supabase.auth.signOut();
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      email,
+      token: otp,
+      type: 'magiclink',
+    });
+
+    if (verifyError) {
+      throw verifyError;
+    }
+  } catch (error) {
+    console.error('[adminApi] impersonateUser failed', error);
+    const message = error instanceof Error ? error.message : 'Gagal login sebagai pengguna';
+    throw new Error(message || 'Gagal login sebagai pengguna');
   }
 }
 
