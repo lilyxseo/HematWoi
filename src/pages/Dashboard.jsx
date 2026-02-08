@@ -18,6 +18,7 @@ import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighli
 import FinancialInsights from "../components/dashboard/FinancialInsights";
 import { isTransactionDeleted } from "../lib/transactionUtils";
 import { useMode } from "../hooks/useMode";
+import DashboardNoteCard from "../components/DashboardNoteCard";
 
 const DEFAULT_PRESET = "month";
 
@@ -139,7 +140,10 @@ export default function Dashboard({ stats, txs }) {
         <section className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:gap-8">
           <FinancialInsights periodEnd={periodRange.end} />
 
-          <QuickActions />
+          <div className="space-y-4 sm:space-y-6">
+            <QuickActions />
+            <DashboardNoteCard />
+          </div>
         </section>
 
         <DashboardHighlightedBudgets period={periodRange} />
