@@ -23,7 +23,7 @@ import DashboardNoteCard from "../components/dashboard/DashboardNoteCard";
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs }) {
+export default function Dashboard({ txs }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const { mode } = useMode();

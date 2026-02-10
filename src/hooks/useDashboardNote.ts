@@ -42,31 +42,39 @@ const writeLocalNote = (key: string, payload: LocalNotePayload) => {
 
 const toTimestamp = (value: string | null | undefined): number | null => {
   if (!value) return null;
-  const ts = Date.parse(value);
-  return Number.isNaN(ts) ? null : ts;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
 };
 
 export default function useDashboardNote() {
-  const { user } = useSupabaseUser();
+  const { user, loading: userLoading } = useSupabaseUser();
   const userId = user?.id ?? null;
-  const storageKey = useMemo(
-    () => `${STORAGE_PREFIX}${userId ?? 'guest'}`,
-    [userId],
-  );
+  const storageKey = useMemo(() => `${STORAGE_PREFIX}${userId ?? 'guest'}`, [userId]);
 
-  const [note, setNote] = useState('');
+  const [note, setNoteState] = useState('');
   const [status, setStatus] = useState<DashboardNoteStatus>('saved');
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [localUpdatedAt, setLocalUpdatedAt] = useState<number | null>(null);
   const [pendingSync, setPendingSync] = useState(false);
+  const [syncError, setSyncError] = useState(false);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
 
+  const noteRef = useRef(note);
+  const localUpdatedAtRef = useRef<number | null>(localUpdatedAt);
   const lastSyncedNoteRef = useRef('');
-  const skipLocalWriteRef = useRef(false);
+  const lastHandledRemoteAtRef = useRef<number | null>(null);
   const localSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    noteRef.current = note;
+  }, [note]);
+
+  useEffect(() => {
+    localUpdatedAtRef.current = localUpdatedAt;
+  }, [localUpdatedAt]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -83,17 +91,6 @@ export default function useDashboardNote() {
     };
   }, []);
 
-  useEffect(() => {
-    const stored = readLocalNote(storageKey);
-    skipLocalWriteRef.current = true;
-    setNote(stored?.note ?? '');
-    setLocalUpdatedAt(stored?.localUpdatedAt ?? null);
-    setLastSavedAt(stored?.localUpdatedAt ?? null);
-    lastSyncedNoteRef.current = stored?.note ?? '';
-    setPendingSync(false);
-    setStatus('saved');
-  }, [storageKey]);
-
   const noteQuery = useQuery<DashboardNoteRow>({
     queryKey: ['dashboard-note', userId],
     enabled: Boolean(userId),
@@ -108,9 +105,9 @@ export default function useDashboardNote() {
         .select('dashboard_note, dashboard_note_updated_at')
         .eq('id', userId)
         .maybeSingle();
-      if (error && error.code !== 'PGRST116') {
-        throw error;
-      }
+
+      if (error && error.code !== 'PGRST116') throw error;
+
       return data ?? null;
     },
   });
@@ -118,26 +115,30 @@ export default function useDashboardNote() {
   const mutation = useMutation({
     mutationFn: async ({ nextNote }: { nextNote: string }) => {
       if (!userId) throw new Error('User tidak ditemukan');
+
       const { data, error } = await supabase
         .from('user_profiles')
         .update({ dashboard_note: nextNote })
         .eq('id', userId)
         .select('dashboard_note_updated_at')
         .maybeSingle();
+
       if (error) throw error;
       return data ?? null;
     },
     onMutate: () => {
-      setStatus('saving');
+      setSyncError(false);
       setPendingSync(true);
+      setStatus('saving');
     },
     onSuccess: (data, variables) => {
-      const updatedAt =
-        toTimestamp(data?.dashboard_note_updated_at) ?? Date.now();
+      const updatedAt = toTimestamp(data?.dashboard_note_updated_at) ?? Date.now();
       lastSyncedNoteRef.current = variables.nextNote;
+      lastHandledRemoteAtRef.current = updatedAt;
       setLastSavedAt(updatedAt);
       setLocalUpdatedAt(updatedAt);
       setPendingSync(false);
+      setSyncError(false);
       setStatus('saved');
       writeLocalNote(storageKey, {
         note: variables.nextNote,
@@ -145,148 +146,162 @@ export default function useDashboardNote() {
       });
     },
     onError: () => {
+      setSyncError(true);
       setStatus('error');
     },
   });
+
+  const scheduleRemoteSync = useCallback(
+    (nextNote: string) => {
+      if (!userId) return;
+      if (!isOnline) {
+        setPendingSync(true);
+        return;
+      }
+
+      if (remoteSaveTimeoutRef.current) {
+        clearTimeout(remoteSaveTimeoutRef.current);
+      }
+
+      remoteSaveTimeoutRef.current = setTimeout(() => {
+        mutation.mutate({ nextNote });
+      }, REMOTE_SAVE_DEBOUNCE);
+    },
+    [isOnline, mutation, userId],
+  );
+
+  useEffect(() => {
+    const stored = readLocalNote(storageKey);
+    const initialNote = stored?.note ?? '';
+    const initialTimestamp = stored?.localUpdatedAt ?? null;
+
+    setNoteState(initialNote);
+    setLocalUpdatedAt(initialTimestamp);
+    setLastSavedAt(initialTimestamp);
+    setPendingSync(false);
+    setSyncError(false);
+    setStatus('saved');
+
+    noteRef.current = initialNote;
+    localUpdatedAtRef.current = initialTimestamp;
+    lastSyncedNoteRef.current = initialNote;
+    lastHandledRemoteAtRef.current = null;
+
+    if (localSaveTimeoutRef.current) clearTimeout(localSaveTimeoutRef.current);
+    if (remoteSaveTimeoutRef.current) clearTimeout(remoteSaveTimeoutRef.current);
+  }, [storageKey]);
 
   useEffect(() => {
     if (!noteQuery.data) return;
 
     const remoteNote = noteQuery.data.dashboard_note ?? '';
-    const remoteUpdatedAt = toTimestamp(
-      noteQuery.data.dashboard_note_updated_at,
-    );
-    const currentLocal = readLocalNote(storageKey);
-    const localNote = currentLocal?.note ?? note;
-    const localTs = currentLocal?.localUpdatedAt ?? localUpdatedAt ?? 0;
+    const remoteUpdatedAt = toTimestamp(noteQuery.data.dashboard_note_updated_at);
+    const localNote = noteRef.current;
+    const localTs = localUpdatedAtRef.current ?? 0;
     const remoteTs = remoteUpdatedAt ?? 0;
 
-    if (!localNote && !localTs && !remoteNote && !remoteTs) {
+    if (lastHandledRemoteAtRef.current === remoteTs) return;
+    lastHandledRemoteAtRef.current = remoteTs;
+
+    if (remoteTs > localTs) {
+      setNoteState(remoteNote);
+      setLocalUpdatedAt(remoteTs || null);
+      setLastSavedAt(remoteTs || null);
+      setPendingSync(false);
+      setSyncError(false);
+      setStatus('saved');
+      noteRef.current = remoteNote;
+      localUpdatedAtRef.current = remoteTs;
+      lastSyncedNoteRef.current = remoteNote;
+      writeLocalNote(storageKey, { note: remoteNote, localUpdatedAt: remoteTs });
       return;
     }
 
-    if (remoteTs > localTs) {
-      skipLocalWriteRef.current = true;
-      setNote(remoteNote);
-      setLocalUpdatedAt(remoteTs || null);
-      setLastSavedAt(remoteTs || null);
-      lastSyncedNoteRef.current = remoteNote;
-      writeLocalNote(storageKey, {
-        note: remoteNote,
-        localUpdatedAt: remoteTs,
-      });
+    if (localTs > remoteTs && localNote !== remoteNote) {
+      if (isOnline && userId) {
+        setStatus('saving');
+        scheduleRemoteSync(localNote);
+      } else {
+        setPendingSync(true);
+        setStatus('offline');
+      }
+      return;
+    }
+
+    lastSyncedNoteRef.current = remoteNote;
+    setStatus(syncError ? 'error' : 'saved');
+  }, [isOnline, noteQuery.data, scheduleRemoteSync, storageKey, syncError, userId]);
+
+  useEffect(() => {
+    return () => {
+      if (localSaveTimeoutRef.current) clearTimeout(localSaveTimeoutRef.current);
+      if (remoteSaveTimeoutRef.current) clearTimeout(remoteSaveTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isOnline || !pendingSync || !userId) return;
+    if (noteRef.current === lastSyncedNoteRef.current) {
       setPendingSync(false);
       setStatus('saved');
       return;
     }
+    setStatus('saving');
+    scheduleRemoteSync(noteRef.current);
+  }, [isOnline, pendingSync, scheduleRemoteSync, userId]);
 
-    if (localTs > remoteTs) {
-      skipLocalWriteRef.current = true;
-      setNote(localNote);
-      setLocalUpdatedAt(localTs || null);
-      setLastSavedAt(localTs || null);
-      if (isOnline && userId && !mutation.isPending) {
-        mutation.mutate({ nextNote: localNote });
-      } else {
-        setPendingSync(true);
-        setStatus('offline');
-      }
-      return;
-    }
+  const setNote = useCallback(
+    (value: string) => {
+      setNoteState(value);
 
-    if (!lastSyncedNoteRef.current) {
-      lastSyncedNoteRef.current = localNote;
-    }
-  }, [
-    noteQuery.data,
-    storageKey,
-    isOnline,
-    userId,
-    mutation,
-    localUpdatedAt,
-    note,
-  ]);
+      const updatedAt = Date.now();
+      setLocalUpdatedAt(updatedAt);
+      localUpdatedAtRef.current = updatedAt;
+      noteRef.current = value;
 
-  useEffect(() => {
-    if (skipLocalWriteRef.current) {
-      skipLocalWriteRef.current = false;
-      return;
-    }
-
-    const updatedAt = Date.now();
-    setLocalUpdatedAt(updatedAt);
-    setLastSavedAt(updatedAt);
-
-    if (localSaveTimeoutRef.current) {
-      clearTimeout(localSaveTimeoutRef.current);
-    }
-
-    localSaveTimeoutRef.current = setTimeout(() => {
-      writeLocalNote(storageKey, { note, localUpdatedAt: updatedAt });
-    }, LOCAL_SAVE_DEBOUNCE);
-
-    if (note !== lastSyncedNoteRef.current) {
-      if (isOnline) {
-        setStatus('saving');
-      } else {
-        setStatus('offline');
-        setPendingSync(true);
-      }
-    }
-
-    return () => {
       if (localSaveTimeoutRef.current) {
         clearTimeout(localSaveTimeoutRef.current);
       }
-    };
-  }, [note, storageKey, isOnline]);
 
-  useEffect(() => {
-    if (!userId || !isOnline) return;
-    if (note === lastSyncedNoteRef.current) return;
-    if (mutation.isPending) return;
+      localSaveTimeoutRef.current = setTimeout(() => {
+        writeLocalNote(storageKey, {
+          note: value,
+          localUpdatedAt: updatedAt,
+        });
+      }, LOCAL_SAVE_DEBOUNCE);
 
-    setPendingSync(true);
+      const hasUnsyncedChanges = value !== lastSyncedNoteRef.current;
 
-    if (remoteSaveTimeoutRef.current) {
-      clearTimeout(remoteSaveTimeoutRef.current);
-    }
-
-    remoteSaveTimeoutRef.current = setTimeout(() => {
-      mutation.mutate({ nextNote: note });
-    }, REMOTE_SAVE_DEBOUNCE);
-
-    return () => {
-      if (remoteSaveTimeoutRef.current) {
-        clearTimeout(remoteSaveTimeoutRef.current);
+      if (!hasUnsyncedChanges) {
+        setPendingSync(false);
+        setSyncError(false);
+        setStatus('saved');
+        return;
       }
-    };
-  }, [note, userId, isOnline, mutation]);
 
-  useEffect(() => {
-    if (!isOnline) return;
-    if (!pendingSync) return;
-    if (!userId) return;
-    if (note === lastSyncedNoteRef.current) {
-      setPendingSync(false);
-      setStatus('saved');
-      return;
-    }
-    if (mutation.isPending) return;
-    mutation.mutate({ nextNote: note });
-  }, [isOnline, pendingSync, note, userId, mutation]);
-
-  useEffect(() => {
-    if (isOnline) return;
-    if (note !== lastSyncedNoteRef.current) {
-      setStatus('offline');
       setPendingSync(true);
-    }
-  }, [isOnline, note]);
+      setSyncError(false);
 
-  const updateNote = useCallback((value: string) => {
-    setNote(value);
-  }, []);
+      if (!isOnline) {
+        setStatus('offline');
+        return;
+      }
+
+      if (!userId) {
+        setStatus(userLoading ? 'saving' : 'saved');
+        return;
+      }
+
+      setStatus('saving');
+      scheduleRemoteSync(value);
+    },
+    [isOnline, scheduleRemoteSync, storageKey, userId, userLoading],
+  );
+
+  useEffect(() => {
+    if (isOnline || !pendingSync) return;
+    setStatus('offline');
+  }, [isOnline, pendingSync]);
 
   return {
     note,
@@ -294,6 +309,6 @@ export default function useDashboardNote() {
     lastSavedAt,
     isLoading: noteQuery.isLoading,
     isOnline,
-    setNote: updateNote,
+    setNote,
   };
 }
