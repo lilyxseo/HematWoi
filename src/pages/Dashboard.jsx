@@ -18,6 +18,7 @@ import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighli
 import FinancialInsights from "../components/dashboard/FinancialInsights";
 import { isTransactionDeleted } from "../lib/transactionUtils";
 import { useMode } from "../hooks/useMode";
+import DashboardNoteCard from "../components/dashboard/DashboardNoteCard";
 
 const DEFAULT_PRESET = "month";
 
@@ -118,22 +119,25 @@ export default function Dashboard({ stats, txs }) {
             preset={periodPreset}
             onChange={handlePeriodChange}
           />
-          <DashboardSummary
-            income={periodIncome}
-            expense={periodExpense}
-            cashBalance={cashBalance}
-            nonCashBalance={nonCashBalance}
-            totalBalance={totalBalance}
-            incomeTrend={incomeTrend}
-            expenseTrend={expenseTrend}
-            balanceTrend={balanceTrend}
-            incomeMoM={incomeMoM}
-            expenseMoM={expenseMoM}
-            balanceMoM={balanceMoM}
-            loading={loading}
-            error={error}
-            period={periodRange}
-          />
+          <div className="grid gap-4 sm:gap-6 lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-6">
+            <DashboardSummary
+              income={periodIncome}
+              expense={periodExpense}
+              cashBalance={cashBalance}
+              nonCashBalance={nonCashBalance}
+              totalBalance={totalBalance}
+              incomeTrend={incomeTrend}
+              expenseTrend={expenseTrend}
+              balanceTrend={balanceTrend}
+              incomeMoM={incomeMoM}
+              expenseMoM={expenseMoM}
+              balanceMoM={balanceMoM}
+              loading={loading}
+              error={error}
+              period={periodRange}
+            />
+            <DashboardNoteCard />
+          </div>
         </section>
 
         <section className="grid gap-4 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:gap-8">
