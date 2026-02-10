@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Routes,
   Route,
@@ -314,6 +315,7 @@ function ProtectedAppContainer({
 }
 
 function AppShell({ prefs, setPrefs }) {
+  const queryClient = useQueryClient();
   const { mode, setMode } = useMode();
   const [data, setData] = useState(loadInitial);
   const [filter, setFilter] = useState({
@@ -569,6 +571,8 @@ function AppShell({ prefs, setPrefs }) {
         if (session?.user?.id) {
           void syncGuestData(session.user.id);
         }
+        queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+        queryClient.invalidateQueries({ queryKey: ["monthly-category-spending"] });
       }
       if (event === "SIGNED_OUT") {
         syncedUsersRef.current.clear();
@@ -578,7 +582,7 @@ function AppShell({ prefs, setPrefs }) {
       isMounted = false;
       sub.subscription?.unsubscribe();
     };
-  }, [setMode, syncGuestData]);
+  }, [queryClient, setMode, syncGuestData]);
 
   useEffect(() => {
     if (sessionChecked && !sessionUser && mode === "online") {

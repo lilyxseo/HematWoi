@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import QuickActions from "../components/QuickActions";
-import SectionHeader from "../components/SectionHeader";
-import CategoryDonut from "../components/CategoryDonut";
-import TopSpendsTable from "../components/TopSpendsTable";
-import RecentTransactions from "../components/RecentTransactions";
-import useInsights from "../hooks/useInsights";
-import EventBus from "../lib/eventBus";
 import DashboardSummary from "../components/dashboard/DashboardSummary";
 import PeriodPicker, {
   formatPeriodLabel,
@@ -16,13 +10,13 @@ import DailyDigestModal from "../components/DailyDigestModal";
 import useShowDigestOnLogin from "../hooks/useShowDigestOnLogin";
 import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighlightedBudgets";
 import FinancialInsights from "../components/dashboard/FinancialInsights";
-import { isTransactionDeleted } from "../lib/transactionUtils";
 import { useMode } from "../hooks/useMode";
+import MonthlyAnalysisSection from "../components/dashboard/MonthlyAnalysisSection";
 
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs }) {
+export default function Dashboard({ txs }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const { mode } = useMode();
@@ -45,11 +39,6 @@ export default function Dashboard({ stats, txs }) {
   } = balances;
   const { start: periodStart, end: periodEnd } = periodRange;
 
-  const visibleTxs = useMemo(
-    () => (Array.isArray(txs) ? txs.filter((tx) => !isTransactionDeleted(tx)) : []),
-    [txs],
-  );
-
   const digest = useShowDigestOnLogin({
     transactions: txs,
     balanceHint: totalBalance ?? null,
@@ -64,7 +53,6 @@ export default function Dashboard({ stats, txs }) {
     setPeriodPreset(preset);
   };
 
-  const insights = useInsights(visibleTxs, { range: periodRange });
   const periodLabel = useMemo(
     () => formatPeriodLabel(periodRange) || "—",
     [periodRange],
@@ -144,19 +132,7 @@ export default function Dashboard({ stats, txs }) {
 
         <DashboardHighlightedBudgets period={periodRange} />
 
-        <section className="space-y-5 sm:space-y-7 lg:space-y-10 max-[400px]:space-y-4">
-          <SectionHeader title="Analisis Bulanan" />
-          <div className="grid gap-4 sm:gap-6 lg:gap-8">
-            <CategoryDonut data={insights.categories} />
-          </div>
-          <div className="grid gap-4 sm:gap-6 lg:gap-8 lg:grid-cols-2">
-            <TopSpendsTable
-              data={insights.topSpends}
-              onSelect={(t) => EventBus.emit("tx:open", t)}
-            />
-            <RecentTransactions txs={visibleTxs} />
-          </div>
-        </section>
+        <MonthlyAnalysisSection />
       </div>
     </>
   );
