@@ -47,16 +47,16 @@ const toTimestamp = (value: string | null | undefined): number | null => {
 };
 
 export default function useDashboardNote() {
-  const { user, loading: userLoading } = useSupabaseUser();
+  const { user } = useSupabaseUser();
   const userId = user?.id ?? null;
   const storageKey = useMemo(() => `${STORAGE_PREFIX}${userId ?? 'guest'}`, [userId]);
 
   const [note, setNoteState] = useState('');
-  const [status, setStatus] = useState<DashboardNoteStatus>('saved');
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [localUpdatedAt, setLocalUpdatedAt] = useState<number | null>(null);
   const [pendingSync, setPendingSync] = useState(false);
   const [syncError, setSyncError] = useState(false);
+  const [isRemoteScheduled, setIsRemoteScheduled] = useState(false);
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true,
   );
@@ -67,6 +67,96 @@ export default function useDashboardNote() {
   const lastHandledRemoteAtRef = useRef<number | null>(null);
   const localSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const noteQuery = useQuery<DashboardNoteRow>({
+    queryKey: ['dashboard-note', userId],
+    enabled: Boolean(userId),
+    retry: 1,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    queryFn: async () => {
+      if (!userId) return null;
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('dashboard_note, dashboard_note_updated_at')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data ?? null;
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async ({ nextNote }: { nextNote: string }) => {
+      if (!userId) throw new Error('User tidak ditemukan');
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update({ dashboard_note: nextNote })
+        .eq('id', userId)
+        .select('dashboard_note_updated_at')
+        .maybeSingle();
+
+      if (error) throw error;
+      return {
+        updatedAt: toTimestamp(data?.dashboard_note_updated_at) ?? Date.now(),
+        syncedNote: nextNote,
+      };
+    },
+    onMutate: () => {
+      setSyncError(false);
+      setPendingSync(true);
+    },
+    onSuccess: ({ updatedAt, syncedNote }) => {
+      lastHandledRemoteAtRef.current = updatedAt;
+
+      if (noteRef.current !== syncedNote) {
+        if (userId && isOnline) {
+          setPendingSync(true);
+        }
+        return;
+      }
+
+      lastSyncedNoteRef.current = syncedNote;
+      localUpdatedAtRef.current = updatedAt;
+      setLocalUpdatedAt(updatedAt);
+      setLastSavedAt(updatedAt);
+      setPendingSync(false);
+      setSyncError(false);
+
+      writeLocalNote(storageKey, {
+        note: syncedNote,
+        localUpdatedAt: updatedAt,
+      });
+    },
+    onError: () => {
+      setSyncError(true);
+      setPendingSync(true);
+    },
+  });
+
+  const scheduleRemoteSync = useCallback(
+    (nextNote: string) => {
+      if (!userId || !isOnline) {
+        setPendingSync(true);
+        return;
+      }
+
+      setPendingSync(true);
+      setIsRemoteScheduled(true);
+
+      if (remoteSaveTimeoutRef.current) {
+        clearTimeout(remoteSaveTimeoutRef.current);
+      }
+
+      remoteSaveTimeoutRef.current = setTimeout(() => {
+        setIsRemoteScheduled(false);
+        mutation.mutate({ nextNote });
+      }, REMOTE_SAVE_DEBOUNCE);
+    },
+    [isOnline, mutation, userId],
+  );
 
   useEffect(() => {
     noteRef.current = note;
@@ -91,85 +181,6 @@ export default function useDashboardNote() {
     };
   }, []);
 
-  const noteQuery = useQuery<DashboardNoteRow>({
-    queryKey: ['dashboard-note', userId],
-    enabled: Boolean(userId),
-    retry: 1,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    queryFn: async () => {
-      if (!userId) return null;
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('dashboard_note, dashboard_note_updated_at')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error && error.code !== 'PGRST116') throw error;
-
-      return data ?? null;
-    },
-  });
-
-  const mutation = useMutation({
-    mutationFn: async ({ nextNote }: { nextNote: string }) => {
-      if (!userId) throw new Error('User tidak ditemukan');
-
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .update({ dashboard_note: nextNote })
-        .eq('id', userId)
-        .select('dashboard_note_updated_at')
-        .maybeSingle();
-
-      if (error) throw error;
-      return data ?? null;
-    },
-    onMutate: () => {
-      setSyncError(false);
-      setPendingSync(true);
-      setStatus('saving');
-    },
-    onSuccess: (data, variables) => {
-      const updatedAt = toTimestamp(data?.dashboard_note_updated_at) ?? Date.now();
-      lastSyncedNoteRef.current = variables.nextNote;
-      lastHandledRemoteAtRef.current = updatedAt;
-      setLastSavedAt(updatedAt);
-      setLocalUpdatedAt(updatedAt);
-      setPendingSync(false);
-      setSyncError(false);
-      setStatus('saved');
-      writeLocalNote(storageKey, {
-        note: variables.nextNote,
-        localUpdatedAt: updatedAt,
-      });
-    },
-    onError: () => {
-      setSyncError(true);
-      setStatus('error');
-    },
-  });
-
-  const scheduleRemoteSync = useCallback(
-    (nextNote: string) => {
-      if (!userId) return;
-      if (!isOnline) {
-        setPendingSync(true);
-        return;
-      }
-
-      if (remoteSaveTimeoutRef.current) {
-        clearTimeout(remoteSaveTimeoutRef.current);
-      }
-
-      remoteSaveTimeoutRef.current = setTimeout(() => {
-        mutation.mutate({ nextNote });
-      }, REMOTE_SAVE_DEBOUNCE);
-    },
-    [isOnline, mutation, userId],
-  );
-
   useEffect(() => {
     const stored = readLocalNote(storageKey);
     const initialNote = stored?.note ?? '';
@@ -180,7 +191,7 @@ export default function useDashboardNote() {
     setLastSavedAt(initialTimestamp);
     setPendingSync(false);
     setSyncError(false);
-    setStatus('saved');
+    setIsRemoteScheduled(false);
 
     noteRef.current = initialNote;
     localUpdatedAtRef.current = initialTimestamp;
@@ -209,28 +220,30 @@ export default function useDashboardNote() {
       setLastSavedAt(remoteTs || null);
       setPendingSync(false);
       setSyncError(false);
-      setStatus('saved');
+
       noteRef.current = remoteNote;
       localUpdatedAtRef.current = remoteTs;
       lastSyncedNoteRef.current = remoteNote;
-      writeLocalNote(storageKey, { note: remoteNote, localUpdatedAt: remoteTs });
+
+      writeLocalNote(storageKey, {
+        note: remoteNote,
+        localUpdatedAt: remoteTs,
+      });
       return;
     }
 
     if (localTs > remoteTs && localNote !== remoteNote) {
-      if (isOnline && userId) {
-        setStatus('saving');
+      if (userId && isOnline) {
         scheduleRemoteSync(localNote);
       } else {
         setPendingSync(true);
-        setStatus('offline');
       }
       return;
     }
 
     lastSyncedNoteRef.current = remoteNote;
-    setStatus(syncError ? 'error' : 'saved');
-  }, [isOnline, noteQuery.data, scheduleRemoteSync, storageKey, syncError, userId]);
+    setPendingSync(false);
+  }, [isOnline, noteQuery.data, scheduleRemoteSync, storageKey, userId]);
 
   useEffect(() => {
     return () => {
@@ -243,10 +256,8 @@ export default function useDashboardNote() {
     if (!isOnline || !pendingSync || !userId) return;
     if (noteRef.current === lastSyncedNoteRef.current) {
       setPendingSync(false);
-      setStatus('saved');
       return;
     }
-    setStatus('saving');
     scheduleRemoteSync(noteRef.current);
   }, [isOnline, pendingSync, scheduleRemoteSync, userId]);
 
@@ -271,37 +282,32 @@ export default function useDashboardNote() {
       }, LOCAL_SAVE_DEBOUNCE);
 
       const hasUnsyncedChanges = value !== lastSyncedNoteRef.current;
-
       if (!hasUnsyncedChanges) {
         setPendingSync(false);
         setSyncError(false);
-        setStatus('saved');
+        setIsRemoteScheduled(false);
         return;
       }
 
       setPendingSync(true);
       setSyncError(false);
 
-      if (!isOnline) {
-        setStatus('offline');
-        return;
-      }
-
-      if (!userId) {
-        setStatus(userLoading ? 'saving' : 'saved');
-        return;
-      }
-
-      setStatus('saving');
+      if (!userId || !isOnline) return;
       scheduleRemoteSync(value);
     },
-    [isOnline, scheduleRemoteSync, storageKey, userId, userLoading],
+    [isOnline, scheduleRemoteSync, storageKey, userId],
   );
 
-  useEffect(() => {
-    if (isOnline || !pendingSync) return;
-    setStatus('offline');
-  }, [isOnline, pendingSync]);
+  const status = useMemo<DashboardNoteStatus>(() => {
+    const hasUnsyncedChanges = note !== lastSyncedNoteRef.current;
+
+    if (syncError && hasUnsyncedChanges) return 'error';
+    if (!isOnline && hasUnsyncedChanges) return 'offline';
+    if (hasUnsyncedChanges && (isRemoteScheduled || mutation.isPending || pendingSync)) {
+      return 'saving';
+    }
+    return 'saved';
+  }, [isOnline, isRemoteScheduled, mutation.isPending, note, pendingSync, syncError]);
 
   return {
     note,
