@@ -8,16 +8,19 @@ const DEBUG =
 
 export const HIGHLIGHT_BUDGETS_QUERY_KEY = ['budgets', 'highlights'] as const;
 
-export function useHighlightBudgets(options: { enabled?: boolean } = {}) {
+export function useHighlightBudgets(userId?: string | null, options: { enabled?: boolean } = {}) {
+  const isEnabled = Boolean(userId) && (options.enabled ?? true);
+
   useEffect(() => {
     if (!DEBUG) return;
     // eslint-disable-next-line no-console
-    console.debug('[highlight:query]', HIGHLIGHT_BUDGETS_QUERY_KEY);
-  }, []);
+    console.debug('[highlight:query]', [...HIGHLIGHT_BUDGETS_QUERY_KEY, userId ?? 'guest']);
+  }, [userId]);
 
   return useQuery<HighlightBudgetSelection[]>({
-    queryKey: HIGHLIGHT_BUDGETS_QUERY_KEY,
+    queryKey: [...HIGHLIGHT_BUDGETS_QUERY_KEY, userId ?? 'guest'],
     queryFn: listHighlightBudgets,
+    enabled: isEnabled,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: false,

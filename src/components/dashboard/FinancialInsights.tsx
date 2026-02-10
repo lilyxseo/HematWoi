@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import useSupabaseUser from '../../hooks/useSupabaseUser'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { useTransactionFormPrefetch } from '../../hooks/useTransactionFormPrefetch'
@@ -35,39 +36,48 @@ interface FinancialInsightsProps {
 export default function FinancialInsights({ periodEnd }: FinancialInsightsProps) {
   const navigate = useNavigate()
   const { prefetchAddForm } = useTransactionFormPrefetch()
+  const { user } = useSupabaseUser()
+  const userId = user?.id
   const periodMonth = useMemo(() => toMonthKey(periodEnd) ?? undefined, [periodEnd])
+  const queryPeriod = periodMonth ?? new Date().toISOString().slice(0, 7)
+  const enabled = Boolean(userId && queryPeriod)
 
   const topSpendingQuery = useQuery({
-    queryKey: ['financial-insights', 'top-spending', periodMonth],
-    queryFn: () => getTopSpendingMTD(periodMonth),
+    queryKey: ['monthly-analysis', 'top-spending', userId ?? 'guest', queryPeriod],
+    queryFn: () => getTopSpendingMTD(queryPeriod),
+    enabled,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
   })
 
   const budgetQuery = useQuery({
-    queryKey: ['financial-insights', 'budgets', periodMonth],
-    queryFn: () => getBudgetProgressMTD(periodMonth),
+    queryKey: ['monthly-analysis', 'budgets', userId ?? 'guest', queryPeriod],
+    queryFn: () => getBudgetProgressMTD(queryPeriod),
+    enabled,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
   })
 
   const debtQuery = useQuery({
-    queryKey: ['financial-insights', 'debts-due'],
+    queryKey: ['monthly-analysis', 'debts-due', userId ?? 'guest', queryPeriod],
     queryFn: () => getDueDebtsIn7Days(),
+    enabled,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
   })
 
   const uncategorizedQuery = useQuery({
-    queryKey: ['financial-insights', 'uncategorized', periodMonth],
-    queryFn: () => getUncategorizedCount(periodMonth),
+    queryKey: ['monthly-analysis', 'uncategorized', userId ?? 'guest', queryPeriod],
+    queryFn: () => getUncategorizedCount(queryPeriod),
+    enabled,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
   })
 
   const weeklyTrendQuery = useQuery({
-    queryKey: ['financial-insights', 'weekly-trend', periodMonth],
-    queryFn: () => getWeeklyTrend(periodMonth),
+    queryKey: ['monthly-analysis', 'weekly-trend', userId ?? 'guest', queryPeriod],
+    queryFn: () => getWeeklyTrend(queryPeriod),
+    enabled,
     staleTime: 60_000,
     gcTime: 5 * 60_000,
   })
