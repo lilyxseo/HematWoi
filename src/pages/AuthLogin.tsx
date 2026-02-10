@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { IconBrandApple, IconBrandGoogle } from '@tabler/icons-react';
 import { Eye, EyeOff } from 'lucide-react';
 import ErrorBoundary from '../components/system/ErrorBoundary';
@@ -27,6 +28,7 @@ type StatusState = {
 
 export default function AuthLogin() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -138,6 +140,14 @@ export default function AuthLogin() {
 
         await signInWithPassword({ email: emailForSignIn, password: credentials.password });
 
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+          queryClient.invalidateQueries({ queryKey: ['budgets'] }),
+          queryClient.invalidateQueries({ queryKey: ['reports'] }),
+          queryClient.invalidateQueries({ queryKey: ['monthly-analysis'] }),
+          queryClient.invalidateQueries({ queryKey: ['financial-insights'] }),
+        ]);
+
         setStatus({ type: 'success', message: 'Berhasil login. Mengalihkan…' });
         setForm((prev) => ({ ...prev, password: '' }));
         navigate('/', { replace: true });
@@ -155,7 +165,7 @@ export default function AuthLogin() {
         setLoading(false);
       }
     },
-    [form.identifier, form.password, loading, navigate, validate]
+    [form.identifier, form.password, loading, navigate, queryClient, validate]
   );
 
   const passwordType = useMemo(() => (showPassword ? 'text' : 'password'), [showPassword]);

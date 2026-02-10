@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import QuickActions from "../components/QuickActions";
 import SectionHeader from "../components/SectionHeader";
 import CategoryDonut from "../components/CategoryDonut";
@@ -18,14 +19,18 @@ import DashboardHighlightedBudgets from "../components/dashboard/DashboardHighli
 import FinancialInsights from "../components/dashboard/FinancialInsights";
 import { isTransactionDeleted } from "../lib/transactionUtils";
 import { useMode } from "../hooks/useMode";
+import useSupabaseUser from "../hooks/useSupabaseUser";
+import { useBudgets } from "../hooks/useBudgets";
 
 const DEFAULT_PRESET = "month";
 
 // Each content block uses <Section> to maintain a single vertical rhythm.
-export default function Dashboard({ stats, txs }) {
+export default function Dashboard({ txs }) {
   const [periodPreset, setPeriodPreset] = useState(DEFAULT_PRESET);
   const [periodRange, setPeriodRange] = useState(() => getPresetRange(DEFAULT_PRESET));
   const { mode } = useMode();
+  const { user } = useSupabaseUser();
+  const [didInitPeriod, setDidInitPeriod] = useState(false);
   const balances = useDashboardBalances(periodRange, periodPreset);
   const {
     income: periodIncome,
@@ -59,12 +64,34 @@ export default function Dashboard({ stats, txs }) {
     refresh({ start: periodStart, end: periodEnd }, periodPreset);
   }, [periodStart, periodEnd, periodPreset, refresh]);
 
+  useEffect(() => {
+    if (!user?.id || didInitPeriod) return;
+    const defaultRange = getPresetRange(DEFAULT_PRESET);
+    setPeriodRange(defaultRange);
+    setPeriodPreset(DEFAULT_PRESET);
+    setDidInitPeriod(true);
+  }, [didInitPeriod, user?.id]);
+
   const handlePeriodChange = (range, preset) => {
     setPeriodRange(range);
     setPeriodPreset(preset);
   };
 
   const insights = useInsights(visibleTxs, { range: periodRange });
+  const monthPeriod = useMemo(() => (periodRange?.end || periodRange?.start || "").slice(0, 7), [periodRange]);
+  const monthlyBudgets = useBudgets(monthPeriod);
+  const periodTransactions = useMemo(
+    () =>
+      visibleTxs.filter((tx) => {
+        const date = String(tx?.date || "").slice(0, 10);
+        if (!date) return false;
+        return date >= periodRange.start && date <= periodRange.end;
+      }),
+    [periodRange.end, periodRange.start, visibleTxs],
+  );
+  const periodHasTransactions = periodTransactions.length > 0;
+  const periodHasBudget = monthlyBudgets.rows.length > 0;
+
   const periodLabel = useMemo(
     () => formatPeriodLabel(periodRange) || "—",
     [periodRange],
@@ -146,16 +173,47 @@ export default function Dashboard({ stats, txs }) {
 
         <section className="space-y-5 sm:space-y-7 lg:space-y-10 max-[400px]:space-y-4">
           <SectionHeader title="Analisis Bulanan" />
-          <div className="grid gap-4 sm:gap-6 lg:gap-8">
-            <CategoryDonut data={insights.categories} />
-          </div>
-          <div className="grid gap-4 sm:gap-6 lg:gap-8 lg:grid-cols-2">
-            <TopSpendsTable
-              data={insights.topSpends}
-              onSelect={(t) => EventBus.emit("tx:open", t)}
-            />
-            <RecentTransactions txs={visibleTxs} />
-          </div>
+
+          {!periodHasTransactions ? (
+            <div className="rounded-3xl border border-dashed border-border-subtle/80 bg-surface-alt/40 p-5 text-sm text-muted">
+              <p className="text-base font-semibold text-text">Belum ada data bulan ini</p>
+              <p className="mt-1">Tambahkan transaksi pertama kamu untuk mulai melihat analisis bulanan.</p>
+              <Link
+                to="/transaction/add"
+                className="mt-4 inline-flex items-center justify-center rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand transition hover:border-brand/50 hover:bg-brand/20"
+              >
+                Tambah transaksi
+              </Link>
+            </div>
+          ) : null}
+
+          {!periodHasBudget ? (
+            <div className="rounded-3xl border border-dashed border-border-subtle/80 bg-surface-alt/40 p-5 text-sm text-muted">
+              <p className="text-base font-semibold text-text">Budget bulan ini belum dibuat</p>
+              <p className="mt-1">Bikin budget untuk memantau batas pengeluaran dan progres bulananmu.</p>
+              <Link
+                to="/budgets"
+                className="mt-4 inline-flex items-center justify-center rounded-xl border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-semibold text-brand transition hover:border-brand/50 hover:bg-brand/20"
+              >
+                Buat budget
+              </Link>
+            </div>
+          ) : null}
+
+          {periodHasTransactions ? (
+            <>
+              <div className="grid gap-4 sm:gap-6 lg:gap-8">
+                <CategoryDonut data={insights.categories} />
+              </div>
+              <div className="grid gap-4 sm:gap-6 lg:gap-8 lg:grid-cols-2">
+                <TopSpendsTable
+                  data={insights.topSpends}
+                  onSelect={(t) => EventBus.emit("tx:open", t)}
+                />
+                <RecentTransactions txs={periodTransactions} />
+              </div>
+            </>
+          ) : null}
         </section>
       </div>
     </>

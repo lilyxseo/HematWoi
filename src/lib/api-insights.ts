@@ -97,6 +97,39 @@ function getMonthRange(periodMonth: string): { start: string; endExclusive: stri
   }
 }
 
+
+async function ensureUserProfile(userId: string): Promise<void> {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) {
+    return
+  }
+
+  if (data) return
+
+  await supabase.from('user_profiles').upsert(
+    {
+      user_id: userId,
+      currency: 'IDR',
+      timezone: 'Asia/Jakarta',
+    },
+    { onConflict: 'user_id', ignoreDuplicates: true },
+  )
+}
+
+async function resolveInsightsUserId(): Promise<string> {
+  const userId = await getCurrentUserId()
+  if (!userId) {
+    throw new Error('Pengguna belum masuk')
+  }
+  await ensureUserProfile(userId)
+  return userId
+}
+
 function sanitizeNumber(value: unknown): number {
   if (value == null) return 0
   const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value))
@@ -118,10 +151,7 @@ function computeProgress(row: BudgetWithSpent): BudgetProgressInsight {
 }
 
 export async function getTopSpendingMTD(period?: string | null): Promise<TopSpendingInsight | null> {
-  const userId = await getCurrentUserId()
-  if (!userId) {
-    throw new Error('Pengguna belum masuk')
-  }
+  const userId = await resolveInsightsUserId()
   const periodMonth = toMonthKey(period)
   const { start, endExclusive } = getMonthRange(periodMonth)
 
@@ -209,10 +239,7 @@ export async function getBudgetProgressMTD(period?: string | null): Promise<Budg
 }
 
 export async function getDueDebtsIn7Days(): Promise<DueItemInsight[]> {
-  const userId = await getCurrentUserId()
-  if (!userId) {
-    throw new Error('Pengguna belum masuk')
-  }
+  const userId = await resolveInsightsUserId()
   const nowJakarta = getJakartaNow()
   nowJakarta.setUTCHours(0, 0, 0, 0)
   const startDate = formatDateUTC(nowJakarta)
@@ -291,10 +318,7 @@ export async function getDueDebtsIn7Days(): Promise<DueItemInsight[]> {
 }
 
 export async function getUncategorizedCount(period?: string | null): Promise<number> {
-  const userId = await getCurrentUserId()
-  if (!userId) {
-    throw new Error('Pengguna belum masuk')
-  }
+  const userId = await resolveInsightsUserId()
   const periodMonth = toMonthKey(period)
   const { start, endExclusive } = getMonthRange(periodMonth)
 
@@ -317,10 +341,7 @@ export async function getUncategorizedCount(period?: string | null): Promise<num
 }
 
 export async function getWeeklyTrend(period?: string | null): Promise<WeeklyTrendInsight | null> {
-  const userId = await getCurrentUserId()
-  if (!userId) {
-    throw new Error('Pengguna belum masuk')
-  }
+  const userId = await resolveInsightsUserId()
   const periodMonth = toMonthKey(period)
   const { start, endExclusive } = getMonthRange(periodMonth)
   const jakartaNow = getJakartaNow()

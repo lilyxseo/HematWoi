@@ -127,7 +127,7 @@ function HighlightSkeleton() {
 
 export default function DashboardHighlightedBudgets({ period }: DashboardHighlightedBudgetsProps) {
   const { user } = useSupabaseUser();
-  const highlightQuery = useHighlightBudgets();
+  const highlightQuery = useHighlightBudgets(user?.id);
   const highlights = highlightQuery.data ?? [];
   const loading = highlightQuery.isLoading;
   const error = highlightQuery.error instanceof Error ? highlightQuery.error.message : null;
