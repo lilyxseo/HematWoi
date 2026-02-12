@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Scissors, CalendarClock } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -9,6 +9,7 @@ import CurrencyInput from '../components/ui/CurrencyInput';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Textarea from '../components/ui/Textarea';
+import { useRepo } from '../context/DataContext';
 
 /**
  * Quick + advanced add transaction form with mode tabs.
@@ -17,6 +18,9 @@ import Textarea from '../components/ui/Textarea';
 export default function AddTransaction() {
   const [mode, setMode] = useState(() => localStorage.getItem('add_mode') || 'expense');
   const [advanced, setAdvanced] = useState(() => localStorage.getItem('add_advanced') === 'true');
+  const repo = useRepo();
+  const [categories, setCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
 
   useEffect(() => {
     localStorage.setItem('add_mode', mode);
@@ -25,6 +29,35 @@ export default function AddTransaction() {
   useEffect(() => {
     localStorage.setItem('add_advanced', advanced ? 'true' : 'false');
   }, [advanced]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadCategories() {
+      try {
+        setLoadingCategories(true);
+        const list = await repo.categories.list();
+        if (!active) return;
+        setCategories(Array.isArray(list) ? list : []);
+      } catch (error) {
+        console.error('Gagal memuat kategori', error);
+        if (active) setCategories([]);
+      } finally {
+        if (active) setLoadingCategories(false);
+      }
+    }
+    loadCategories();
+    return () => {
+      active = false;
+    };
+  }, [repo]);
+
+  const categoryOptions = useMemo(() => {
+    if (mode === 'transfer') return [];
+    const targetType = mode === 'income' ? 'income' : 'expense';
+    return categories
+      .filter((cat) => (cat?.type ?? 'expense') === targetType)
+      .map((cat) => ({ value: cat.id, label: cat.name || '(Tanpa kategori)' }));
+  }, [categories, mode]);
 
   return (
     <Page>
@@ -53,25 +86,63 @@ export default function AddTransaction() {
             />
           </div>
 
-          {advanced ? <AdvancedForm /> : <QuickForm />}
+          {advanced ? (
+            <AdvancedForm
+              mode={mode}
+              categoryOptions={categoryOptions}
+              loadingCategories={loadingCategories}
+            />
+          ) : (
+            <QuickForm
+              mode={mode}
+              categoryOptions={categoryOptions}
+              loadingCategories={loadingCategories}
+            />
+          )}
         </div>
       </Section>
     </Page>
   );
 }
 
-function QuickForm() {
+function QuickForm({ categoryOptions, mode, loadingCategories }) {
   const [amount, setAmount] = useState(0);
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (!categoryOptions.length) {
+      setCategory('');
+      return;
+    }
+    setCategory((prev) => {
+      const exists = categoryOptions.some((opt) => opt.value === prev);
+      return exists ? prev : categoryOptions[0].value;
+    });
+  }, [categoryOptions]);
 
   return (
     <form>
       <Card>
         <CardBody className="space-y-4">
           <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
-          <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
+          <Select
+            label="Kategori"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            options={categoryOptions}
+            disabled={mode === 'transfer' || categoryOptions.length === 0}
+            placeholder={
+              mode === 'transfer'
+                ? 'Kategori tidak diperlukan'
+                : loadingCategories
+                ? 'Memuat kategori...'
+                : categoryOptions.length === 0
+                ? 'Tidak ada kategori'
+                : 'Pilih kategori'
+            }
+          />
           <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
           <Textarea label="Catatan" value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="flex justify-end gap-2 pt-2">
@@ -84,13 +155,24 @@ function QuickForm() {
   );
 }
 
-function AdvancedForm() {
+function AdvancedForm({ categoryOptions, mode, loadingCategories }) {
   const [amount, setAmount] = useState(0);
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [account, setAccount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (!categoryOptions.length) {
+      setCategory('');
+      return;
+    }
+    setCategory((prev) => {
+      const exists = categoryOptions.some((opt) => opt.value === prev);
+      return exists ? prev : categoryOptions[0].value;
+    });
+  }, [categoryOptions]);
 
   return (
     <form>
@@ -99,7 +181,22 @@ function AdvancedForm() {
           <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
           <div className="grid gap-4 sm:grid-cols-2">
             <Select label="Akun" value={account} onChange={(e) => setAccount(e.target.value)} options={['Cash']} />
-            <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
+            <Select
+              label="Kategori"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              options={categoryOptions}
+              disabled={mode === 'transfer' || categoryOptions.length === 0}
+              placeholder={
+                mode === 'transfer'
+                  ? 'Kategori tidak diperlukan'
+                  : loadingCategories
+                  ? 'Memuat kategori...'
+                  : categoryOptions.length === 0
+                  ? 'Tidak ada kategori'
+                  : 'Pilih kategori'
+              }
+            />
           </div>
           <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
           <Input label="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
