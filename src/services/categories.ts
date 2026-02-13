@@ -10,62 +10,93 @@ export type Category = {
   inserted_at: string;
 };
 
+type CategoryType = Category['type'];
+
+type FetchCategoriesOptions = {
+  types?: CategoryType[];
+  order?: boolean;
+};
+
 const CATEGORY_SELECT_COLUMNS =
   'id,user_id,type,name,group_name,order_index,inserted_at';
-const CATEGORY_CACHE_PREFIX = 'hw:categories:';
-const CATEGORY_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-function getCacheKey(types: readonly ('income' | 'expense')[]): string {
-  if (!types.length) {
-    return `${CATEGORY_CACHE_PREFIX}expense+income`;
-  }
-  return `${CATEGORY_CACHE_PREFIX}${types.join('+')}`;
-}
+const SESSION_READY_EVENTS = new Set([
+  'SIGNED_IN',
+  'INITIAL_SESSION',
+  'TOKEN_REFRESHED',
+]);
 
-function isLocalStorageAvailable(): boolean {
-  try {
-    return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
-  } catch (error) {
-    console.error('[categories:storage] Failed to access localStorage', error);
-    return false;
+async function waitForSessionUser() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error('[categories:session] Failed to get session', error);
+    throw error;
   }
+  const user = data?.session?.user;
+  if (user?.id) {
+    return user;
+  }
+
+  return await new Promise((resolve, reject) => {
+    const { data: subscriptionData, error: subscriptionError } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (SESSION_READY_EVENTS.has(event) && session?.user?.id) {
+          cleanup();
+          resolve(session.user);
+        }
+      },
+    );
+
+    const subscription = subscriptionData?.subscription ?? null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      subscription?.unsubscribe();
+    };
+
+    if (subscriptionError) {
+      cleanup();
+      reject(subscriptionError);
+      return;
+    }
+
+    timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error('Session belum siap. Silakan login ulang.'));
+    }, 10_000);
+  });
 }
 
 export async function getCurrentUserId(): Promise<string> {
   try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) {
-      console.error('[categories:getCurrentUserId] Failed to get user', error);
-      throw error;
-    }
-    const user = data?.user;
-    if (!user) {
-      const message = 'Session berakhir, silakan login lagi.';
-      console.error('[categories:getCurrentUserId] User not found');
-      throw new Error(message);
+    const user = await waitForSessionUser();
+    if (!user?.id) {
+      throw new Error('Session tidak ditemukan.');
     }
     return user.id;
   } catch (error) {
-    console.error('[categories:getCurrentUserId] Unexpected error', error);
+    console.error('[categories:getCurrentUserId] Failed to resolve user', error);
     throw error;
   }
 }
 
-export async function fetchCategoriesRaw(options?: {
-  types?: ('income' | 'expense')[];
-  withOrdering?: boolean;
-}): Promise<Category[]> {
-  const normalizedTypes = options?.types?.length ? options.types : ['expense', 'income'];
-  const withOrdering = options?.withOrdering ?? true;
+export async function fetchCategoriesRaw(options: FetchCategoriesOptions = {}): Promise<Category[]> {
+  const types = options.types?.length ? options.types : ['expense', 'income'];
+  const shouldOrder = options.order ?? true;
+
   try {
     const userId = await getCurrentUserId();
     let query = supabase
       .from('categories')
       .select(CATEGORY_SELECT_COLUMNS)
       .eq('user_id', userId)
-      .in('type', normalizedTypes);
+      .in('type', types);
 
-    if (withOrdering) {
+    if (shouldOrder) {
       query = query
         .order('order_index', { ascending: true, nullsFirst: true })
         .order('name', { ascending: true });
@@ -73,85 +104,99 @@ export async function fetchCategoriesRaw(options?: {
 
     const { data, error } = await query;
     if (error) {
-      console.error('[categories:fetchCategoriesRaw] Query failed', error);
+      console.error('[categories:raw] Failed to fetch categories', error);
       throw error;
     }
 
     return (data ?? []) as Category[];
   } catch (error) {
-    console.error('[categories:fetchCategoriesRaw] Unexpected error', error);
+    console.error('[categories:raw] Unexpected failure', error);
     throw error;
   }
 }
 
-export async function fetchCategoriesSafe(options?: {
-  types?: ('income' | 'expense')[];
-  withOrdering?: boolean;
-}): Promise<Category[]> {
-  const normalizedTypes = options?.types?.length ? options.types : ['expense', 'income'];
-  const withOrdering = options?.withOrdering ?? true;
-  let primaryError: unknown = null;
-
-  try {
-    const rows = await fetchCategoriesRaw({ types: normalizedTypes, withOrdering });
-    if (rows.length) {
-      return rows;
-    }
-  } catch (error) {
-    console.error('[categories:fetchCategoriesSafe] Primary fetch failed', error);
-    primaryError = error;
+export async function fetchCategoryById(id: string | null | undefined): Promise<Category | null> {
+  if (!id) {
+    return null;
   }
 
   try {
-    let fallbackQuery = supabase
+    const userId = await getCurrentUserId();
+    const { data, error } = await supabase
       .from('categories')
       .select(CATEGORY_SELECT_COLUMNS)
-      .in('type', normalizedTypes);
+      .eq('user_id', userId)
+      .eq('id', id)
+      .maybeSingle();
 
-    if (withOrdering) {
+    if (error) {
+      console.error('[categories:byId] Failed to fetch category', { error, id });
+      throw error;
+    }
+
+    return (data ?? null) as Category | null;
+  } catch (error) {
+    console.error('[categories:byId] Unexpected failure', { error, id });
+    throw error;
+  }
+}
+
+export async function fetchCategoriesSafe(options: FetchCategoriesOptions = {}): Promise<Category[]> {
+  try {
+    const rows = await fetchCategoriesRaw(options);
+    if (rows.length) {
+      return rows;
+    }
+  } catch (primaryError) {
+    console.error('[categories:raw] Primary fetch failed', primaryError);
+  }
+
+  try {
+    const types = options.types?.length ? options.types : ['expense', 'income'];
+    const shouldOrder = options.order ?? true;
+    let fallbackQuery = supabase.from('categories').select(CATEGORY_SELECT_COLUMNS).in('type', types);
+    if (shouldOrder) {
       fallbackQuery = fallbackQuery
         .order('order_index', { ascending: true, nullsFirst: true })
         .order('name', { ascending: true });
     }
-
     const { data, error } = await fallbackQuery;
     if (error) {
       throw error;
     }
-
-    const result = (data ?? []) as Category[];
-    if (result.length) {
-      return result;
-    }
-
-    console.warn(
-      '[categories:fetchCategoriesSafe] Empty result after fallback',
-      {
-        types: normalizedTypes,
-        primaryError: primaryError instanceof Error ? primaryError.message : primaryError,
-      },
-    );
-    return result;
-  } catch (error) {
-    console.error('[categories:fetchCategoriesSafe] Fallback failed', {
-      error,
-      types: normalizedTypes,
-      primaryError: primaryError instanceof Error ? primaryError.message : primaryError,
-    });
+    return (data ?? []) as Category[];
+  } catch (fallbackError) {
+    console.error('[categories:raw] Fallback fetch failed', fallbackError);
     return [];
   }
 }
 
+const CATEGORY_CACHE_PREFIX = 'hw:categories:';
+const CATEGORY_CACHE_TTL = 10 * 60 * 1000;
+
+function isLocalStorageAvailable(): boolean {
+  try {
+    return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  } catch (error) {
+    console.error('[categories:cache] localStorage unavailable', error);
+    return false;
+  }
+}
+
+function getCacheKey(types: readonly CategoryType[]): string {
+  if (!types.length) {
+    return `${CATEGORY_CACHE_PREFIX}expense+income`;
+  }
+  return `${CATEGORY_CACHE_PREFIX}${types.join('+')}`;
+}
+
 export function cacheCategories(key: string, data: Category[]): void {
   if (!isLocalStorageAvailable()) return;
-  const payload = {
-    timestamp: Date.now(),
-    data,
-  } satisfies { timestamp: number; data: Category[] };
   try {
-    window.localStorage.setItem(key, JSON.stringify(payload));
+    const payload = JSON.stringify({ timestamp: Date.now(), data });
+    window.localStorage.setItem(key, payload);
   } catch (error) {
-    console.error('[categories:cacheCategories] Failed to cache data', error);
+    console.error('[categories:cache] Failed to cache categories', error);
   }
 }
 
@@ -161,23 +206,23 @@ export function getCachedCategories(key: string): Category[] | null {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const payload = JSON.parse(raw) as { timestamp?: number; data?: Category[] };
-    if (!payload || typeof payload.timestamp !== 'number' || !Array.isArray(payload.data)) {
+    if (!payload?.timestamp || !Array.isArray(payload.data)) {
       window.localStorage.removeItem(key);
       return null;
     }
-    const isExpired = Date.now() - payload.timestamp > CATEGORY_CACHE_TTL;
-    if (isExpired) {
+    if (Date.now() - payload.timestamp > CATEGORY_CACHE_TTL) {
       window.localStorage.removeItem(key);
       return null;
     }
     return payload.data;
   } catch (error) {
-    console.error('[categories:getCachedCategories] Failed to read cache', error);
+    console.error('[categories:cache] Failed to read cache', error);
     return null;
   }
 }
 
 export function getCategoriesCacheKey(types?: ('income' | 'expense')[]): string {
-  const normalized = types?.length ? types : ['expense', 'income'];
+  const normalized: CategoryType[] = types?.length ? types : ['expense', 'income'];
   return getCacheKey(normalized);
 }
+
