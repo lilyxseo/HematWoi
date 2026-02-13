@@ -347,6 +347,8 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
   const safeAccounts = Array.isArray(accounts) ? accounts : []
 
   const normalizedRange = clampRangeToToday(range)
+  const balanceRangeEnd =
+    range.end && range.end.length ? range.end : normalizedRange.end
   const rangeTransactions = safeTransactions.filter((tx) => withinRange(tx, normalizedRange))
   let income = 0
   let expense = 0
@@ -403,7 +405,7 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
   const snapshotAtRangeEnd = computeAccountBalances(
     safeTransactions,
     safeAccounts,
-    normalizedRange.end || undefined,
+    balanceRangeEnd || undefined,
   )
   const snapshotIncludingUpcoming = computeAccountBalances(safeTransactions, safeAccounts)
   const comparisonSnapshot = computeAccountBalances(
