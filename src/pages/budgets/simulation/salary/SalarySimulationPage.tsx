@@ -48,7 +48,7 @@ import {
   listExpenseCategories,
   updateSalarySimulation,
 } from '../../../../lib/salarySimulationApi';
-import { upsertBudget } from '../../../../lib/budgetApi';
+import { computeSpent, upsertBudget } from '../../../../lib/budgetApi';
 
 interface AllocationItem {
   categoryId: string;
@@ -181,6 +181,8 @@ export default function SalarySimulationPage() {
 
   const [budgets, setBudgets] = useState<MonthlyBudgetRow[]>([]);
   const [budgetsLoading, setBudgetsLoading] = useState<boolean>(true);
+  const [currentMonthSpentByCategory, setCurrentMonthSpentByCategory] = useState<Record<string, number>>({});
+  const [currentMonthSpentLoading, setCurrentMonthSpentLoading] = useState<boolean>(true);
 
   const [history, setHistory] = useState<SalarySimulationRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState<boolean>(true);
@@ -307,6 +309,27 @@ export default function SalarySimulationPage() {
   useEffect(() => {
     loadBudgets();
   }, [loadBudgets]);
+
+  const loadCurrentMonthSpent = useCallback(() => {
+    if (!user) return Promise.resolve();
+    setCurrentMonthSpentLoading(true);
+    return computeSpent(getCurrentPeriod())
+      .then((totals) => {
+        setCurrentMonthSpentByCategory(totals);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : 'Gagal memuat budget terpakai bulan ini';
+        addToast(message, 'error');
+        setCurrentMonthSpentByCategory({});
+      })
+      .finally(() => {
+        setCurrentMonthSpentLoading(false);
+      });
+  }, [user, addToast]);
+
+  useEffect(() => {
+    loadCurrentMonthSpent();
+  }, [loadCurrentMonthSpent]);
 
   const loadHistory = useCallback(() => {
     if (!user) return Promise.resolve();
@@ -875,6 +898,7 @@ export default function SalarySimulationPage() {
               {items.map((item) => {
                 const budget = budgetMap.get(item.categoryId);
                 const plannedBudget = Number(budget?.amount_planned ?? 0);
+                const currentMonthSpent = Number(currentMonthSpentByCategory[item.categoryId] ?? 0);
                 const difference = item.amount - plannedBudget;
                 const differenceClass = clsx(
                   difference === 0 && 'text-muted',
@@ -903,6 +927,12 @@ export default function SalarySimulationPage() {
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                         <span>Budget: {formatCurrency(plannedBudget)}</span>
+                        <span>
+                          Terpakai bulan ini:{' '}
+                          <span className="font-medium text-text">
+                            {currentMonthSpentLoading ? 'Memuat...' : formatCurrency(currentMonthSpent)}
+                          </span>
+                        </span>
                         <span>
                           Selisih:{' '}
                           <span className={differenceClass}>
