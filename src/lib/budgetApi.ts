@@ -87,6 +87,62 @@ function parseBudgetNumeric(value: unknown): number | null {
   return null;
 }
 
+function parseTransactionAmount(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const compact = value
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[^\d,.\-+]/g, '');
+
+  if (!compact) return null;
+
+  const hasDot = compact.includes('.');
+  const hasComma = compact.includes(',');
+
+  if (hasDot && hasComma) {
+    const lastDot = compact.lastIndexOf('.');
+    const lastComma = compact.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      const normalized = compact.replace(/\./g, '').replace(',', '.');
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const normalized = compact.replace(/,/g, '');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (hasDot) {
+    if (/^[+-]?\d{1,3}(\.\d{3})+$/.test(compact)) {
+      const normalized = compact.replace(/\./g, '');
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const parsed = Number(compact);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (hasComma) {
+    if (/^[+-]?\d{1,3}(,\d{3})+$/.test(compact)) {
+      const normalized = compact.replace(/,/g, '');
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const normalized = compact.replace(',', '.');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  const parsed = Number(compact);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function normalizePeriodMonth(value?: string | null): string {
   if (!value) {
     return new Date().toISOString().slice(0, 10);
@@ -899,7 +955,7 @@ export async function computeSpent(period: string): Promise<Record<string, numbe
   for (const row of (data ?? []) as any[]) {
     const categoryId = row?.category_id as string | null;
     if (!categoryId) continue;
-    const amount = Number(row?.amount ?? 0);
+    const amount = parseTransactionAmount(row?.amount);
     if (!Number.isFinite(amount)) continue;
     totals[categoryId] = (totals[categoryId] ?? 0) + amount;
   }
@@ -950,7 +1006,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   for (const row of (transactionsResponse.data ?? []) as any[]) {
     const categoryId = row?.category_id as string | null;
     if (!categoryId) continue;
-    const amount = Number(row?.amount ?? 0);
+    const amount = parseTransactionAmount(row?.amount);
     if (!Number.isFinite(amount)) continue;
     const dateValue = typeof row?.date === 'string' ? row.date : null;
     if (!dateValue) continue;
