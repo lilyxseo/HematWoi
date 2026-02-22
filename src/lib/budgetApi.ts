@@ -95,31 +95,52 @@ function parseTransactionAmount(value: unknown): number | null {
     return null;
   }
 
-  const trimmed = value.trim();
-  if (!trimmed) return null;
+  const compact = value
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[^\d,.\-+]/g, '');
 
-  const directParsed = Number(trimmed);
-  if (Number.isFinite(directParsed)) {
-    return directParsed;
-  }
+  if (!compact) return null;
 
-  const noSpace = trimmed.replace(/\s+/g, '');
+  const hasDot = compact.includes('.');
+  const hasComma = compact.includes(',');
 
-  if (/^[+-]?\d{1,3}(\.\d{3})+(,\d+)?$/.test(noSpace)) {
-    const normalized = noSpace.replace(/\./g, '').replace(',', '.');
+  if (hasDot && hasComma) {
+    const lastDot = compact.lastIndexOf('.');
+    const lastComma = compact.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      const normalized = compact.replace(/\./g, '').replace(',', '.');
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const normalized = compact.replace(/,/g, '');
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  if (/^[+-]?\d{1,3}(,\d{3})+(\.\d+)?$/.test(noSpace)) {
-    const normalized = noSpace.replace(/,/g, '');
+  if (hasDot) {
+    if (/^[+-]?\d{1,3}(\.\d{3})+$/.test(compact)) {
+      const normalized = compact.replace(/\./g, '');
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const parsed = Number(compact);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  if (hasComma) {
+    if (/^[+-]?\d{1,3}(,\d{3})+$/.test(compact)) {
+      const normalized = compact.replace(/,/g, '');
+      const parsed = Number(normalized);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    const normalized = compact.replace(',', '.');
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   }
 
-  const fallback = noSpace.replace(/\./g, '').replace(',', '.');
-  const fallbackParsed = Number(fallback);
-  return Number.isFinite(fallbackParsed) ? fallbackParsed : null;
+  const parsed = Number(compact);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizePeriodMonth(value?: string | null): string {
