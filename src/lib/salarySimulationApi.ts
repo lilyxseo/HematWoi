@@ -28,13 +28,24 @@ function normalizeMonthStart(value: string): string {
 }
 
 function parseBudgetAmount(row: {
-  amount_planned?: number | string | null;
-  planned_amount?: number | string | null;
-  planned?: number | string | null;
+  amount_planned?: unknown;
+  planned_amount?: unknown;
+  planned?: unknown;
 }): number {
-  const candidate = row.amount_planned ?? row.planned_amount ?? row.planned ?? 0;
-  const parsed = Number(candidate);
-  return Number.isFinite(parsed) ? parsed : 0;
+  const candidates = [row.amount_planned, row.planned_amount, row.planned];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined || candidate === '') continue;
+    if (typeof candidate === 'number') {
+      if (Number.isFinite(candidate)) return candidate;
+      continue;
+    }
+    if (typeof candidate === 'string') {
+      const normalized = candidate.replace(/,/g, '');
+      const parsed = Number.parseFloat(normalized);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return 0;
 }
 
 function buildDefaultTitle(periodMonth: string): string {
@@ -94,7 +105,7 @@ export async function getMonthlyBudgets(periodMonth: string, userId?: string): P
   const normalized = normalizeMonthStart(periodMonth);
   const { data, error } = await supabase
     .from('budgets')
-    .select('*,category:categories(id,name)')
+    .select('id,category_id,amount_planned,planned_amount,planned,carryover_enabled,notes,category:categories(id,name)')
     .eq('user_id', resolvedUserId)
     .eq('period_month', normalized)
     .order('created_at', { ascending: true });
