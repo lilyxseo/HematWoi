@@ -286,6 +286,12 @@ function computeAccountBalances(
     return { accountBalances: Object.fromEntries(perAccount), cashBalance: total, nonCashBalance: 0, totalBalance: total }
   }
 
+  for (const account of accounts) {
+    if (!perAccount.has(account.id)) {
+      perAccount.set(account.id, 0)
+    }
+  }
+
   const cashBalance = sum(
     accounts.filter((account) => account.type === "cash").map((account) => perAccount.get(account.id) ?? 0),
   )
