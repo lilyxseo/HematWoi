@@ -18,7 +18,7 @@ type TransactionRow = {
   user_id: string
   account_id: string | null
   to_account_id: string | null
-  type: "income" | "expense"
+  type: "income" | "expense" | "transfer"
   amount: number
   date: string
   deleted_at: string | null
@@ -39,6 +39,7 @@ type MetricsState = {
   cashBalance: number
   nonCashBalance: number
   totalBalance: number
+  accountBalances: Record<string, number>
 } & TrendMetrics
 
 const INITIAL_STATE: MetricsState = {
@@ -47,6 +48,7 @@ const INITIAL_STATE: MetricsState = {
   cashBalance: 0,
   nonCashBalance: 0,
   totalBalance: 0,
+  accountBalances: {},
   incomeTrend: [],
   expenseTrend: [],
   balanceTrend: [],
@@ -107,7 +109,7 @@ function computeGuestMetrics(range: DashboardRange, preset?: PeriodPreset): Metr
 
   txs.forEach((row, index) => {
     const type = typeof row?.type === "string" ? row.type.toLowerCase() : ""
-    if (type !== "income" && type !== "expense") return
+    if (type !== "income" && type !== "expense" && type !== "transfer") return
     const amount = asNumber(row?.amount)
     if (!amount) return
     const rawDate =
@@ -131,7 +133,7 @@ function computeGuestMetrics(range: DashboardRange, preset?: PeriodPreset): Metr
       user_id: "guest",
       account_id: accountId,
       to_account_id: toAccountId,
-      type: type === "income" ? "income" : "expense",
+      type: type === "income" || type === "transfer" ? type : "expense",
       amount,
       date,
       deleted_at: null,
@@ -169,7 +171,7 @@ function sanitizeRange(range: DashboardRange): DashboardRange {
 }
 
 function isTransfer(tx: TransactionRow): boolean {
-  return tx.to_account_id !== null && tx.to_account_id !== undefined
+  return tx.type === "transfer" || (tx.to_account_id !== null && tx.to_account_id !== undefined)
 }
 
 function withinRange(tx: TransactionRow, range: DashboardRange): boolean {
@@ -242,6 +244,7 @@ function percentageChange(current: number, previous: number): number | null {
 }
 
 type BalanceSnapshot = {
+  accountBalances: Record<string, number>
   cashBalance: number
   nonCashBalance: number
   totalBalance: number
@@ -280,7 +283,7 @@ function computeAccountBalances(
 
   if (!accounts.length) {
     const total = sum(perAccount.values())
-    return { cashBalance: total, nonCashBalance: 0, totalBalance: total }
+    return { accountBalances: Object.fromEntries(perAccount), cashBalance: total, nonCashBalance: 0, totalBalance: total }
   }
 
   const cashBalance = sum(
@@ -291,7 +294,12 @@ function computeAccountBalances(
   )
   const totalBalance = cashBalance + nonCashBalance
 
-  return { cashBalance, nonCashBalance, totalBalance }
+  return {
+    accountBalances: Object.fromEntries(perAccount),
+    cashBalance,
+    nonCashBalance,
+    totalBalance,
+  }
 }
 
 type BuildMetricsArgs = {
@@ -444,6 +452,7 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
     cashBalance,
     nonCashBalance,
     totalBalance,
+    accountBalances: snapshotIncludingUpcoming.accountBalances,
     incomeTrend,
     expenseTrend,
     balanceTrend,
