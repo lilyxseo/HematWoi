@@ -756,9 +756,25 @@ export default function Transactions() {
       setBulkUpdating(true);
       try {
         for (const item of selectedItems) {
-          await updateTransaction(item.id, { [field]: value });
+          const payload = {
+            date: item.date,
+            type: item.type,
+            amount: Number(item.amount ?? 0),
+            title: item.title ?? null,
+            notes: item.notes ?? item.note ?? null,
+            account_id: item.account_id ?? null,
+            to_account_id: item.to_account_id ?? null,
+            category_id: item.category_id ?? null,
+            merchant_id: item.merchant_id ?? null,
+            parent_id: item.parent_id ?? null,
+            transfer_group_id: item.transfer_group_id ?? null,
+            receipt_url: item.receipt_url ?? null,
+            rev: item.rev ?? null,
+            [field]: value,
+          };
+          await updateTransaction(item.id, payload);
         }
-        const label = field === "category_id" ? "Kategori" : "Akun";
+        const label = field === "category_id" ? "Kategori" : "Tanggal";
         addToast(`${label} transaksi diperbarui`, "success");
         setSelectedIds(new Set());
         lastSelectedIdRef.current = null;
