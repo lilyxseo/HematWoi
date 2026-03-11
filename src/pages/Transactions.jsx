@@ -4,7 +4,6 @@ import clsx from "clsx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowRightLeft,
   ArrowDownRight,
   ArrowUpRight,
   Check,
@@ -33,7 +32,7 @@ import {
 } from "../hooks/transactionFormQueries";
 import { useToast } from "../context/ToastContext";
 import PageHeader from "../layout/PageHeader";
-import { addTransaction, deleteTransaction as softDeleteTransaction, listAccounts, updateTransaction } from "../lib/api";
+import { addTransaction, deleteTransaction as softDeleteTransaction, updateTransaction } from "../lib/api";
 import { getCurrentUserId } from "../lib/session";
 import { supabase } from "../lib/supabase";
 import {
@@ -652,14 +651,6 @@ export default function Transactions() {
     [deleteInProgress, items],
   );
 
-  const handleRequestBulkDelete = useCallback(() => {
-    if (deleteInProgress || !selectedItems.length) return;
-    setConfirmState({
-      type: 'bulk',
-      ids: selectedItems.map((item) => item.id),
-    });
-  }, [deleteInProgress, selectedItems]);
-
   const handleCloseConfirm = useCallback(() => {
     if (deleteInProgress) return;
     setConfirmState(null);
@@ -765,9 +756,25 @@ export default function Transactions() {
       setBulkUpdating(true);
       try {
         for (const item of selectedItems) {
-          await updateTransaction(item.id, { [field]: value });
+          const payload = {
+            date: item.date,
+            type: item.type,
+            amount: Number(item.amount ?? 0),
+            title: item.title ?? null,
+            notes: item.notes ?? item.note ?? null,
+            account_id: item.account_id ?? null,
+            to_account_id: item.to_account_id ?? null,
+            category_id: item.category_id ?? null,
+            merchant_id: item.merchant_id ?? null,
+            parent_id: item.parent_id ?? null,
+            transfer_group_id: item.transfer_group_id ?? null,
+            receipt_url: item.receipt_url ?? null,
+            rev: item.rev ?? null,
+            [field]: value,
+          };
+          await updateTransaction(item.id, payload);
         }
-        const label = field === "category_id" ? "Kategori" : "Akun";
+        const label = field === "category_id" ? "Kategori" : "Tanggal";
         addToast(`${label} transaksi diperbarui`, "success");
         setSelectedIds(new Set());
         lastSelectedIdRef.current = null;
@@ -1026,25 +1033,9 @@ export default function Transactions() {
               setSelectedIds(new Set());
               lastSelectedIdRef.current = null;
             }}
-            onDelete={handleRequestBulkDelete}
+            onChangeDate={() => setBulkEditMode("date")}
             onChangeCategory={() => setBulkEditMode("category")}
-            deleting={deleteInProgress}
             updating={bulkUpdating}
-            secondaryAction={
-              <button
-                type="button"
-                onClick={() => setBulkEditMode("account")}
-                disabled={bulkUpdating}
-                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-900/70 px-4 text-sm font-semibold text-slate-200 ring-1 ring-slate-800 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 sm:flex-initial"
-              >
-                {bulkUpdating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />
-                )}
-                Ubah Akun
-              </button>
-            }
           />
         )}
 
@@ -1155,7 +1146,7 @@ export default function Transactions() {
               if (!bulkUpdating) setBulkEditMode(null);
             }}
             onSubmit={(selectedValue) => {
-              const field = bulkEditMode === "category" ? "category_id" : "account_id";
+              const field = bulkEditMode === "date" ? "date" : "category_id";
               handleBulkUpdateField(field, selectedValue);
             }}
             categories={categories}
@@ -1371,36 +1362,27 @@ function BulkEditDialog({
     }
     if (mode === "category") {
       setOptions((categories || []).map((cat) => ({ id: cat.id, name: cat.name || "(Tanpa kategori)" })));
-      setLoading(false);
-    } else if (mode === "account") {
-      setLoading(true);
-      listAccounts()
-        .then((rows) => {
-          setOptions((rows || []).map((account) => ({ id: account.id, name: account.name || "(Tanpa nama)" })));
-        })
-        .catch((err) => {
-          console.error(err);
-          addToast(err?.message || "Gagal memuat akun", "error");
-        })
-        .finally(() => setLoading(false));
+    } else {
+      setOptions([]);
     }
-  }, [open, mode, categories, addToast]);
+    setLoading(false);
+  }, [open, mode, categories]);
 
   useEffect(() => {
-    if (!open || !options.length) return;
+    if (!open || mode !== "category" || !options.length) return;
     if (!options.some((option) => option.id === value)) {
       setValue(options[0]?.id || "");
     }
-  }, [open, options, value]);
+  }, [open, mode, options, value]);
 
   if (!open) return null;
 
-  const title = mode === "category" ? "Ubah kategori transaksi" : "Ubah akun transaksi";
+  const title = mode === "category" ? "Ganti kategori transaksi" : "Ganti tanggal transaksi";
 
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!value) {
-      addToast("Silakan pilih opsi", "warning");
+      addToast(mode === "date" ? "Silakan pilih tanggal" : "Silakan pilih kategori", "warning");
       return;
     }
     onSubmit(value);
@@ -1414,21 +1396,33 @@ function BulkEditDialog({
         </div>
       ) : (
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <label className="flex flex-col gap-2 text-sm text-white/80">
-            <span>{mode === "category" ? "Pilih kategori" : "Pilih akun"}</span>
-            <select
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
-            >
-              <option value="">{mode === "category" ? "Pilih kategori" : "Pilih akun"}</option>
-              {options.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          {mode === "date" ? (
+            <label className="flex flex-col gap-2 text-sm text-white/80">
+              <span>Pilih tanggal baru</span>
+              <input
+                type="date"
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+              />
+            </label>
+          ) : (
+            <label className="flex flex-col gap-2 text-sm text-white/80">
+              <span>Pilih kategori baru</span>
+              <select
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                className="rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus-visible:outline-none focus-visible:ring focus-visible:ring-brand/60"
+              >
+                <option value="">Pilih kategori</option>
+                {options.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <div className="flex justify-end gap-3">
             <button
               type="button"

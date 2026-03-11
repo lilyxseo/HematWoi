@@ -1,27 +1,22 @@
 import clsx from "clsx";
-import { Loader2, Trash2, Wand2 } from "lucide-react";
-import { ReactNode } from "react";
+import { Loader2, CalendarDays, Wand2 } from "lucide-react";
 
 interface BatchToolbarProps {
   count: number;
   onClear: () => void;
-  onDelete: () => void;
+  onChangeDate: () => void;
   onChangeCategory: () => void;
-  deleting?: boolean;
   updating?: boolean;
   className?: string;
-  secondaryAction?: ReactNode;
 }
 
 export default function BatchToolbar({
   count,
   onClear,
-  onDelete,
+  onChangeDate,
   onChangeCategory,
-  deleting = false,
   updating = false,
   className,
-  secondaryAction,
 }: BatchToolbarProps) {
   if (count <= 0) return null;
 
@@ -47,7 +42,15 @@ export default function BatchToolbar({
           </button>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {secondaryAction}
+          <button
+            type="button"
+            onClick={onChangeDate}
+            disabled={updating}
+            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-800 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 sm:flex-initial"
+          >
+            {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <CalendarDays className="h-4 w-4" aria-hidden="true" />}
+            Ganti Tanggal
+          </button>
           <button
             type="button"
             onClick={onChangeCategory}
@@ -55,16 +58,7 @@ export default function BatchToolbar({
             className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-slate-800 px-4 text-sm font-semibold text-slate-200 transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 sm:flex-initial"
           >
             {updating ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Wand2 className="h-4 w-4" aria-hidden="true" />}
-            Ubah Kategori
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={deleting}
-            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-rose-500/20 px-4 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-initial"
-          >
-            {deleting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Trash2 className="h-4 w-4" aria-hidden="true" />}
-            Hapus
+            Ganti Kategori
           </button>
         </div>
       </div>
