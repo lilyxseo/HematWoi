@@ -4,6 +4,7 @@ import { syncDebtPaymentFromTransaction } from "./api-debts";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
+import { emitDataInvalidation } from "./dataInvalidation";
 
 function ensureRestEnv() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -752,6 +753,7 @@ export async function addTransaction(input = {}) {
   if (!shouldSkipBalanceSync()) {
     await applyTransactionBalanceDelta(userId, saved, 1);
   }
+  emitDataInvalidation({ entity: "transactions", ids: [String(saved.id)] });
   return mapTransactionRow(saved);
 }
 
@@ -797,6 +799,7 @@ export async function updateTransaction(id, patch = {}) {
       throw error;
     }
   }
+  emitDataInvalidation({ entity: "transactions", ids: [String(saved.id ?? id)] });
   return mapTransactionRow(saved);
 }
 
@@ -822,6 +825,7 @@ export async function deleteTransaction(id) {
   if (!shouldSkipBalanceSync()) {
     await applyTransactionBalanceDelta(userId, existing || {}, -1);
   }
+  emitDataInvalidation({ entity: "transactions", ids: [String(id)] });
 }
 
 // -- CATEGORIES ----------------------------------------

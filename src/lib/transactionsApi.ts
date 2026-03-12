@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
 import { dbCache } from './sync/localdb';
 import { mapTransactionRow } from './api';
+import { emitDataInvalidation } from './dataInvalidation';
 
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
@@ -227,6 +228,8 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
     accountId: record.account_id ?? account_id,
     toAccountId: type === 'transfer' ? record.to_account_id ?? to_account_id ?? null : null,
   });
+
+  emitDataInvalidation({ entity: 'transactions', ids: [String(data.id)] });
 
   return {
     id: data.id,

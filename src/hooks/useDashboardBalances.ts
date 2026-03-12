@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PostgrestError } from "@supabase/supabase-js"
 import type { PeriodPreset } from "../components/dashboard/PeriodPicker"
 import { supabase } from "../lib/supabase.js"
+import { onDataInvalidation } from "../lib/dataInvalidation"
 
 export type DashboardRange = {
   start: string
@@ -578,6 +579,15 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
       mountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    return onDataInvalidation((detail) => {
+      if (!detail || (detail.entity !== "transactions" && detail.entity !== "accounts")) {
+        return
+      }
+      void refresh()
+    })
+  }, [refresh])
 
   return {
     ...metrics,
