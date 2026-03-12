@@ -114,6 +114,7 @@ export default function useDashboardNote() {
       if (noteRef.current !== syncedNote) {
         if (userId && isOnline) {
           setPendingSync(true);
+          scheduleRemoteSync(noteRef.current);
         }
         return;
       }
