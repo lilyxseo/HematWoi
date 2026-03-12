@@ -6,6 +6,7 @@ import {
   listTransactions as legacyListTransactions,
   getCachedTransactions as legacyGetCachedTransactions,
 } from './api';
+import { isTransactionDeleted } from './transactionUtils';
 
 type TransactionRow = Record<string, any>;
 
@@ -67,7 +68,7 @@ function createFriendlyError(error: unknown, fallback: string): Error {
 export async function listTransactions(params: ListTransactionsParams = {}): Promise<ListTransactionsResult> {
   const result = await legacyListTransactions(params);
   const rows = Array.isArray(result?.rows)
-    ? (result.rows as TransactionRow[]).filter((row) => !row?.deleted_at)
+    ? (result.rows as TransactionRow[]).filter((row) => !isTransactionDeleted(row))
     : [];
   return { ...result, rows };
 }
@@ -77,7 +78,7 @@ export async function getCachedTransactions(
 ): Promise<ListTransactionsResult> {
   const result = await legacyGetCachedTransactions(params);
   const rows = Array.isArray(result?.rows)
-    ? (result.rows as TransactionRow[]).filter((row) => !row?.deleted_at)
+    ? (result.rows as TransactionRow[]).filter((row) => !isTransactionDeleted(row))
     : [];
   return { ...result, rows };
 }
@@ -233,4 +234,3 @@ export async function undoDeleteTransactions(ids: string[]): Promise<number> {
     throw createFriendlyError(error, 'Gagal mengurungkan. Silakan refresh.');
   }
 }
-
