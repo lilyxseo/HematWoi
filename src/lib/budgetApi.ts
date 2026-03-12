@@ -127,6 +127,10 @@ interface RawBudgetRow {
   updated_at?: string | null;
   category?: RawBudgetCategory | null;
   categories?: RawBudgetCategory | null;
+  budget_categories?: Array<{
+    category_id?: string | null;
+    category?: RawBudgetCategory | null;
+  }> | null;
 }
 
 interface RawWeeklyBudgetRow {
@@ -180,6 +184,29 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
   }
 
   const categoryId = row.category_id ? (String(row.category_id) as UUID) : null;
+  const linkedCategories = Array.isArray(row.budget_categories)
+    ? row.budget_categories
+        .map((item) => {
+          const raw = item?.category;
+          const resolvedId = item?.category_id ?? raw?.id ?? null;
+          if (!resolvedId) return null;
+          return {
+            id: String(resolvedId) as UUID,
+            name: String(raw?.name ?? ''),
+            type: (raw?.type ?? raw?.category_type ?? null) as 'income' | 'expense' | null,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    : [];
+  const dedupedLinkedCategories = Array.from(
+    new Map(linkedCategories.map((item) => [item.id, item])).values()
+  );
+  const categories =
+    dedupedLinkedCategories.length > 0
+      ? dedupedLinkedCategories
+      : category
+      ? [category]
+      : [];
 
   const createdAt = row.created_at ? String(row.created_at) : new Date().toISOString();
   const updatedAtBase = row.updated_at ?? row.created_at;
@@ -196,6 +223,7 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
     created_at: createdAt,
     updated_at: updatedAt,
     category,
+    categories,
   };
 }
 
@@ -321,6 +349,11 @@ export interface BudgetRow {
     name: string;
     type?: 'income' | 'expense' | null;
   } | null;
+  categories: Array<{
+    id: UUID;
+    name: string;
+    type?: 'income' | 'expense' | null;
+  }>;
 }
 
 export interface BudgetSpentRow {
@@ -397,7 +430,8 @@ export interface HighlightBudgetSelection {
 
 export interface UpsertBudgetInput {
   id?: UUID;
-  category_id: UUID;
+  category_id?: UUID | null;
+  category_ids?: UUID[];
   period: string; // YYYY-MM
   amount_planned: number;
   carryover_enabled: boolean;
@@ -442,7 +476,7 @@ function getPreviousPeriod(period: string): string | null {
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
   const { data, error } = await supabase
     .from('budgets')
-    .select('*, category:categories(id,name,type)')
+    .select('*, category:categories(id,name,type), budget_categories(category_id, category:categories(id,name,type))')
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
     .order('created_at', { ascending: false });
@@ -841,11 +875,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
   const currentBudgets = await fetchBudgetsForPeriod(userId, period);
-  const existingCategoryIds = new Set(
-    currentBudgets
-      .map((row) => row.category_id)
-      .filter((value): value is string => Boolean(value))
-  );
+  const existingSignatures = new Set(currentBudgets.map((row) => buildBudgetCategorySignature(row)));
 
   const previousPeriod = getPreviousPeriod(period);
   if (!previousPeriod) {
@@ -854,7 +884,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
 
   const previousBudgets = await fetchBudgetsForPeriod(userId, previousPeriod);
   const toCarryOver = previousBudgets.filter(
-    (row) => row.carryover_enabled && row.category_id && !existingCategoryIds.has(row.category_id)
+    (row) => row.carryover_enabled && row.categories.length > 0 && !existingSignatures.has(buildBudgetCategorySignature(row))
   );
 
   if (!toCarryOver.length) {
@@ -864,7 +894,8 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
   const results = await Promise.allSettled(
     toCarryOver.map((row) =>
       upsertBudget({
-        category_id: row.category_id as string,
+        category_id: row.category_id,
+        category_ids: row.categories.map((item) => item.id),
         period,
         amount_planned: Number(row.amount_planned ?? 0),
         carryover_enabled: true,
@@ -1282,15 +1313,24 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
     throw error;
   }
 
+  const normalizedCategoryIds = Array.from(
+    new Set((input.category_ids ?? []).map((value) => String(value).trim()).filter(Boolean))
+  );
+  const primaryCategoryId = input.category_id ?? normalizedCategoryIds[0] ?? null;
+  if (!primaryCategoryId) {
+    throw new Error('Kategori wajib dipilih');
+  }
+
   const payload = {
-    p_category_id: input.category_id,
+    p_category_id: primaryCategoryId,
+    p_category_ids: normalizedCategoryIds.length > 0 ? normalizedCategoryIds : [primaryCategoryId],
     p_month: toMonthStart(input.period),
     p_amount: Number(input.amount_planned ?? 0),
     p_carryover_enabled: Boolean(input.carryover_enabled),
     p_notes: input.notes ?? null,
   };
 
-  const { data, error } = await supabase.rpc('bud_monthly_upsert', payload);
+  const { data, error } = await supabase.rpc('bud_monthly_upsert_multi', payload);
   if (error) {
     console.error('[bud_upsert]', {
       message: error.message,
@@ -1303,14 +1343,14 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
       throw new Error('Silakan login untuk menyimpan anggaran');
     }
     const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_monthly_upsert') || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_monthly_upsert belum tersedia, jalankan migrasi SQL di server');
+    if (error.code === '404' || msg.includes('bud_monthly_upsert_multi') || msg.includes('bud_monthly_upsert') || msg.includes('bud_upsert')) {
+      throw new Error('Fungsi bud_monthly_upsert_multi belum tersedia, jalankan migrasi SQL di server');
     }
     throw new Error(error.message || 'Gagal menyimpan anggaran');
   }
 
   if (!data) {
-    throw new Error('Tidak ada data yang dikembalikan dari bud_monthly_upsert');
+    throw new Error('Tidak ada data yang dikembalikan dari bud_monthly_upsert_multi');
   }
 
   return normalizeBudgetRow(data as RawBudgetRow);
@@ -1329,13 +1369,24 @@ export async function deleteBudget(id: UUID): Promise<void> {
 
 export function mergeBudgetsWithSpent(budgets: BudgetRow[], spentMap: Record<string, number>): BudgetWithSpent[] {
   return budgets.map((budget) => {
-    const spent = spentMap[budget.category_id] ?? 0;
+    const spent = (budget.categories.length > 0 ? budget.categories : budget.category ? [budget.category] : []).reduce(
+      (total, category) => total + (spentMap[category.id] ?? 0),
+      0
+    );
     return {
       ...budget,
       spent,
       remaining: Number(budget.amount_planned ?? 0) - spent,
     };
   });
+}
+
+function buildBudgetCategorySignature(row: BudgetRow): string {
+  const ids = row.categories.map((category) => category.id).sort();
+  if (ids.length === 0 && row.category_id) {
+    return String(row.category_id);
+  }
+  return ids.join('|');
 }
 
 export function buildSummary(rows: BudgetWithSpent[]): BudgetSummary {

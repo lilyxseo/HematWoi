@@ -81,7 +81,7 @@ function isoToPeriod(isoDate: string | null | undefined): string {
 
 const DEFAULT_MONTHLY_FORM: BudgetFormValues = {
   period: getCurrentPeriod(),
-  category_id: '',
+  category_ids: [],
   amount_planned: 0,
   carryover_enabled: false,
   notes: '',
@@ -257,13 +257,22 @@ export default function BudgetsPage() {
 
     for (const row of monthly.rows) {
       ensureBudgetCategory(row.category_id, row.category ?? undefined);
+      for (const category of row.categories ?? []) {
+        ensureBudgetCategory(category.id, category);
+      }
     }
 
     for (const row of weekly.rows) {
       ensureBudgetCategory(row.category_id, row.category ?? undefined);
     }
 
-    ensureBudgetCategory(editingMonthly?.category_id, editingMonthly?.category ?? undefined);
+    if (editingMonthly?.categories?.length) {
+      for (const category of editingMonthly.categories) {
+        ensureBudgetCategory(category.id, category);
+      }
+    } else {
+      ensureBudgetCategory(editingMonthly?.category_id, editingMonthly?.category ?? undefined);
+    }
     ensureBudgetCategory(editingWeekly?.category_id, editingWeekly?.category ?? undefined);
 
     fallback.sort((a, b) => a.name.localeCompare(b.name, 'id-ID', { sensitivity: 'base' }));
@@ -275,7 +284,9 @@ export default function BudgetsPage() {
     if (editingMonthly) {
       return {
         period: isoToPeriod(editingMonthly.period_month),
-        category_id: editingMonthly.category_id ?? '',
+        category_ids:
+          editingMonthly.categories?.map((item) => item.id) ??
+          (editingMonthly.category_id ? [editingMonthly.category_id] : []),
         amount_planned: Number(editingMonthly.amount_planned ?? 0),
         carryover_enabled: editingMonthly.carryover_enabled,
         notes: editingMonthly.notes ?? '',
@@ -592,6 +603,7 @@ export default function BudgetsPage() {
     try {
       await upsertBudget({
         category_id: row.category_id,
+        category_ids: row.categories?.map((item) => item.id) ?? [],
         period: isoToPeriod(row.period_month),
         amount_planned: Number(row.amount_planned ?? 0),
         carryover_enabled: carryover,
@@ -625,7 +637,8 @@ export default function BudgetsPage() {
     try {
       setSubmittingMonthly(true);
       await upsertBudget({
-        category_id: values.category_id,
+        category_id: values.category_ids[0] ?? null,
+        category_ids: values.category_ids,
         period: values.period,
         amount_planned: Number(values.amount_planned),
         carryover_enabled: values.carryover_enabled,
@@ -833,7 +846,7 @@ export default function BudgetsPage() {
             onToggleCarryover={handleToggleCarryover}
             onViewTransactions={(row) =>
               handleViewTransactions({
-                categoryId: row.category_id,
+                categoryId: row.categories?.map((item) => item.id).join(',') ?? row.category_id,
                 categoryType: row.category?.type ?? null,
                 range: 'month',
                 month: row.period_month?.slice(0, 7) ?? period,
