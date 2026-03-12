@@ -532,7 +532,11 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
               .from("transactions")
               .select("id,user_id,account_id,to_account_id,type,amount,date,deleted_at")
               .eq("user_id", uid)
-              .is("deleted_at", null),
+              .is("deleted_at", null)
+              .order("date", { ascending: false })
+              .order("updated_at", { ascending: false, nullsLast: true })
+              .order("inserted_at", { ascending: false, nullsLast: true })
+              .range(0, 4999),
           ])
 
         if (accountsError) throw accountsError

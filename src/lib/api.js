@@ -590,9 +590,24 @@ export async function getTransactionsSummary(options = {}) {
       }
     }
 
-    const { data, error } = await query.limit(5000);
-    if (error) throw error;
-    return accumulate(data || []);
+    const pageSize = 1000;
+    let from = 0;
+    let rows = [];
+    while (true) {
+      const to = from + pageSize - 1;
+      const { data, error } = await query
+        .order("date", { ascending: false })
+        .order("updated_at", { ascending: false, nullsLast: true })
+        .order("inserted_at", { ascending: false, nullsLast: true })
+        .range(from, to);
+      if (error) throw error;
+      const chunk = data || [];
+      rows = rows.concat(chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+      if (from > 20000) break;
+    }
+    return accumulate(rows);
   } catch (err) {
     console.error("getTransactionsSummary failed, falling back to cache", err);
     const cached = await dbCache.list("transactions");
