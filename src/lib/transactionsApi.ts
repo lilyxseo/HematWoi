@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { getCurrentUserId } from './session';
 import { dbCache } from './sync/localdb';
 import { mapTransactionRow } from './api';
+import { emitDataInvalidation } from './dataInvalidation';
 
 export type TransactionType = 'income' | 'expense' | 'transfer';
 
@@ -51,6 +52,79 @@ function sanitizeTags(input?: string[] | null): string[] | null {
     filtered.push(tag);
   }
   return filtered.length ? filtered : null;
+}
+
+async function adjustAccountBalance(accountId: string, userId: string, delta: number): Promise<void> {
+  if (!accountId || !Number.isFinite(delta) || Math.abs(delta) < 0.000001) {
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('accounts')
+    .select('*')
+    .eq('id', accountId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) {
+    throw new Error('Akun tidak ditemukan.');
+  }
+
+  const balanceKey = ['balance', 'current_balance', 'initial_balance'].find((key) =>
+    Object.prototype.hasOwnProperty.call(data, key),
+  );
+
+  if (!balanceKey) {
+    return;
+  }
+
+  const currentBalance = Number((data as Record<string, unknown>)[balanceKey] ?? 0);
+  const safeCurrentBalance = Number.isFinite(currentBalance) ? currentBalance : 0;
+  const nextBalance = Number((safeCurrentBalance + delta).toFixed(2));
+
+  const { error: updateError } = await supabase
+    .from('accounts')
+    .update({ [balanceKey]: nextBalance })
+    .eq('id', accountId)
+    .eq('user_id', userId);
+
+  if (updateError) throw updateError;
+}
+
+async function applyBalanceDelta(params: {
+  type: TransactionType;
+  userId: string;
+  amount: number;
+  accountId: string;
+  toAccountId: string | null;
+}): Promise<void> {
+  const { type, userId, amount, accountId, toAccountId } = params;
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return;
+  }
+
+  if (type === 'income') {
+    await adjustAccountBalance(accountId, userId, amount);
+    return;
+  }
+
+  if (type === 'expense') {
+    await adjustAccountBalance(accountId, userId, -amount);
+    return;
+  }
+
+  if (!toAccountId) {
+    return;
+  }
+
+  await adjustAccountBalance(accountId, userId, -amount);
+  try {
+    await adjustAccountBalance(toAccountId, userId, amount);
+  } catch (error) {
+    await adjustAccountBalance(accountId, userId, amount);
+    throw error;
+  }
 }
 
 export async function createTransaction(payload: CreateTransactionPayload): Promise<TransactionRecord> {
@@ -146,6 +220,16 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
   } catch (cacheError) {
     console.warn('Failed to update transaction cache', cacheError);
   }
+
+  await applyBalanceDelta({
+    type,
+    userId,
+    amount: record.amount,
+    accountId: record.account_id ?? account_id,
+    toAccountId: type === 'transfer' ? record.to_account_id ?? to_account_id ?? null : null,
+  });
+
+  emitDataInvalidation({ entity: 'transactions', ids: [String(data.id)] });
 
   return {
     id: data.id,

@@ -4,6 +4,7 @@ import { syncDebtPaymentFromTransaction } from "./api-debts";
 import { dbCache } from "./sync/localdb";
 import { upsert } from "./sync/SyncEngine";
 import { getCurrentUserId } from "./session";
+import { emitDataInvalidation } from "./dataInvalidation";
 
 function ensureRestEnv() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
@@ -589,9 +590,24 @@ export async function getTransactionsSummary(options = {}) {
       }
     }
 
-    const { data, error } = await query.limit(5000);
-    if (error) throw error;
-    return accumulate(data || []);
+    const pageSize = 1000;
+    let from = 0;
+    let rows = [];
+    while (true) {
+      const to = from + pageSize - 1;
+      const { data, error } = await query
+        .order("date", { ascending: false })
+        .order("updated_at", { ascending: false, nullsLast: true })
+        .order("inserted_at", { ascending: false, nullsLast: true })
+        .range(from, to);
+      if (error) throw error;
+      const chunk = data || [];
+      rows = rows.concat(chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+      if (from > 20000) break;
+    }
+    return accumulate(rows);
   } catch (err) {
     console.error("getTransactionsSummary failed, falling back to cache", err);
     const cached = await dbCache.list("transactions");
@@ -626,6 +642,91 @@ function normalizeTransactionInput(input = {}) {
     receipt_url: toNullable(input.receipt_url),
     rev: input.rev ?? null,
   };
+}
+
+function normalizeTransactionBalanceShape(input = {}) {
+  const type =
+    typeof input.type === "string" && ["income", "expense", "transfer"].includes(input.type)
+      ? input.type
+      : "expense";
+  const amount = Number(input.amount ?? 0);
+  const normalizeId = (value) => {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    return trimmed || null;
+  };
+  return {
+    type,
+    amount: Number.isFinite(amount) ? Math.abs(amount) : 0,
+    account_id: normalizeId(input.account_id),
+    to_account_id: normalizeId(input.to_account_id),
+    deleted_at: input.deleted_at ?? null,
+  };
+}
+
+function shouldSkipBalanceSync() {
+  if (typeof navigator !== "undefined" && (!navigator.onLine || window.__sync?.fakeOffline)) {
+    return true;
+  }
+  return false;
+}
+
+async function adjustAccountBalance(accountId, userId, delta) {
+  if (!accountId || !Number.isFinite(delta) || Math.abs(delta) < 0.000001) {
+    return;
+  }
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("*")
+    .eq("id", accountId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new Error("Akun tidak ditemukan.");
+
+  const balanceKey = ["balance", "current_balance", "initial_balance"].find((key) =>
+    Object.prototype.hasOwnProperty.call(data, key)
+  );
+  if (!balanceKey) return;
+
+  const currentValue = Number(data[balanceKey] ?? 0);
+  const safeCurrent = Number.isFinite(currentValue) ? currentValue : 0;
+  const nextBalance = Number((safeCurrent + delta).toFixed(2));
+
+  const { error: updateError } = await supabase
+    .from("accounts")
+    .update({ [balanceKey]: nextBalance })
+    .eq("id", accountId)
+    .eq("user_id", userId);
+
+  if (updateError) throw updateError;
+}
+
+async function applyTransactionBalanceDelta(userId, transaction, multiplier = 1) {
+  const tx = normalizeTransactionBalanceShape(transaction);
+  if (!userId || !Number.isFinite(multiplier) || multiplier === 0 || tx.deleted_at) {
+    return;
+  }
+  const amount = tx.amount * multiplier;
+  if (!Number.isFinite(amount) || amount === 0) return;
+
+  if (tx.type === "income") {
+    await adjustAccountBalance(tx.account_id, userId, amount);
+    return;
+  }
+  if (tx.type === "expense") {
+    await adjustAccountBalance(tx.account_id, userId, -amount);
+    return;
+  }
+
+  await adjustAccountBalance(tx.account_id, userId, -amount);
+  try {
+    await adjustAccountBalance(tx.to_account_id, userId, amount);
+  } catch (error) {
+    await adjustAccountBalance(tx.account_id, userId, amount);
+    throw error;
+  }
 }
 
 async function syncTransactionReceipts(transactionId, receipts = [], userId) {
@@ -664,6 +765,10 @@ export async function addTransaction(input = {}) {
   } catch (err) {
     console.error("Failed to sync related data for transaction", err);
   }
+  if (!shouldSkipBalanceSync()) {
+    await applyTransactionBalanceDelta(userId, saved, 1);
+  }
+  emitDataInvalidation({ entity: "transactions", ids: [String(saved.id)] });
   return mapTransactionRow(saved);
 }
 
@@ -671,6 +776,14 @@ export async function addTransaction(input = {}) {
 export async function updateTransaction(id, patch = {}) {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Pengguna belum masuk");
+  const { data: existing, error: existingError } = await supabase
+    .from("transactions")
+    .select("id,type,amount,account_id,to_account_id,deleted_at")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
   const base = normalizeTransactionInput({ ...patch, id });
   base.user_id = userId;
   base.updated_at = new Date().toISOString();
@@ -687,6 +800,21 @@ export async function updateTransaction(id, patch = {}) {
   } catch (err) {
     console.error("Failed to sync debt payment from transaction", err);
   }
+
+  if (!shouldSkipBalanceSync()) {
+    const previousTx = normalizeTransactionBalanceShape(existing || {});
+    const nextTx = normalizeTransactionBalanceShape(saved || {});
+    if (previousTx.account_id || previousTx.to_account_id) {
+      await applyTransactionBalanceDelta(userId, previousTx, -1);
+    }
+    try {
+      await applyTransactionBalanceDelta(userId, nextTx, 1);
+    } catch (error) {
+      await applyTransactionBalanceDelta(userId, previousTx, 1);
+      throw error;
+    }
+  }
+  emitDataInvalidation({ entity: "transactions", ids: [String(saved.id ?? id)] });
   return mapTransactionRow(saved);
 }
 
@@ -694,6 +822,14 @@ export async function updateTransaction(id, patch = {}) {
 export async function deleteTransaction(id) {
   const userId = await getCurrentUserId();
   if (!userId) throw new Error("Pengguna belum masuk");
+  const { data: existing, error: existingError } = await supabase
+    .from("transactions")
+    .select("id,type,amount,account_id,to_account_id,deleted_at")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
   const now = new Date().toISOString();
   await upsert("transactions", {
     id,
@@ -701,6 +837,10 @@ export async function deleteTransaction(id) {
     deleted_at: now,
     updated_at: now,
   });
+  if (!shouldSkipBalanceSync()) {
+    await applyTransactionBalanceDelta(userId, existing || {}, -1);
+  }
+  emitDataInvalidation({ entity: "transactions", ids: [String(id)] });
 }
 
 // -- CATEGORIES ----------------------------------------

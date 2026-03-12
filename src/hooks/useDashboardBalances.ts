@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import type { PostgrestError } from "@supabase/supabase-js"
 import type { PeriodPreset } from "../components/dashboard/PeriodPicker"
 import { supabase } from "../lib/supabase.js"
+import { onDataInvalidation } from "../lib/dataInvalidation"
+import { getCurrentUserId } from "../lib/session"
 
 export type DashboardRange = {
   start: string
@@ -508,15 +510,7 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
       }
 
       try {
-        const { data: authData, error: authError } = await supabase.auth.getUser()
-        if (authError) {
-          if (isAuthMissingError(authError)) {
-            applyGuestMetrics()
-            return
-          }
-          throw authError
-        }
-        const uid = authData.user?.id
+        const uid = await getCurrentUserId()
         if (!uid) {
           if (applyGuestMetrics()) {
             return
@@ -530,15 +524,19 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
 
         const [{ data: accountsData, error: accountsError }, { data: transactionsData, error: transactionsError }] =
           await Promise.all([
-            supabase
-              .from("accounts")
-              .select("id,type")
-              .eq("user_id", uid),
+          supabase
+            .from("accounts")
+            .select("id,type")
+            .eq("user_id", uid),
             supabase
               .from("transactions")
               .select("id,user_id,account_id,to_account_id,type,amount,date,deleted_at")
               .eq("user_id", uid)
-              .is("deleted_at", null),
+              .is("deleted_at", null)
+              .order("date", { ascending: false })
+              .order("updated_at", { ascending: false, nullsLast: true })
+              .order("inserted_at", { ascending: false, nullsLast: true })
+              .range(0, 4999),
           ])
 
         if (accountsError) throw accountsError
@@ -578,6 +576,15 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
       mountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    return onDataInvalidation((detail) => {
+      if (!detail || (detail.entity !== "transactions" && detail.entity !== "accounts")) {
+        return
+      }
+      void refresh()
+    })
+  }, [refresh])
 
   return {
     ...metrics,
