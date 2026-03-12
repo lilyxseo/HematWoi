@@ -594,15 +594,15 @@ export default function Goals() {
 
         <SummaryCards summary={summary} nearestGoalTitle={nearestGoalTitle} />
 
-        <section aria-live="polite" className="space-y-4">
+        <section aria-live="polite" className="space-y-5">
           {loading ? (
             <p className="text-sm text-muted">Memuat goals…</p>
           ) : goals.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-surface-1/70 p-8 text-center text-sm text-muted">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+            <div className="flex flex-col items-center gap-4 rounded-3xl border border-dashed border-white/15 bg-[#11141c]/70 p-10 text-center text-sm text-muted shadow-[0_20px_40px_-28px_rgba(0,0,0,0.85)]">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-brand/20 bg-brand/10 text-brand">
                 <Target className="h-6 w-6" aria-hidden="true" />
               </span>
-              <p>Belum ada goal yang tercatat. Mulai dengan menambahkan goal baru.</p>
+              <p className="max-w-md text-sm leading-relaxed">Belum ada goal yang tercatat. Mulai dengan menambahkan goal baru untuk membangun rencana finansial yang lebih terarah.</p>
               <button
                 type="button"
                 onClick={handleCreateClick}
@@ -613,7 +613,7 @@ export default function Goals() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
               {goals.map((goal) => (
                 <GoalCard
                   key={goal.id}
