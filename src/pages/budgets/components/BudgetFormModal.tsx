@@ -3,7 +3,7 @@ import type { ExpenseCategory } from '../../../lib/budgetApi';
 
 export interface BudgetFormValues {
   period: string;
-  category_id: string;
+  category_ids: string[];
   amount_planned: number;
   carryover_enabled: boolean;
   notes: string;
@@ -46,8 +46,8 @@ function validate(values: BudgetFormValues) {
   if (!values.period) {
     errors.period = 'Periode wajib diisi';
   }
-  if (!values.category_id) {
-    errors.category_id = 'Kategori wajib dipilih';
+  if (!values.category_ids.length) {
+    errors.category_ids = 'Pilih minimal 1 kategori';
   }
   if (!Number.isFinite(values.amount_planned) || values.amount_planned <= 0) {
     errors.amount_planned = 'Nilai anggaran harus lebih dari 0';
@@ -115,8 +115,22 @@ export default function BudgetFormModal({
     return null;
   }, [categories.length]);
 
-  const handleChange = (field: keyof BudgetFormValues, value: string | number | boolean) => {
+  const handleChange = (field: keyof BudgetFormValues, value: string | number | boolean | string[]) => {
     setValues((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const selectedCategorySet = useMemo(() => new Set(values.category_ids), [values.category_ids]);
+
+  const toggleCategory = (categoryId: string) => {
+    setValues((prev) => {
+      const exists = prev.category_ids.includes(categoryId);
+      return {
+        ...prev,
+        category_ids: exists
+          ? prev.category_ids.filter((id) => id !== categoryId)
+          : [...prev.category_ids, categoryId],
+      };
+    });
   };
 
   const handleAmountChange = (value: string) => {
@@ -178,39 +192,61 @@ export default function BudgetFormModal({
               {errors.period ? <span className="text-xs font-medium text-rose-500">{errors.period}</span> : null}
             </label>
 
-            <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
-              Kategori
-              <select
-                value={values.category_id}
-                onChange={(event) => handleChange('category_id', event.target.value)}
-                className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                required
-                disabled={categories.length === 0}
-              >
-                <option value="" disabled>
-                  Pilih kategori
-                </option>
-                {groupedCategories.ungrouped.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-                {groupedCategories.groups.map(([groupName, groupCategories]) => (
-                  <optgroup key={groupName} label={groupName}>
-                    {groupCategories.map((category) => (
-                      <option key={category.id} value={category.id}>
+            <div className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+              Kategori (bisa lebih dari satu)
+              <div className="max-h-52 overflow-auto rounded-2xl border border-border bg-surface/80 p-2">
+                <div className="flex flex-wrap gap-2">
+                  {groupedCategories.ungrouped.map((category) => {
+                    const active = selectedCategorySet.has(category.id);
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => toggleCategory(category.id)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                          active
+                            ? 'bg-brand/20 text-brand ring-1 ring-brand/40'
+                            : 'bg-muted/20 text-muted-foreground hover:text-text'
+                        }`}
+                      >
                         {category.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-              {errors.category_id ? (
-                <span className="text-xs font-medium text-rose-500">{errors.category_id}</span>
+                      </button>
+                    );
+                  })}
+                  {groupedCategories.groups.map(([groupName, groupCategories]) => (
+                    <div key={groupName} className="w-full">
+                      <p className="mb-2 mt-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {groupName}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {groupCategories.map((category) => {
+                          const active = selectedCategorySet.has(category.id);
+                          return (
+                            <button
+                              key={category.id}
+                              type="button"
+                              onClick={() => toggleCategory(category.id)}
+                              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                                active
+                                  ? 'bg-brand/20 text-brand ring-1 ring-brand/40'
+                                  : 'bg-muted/20 text-muted-foreground hover:text-text'
+                              }`}
+                            >
+                              {category.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {errors.category_ids ? (
+                <span className="text-xs font-medium text-rose-500">{errors.category_ids}</span>
               ) : emptyMessage ? (
                 <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{emptyMessage}</span>
               ) : null}
-            </label>
+            </div>
           </div>
 
           <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
@@ -278,4 +314,3 @@ export default function BudgetFormModal({
     </div>
   );
 }
-
