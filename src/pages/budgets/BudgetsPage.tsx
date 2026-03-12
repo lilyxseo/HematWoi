@@ -49,6 +49,7 @@ const TABS = [
 type TabValue = (typeof TABS)[number]['value'];
 
 type ViewTransactionsParams = {
+  categoryIds?: string[];
   categoryId?: string | null;
   categoryType?: 'income' | 'expense' | null;
   range: 'month' | 'custom';
@@ -81,7 +82,7 @@ function isoToPeriod(isoDate: string | null | undefined): string {
 
 const DEFAULT_MONTHLY_FORM: BudgetFormValues = {
   period: getCurrentPeriod(),
-  category_id: '',
+  category_ids: [],
   amount_planned: 0,
   carryover_enabled: false,
   notes: '',
@@ -256,6 +257,7 @@ export default function BudgetsPage() {
     };
 
     for (const row of monthly.rows) {
+      row.categories?.forEach((item) => ensureBudgetCategory(item.id, item));
       ensureBudgetCategory(row.category_id, row.category ?? undefined);
     }
 
@@ -263,6 +265,7 @@ export default function BudgetsPage() {
       ensureBudgetCategory(row.category_id, row.category ?? undefined);
     }
 
+    editingMonthly?.categories?.forEach((item) => ensureBudgetCategory(item.id, item));
     ensureBudgetCategory(editingMonthly?.category_id, editingMonthly?.category ?? undefined);
     ensureBudgetCategory(editingWeekly?.category_id, editingWeekly?.category ?? undefined);
 
@@ -275,7 +278,11 @@ export default function BudgetsPage() {
     if (editingMonthly) {
       return {
         period: isoToPeriod(editingMonthly.period_month),
-        category_id: editingMonthly.category_id ?? '',
+        category_ids: editingMonthly.categories?.length
+          ? editingMonthly.categories.map((category) => category.id)
+          : editingMonthly.category_id
+          ? [editingMonthly.category_id]
+          : [],
         amount_planned: Number(editingMonthly.amount_planned ?? 0),
         carryover_enabled: editingMonthly.carryover_enabled,
         notes: editingMonthly.notes ?? '',
@@ -590,8 +597,17 @@ export default function BudgetsPage() {
 
   const handleToggleCarryover = async (row: BudgetWithSpent, carryover: boolean) => {
     try {
+      const categoryIds = row.categories.length > 0
+        ? row.categories.map((category) => category.id)
+        : row.category_id
+        ? [row.category_id]
+        : [];
+      if (categoryIds.length === 0) {
+        throw new Error('Kategori budget tidak valid');
+      }
       await upsertBudget({
-        category_id: row.category_id,
+        category_id: categoryIds[0],
+        category_ids: categoryIds,
         period: isoToPeriod(row.period_month),
         amount_planned: Number(row.amount_planned ?? 0),
         carryover_enabled: carryover,
@@ -625,7 +641,8 @@ export default function BudgetsPage() {
     try {
       setSubmittingMonthly(true);
       await upsertBudget({
-        category_id: values.category_id,
+        category_id: values.category_ids[0],
+        category_ids: values.category_ids,
         period: values.period,
         amount_planned: Number(values.amount_planned),
         carryover_enabled: values.carryover_enabled,
@@ -667,6 +684,7 @@ export default function BudgetsPage() {
   };
 
   const handleViewTransactions = ({
+    categoryIds,
     categoryId,
     categoryType,
     range,
@@ -688,8 +706,14 @@ export default function BudgetsPage() {
       params.delete('month');
     }
 
-    if (categoryId) {
-      params.set('categories', categoryId);
+    const normalizedCategoryIds = categoryIds && categoryIds.length > 0
+      ? categoryIds
+      : categoryId
+      ? [categoryId]
+      : [];
+
+    if (normalizedCategoryIds.length > 0) {
+      params.set('categories', normalizedCategoryIds.join(','));
     }
 
     if (categoryType === 'income' || categoryType === 'expense') {
@@ -833,7 +857,7 @@ export default function BudgetsPage() {
             onToggleCarryover={handleToggleCarryover}
             onViewTransactions={(row) =>
               handleViewTransactions({
-                categoryId: row.category_id,
+                categoryIds: row.categories?.length ? row.categories.map((category) => category.id) : row.category_id ? [row.category_id] : [],
                 categoryType: row.category?.type ?? null,
                 range: 'month',
                 month: row.period_month?.slice(0, 7) ?? period,
