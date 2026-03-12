@@ -127,6 +127,11 @@ interface RawBudgetRow {
   updated_at?: string | null;
   category?: RawBudgetCategory | null;
   categories?: RawBudgetCategory | null;
+  budget_categories?: Array<{
+    category_id?: string | null;
+    category?: RawBudgetCategory | null;
+    categories?: RawBudgetCategory | null;
+  }> | null;
 }
 
 interface RawWeeklyBudgetRow {
@@ -180,6 +185,35 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
   }
 
   const categoryId = row.category_id ? (String(row.category_id) as UUID) : null;
+  const normalizedCategories = (row.budget_categories ?? [])
+    .map((item) => {
+      const raw = item?.category ?? item?.categories ?? null;
+      const id = raw?.id ?? item?.category_id ?? null;
+      if (!id) return null;
+      return {
+        id: String(id) as UUID,
+        name: String(raw?.name ?? ''),
+        type: (raw?.type ?? raw?.category_type ?? null) as 'income' | 'expense' | null,
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+  const categoryIds = Array.from(
+    new Set(
+      normalizedCategories.length > 0
+        ? normalizedCategories.map((item) => item.id)
+        : categoryId
+        ? [categoryId]
+        : []
+    )
+  );
+
+  const categories =
+    normalizedCategories.length > 0
+      ? normalizedCategories
+      : category
+      ? [category]
+      : [];
 
   const createdAt = row.created_at ? String(row.created_at) : new Date().toISOString();
   const updatedAtBase = row.updated_at ?? row.created_at;
@@ -189,6 +223,7 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
     id: String(row.id) as UUID,
     user_id: String(row.user_id) as UUID,
     category_id: categoryId,
+    category_ids: categoryIds,
     amount_planned: Number(resolvedAmount),
     carryover_enabled: resolvedCarry,
     notes: normalizedNotes,
@@ -196,6 +231,7 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
     created_at: createdAt,
     updated_at: updatedAt,
     category,
+    categories,
   };
 }
 
@@ -246,6 +282,7 @@ function normalizeWeeklyBudgetRow(row: RawWeeklyBudgetRow): WeeklyBudgetRow {
     created_at: createdAt,
     updated_at: updatedAt,
     category,
+    categories,
   };
 }
 
@@ -310,6 +347,7 @@ export interface BudgetRow {
   id: UUID;
   user_id: UUID;
   category_id: Nullable<UUID>;
+  category_ids: UUID[];
   amount_planned: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
@@ -321,6 +359,11 @@ export interface BudgetRow {
     name: string;
     type?: 'income' | 'expense' | null;
   } | null;
+  categories: Array<{
+    id: UUID;
+    name: string;
+    type?: 'income' | 'expense' | null;
+  }>;
 }
 
 export interface BudgetSpentRow {
@@ -397,7 +440,8 @@ export interface HighlightBudgetSelection {
 
 export interface UpsertBudgetInput {
   id?: UUID;
-  category_id: UUID;
+  category_id?: UUID;
+  category_ids?: UUID[];
   period: string; // YYYY-MM
   amount_planned: number;
   carryover_enabled: boolean;
@@ -440,15 +484,25 @@ function getPreviousPeriod(period: string): string | null {
 }
 
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
-  const { data, error } = await supabase
+  const withRelation = await supabase
+    .from('budgets')
+    .select('*, category:categories(id,name,type), budget_categories(category_id, category:categories(id,name,type))')
+    .eq('user_id', userId)
+    .eq('period_month', toMonthStart(period))
+    .order('created_at', { ascending: false });
+
+  if (!withRelation.error) {
+    return ((withRelation.data ?? []) as RawBudgetRow[]).map(normalizeBudgetRow);
+  }
+
+  const fallback = await supabase
     .from('budgets')
     .select('*, category:categories(id,name,type)')
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
     .order('created_at', { ascending: false });
-  if (error) throw error;
-  const rows = (data ?? []) as RawBudgetRow[];
-  return rows.map(normalizeBudgetRow);
+  if (fallback.error) throw fallback.error;
+  return ((fallback.data ?? []) as RawBudgetRow[]).map(normalizeBudgetRow);
 }
 
 function getMonthRange(period: string): { start: string; end: string } {
@@ -1272,7 +1326,6 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
   const userId = await getCurrentUserId();
   ensureAuth(userId);
 
-  // Pastikan benar-benar logged-in (punya token) sebelum menulis ke cloud
   try {
     await getUserToken();
   } catch (error) {
@@ -1282,38 +1335,64 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
     throw error;
   }
 
+  const categoryIds = Array.from(
+    new Set((input.category_ids ?? [input.category_id]).filter((value): value is string => Boolean(value)))
+  );
+  if (categoryIds.length === 0) {
+    throw new Error('Kategori wajib dipilih');
+  }
+
   const payload = {
-    p_category_id: input.category_id,
-    p_month: toMonthStart(input.period),
-    p_amount: Number(input.amount_planned ?? 0),
-    p_carryover_enabled: Boolean(input.carryover_enabled),
-    p_notes: input.notes ?? null,
+    user_id: userId,
+    category_id: categoryIds[0],
+    period_month: toMonthStart(input.period),
+    amount_planned: Number(input.amount_planned ?? 0),
+    carryover_enabled: Boolean(input.carryover_enabled),
+    notes: input.notes ?? null,
   };
 
-  const { data, error } = await supabase.rpc('bud_monthly_upsert', payload);
-  if (error) {
-    console.error('[bud_upsert]', {
-      message: error.message,
-      details: (error as any)?.details,
-      hint: (error as any)?.hint,
-      function: 'bud_monthly_upsert',
-      payload,
-    });
-    if (error.message === 'Unauthorized' || error.code === '401' || error.code === 'PGRST301') {
-      throw new Error('Silakan login untuk menyimpan anggaran');
-    }
-    const msg = (error.message || '').toLowerCase();
-    if (error.code === '404' || msg.includes('bud_monthly_upsert') || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_monthly_upsert belum tersedia, jalankan migrasi SQL di server');
-    }
-    throw new Error(error.message || 'Gagal menyimpan anggaran');
+  const budgetResponse = input.id
+    ? await supabase
+        .from('budgets')
+        .update(payload)
+        .eq('id', input.id)
+        .eq('user_id', userId)
+        .select('*, category:categories(id,name,type), budget_categories(category_id, category:categories(id,name,type))')
+        .single()
+    : await supabase
+        .from('budgets')
+        .insert(payload)
+        .select('*, category:categories(id,name,type), budget_categories(category_id, category:categories(id,name,type))')
+        .single();
+
+  if (budgetResponse.error) {
+    throw new Error(budgetResponse.error.message || 'Gagal menyimpan anggaran');
   }
 
-  if (!data) {
-    throw new Error('Tidak ada data yang dikembalikan dari bud_monthly_upsert');
+  const budgetRow = budgetResponse.data as RawBudgetRow;
+
+  try {
+    const { error: deleteError } = await supabase
+      .from('budget_categories')
+      .delete()
+      .eq('budget_id', budgetRow.id)
+      .eq('user_id', userId);
+    if (deleteError) throw deleteError;
+
+    const { error: insertError } = await supabase.from('budget_categories').insert(
+      categoryIds.map((categoryId) => ({
+        user_id: userId,
+        budget_id: budgetRow.id,
+        category_id: categoryId,
+      }))
+    );
+    if (insertError) throw insertError;
+  } catch (_error) {
+    // backward compatibility untuk environment yang belum migrasi.
   }
 
-  return normalizeBudgetRow(data as RawBudgetRow);
+  const reloaded = await fetchBudgetsForPeriod(userId, input.period);
+  return reloaded.find((row) => String(row.id) === String(budgetRow.id)) ?? normalizeBudgetRow(budgetRow);
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
@@ -1329,7 +1408,12 @@ export async function deleteBudget(id: UUID): Promise<void> {
 
 export function mergeBudgetsWithSpent(budgets: BudgetRow[], spentMap: Record<string, number>): BudgetWithSpent[] {
   return budgets.map((budget) => {
-    const spent = spentMap[budget.category_id] ?? 0;
+    const relatedCategoryIds = budget.category_ids.length > 0
+      ? budget.category_ids
+      : budget.category_id
+      ? [budget.category_id]
+      : [];
+    const spent = relatedCategoryIds.reduce((total, categoryId) => total + (spentMap[categoryId] ?? 0), 0);
     return {
       ...budget,
       spent,
