@@ -108,6 +108,11 @@ interface RawBudgetCategory {
   category_type?: string | null;
 }
 
+interface RawBudgetCategoryLink {
+  category_id?: string | null;
+  category?: RawBudgetCategory | null;
+}
+
 interface RawBudgetRow {
   id: string;
   user_id: string;
@@ -127,6 +132,7 @@ interface RawBudgetRow {
   updated_at?: string | null;
   category?: RawBudgetCategory | null;
   categories?: RawBudgetCategory | null;
+  budget_categories?: RawBudgetCategoryLink[] | null;
 }
 
 interface RawWeeklyBudgetRow {
@@ -180,6 +186,22 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
   }
 
   const categoryId = row.category_id ? (String(row.category_id) as UUID) : null;
+  const mappedCategories = (row.budget_categories ?? [])
+    .map((entry) => {
+      const raw = entry?.category;
+      const linkedId = entry?.category_id ?? raw?.id;
+      if (!linkedId) return null;
+      return {
+        id: String(linkedId) as UUID,
+        name: String(raw?.name ?? ''),
+        type: (raw?.type ?? raw?.category_type ?? null) as 'income' | 'expense' | null,
+      };
+    })
+    .filter((entry): entry is { id: UUID; name: string; type?: 'income' | 'expense' | null } => Boolean(entry));
+
+  if (mappedCategories.length === 0 && category) {
+    mappedCategories.push(category);
+  }
 
   const createdAt = row.created_at ? String(row.created_at) : new Date().toISOString();
   const updatedAtBase = row.updated_at ?? row.created_at;
@@ -196,6 +218,7 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
     created_at: createdAt,
     updated_at: updatedAt,
     category,
+    categories: mappedCategories,
   };
 }
 
@@ -321,6 +344,11 @@ export interface BudgetRow {
     name: string;
     type?: 'income' | 'expense' | null;
   } | null;
+  categories: Array<{
+    id: UUID;
+    name: string;
+    type?: 'income' | 'expense' | null;
+  }>;
 }
 
 export interface BudgetSpentRow {
@@ -398,6 +426,7 @@ export interface HighlightBudgetSelection {
 export interface UpsertBudgetInput {
   id?: UUID;
   category_id: UUID;
+  category_ids?: UUID[];
   period: string; // YYYY-MM
   amount_planned: number;
   carryover_enabled: boolean;
@@ -442,7 +471,7 @@ function getPreviousPeriod(period: string): string | null {
 async function fetchBudgetsForPeriod(userId: string, period: string): Promise<BudgetRow[]> {
   const { data, error } = await supabase
     .from('budgets')
-    .select('*, category:categories(id,name,type)')
+    .select('*, category:categories(id,name,type), budget_categories(category_id, category:categories(id,name,type))')
     .eq('user_id', userId)
     .eq('period_month', toMonthStart(period))
     .order('created_at', { ascending: false });
@@ -865,6 +894,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
     toCarryOver.map((row) =>
       upsertBudget({
         category_id: row.category_id as string,
+        category_ids: row.categories.map((category) => category.id),
         period,
         amount_planned: Number(row.amount_planned ?? 0),
         carryover_enabled: true,
@@ -1268,6 +1298,63 @@ export async function toggleHighlight(input: ToggleHighlightInput): Promise<Togg
   };
 }
 
+async function syncBudgetCategories(
+  userId: string,
+  budgetId: UUID,
+  categoryIds: UUID[]
+): Promise<void> {
+  const uniqueCategoryIds = Array.from(new Set(categoryIds.filter(Boolean).map((value) => String(value) as UUID)));
+  if (uniqueCategoryIds.length === 0) {
+    return;
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('budget_categories')
+    .select('category_id')
+    .eq('budget_id', budgetId);
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  const existing = new Set(
+    ((existingRows ?? []) as { category_id: string }[]).map((row) => String(row.category_id))
+  );
+  const next = new Set(uniqueCategoryIds.map((value) => String(value)));
+
+  const toDelete = Array.from(existing).filter((id) => !next.has(id));
+  const toInsert = uniqueCategoryIds.filter((id) => !existing.has(String(id)));
+
+  if (toDelete.length > 0) {
+    const { error } = await supabase
+      .from('budget_categories')
+      .delete()
+      .eq('budget_id', budgetId)
+      .in('category_id', toDelete);
+    if (error) throw error;
+  }
+
+  if (toInsert.length > 0) {
+    const payload = toInsert.map((categoryId) => ({
+      budget_id: budgetId,
+      category_id: categoryId,
+    }));
+    const { error } = await supabase.from('budget_categories').insert(payload);
+    if (error) throw error;
+  }
+
+  const primary = uniqueCategoryIds[0];
+  const { error: updateError } = await supabase
+    .from('budgets')
+    .update({ category_id: primary })
+    .eq('user_id', userId)
+    .eq('id', budgetId);
+
+  if (updateError) {
+    throw updateError;
+  }
+}
+
 export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow> {
   const userId = await getCurrentUserId();
   ensureAuth(userId);
@@ -1282,8 +1369,16 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
     throw error;
   }
 
+  const selectedCategoryIds = Array.from(
+    new Set((input.category_ids ?? [input.category_id]).filter(Boolean).map((value) => String(value) as UUID))
+  );
+
+  if (selectedCategoryIds.length === 0) {
+    throw new Error('Minimal satu kategori wajib dipilih');
+  }
+
   const payload = {
-    p_category_id: input.category_id,
+    p_category_id: selectedCategoryIds[0],
     p_month: toMonthStart(input.period),
     p_amount: Number(input.amount_planned ?? 0),
     p_carryover_enabled: Boolean(input.carryover_enabled),
@@ -1313,7 +1408,21 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
     throw new Error('Tidak ada data yang dikembalikan dari bud_monthly_upsert');
   }
 
-  return normalizeBudgetRow(data as RawBudgetRow);
+  const normalized = normalizeBudgetRow(data as RawBudgetRow);
+  await syncBudgetCategories(userId, normalized.id, selectedCategoryIds);
+
+  const refreshed = await supabase
+    .from('budgets')
+    .select('*, category:categories(id,name,type), budget_categories(category_id, category:categories(id,name,type))')
+    .eq('user_id', userId)
+    .eq('id', normalized.id)
+    .single();
+
+  if (refreshed.error) {
+    throw refreshed.error;
+  }
+
+  return normalizeBudgetRow(refreshed.data as RawBudgetRow);
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {
@@ -1329,7 +1438,12 @@ export async function deleteBudget(id: UUID): Promise<void> {
 
 export function mergeBudgetsWithSpent(budgets: BudgetRow[], spentMap: Record<string, number>): BudgetWithSpent[] {
   return budgets.map((budget) => {
-    const spent = spentMap[budget.category_id] ?? 0;
+    const categoryIds = budget.categories.length > 0
+      ? budget.categories.map((category) => String(category.id))
+      : budget.category_id
+      ? [String(budget.category_id)]
+      : [];
+    const spent = categoryIds.reduce((total, categoryId) => total + (spentMap[categoryId] ?? 0), 0);
     return {
       ...budget,
       spent,
