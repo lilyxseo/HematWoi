@@ -596,10 +596,10 @@ export default function Goals() {
 
         <section aria-live="polite" className="space-y-4">
           {loading ? (
-            <p className="text-sm text-muted">Memuat goals…</p>
+            <p className="rounded-2xl border border-white/10 bg-surface-1/70 px-4 py-6 text-sm text-muted">Memuat goals…</p>
           ) : goals.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-surface-1/70 p-8 text-center text-sm text-muted">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+            <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-white/20 bg-gradient-to-b from-surface-1/80 to-card/80 p-10 text-center text-sm text-muted">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-brand/30 bg-brand/10 text-brand">
                 <Target className="h-6 w-6" aria-hidden="true" />
               </span>
               <p>Belum ada goal yang tercatat. Mulai dengan menambahkan goal baru.</p>
@@ -613,7 +613,7 @@ export default function Goals() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
               {goals.map((goal) => (
                 <GoalCard
                   key={goal.id}
@@ -625,7 +625,7 @@ export default function Goals() {
                   archiveLoading={archiveLoadingId === goal.id}
                   onQuickAdd={handleQuickAdd}
                   quickAddLoadingKey={quickAddLoadingKey}
-                  className={goal.priority === 'urgent' ? 'xl:col-span-2' : undefined}
+                  className={goal.priority === 'urgent' ? '2xl:col-span-2' : undefined}
                 />
               ))}
             </div>
