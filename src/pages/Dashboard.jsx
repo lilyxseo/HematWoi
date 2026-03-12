@@ -119,7 +119,7 @@ export default function Dashboard({ txs }) {
             preset={periodPreset}
             onChange={handlePeriodChange}
           />
-          <div className="grid gap-4 sm:gap-6 lg:grid lg:grid-cols-[1fr_360px] lg:items-start lg:gap-6">
+          <div className="grid gap-4 sm:gap-6">
             <DashboardSummary
               income={periodIncome}
               expense={periodExpense}
