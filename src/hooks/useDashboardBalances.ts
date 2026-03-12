@@ -3,7 +3,6 @@ import type { PostgrestError } from "@supabase/supabase-js"
 import type { PeriodPreset } from "../components/dashboard/PeriodPicker"
 import { supabase } from "../lib/supabase.js"
 import { onDataInvalidation } from "../lib/dataInvalidation"
-import { getCachedTransactions, listTransactions } from "../lib/api-transactions"
 
 export type DashboardRange = {
   start: string
@@ -484,35 +483,6 @@ function mapError(error: PostgrestError | Error): Error {
   return new Error(error.message)
 }
 
-async function loadDashboardTransactions(): Promise<TransactionRow[]> {
-  const pageSize = 500
-  const allRows: TransactionRow[] = []
-  let page = 1
-
-  while (true) {
-    const { rows } = await listTransactions({
-      period: { preset: "all", month: "", start: "", end: "" },
-      categories: [],
-      type: "all",
-      sort: "date-desc",
-      search: "",
-      page,
-      pageSize,
-    })
-
-    const chunk = Array.isArray(rows) ? (rows as TransactionRow[]) : []
-    if (!chunk.length) break
-    allRows.push(...chunk)
-
-    if (chunk.length < pageSize) {
-      break
-    }
-    page += 1
-  }
-
-  return allRows
-}
-
 export function useDashboardBalances({ start, end }: DashboardRange, preset?: PeriodPreset) {
   const [metrics, setMetrics] = useState<MetricsState>(INITIAL_STATE)
   const [loading, setLoading] = useState<boolean>(true)
@@ -559,35 +529,24 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
           return
         }
 
-        const [{ data: accountsData, error: accountsError }, transactionsResult] = await Promise.all([
+        const [{ data: accountsData, error: accountsError }, { data: transactionsData, error: transactionsError }] =
+          await Promise.all([
           supabase
             .from("accounts")
             .select("id,type")
             .eq("user_id", uid),
-          (async () => {
-            try {
-              const rows = await loadDashboardTransactions()
-              return rows
-            } catch (onlineError) {
-              console.warn("Failed to load dashboard transactions from primary source", onlineError)
-              const cached = await getCachedTransactions({
-                period: { preset: "all", month: "", start: "", end: "" },
-                categories: [],
-                type: "all",
-                sort: "date-desc",
-                search: "",
-                page: 1,
-                pageSize: 5000,
-              })
-              return Array.isArray(cached?.rows) ? (cached.rows as TransactionRow[]) : []
-            }
-          })(),
-        ])
+            supabase
+              .from("transactions")
+              .select("id,user_id,account_id,to_account_id,type,amount,date,deleted_at")
+              .eq("user_id", uid)
+              .is("deleted_at", null),
+          ])
 
         if (accountsError) throw accountsError
+        if (transactionsError) throw transactionsError
 
         const accounts = (accountsData ?? []) as AccountRow[]
-        const transactions = transactionsResult
+        const transactions = (transactionsData ?? []) as TransactionRow[]
 
         const computed = buildMetrics({
           transactions,
