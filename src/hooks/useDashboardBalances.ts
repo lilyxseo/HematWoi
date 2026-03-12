@@ -3,6 +3,7 @@ import type { PostgrestError } from "@supabase/supabase-js"
 import type { PeriodPreset } from "../components/dashboard/PeriodPicker"
 import { supabase } from "../lib/supabase.js"
 import { onDataInvalidation } from "../lib/dataInvalidation"
+import { getCurrentUserId } from "../lib/session"
 
 export type DashboardRange = {
   start: string
@@ -509,15 +510,7 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
       }
 
       try {
-        const { data: authData, error: authError } = await supabase.auth.getUser()
-        if (authError) {
-          if (isAuthMissingError(authError)) {
-            applyGuestMetrics()
-            return
-          }
-          throw authError
-        }
-        const uid = authData.user?.id
+        const uid = await getCurrentUserId()
         if (!uid) {
           if (applyGuestMetrics()) {
             return
