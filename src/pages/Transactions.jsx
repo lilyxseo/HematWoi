@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  Banknote,
   Check,
   ChevronDown,
   Circle,
@@ -15,6 +16,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Wallet,
   X,
 } from "lucide-react";
 import TransactionsFilters from "../components/transactions/TransactionsFilters";
@@ -196,6 +198,7 @@ export default function Transactions() {
   } = useTransactionsQuery();
   const { addToast } = useToast();
   const online = useNetworkStatus();
+  const accountsQuery = useAccountsQuery();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -237,6 +240,21 @@ export default function Transactions() {
     }
   });
   const periodLabel = getPeriodLabel(filter?.period?.preset ?? "all");
+  const accounts = useMemo(() => (Array.isArray(accountsQuery.data) ? accountsQuery.data : []), [accountsQuery.data]);
+  const cashBalance = useMemo(
+    () =>
+      accounts
+        .filter((account) => account?.type === "cash")
+        .reduce((totalValue, account) => totalValue + Number(account?.balance ?? 0), 0),
+    [accounts],
+  );
+  const nonCashBalance = useMemo(
+    () =>
+      accounts
+        .filter((account) => account?.type && account.type !== "cash")
+        .reduce((totalValue, account) => totalValue + Number(account?.balance ?? 0), 0),
+    [accounts],
+  );
 
   useEffect(() => {
     if (!optimisticItems.length) {
@@ -1020,7 +1038,14 @@ export default function Transactions() {
           </div>
         )}
 
-        <SummaryCards summary={summary} loading={loading && items.length === 0} periodLabel={periodLabel} />
+        <SummaryCards
+          summary={summary}
+          loading={loading && items.length === 0}
+          periodLabel={periodLabel}
+          cashBalance={cashBalance}
+          nonCashBalance={nonCashBalance}
+          balancesLoading={accountsQuery.isLoading}
+        />
 
         {activeChips.length > 0 && (
           <ActiveFilterChips chips={activeChips} onRemove={handleRemoveChip} />
@@ -1213,7 +1238,26 @@ function ActiveFilterChips({ chips, onRemove }) {
   );
 }
 
-function SummaryCards({ summary, loading, periodLabel }) {
+function SummaryCards({ summary, loading, periodLabel, cashBalance = 0, nonCashBalance = 0, balancesLoading = false }) {
+  const balanceCards = [
+    {
+      key: "cash-balance",
+      title: "Sisa Saldo Tunai",
+      value: cashBalance,
+      accent: "text-emerald-300",
+      icon: Banknote,
+      tone: "from-emerald-500/20 via-emerald-500/5 to-transparent",
+    },
+    {
+      key: "non-cash-balance",
+      title: "Sisa Saldo Non Tunai",
+      value: nonCashBalance,
+      accent: "text-violet-300",
+      icon: Wallet,
+      tone: "from-violet-500/20 via-violet-500/5 to-transparent",
+    },
+  ];
+
   const cards = [
     {
       key: "income",
@@ -1233,53 +1277,82 @@ function SummaryCards({ summary, loading, periodLabel }) {
     },
     {
       key: "net",
-      title: "Net",
-      value: summary?.net ?? 0,
-      accent: "text-sky-300",
+      title: "Sisa Saldo",
+      value: (summary?.net ?? 0) >= 0 ? summary?.net ?? 0 : 0,
+      accent: "text-cyan-300",
       icon: Circle,
-      tone: "from-sky-500/20 via-sky-500/10 to-transparent",
+      tone: "from-cyan-500/20 via-cyan-500/10 to-transparent",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {cards.map((card) => (
-        <div
-          key={card.key}
-          className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70 p-5 shadow-lg shadow-slate-950/40"
-        >
-          <div className={clsx("pointer-events-none absolute inset-0 opacity-60", "bg-gradient-to-br", card.tone)} />
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{card.title}</p>
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase text-slate-300">
-                {periodLabel}
-              </span>
-            </div>
-            <div className="mt-3 flex items-end justify-between gap-2">
-              {loading ? (
-                <div className="h-6 w-32 animate-pulse rounded-full bg-white/10" />
-              ) : (
-                <p className={clsx("text-2xl font-semibold", card.accent)}>{formatIDR(card.value)}</p>
-              )}
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200">
-                <card.icon className="h-4 w-4" />
-              </span>
-            </div>
-            <div className="mt-3">
-              <svg viewBox="0 0 120 32" className="h-8 w-full text-white/10" preserveAspectRatio="none">
-                <path
-                  d="M0 24 C20 18, 40 30, 60 16 C80 4, 100 22, 120 10"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                />
-              </svg>
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        {cards.map((card) => (
+          <div
+            key={card.key}
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70 p-5 shadow-lg shadow-slate-950/40"
+          >
+            <div className={clsx("pointer-events-none absolute inset-0 opacity-60", "bg-gradient-to-br", card.tone)} />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{card.title}</p>
+                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase text-slate-300">
+                  {periodLabel}
+                </span>
+              </div>
+              <div className="mt-3 flex items-end justify-between gap-2">
+                {loading ? (
+                  <div className="h-6 w-32 animate-pulse rounded-full bg-white/10" />
+                ) : (
+                  <p className={clsx("text-2xl font-semibold", card.accent)}>{formatIDR(card.value)}</p>
+                )}
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200">
+                  <card.icon className="h-4 w-4" />
+                </span>
+              </div>
+              <div className="mt-3">
+                <svg viewBox="0 0 120 32" className="h-8 w-full text-white/10" preserveAspectRatio="none">
+                  <path
+                    d="M0 24 C20 18, 40 30, 60 16 C80 4, 100 22, 120 10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {balanceCards.map((card) => (
+          <div
+            key={card.key}
+            className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/70 p-5 shadow-lg shadow-slate-950/40"
+          >
+            <div className={clsx("pointer-events-none absolute inset-0 opacity-60", "bg-gradient-to-br", card.tone)} />
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{card.title}</p>
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200">
+                  <card.icon className="h-4 w-4" />
+                </span>
+              </div>
+              <div className="mt-3">
+                {balancesLoading ? (
+                  <div className="h-6 w-36 animate-pulse rounded-full bg-white/10" />
+                ) : (
+                  <p className={clsx("text-2xl font-semibold", card.accent)}>{formatIDR(card.value)}</p>
+                )}
+                <p className="mt-1 text-xs text-slate-400">Berdasarkan total saldo akun saat ini.</p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1566,7 +1639,7 @@ function TransactionFormDialog({ open, onClose, initialData, onSuccess, addToast
   const [merchantId, setMerchantId] = useState(transactionData?.merchant_id ?? null);
 
   const accountsQuery = useAccountsQuery({ enabled: open });
-  const accounts = Array.isArray(accountsQuery.data) ? accountsQuery.data : [];
+  const accounts = useMemo(() => (Array.isArray(accountsQuery.data) ? accountsQuery.data : []), [accountsQuery.data]);
   const accountsLoading = accountsQuery.isLoading;
   const accountsError = accountsQuery.error;
 
