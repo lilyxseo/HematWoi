@@ -254,12 +254,23 @@ export default function useDashboardNote() {
 
   useEffect(() => {
     if (!isOnline || !pendingSync || !userId) return;
-    if (noteRef.current === lastSyncedNoteRef.current) {
+
+    const hasUnsyncedChanges = noteRef.current !== lastSyncedNoteRef.current;
+    if (!hasUnsyncedChanges) {
       setPendingSync(false);
       return;
     }
+
+    if (isRemoteScheduled || mutation.isPending) return;
     scheduleRemoteSync(noteRef.current);
-  }, [isOnline, pendingSync, scheduleRemoteSync, userId]);
+  }, [
+    isOnline,
+    isRemoteScheduled,
+    mutation.isPending,
+    pendingSync,
+    scheduleRemoteSync,
+    userId,
+  ]);
 
   const setNote = useCallback(
     (value: string) => {
