@@ -223,9 +223,9 @@ export async function createTransaction(payload: CreateTransactionPayload): Prom
   await applyBalanceDelta({
     type,
     userId,
-    amount,
-    accountId: account_id,
-    toAccountId: type === 'transfer' ? to_account_id ?? null : null,
+    amount: record.amount,
+    accountId: record.account_id ?? account_id,
+    toAccountId: type === 'transfer' ? record.to_account_id ?? to_account_id ?? null : null,
   });
 
   return {
