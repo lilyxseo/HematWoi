@@ -161,7 +161,6 @@ export default function TransactionAdd({ onAdd }) {
   const {
     cashBalance,
     nonCashBalance,
-    accountBalances,
     loading: balancesLoading,
     error: balancesError,
     refresh: refreshBalances,
@@ -294,14 +293,10 @@ export default function TransactionAdd({ onAdd }) {
   const selectedAccount = accounts.find((item) => item.id === accountId);
   const availableBalanceLabel = useMemo(() => {
     if (balancesLoading) return 'Memuat...';
-    const accountBalance = Number(accountBalances?.[accountId]);
-    if (Number.isFinite(accountBalance)) {
-      return formatCurrency(accountBalance, 'IDR');
-    }
     const isCashAccount = selectedAccount?.type === 'cash';
     const balanceValue = isCashAccount ? cashBalance : nonCashBalance;
     return formatCurrency(balanceValue ?? 0, 'IDR');
-  }, [balancesLoading, accountBalances, accountId, cashBalance, nonCashBalance, selectedAccount?.type]);
+  }, [balancesLoading, cashBalance, nonCashBalance, selectedAccount?.type]);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
   const selectedCategory = categories.find((item) => item.id === categoryId);
   const selectedCategoryName = selectedCategory?.name || '';
