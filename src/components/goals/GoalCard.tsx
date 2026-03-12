@@ -1,4 +1,6 @@
-import { CalendarDays, Flag, Pencil, PiggyBank, Archive, Trash2, ListPlus } from 'lucide-react';
+import { Archive, CalendarDays, Flag, ListPlus, Pencil, PiggyBank, Trash2 } from 'lucide-react';
+import clsx from 'clsx';
+import type { ReactNode } from 'react';
 import type { GoalRecord } from '../../lib/api-goals';
 import { formatMoney } from '../../lib/format';
 
@@ -19,8 +21,7 @@ function calculateDaysLeft(dueDate: string | null) {
   if (!dueDate) return null;
   const due = new Date(dueDate);
   if (Number.isNaN(due.getTime())) return null;
-  const diff = Math.ceil((due.getTime() - Date.now()) / 86400000);
-  return diff;
+  return Math.ceil((due.getTime() - Date.now()) / 86400000);
 }
 
 function calculateDailySuggestion(goal: GoalRecord) {
@@ -39,9 +40,7 @@ function calculateDailySuggestion(goal: GoalRecord) {
   }
 
   const totalDays = Math.floor((due.getTime() - start.getTime()) / 86400000) + 1;
-  if (totalDays <= 0) {
-    return Math.ceil(remaining);
-  }
+  if (totalDays <= 0) return Math.ceil(remaining);
 
   return Math.ceil(remaining / Math.max(totalDays, 1));
 }
@@ -55,10 +54,10 @@ function calculateAveragePerDay(goal: GoalRecord) {
 
 function computeMilestoneDots(goal: GoalRecord) {
   if (!goal.target_amount || goal.target_amount <= 0) return [] as { percent: number; id: string }[];
-  return goal.milestones.map((item, index) => {
-    const percent = Math.max(0, Math.min(100, (item.amount / goal.target_amount) * 100));
-    return { percent, id: `${goal.id}-milestone-${index}` };
-  });
+  return goal.milestones.map((item, index) => ({
+    percent: Math.max(0, Math.min(100, (item.amount / goal.target_amount) * 100)),
+    id: `${goal.id}-milestone-${index}`,
+  }));
 }
 
 const STATUS_LABELS: Record<GoalRecord['status'], string> = {
@@ -69,10 +68,10 @@ const STATUS_LABELS: Record<GoalRecord['status'], string> = {
 };
 
 const STATUS_CLASSES: Record<GoalRecord['status'], string> = {
-  active: 'bg-sky-500/15 text-sky-600 dark:text-sky-300',
-  paused: 'bg-amber-500/15 text-amber-600 dark:text-amber-300',
-  achieved: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300',
-  archived: 'bg-zinc-500/15 text-muted',
+  active: 'border-sky-400/30 bg-sky-500/10 text-sky-300',
+  paused: 'border-amber-400/30 bg-amber-500/10 text-amber-300',
+  achieved: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300',
+  archived: 'border-border/60 bg-surface-2/70 text-muted',
 };
 
 const PRIORITY_LABELS: Record<GoalRecord['priority'], string> = {
@@ -83,10 +82,10 @@ const PRIORITY_LABELS: Record<GoalRecord['priority'], string> = {
 };
 
 const PRIORITY_CLASSES: Record<GoalRecord['priority'], string> = {
-  low: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300',
-  normal: 'bg-brand/15 text-brand',
-  high: 'bg-amber-500/15 text-amber-600 dark:text-amber-300',
-  urgent: 'bg-rose-500/15 text-rose-500 dark:text-rose-300',
+  low: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300',
+  normal: 'border-brand/30 bg-brand/10 text-brand',
+  high: 'border-amber-400/30 bg-amber-500/10 text-amber-300',
+  urgent: 'border-rose-400/30 bg-rose-500/10 text-rose-300',
 };
 
 interface GoalCardProps {
@@ -120,7 +119,6 @@ export default function GoalCard({
   const averagePerDay = calculateAveragePerDay(goal);
   const overdue = goal.due_date ? daysLeft != null && daysLeft < 0 && goal.status !== 'achieved' : false;
   const milestoneDots = computeMilestoneDots(goal);
-
   const archiveLabel = goal.status === 'archived' ? 'Aktifkan' : 'Arsipkan';
   const iconLabel = goal.icon?.trim() || goal.title.charAt(0).toUpperCase() || '🎯';
   const sortedMilestones = [...goal.milestones].sort((a, b) => a.amount - b.amount);
@@ -129,190 +127,215 @@ export default function GoalCard({
 
   return (
     <article
-      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-5 shadow-sm transition hover:border-border md:p-6 ${
-        className ?? ''
-      }`}
+      className={clsx(
+        'group flex min-w-0 flex-col gap-5 rounded-3xl border border-border/70 bg-card/95 p-5 shadow-[0_10px_30px_-18px_rgba(0,0,0,0.55)] transition-all',
+        'hover:-translate-y-0.5 hover:border-border hover:shadow-[0_18px_35px_-20px_rgba(0,0,0,0.7)]',
+        'focus-within:ring-1 focus-within:ring-brand/50 md:gap-6 md:p-6',
+        className,
+      )}
     >
-      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-3.5">
           <div
-            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-base font-semibold"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-white/10 text-sm font-semibold"
             style={{ backgroundColor: `${goal.color}1f`, color: goal.color }}
             aria-hidden="true"
           >
             {iconLabel}
           </div>
           <div className="min-w-0 space-y-1">
-            <h3 className="truncate text-lg font-semibold text-text" title={goal.title}>
+            <h3 className="truncate text-base font-semibold text-text md:text-lg" title={goal.title}>
               {goal.title}
             </h3>
-            {goal.description ? (
-              <p className="line-clamp-2 text-sm text-muted">{goal.description}</p>
-            ) : null}
+            {goal.description ? <p className="line-clamp-2 text-sm text-muted">{goal.description}</p> : null}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-              STATUS_CLASSES[goal.status]
-            }`}
-          >
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className={clsx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide', STATUS_CLASSES[goal.status])}>
             {STATUS_LABELS[goal.status]}
           </span>
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
-              PRIORITY_CLASSES[goal.priority]
-            }`}
-          >
+          <span className={clsx('inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide', PRIORITY_CLASSES[goal.priority])}>
             {PRIORITY_LABELS[goal.priority]}
           </span>
         </div>
       </header>
 
-      <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-6">
-        <div className="flex flex-col gap-3 md:order-1">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Progress</span>
-            <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted">Terkumpul</p>
+            <p className="hw-money text-xl font-semibold text-text md:text-2xl">{formatCurrency(goal.saved_amount)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted">Sisa</p>
+            <p className="hw-money text-base font-medium text-sky-300">{formatCurrency(remaining)}</p>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="uppercase tracking-[0.16em] text-muted">Progress</span>
+            <span className="rounded-full border border-brand/35 bg-brand/10 px-2.5 py-1 font-semibold text-brand">
               {Math.round(progress)}%
             </span>
           </div>
-          <div className="relative h-2 w-full rounded-full bg-border/60">
+          <div className="relative h-1.5 w-full rounded-full bg-surface-2/90">
             <div
-              className="h-2 rounded-full bg-gradient-to-r from-brand/60 via-brand to-brand"
+              className="h-1.5 rounded-full bg-gradient-to-r from-brand/70 via-brand to-brand"
               style={{ width: `${progress}%` }}
             />
             {milestoneDots.map((dot) => (
               <span
                 key={dot.id}
-                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-white bg-card shadow-sm"
+                className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-card bg-muted/80"
                 style={{ left: `${dot.percent}%`, transform: 'translate(-50%, -50%)' }}
               />
             ))}
           </div>
-          <div className="flex items-center justify-between text-xs text-muted md:text-sm">
-            <span className="hw-money">{formatCurrency(goal.saved_amount)} terkumpul</span>
-            <span className="hw-money">{formatCurrency(goal.target_amount)} target</span>
-          </div>
           {nextMilestone ? (
-            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted md:text-sm">
-              <span className="hw-money">Next milestone {formatCurrency(nextMilestone.amount)}</span>
-            </div>
+            <p className="text-xs text-muted">
+              Next milestone <span className="hw-money font-semibold text-text">{formatCurrency(nextMilestone.amount)}</span>
+            </p>
           ) : null}
         </div>
+      </section>
 
-        <div className="min-w-0 space-y-4 md:order-2">
-          <div className="space-y-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Ringkasan</span>
-            <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Target</dt>
-                <dd className="font-medium hw-money">{formatCurrency(goal.target_amount)}</dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Terkumpul</dt>
-                <dd className="font-medium text-emerald-500 dark:text-emerald-300">
-                  <span className="hw-money">{formatCurrency(goal.saved_amount)}</span>
-                </dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Sisa</dt>
-                <dd className="font-medium text-sky-500 dark:text-sky-300">
-                  <span className="hw-money">{formatCurrency(remaining)}</span>
-                </dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Deadline</dt>
-                <dd className="flex items-center gap-1 text-sm">
-                  <CalendarDays className="h-4 w-4 text-muted" aria-hidden="true" />
-                  {goal.due_date ? dateFormatter.format(new Date(goal.due_date)) : '—'}
-                </dd>
-                {overdue ? (
-                  <span className="inline-flex items-center rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-500">
-                    Lewat jatuh tempo
-                  </span>
-                ) : null}
-              </div>
-            </dl>
+      <section className="grid grid-cols-2 gap-2.5 text-sm md:grid-cols-4">
+        <InfoBlock label="Target" value={<span className="hw-money">{formatCurrency(goal.target_amount)}</span>} />
+        <InfoBlock
+          label="Terkumpul"
+          value={<span className="hw-money text-emerald-300">{formatCurrency(goal.saved_amount)}</span>}
+        />
+        <InfoBlock label="Sisa" value={<span className="hw-money text-sky-300">{formatCurrency(remaining)}</span>} />
+        <InfoBlock
+          label="Deadline"
+          value={
+            <span className="inline-flex items-center gap-1.5 text-text">
+              <CalendarDays className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
+              {goal.due_date ? dateFormatter.format(new Date(goal.due_date)) : '—'}
+            </span>
+          }
+          extra={
+            overdue ? (
+              <span className="inline-flex items-center rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
+                Lewat tempo
+              </span>
+            ) : null
+          }
+        />
+      </section>
+
+      <section className="space-y-2.5">
+        <p className="text-xs uppercase tracking-[0.16em] text-muted">Saving pace</p>
+        <div className="grid gap-2 md:grid-cols-3">
+          <MetricPill
+            icon={<Flag className="h-3.5 w-3.5" aria-hidden="true" />}
+            label="Kebutuhan / hari"
+            value={dailySuggestion != null ? formatCurrency(dailySuggestion) : '—'}
+          />
+          <MetricPill
+            icon={<PiggyBank className="h-3.5 w-3.5" aria-hidden="true" />}
+            label="Kebutuhan / minggu"
+            value={weeklySuggestion != null ? formatCurrency(weeklySuggestion) : '—'}
+          />
+          <MetricPill label="Rata-rata saat ini / hari" value={formatCurrency(averagePerDay)} />
+        </div>
+      </section>
+
+      {onQuickAdd && goal.status === 'active' ? (
+        <section className="space-y-2">
+          <p className="text-xs uppercase tracking-[0.16em] text-muted">Tambah cepat</p>
+          <div className="flex flex-wrap gap-2">
+            {quickAddOptions.map((amount) => {
+              const key = `${goal.id}-${amount}`;
+              return (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => onQuickAdd(goal, amount)}
+                  disabled={quickAddLoadingKey === key}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border/70 bg-surface-1 px-3 text-xs font-semibold text-text transition hover:border-brand/30 hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <PiggyBank className="h-3 w-3" aria-hidden="true" />
+                  <span className="hw-money">{formatCurrency(amount)}</span>
+                </button>
+              );
+            })}
           </div>
+        </section>
+      ) : null}
 
-          {dailySuggestion != null ? (
-            <div className="flex flex-wrap gap-3 text-sm">
-              <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
-                <Flag className="h-4 w-4" aria-hidden="true" />
-                <span className="hw-money">{formatCurrency(dailySuggestion)} / hari</span>
-              </span>
-              {weeklySuggestion ? (
-                <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
-                  <PiggyBank className="h-4 w-4" aria-hidden="true" />
-                  <span className="hw-money">{formatCurrency(weeklySuggestion)} / minggu</span>
-                </span>
-              ) : null}
-              <span className="inline-flex items-center gap-1 rounded-xl bg-surface-2/70 px-3 py-1 font-medium text-muted md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
-                <span className="hw-money">Rata-rata saat ini: {formatCurrency(averagePerDay)} / hari</span>
-              </span>
-            </div>
-          ) : null}
-          {onQuickAdd && goal.status === 'active' ? (
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted md:flex-wrap md:gap-2">
-              <span className="text-[11px] uppercase tracking-wide text-muted md:text-xs md:text-white/60">
-                Tambah cepat
-              </span>
-              {quickAddOptions.map((amount) => {
-                const key = `${goal.id}-${amount}`;
-                return (
-                  <button
-                    key={amount}
-                    type="button"
-                    onClick={() => onQuickAdd(goal, amount)}
-                    disabled={quickAddLoadingKey === key}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text transition hover:bg-border/60 disabled:cursor-not-allowed disabled:opacity-60 md:rounded-xl md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm"
-                  >
-                    <PiggyBank className="h-3 w-3" aria-hidden="true" />
-                    <span className="hw-money">{formatCurrency(amount)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      <footer className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end md:flex-nowrap md:justify-end md:gap-3">
+      <footer className="grid grid-cols-2 gap-2 pt-1 md:flex md:flex-wrap md:justify-end">
         <button
           type="button"
           onClick={() => onEdit(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-surface-1 px-3 text-xs font-medium text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] md:text-sm"
         >
-          <Pencil className="h-4 w-4" aria-hidden="true" />
+          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
           Edit
         </button>
         <button
           type="button"
           onClick={() => onOpenEntries(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-brand px-3 text-xs font-semibold text-brand-foreground shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] md:text-sm"
         >
-          <ListPlus className="h-4 w-4" aria-hidden="true" />
+          <ListPlus className="h-3.5 w-3.5" aria-hidden="true" />
           Setoran & Riwayat
         </button>
         <button
           type="button"
           onClick={() => onToggleArchive(goal)}
           disabled={Boolean(archiveLoading)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60 md:h-[34px] md:px-3 md:text-xs"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-border/70 bg-surface-1 px-3 text-xs font-medium text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60 md:text-sm"
         >
-          <Archive className="h-4 w-4" aria-hidden="true" />
+          <Archive className="h-3.5 w-3.5" aria-hidden="true" />
           {archiveLabel}
         </button>
         <button
           type="button"
           onClick={() => onDelete(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-400/20 bg-rose-500/10 px-3 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] md:text-sm"
         >
-          <Trash2 className="h-4 w-4" aria-hidden="true" />
+          <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
           Hapus
         </button>
       </footer>
     </article>
+  );
+}
+
+function InfoBlock({
+  label,
+  value,
+  extra,
+}: {
+  label: string;
+  value: ReactNode;
+  extra?: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-surface-1/60 p-3">
+      <p className="text-[11px] uppercase tracking-[0.14em] text-muted">{label}</p>
+      <p className="mt-1 text-sm font-medium">{value}</p>
+      {extra ? <div className="mt-1.5">{extra}</div> : null}
+    </div>
+  );
+}
+
+function MetricPill({
+  icon,
+  label,
+  value,
+}: {
+  icon?: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-surface-1/70 px-3 py-2">
+      <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.12em] text-muted">{icon}{label}</p>
+      <p className="hw-money mt-1 text-sm font-semibold text-text">{value}</p>
+    </div>
   );
 }
