@@ -14,7 +14,7 @@ interface BudgetTableProps {
 }
 
 const GRID_CLASS =
-  'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6 lg:[grid-template-columns:repeat(auto-fit,minmax(300px,1fr))] xl:[grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]';
+  'grid grid-cols-1 gap-4 md:gap-5 lg:[grid-template-columns:repeat(auto-fit,minmax(340px,1fr))]';
 
 function LoadingCards() {
   return (
@@ -63,9 +63,9 @@ function EmptyState() {
         <Sparkles className="h-5 w-5" aria-hidden="true" />
       </span>
       <div className="space-y-1">
-        <p className="text-sm font-semibold text-text">Belum ada anggaran</p>
+        <p className="text-sm font-semibold text-text">Belum ada budget</p>
         <p className="text-sm text-muted-foreground">
-          Tambahkan kategori anggaran untuk mulai mengontrol pengeluaranmu.
+          Tambahkan budget untuk mulai mengontrol pengeluaran dengan tampilan yang rapi.
         </p>
       </div>
     </div>
