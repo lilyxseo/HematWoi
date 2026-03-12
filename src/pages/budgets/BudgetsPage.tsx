@@ -81,7 +81,7 @@ function isoToPeriod(isoDate: string | null | undefined): string {
 
 const DEFAULT_MONTHLY_FORM: BudgetFormValues = {
   period: getCurrentPeriod(),
-  category_id: '',
+  category_ids: [],
   amount_planned: 0,
   carryover_enabled: false,
   notes: '',
@@ -275,7 +275,12 @@ export default function BudgetsPage() {
     if (editingMonthly) {
       return {
         period: isoToPeriod(editingMonthly.period_month),
-        category_id: editingMonthly.category_id ?? '',
+        category_ids:
+          editingMonthly.category_ids.length > 0
+            ? editingMonthly.category_ids
+            : editingMonthly.category_id
+            ? [editingMonthly.category_id]
+            : [],
         amount_planned: Number(editingMonthly.amount_planned ?? 0),
         carryover_enabled: editingMonthly.carryover_enabled,
         notes: editingMonthly.notes ?? '',
@@ -625,7 +630,8 @@ export default function BudgetsPage() {
     try {
       setSubmittingMonthly(true);
       await upsertBudget({
-        category_id: values.category_id,
+        category_id: values.category_ids[0],
+        category_ids: values.category_ids,
         period: values.period,
         amount_planned: Number(values.amount_planned),
         carryover_enabled: values.carryover_enabled,

@@ -14,7 +14,7 @@ interface BudgetTableProps {
 }
 
 const GRID_CLASS =
-  'grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-6 lg:[grid-template-columns:repeat(auto-fit,minmax(300px,1fr))] xl:[grid-template-columns:repeat(auto-fit,minmax(320px,1fr))]';
+  'grid grid-cols-1 gap-5 md:grid-cols-2 xl:[grid-template-columns:repeat(auto-fit,minmax(340px,1fr))]';
 
 function LoadingCards() {
   return (
@@ -58,7 +58,7 @@ function LoadingCards() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-white/10 bg-surface/60 p-8 text-center text-sm text-muted-foreground shadow-inner backdrop-blur">
+    <div className="flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-white/10 bg-[#0f1525]/70 p-8 text-center text-sm text-muted-foreground shadow-inner backdrop-blur">
       <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand/10 text-brand">
         <Sparkles className="h-5 w-5" aria-hidden="true" />
       </span>
