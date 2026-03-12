@@ -21,8 +21,8 @@ export default function SummaryCards({ summary, nearestGoalTitle }: SummaryCards
   const offTrackCount = Math.max(totalTracked - onTrackCount, 0);
 
   return (
-    <section className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <article className="card min-w-0 space-y-2 rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-sm md:p-5">
+    <section className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <article className="card min-w-0 space-y-2 rounded-3xl border border-white/10 bg-surface-1/90 p-4 shadow-[0_10px_30px_-22px_rgba(0,0,0,0.8)] md:p-5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Total Goal Aktif</p>
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand/10 text-brand">
@@ -33,7 +33,7 @@ export default function SummaryCards({ summary, nearestGoalTitle }: SummaryCards
         <p className="text-xs text-muted">Jumlah goal dengan status aktif saat ini.</p>
       </article>
 
-      <article className="card min-w-0 space-y-2 rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-sm md:p-5">
+      <article className="card min-w-0 space-y-2 rounded-3xl border border-white/10 bg-surface-1/90 p-4 shadow-[0_10px_30px_-22px_rgba(0,0,0,0.8)] md:p-5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Terkumpul Bulan Ini</p>
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500">
@@ -46,7 +46,7 @@ export default function SummaryCards({ summary, nearestGoalTitle }: SummaryCards
         <p className="text-xs text-muted">Akumulasi setoran dari goal selama bulan berjalan.</p>
       </article>
 
-      <article className="card min-w-0 space-y-2 rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-sm md:p-5">
+      <article className="card min-w-0 space-y-2 rounded-3xl border border-white/10 bg-surface-1/90 p-4 shadow-[0_10px_30px_-22px_rgba(0,0,0,0.8)] md:p-5">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">Sisa Menuju Target Terdekat</p>
         <p className="text-2xl font-bold tracking-tight text-sky-500 dark:text-sky-300 md:text-3xl hw-money">
           {nearestRemaining != null ? formatCurrency(nearestRemaining) : '—'}
@@ -56,7 +56,7 @@ export default function SummaryCards({ summary, nearestGoalTitle }: SummaryCards
         </p>
       </article>
 
-      <article className="card min-w-0 space-y-2 rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-sm md:p-5">
+      <article className="card min-w-0 space-y-2 rounded-3xl border border-white/10 bg-surface-1/90 p-4 shadow-[0_10px_30px_-22px_rgba(0,0,0,0.8)] md:p-5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">On-track vs Off-track</p>
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand/10 text-brand">

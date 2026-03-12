@@ -576,7 +576,7 @@ export default function Goals() {
               {activeFilterChips.map((chip) => (
                 <span
                   key={chip.key}
-                  className="inline-flex items-center rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text"
+                  className="inline-flex items-center rounded-full border border-white/10 bg-surface-2/50 px-3 py-1 text-xs font-semibold text-text"
                 >
                   {chip.label}
                 </span>
@@ -598,8 +598,8 @@ export default function Goals() {
           {loading ? (
             <p className="text-sm text-muted">Memuat goals…</p>
           ) : goals.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border/60 bg-surface-1/70 p-8 text-center text-sm text-muted">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+            <div className="flex flex-col items-center gap-3 rounded-3xl border border-dashed border-white/20 bg-surface-1/70 p-10 text-center text-sm text-muted">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-brand/20 bg-brand/10 text-brand">
                 <Target className="h-6 w-6" aria-hidden="true" />
               </span>
               <p>Belum ada goal yang tercatat. Mulai dengan menambahkan goal baru.</p>
@@ -613,7 +613,7 @@ export default function Goals() {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
               {goals.map((goal) => (
                 <GoalCard
                   key={goal.id}
@@ -625,7 +625,7 @@ export default function Goals() {
                   archiveLoading={archiveLoadingId === goal.id}
                   onQuickAdd={handleQuickAdd}
                   quickAddLoadingKey={quickAddLoadingKey}
-                  className={goal.priority === 'urgent' ? 'xl:col-span-2' : undefined}
+                  className={goal.priority === 'urgent' ? '2xl:col-span-2' : undefined}
                 />
               ))}
             </div>

@@ -19,8 +19,7 @@ function calculateDaysLeft(dueDate: string | null) {
   if (!dueDate) return null;
   const due = new Date(dueDate);
   if (Number.isNaN(due.getTime())) return null;
-  const diff = Math.ceil((due.getTime() - Date.now()) / 86400000);
-  return diff;
+  return Math.ceil((due.getTime() - Date.now()) / 86400000);
 }
 
 function calculateDailySuggestion(goal: GoalRecord) {
@@ -39,9 +38,7 @@ function calculateDailySuggestion(goal: GoalRecord) {
   }
 
   const totalDays = Math.floor((due.getTime() - start.getTime()) / 86400000) + 1;
-  if (totalDays <= 0) {
-    return Math.ceil(remaining);
-  }
+  if (totalDays <= 0) return Math.ceil(remaining);
 
   return Math.ceil(remaining / Math.max(totalDays, 1));
 }
@@ -129,38 +126,36 @@ export default function GoalCard({
 
   return (
     <article
-      className={`flex min-w-0 flex-col gap-4 rounded-2xl border border-border/60 bg-card/90 p-5 shadow-sm transition hover:border-border md:p-6 ${
+      className={`flex min-w-0 flex-col gap-5 rounded-3xl border border-border/60 bg-surface-1/90 p-4 shadow-[0_10px_30px_-20px_rgba(0,0,0,0.8)] transition duration-200 hover:-translate-y-0.5 hover:border-white/20 hover:shadow-[0_16px_40px_-20px_rgba(0,0,0,0.85)] md:p-5 ${
         className ?? ''
       }`}
     >
-      <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 items-start gap-3">
+      <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 items-start gap-3.5">
           <div
-            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl text-base font-semibold"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl text-sm font-semibold shadow-inner"
             style={{ backgroundColor: `${goal.color}1f`, color: goal.color }}
             aria-hidden="true"
           >
             {iconLabel}
           </div>
-          <div className="min-w-0 space-y-1">
-            <h3 className="truncate text-lg font-semibold text-text" title={goal.title}>
+          <div className="min-w-0 space-y-1.5">
+            <h3 className="truncate text-base font-semibold tracking-tight text-text md:text-lg" title={goal.title}>
               {goal.title}
             </h3>
-            {goal.description ? (
-              <p className="line-clamp-2 text-sm text-muted">{goal.description}</p>
-            ) : null}
+            {goal.description ? <p className="line-clamp-2 text-xs leading-relaxed text-muted md:text-sm">{goal.description}</p> : null}
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
           <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+            className={`inline-flex items-center rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
               STATUS_CLASSES[goal.status]
             }`}
           >
             {STATUS_LABELS[goal.status]}
           </span>
           <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${
+            className={`inline-flex items-center rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${
               PRIORITY_CLASSES[goal.priority]
             }`}
           >
@@ -169,95 +164,96 @@ export default function GoalCard({
         </div>
       </header>
 
-      <div className="flex flex-col gap-4 md:grid md:grid-cols-2 md:gap-6">
-        <div className="flex flex-col gap-3 md:order-1">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Progress</span>
-            <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
+      <div className="space-y-4">
+        <section className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/55">Progress</span>
+            <span className="rounded-full border border-brand/30 bg-brand/10 px-2.5 py-1 text-[11px] font-semibold text-brand">
               {Math.round(progress)}%
             </span>
           </div>
-          <div className="relative h-2 w-full rounded-full bg-border/60">
+          <div className="relative h-1.5 w-full rounded-full bg-border/70">
             <div
-              className="h-2 rounded-full bg-gradient-to-r from-brand/60 via-brand to-brand"
+              className="h-1.5 rounded-full bg-gradient-to-r from-brand/70 via-brand to-brand transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
             {milestoneDots.map((dot) => (
               <span
                 key={dot.id}
-                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-white bg-card shadow-sm"
+                className="absolute top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full border border-white/80 bg-surface-1"
                 style={{ left: `${dot.percent}%`, transform: 'translate(-50%, -50%)' }}
               />
             ))}
           </div>
-          <div className="flex items-center justify-between text-xs text-muted md:text-sm">
-            <span className="hw-money">{formatCurrency(goal.saved_amount)} terkumpul</span>
-            <span className="hw-money">{formatCurrency(goal.target_amount)} target</span>
+        </section>
+
+        <section className="grid grid-cols-2 gap-2 text-xs md:text-sm">
+          <div className="rounded-2xl border border-white/10 bg-surface-2/55 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.13em] text-white/50">Terkumpul</p>
+            <p className="mt-1 font-semibold text-emerald-300 hw-money">{formatCurrency(goal.saved_amount)}</p>
           </div>
-          {nextMilestone ? (
-            <div className="rounded-xl bg-surface-2/70 px-3 py-1 text-xs font-semibold text-muted md:text-sm">
-              <span className="hw-money">Next milestone {formatCurrency(nextMilestone.amount)}</span>
-            </div>
+          <div className="rounded-2xl border border-white/10 bg-surface-2/55 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.13em] text-white/50">Sisa</p>
+            <p className="mt-1 font-semibold text-sky-300 hw-money">{formatCurrency(remaining)}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-surface-2/55 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.13em] text-white/50">Target</p>
+            <p className="mt-1 font-semibold text-text hw-money">{formatCurrency(goal.target_amount)}</p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-surface-2/55 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-[0.13em] text-white/50">Deadline</p>
+            <p className="mt-1 flex items-center gap-1.5 font-medium text-text">
+              <CalendarDays className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
+              {goal.due_date ? dateFormatter.format(new Date(goal.due_date)) : '—'}
+            </p>
+            {overdue ? (
+              <span className="mt-1 inline-flex items-center rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
+                Lewat jatuh tempo
+              </span>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="grid gap-2 text-xs sm:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-surface-2/45 px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.13em] text-white/50">Next milestone</p>
+            <p className="mt-1 text-sm font-medium text-text hw-money">
+              {nextMilestone ? formatCurrency(nextMilestone.amount) : 'Semua tercapai'}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-surface-2/45 px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.13em] text-white/50">Estimasi / hari</p>
+            <p className="mt-1 text-sm font-medium text-text hw-money">
+              {dailySuggestion != null ? `${formatCurrency(dailySuggestion)} / hari` : '—'}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-surface-2/45 px-3 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.13em] text-white/50">Estimasi / minggu</p>
+            <p className="mt-1 text-sm font-medium text-text hw-money">
+              {weeklySuggestion != null ? `${formatCurrency(weeklySuggestion)} / minggu` : '—'}
+            </p>
+          </div>
+        </section>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-white/10 bg-surface-2/35 px-3 py-2 text-xs text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <Flag className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
+            Rata-rata saat ini: <span className="font-medium text-text hw-money">{formatCurrency(averagePerDay)} / hari</span>
+          </span>
+          {daysLeft != null ? (
+            <span className="inline-flex items-center rounded-full border border-white/10 px-2 py-0.5 text-[11px] font-medium text-text">
+              {daysLeft >= 0 ? `${daysLeft} hari lagi` : `${Math.abs(daysLeft)} hari lewat`}
+            </span>
           ) : null}
         </div>
 
-        <div className="min-w-0 space-y-4 md:order-2">
-          <div className="space-y-3">
-            <span className="text-xs font-semibold uppercase tracking-wide text-white/60">Ringkasan</span>
-            <dl className="grid grid-cols-2 gap-3 text-sm text-text sm:grid-cols-4 md:grid-cols-2">
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Target</dt>
-                <dd className="font-medium hw-money">{formatCurrency(goal.target_amount)}</dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Terkumpul</dt>
-                <dd className="font-medium text-emerald-500 dark:text-emerald-300">
-                  <span className="hw-money">{formatCurrency(goal.saved_amount)}</span>
-                </dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Sisa</dt>
-                <dd className="font-medium text-sky-500 dark:text-sky-300">
-                  <span className="hw-money">{formatCurrency(remaining)}</span>
-                </dd>
-              </div>
-              <div className="space-y-1">
-                <dt className="text-xs uppercase tracking-wide text-white/60">Deadline</dt>
-                <dd className="flex items-center gap-1 text-sm">
-                  <CalendarDays className="h-4 w-4 text-muted" aria-hidden="true" />
-                  {goal.due_date ? dateFormatter.format(new Date(goal.due_date)) : '—'}
-                </dd>
-                {overdue ? (
-                  <span className="inline-flex items-center rounded-full bg-rose-500/20 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-rose-500">
-                    Lewat jatuh tempo
-                  </span>
-                ) : null}
-              </div>
-            </dl>
-          </div>
-
-          {dailySuggestion != null ? (
-            <div className="flex flex-wrap gap-3 text-sm">
-              <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
-                <Flag className="h-4 w-4" aria-hidden="true" />
-                <span className="hw-money">{formatCurrency(dailySuggestion)} / hari</span>
-              </span>
-              {weeklySuggestion ? (
-                <span className="inline-flex items-center gap-1 rounded-xl bg-brand/10 px-3 py-1 font-medium text-brand md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
-                  <PiggyBank className="h-4 w-4" aria-hidden="true" />
-                  <span className="hw-money">{formatCurrency(weeklySuggestion)} / minggu</span>
-                </span>
-              ) : null}
-              <span className="inline-flex items-center gap-1 rounded-xl bg-surface-2/70 px-3 py-1 font-medium text-muted md:gap-2 md:border md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm md:text-text">
-                <span className="hw-money">Rata-rata saat ini: {formatCurrency(averagePerDay)} / hari</span>
-              </span>
+        {onQuickAdd && goal.status === 'active' ? (
+          <div className="rounded-2xl border border-white/10 bg-surface-2/35 p-2.5">
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.13em] text-white/50">
+              <PiggyBank className="h-3.5 w-3.5" aria-hidden="true" />
+              Tambah cepat
             </div>
-          ) : null}
-          {onQuickAdd && goal.status === 'active' ? (
-            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-muted md:flex-wrap md:gap-2">
-              <span className="text-[11px] uppercase tracking-wide text-muted md:text-xs md:text-white/60">
-                Tambah cepat
-              </span>
+            <div className="flex flex-wrap gap-2">
               {quickAddOptions.map((amount) => {
                 const key = `${goal.id}-${amount}`;
                 return (
@@ -266,7 +262,7 @@ export default function GoalCard({
                     type="button"
                     onClick={() => onQuickAdd(goal, amount)}
                     disabled={quickAddLoadingKey === key}
-                    className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-surface-1 px-3 py-1 text-xs font-semibold text-text transition hover:bg-border/60 disabled:cursor-not-allowed disabled:opacity-60 md:rounded-xl md:border-white/10 md:bg-white/5 md:px-3 md:py-2 md:text-sm"
+                    className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-surface-1/90 px-3 py-1.5 text-xs font-semibold text-text transition hover:border-brand/40 hover:bg-brand/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <PiggyBank className="h-3 w-3" aria-hidden="true" />
                     <span className="hw-money">{formatCurrency(amount)}</span>
@@ -274,15 +270,15 @@ export default function GoalCard({
                 );
               })}
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
 
-      <footer className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end md:flex-nowrap md:justify-end md:gap-3">
+      <footer className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <button
           type="button"
           onClick={() => onEdit(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-surface-2/50 px-3 text-xs font-medium text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
         >
           <Pencil className="h-4 w-4" aria-hidden="true" />
           Edit
@@ -290,7 +286,7 @@ export default function GoalCard({
         <button
           type="button"
           onClick={() => onOpenEntries(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-brand px-4 text-sm font-semibold text-brand-foreground shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-brand px-3 text-xs font-semibold text-brand-foreground shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
         >
           <ListPlus className="h-4 w-4" aria-hidden="true" />
           Setoran & Riwayat
@@ -299,7 +295,7 @@ export default function GoalCard({
           type="button"
           onClick={() => onToggleArchive(goal)}
           disabled={Boolean(archiveLoading)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl border border-border bg-surface-1 px-4 text-sm font-medium text-text transition hover:bg-border/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60 md:h-[34px] md:px-3 md:text-xs"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-surface-2/50 px-3 text-xs font-medium text-text transition hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Archive className="h-4 w-4" aria-hidden="true" />
           {archiveLabel}
@@ -307,7 +303,7 @@ export default function GoalCard({
         <button
           type="button"
           onClick={() => onDelete(goal)}
-          className="inline-flex h-[38px] items-center justify-center gap-2 rounded-xl bg-danger px-4 text-sm font-semibold text-white shadow transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-danger/90 px-3 text-xs font-semibold text-white shadow-sm transition hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
         >
           <Trash2 className="h-4 w-4" aria-hidden="true" />
           Hapus
