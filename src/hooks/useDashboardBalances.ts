@@ -543,13 +543,7 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
         if (transactionsError) throw transactionsError
 
         const accounts = (accountsData ?? []) as AccountRow[]
-        const transactions = ((transactionsData ?? []) as TransactionRow[]).map((tx) => {
-          if (tx.type === "transfer") return tx
-          return {
-            ...tx,
-            to_account_id: null,
-          }
-        })
+        const transactions = (transactionsData ?? []) as TransactionRow[]
 
         const computed = buildMetrics({
           transactions,
