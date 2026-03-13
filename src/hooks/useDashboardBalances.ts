@@ -173,7 +173,7 @@ function sanitizeRange(range: DashboardRange): DashboardRange {
 }
 
 function isTransfer(tx: TransactionRow): boolean {
-  return tx.type === "transfer" || (tx.to_account_id !== null && tx.to_account_id !== undefined)
+  return tx.type === "transfer"
 }
 
 function withinRange(tx: TransactionRow, range: DashboardRange): boolean {
