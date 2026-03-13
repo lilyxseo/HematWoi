@@ -292,6 +292,11 @@ export function mapTransactionRow(tx = {}) {
     tx.label ??
     null;
 
+  const deletedMarker =
+    tx.deleted_at ??
+    tx.deletedAt ??
+    (typeof tx.deleted === "boolean" ? (tx.deleted ? "1" : null) : tx.deleted ?? null);
+
   return {
     id: tx.id,
     user_id: tx.user_id ?? null,
@@ -314,7 +319,7 @@ export function mapTransactionRow(tx = {}) {
     receipt_url: tx.receipt_url ?? null,
     parent_id: tx.parent_id ?? null,
     transfer_group_id: tx.transfer_group_id ?? null,
-    deleted_at: tx.deleted_at ?? null,
+    deleted_at: deletedMarker,
     rev: tx.rev ?? null,
     updated_at: tx.updated_at ?? null,
     inserted_at: insertedAt,
@@ -322,12 +327,22 @@ export function mapTransactionRow(tx = {}) {
   };
 }
 
+function hasDeletedMarker(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    return !["", "0", "false", "null", "undefined"].includes(normalized);
+  }
+  return Boolean(value);
+}
+
 function filterTransactionsOffline(rows = [], filters = {}, userId) {
   const normalized = normalizeTransactionFilters(filters);
   const range = resolveDateRange(normalized);
   let list = rows
     .map(mapTransactionRow)
-    .filter((row) => !row.deleted_at);
+    .filter((row) => !hasDeletedMarker(row.deleted_at));
 
   if (userId) {
     list = list.filter((row) => !row.user_id || row.user_id === userId);
