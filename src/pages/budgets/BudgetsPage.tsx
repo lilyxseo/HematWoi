@@ -49,7 +49,7 @@ const TABS = [
 type TabValue = (typeof TABS)[number]['value'];
 
 type ViewTransactionsParams = {
-  categoryId?: string | null;
+  categoryIds?: string[];
   categoryType?: 'income' | 'expense' | null;
   range: 'month' | 'custom';
   month?: string;
@@ -81,6 +81,7 @@ function isoToPeriod(isoDate: string | null | undefined): string {
 
 const DEFAULT_MONTHLY_FORM: BudgetFormValues = {
   period: getCurrentPeriod(),
+  name: '',
   category_ids: [],
   amount_planned: 0,
   carryover_enabled: false,
@@ -275,6 +276,7 @@ export default function BudgetsPage() {
     if (editingMonthly) {
       return {
         period: isoToPeriod(editingMonthly.period_month),
+        name: editingMonthly.name ?? '',
         category_ids:
           editingMonthly.category_ids.length > 0
             ? editingMonthly.category_ids
@@ -566,7 +568,7 @@ export default function BudgetsPage() {
   });
 
   const handleDeleteMonthly = async (row: BudgetWithSpent) => {
-    const confirmed = window.confirm(`Hapus anggaran untuk ${row.category?.name ?? 'kategori ini'}?`);
+    const confirmed = window.confirm(`Hapus anggaran "${row.name || row.category?.name || 'Tanpa nama'}"?`);
     if (!confirmed) return;
     try {
       setSubmittingMonthly(true);
@@ -596,7 +598,10 @@ export default function BudgetsPage() {
   const handleToggleCarryover = async (row: BudgetWithSpent, carryover: boolean) => {
     try {
       await upsertBudget({
+        id: row.id,
+        name: row.name,
         category_id: row.category_id,
+        category_ids: row.category_ids,
         period: isoToPeriod(row.period_month),
         amount_planned: Number(row.amount_planned ?? 0),
         carryover_enabled: carryover,
@@ -630,6 +635,8 @@ export default function BudgetsPage() {
     try {
       setSubmittingMonthly(true);
       await upsertBudget({
+        id: editingMonthly?.id,
+        name: values.name,
         category_id: values.category_ids[0],
         category_ids: values.category_ids,
         period: values.period,
@@ -673,7 +680,7 @@ export default function BudgetsPage() {
   };
 
   const handleViewTransactions = ({
-    categoryId,
+    categoryIds,
     categoryType,
     range,
     month: monthParam,
@@ -694,8 +701,8 @@ export default function BudgetsPage() {
       params.delete('month');
     }
 
-    if (categoryId) {
-      params.set('categories', categoryId);
+    if (categoryIds && categoryIds.length > 0) {
+      params.set('categories', categoryIds.join(','));
     }
 
     if (categoryType === 'income' || categoryType === 'expense') {
@@ -839,7 +846,11 @@ export default function BudgetsPage() {
             onToggleCarryover={handleToggleCarryover}
             onViewTransactions={(row) =>
               handleViewTransactions({
-                categoryId: row.category_id,
+                categoryIds: row.category_ids.length > 0
+                  ? row.category_ids
+                  : row.category_id
+                  ? [row.category_id]
+                  : [],
                 categoryType: row.category?.type ?? null,
                 range: 'month',
                 month: row.period_month?.slice(0, 7) ?? period,
@@ -859,7 +870,7 @@ export default function BudgetsPage() {
             onDelete={handleDeleteWeekly}
             onViewTransactions={(row) =>
               handleViewTransactions({
-                categoryId: row.category_id,
+                categoryIds: row.category_id ? [row.category_id] : [],
                 categoryType: row.category?.type ?? null,
                 range: 'custom',
                 start: row.week_start,

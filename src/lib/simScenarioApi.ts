@@ -456,6 +456,7 @@ export async function applyScenario(
       const amount = clampBudget(category.baselineMonthly + category.deltaMonthly);
       monthlyUpdates.push(
         upsertBudget({
+          name: baselineCategory?.categoryName ?? category.categoryName,
           category_id: category.categoryId,
           period,
           amount_planned: amount,
@@ -496,4 +497,3 @@ export async function applyScenario(
 }
 
 export type { BaselineData, ProjectionMethod, SimulationOptions, SimulationResult };
-

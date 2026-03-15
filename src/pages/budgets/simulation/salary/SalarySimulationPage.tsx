@@ -510,6 +510,8 @@ export default function SalarySimulationPage() {
         items.map((item) => {
           const existing = budgetMap.get(item.categoryId);
           return upsertBudget({
+            id: existing?.id,
+            name: existing?.name?.trim() || item.categoryName,
             category_id: item.categoryId,
             period,
             amount_planned: item.amount,
