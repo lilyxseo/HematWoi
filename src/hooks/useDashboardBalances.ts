@@ -421,13 +421,12 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
     safeAccounts,
     normalizedRange.end || undefined,
   )
-  const snapshotIncludingUpcoming = computeAccountBalances(safeTransactions, safeAccounts)
   const comparisonSnapshot = computeAccountBalances(
     safeTransactions,
     safeAccounts,
     comparisonRange.end || undefined,
   )
-  const { cashBalance, nonCashBalance, totalBalance } = snapshotIncludingUpcoming
+  const { cashBalance, nonCashBalance, totalBalance } = snapshotAtRangeEnd
 
   let runningBalance = baselineSnapshot.totalBalance
   let balanceTrend = activeDays.map((day) => {
@@ -435,20 +434,6 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
     runningBalance += delta
     return runningBalance
   })
-
-  const todaysBalance = balanceTrend.length
-    ? balanceTrend[balanceTrend.length - 1]
-    : snapshotAtRangeEnd.totalBalance
-  const upcomingAdjustment = snapshotIncludingUpcoming.totalBalance - todaysBalance
-  if (Math.abs(upcomingAdjustment) > 0.000_1) {
-    if (balanceTrend.length) {
-      const nextTrend = balanceTrend.slice()
-      nextTrend[nextTrend.length - 1] = todaysBalance + upcomingAdjustment
-      balanceTrend = nextTrend
-    } else {
-      balanceTrend = [snapshotIncludingUpcoming.totalBalance]
-    }
-  }
 
   const incomeMoM = percentageChange(income, comparisonIncome)
   const expenseMoM = percentageChange(expense, comparisonExpense)
@@ -460,7 +445,7 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
     cashBalance,
     nonCashBalance,
     totalBalance,
-    accountBalances: snapshotIncludingUpcoming.accountBalances,
+    accountBalances: snapshotAtRangeEnd.accountBalances,
     incomeTrend,
     expenseTrend,
     balanceTrend,
