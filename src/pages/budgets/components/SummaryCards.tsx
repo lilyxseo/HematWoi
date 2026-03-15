@@ -10,12 +10,12 @@ interface SummaryCardsProps {
 
 function SummarySkeleton() {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface/70 p-5 shadow-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-surface/70 p-3.5 shadow-sm">
       <div className="absolute inset-0 bg-gradient-to-br from-white/70 via-white/40 to-white/10 opacity-80 dark:from-zinc-900/80 dark:via-zinc-900/50 dark:to-zinc-900/20" />
-      <div className="relative flex h-full flex-col gap-4">
-        <div className="h-3 w-24 animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-700/60" />
-        <div className="h-7 w-24 animate-pulse rounded-full bg-zinc-200/80 dark:bg-zinc-700/70" />
-        <div className="mt-auto h-2 w-full animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-800/60" />
+      <div className="relative flex h-full flex-col gap-3">
+        <div className="h-2.5 w-20 animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-700/60" />
+        <div className="h-6 w-20 animate-pulse rounded-full bg-zinc-200/80 dark:bg-zinc-700/70" />
+        <div className="h-2 w-24 animate-pulse rounded-full bg-zinc-200/70 dark:bg-zinc-800/60" />
       </div>
     </div>
   );
@@ -91,7 +91,7 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
         <div
           key={label}
           className={clsx(
-            'relative overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-5 shadow-[0_20px_35px_-20px_rgba(15,23,42,0.45)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_28px_55px_-28px_rgba(15,23,42,0.55)]',
+            'relative overflow-hidden rounded-2xl border border-border/60 bg-surface/80 p-3.5 shadow-[0_20px_35px_-20px_rgba(15,23,42,0.45)] transition duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_28px_55px_-28px_rgba(15,23,42,0.55)]',
             'backdrop-blur supports-[backdrop-filter]:bg-surface/60',
           )}
         >
@@ -101,44 +101,41 @@ export default function SummaryCards({ summary, loading }: SummaryCardsProps) {
             style={{ background: `radial-gradient(circle at center, ${glow} 0%, rgba(255,255,255,0) 70%)` }}
           />
 
-          <div className="relative flex h-full flex-col gap-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-muted">{label}</p>
-                <p className="text-xs text-muted/80 dark:text-muted/60">{description}</p>
+          <div className="relative flex h-full flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <p className="text-[0.64rem] font-semibold uppercase tracking-[0.15em] text-muted">{label}</p>
+                <p className="text-[0.68rem] text-muted/75 dark:text-muted/60 line-clamp-1">{description}</p>
               </div>
               <span
                 className={clsx(
-                  'flex h-10 w-10 items-center justify-center rounded-xl shadow-inner ring-1 ring-inset ring-border/40 dark:ring-white/10',
+                  'flex h-8 w-8 items-center justify-center rounded-lg shadow-inner ring-1 ring-inset ring-border/40 dark:ring-white/10',
                   iconBg,
                 )}
               >
-                <Icon className={clsx('h-5 w-5', accent)} />
+                <Icon className={clsx('h-4 w-4', accent)} />
               </span>
             </div>
 
-            <span className="text-2xl font-semibold text-text dark:text-white">{value}</span>
+            <div className="flex items-end justify-between gap-3">
+              <span className="text-xl font-semibold leading-tight text-text dark:text-white">{value}</span>
+
+              {typeof cardProgress === 'number' ? (
+                <span className="rounded-md bg-white/55 px-2 py-1 text-xs font-semibold text-text shadow-sm dark:bg-zinc-900/60 dark:text-white">
+                  {(cardProgress * 100).toFixed(0)}%
+                </span>
+              ) : null}
+            </div>
 
             {typeof cardProgress === 'number' ? (
-              <div className="mt-auto flex items-end justify-between gap-4">
-                <div className="flex flex-col gap-1 text-xs text-muted">
-                  <span className="font-semibold text-text">Tingkat penggunaan</span>
-                  <span>{(cardProgress * 100).toFixed(0)}% dari total anggaran</span>
-                </div>
-                <div className="relative flex h-16 w-16 items-center justify-center">
-                  <div
-                    className="absolute inset-0 rounded-full opacity-80"
-                    style={{ background: `radial-gradient(circle at center, ${glow} 0%, rgba(255,255,255,0) 72%)` }}
-                  />
-                  <div
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: `conic-gradient(${accentColor ?? glow} ${cardProgress * 360}deg, rgba(148,163,184,0.25) 0deg)`,
-                    }}
-                  />
-                  <div className="absolute inset-[6px] rounded-full border border-white/50 bg-gradient-to-br from-white/90 to-white/70 shadow-inner dark:border-white/10 dark:from-zinc-900/90 dark:to-zinc-900/60" />
-                  <span className="relative text-sm font-semibold text-text dark:text-white">{(cardProgress * 100).toFixed(0)}%</span>
-                </div>
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/70 dark:bg-slate-700/60">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${cardProgress * 100}%`,
+                    background: `linear-gradient(90deg, ${accentColor ?? glow} 0%, ${accentColor ?? glow}CC 100%)`,
+                  }}
+                />
               </div>
             ) : null}
           </div>
