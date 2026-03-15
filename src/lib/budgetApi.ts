@@ -111,6 +111,7 @@ interface RawBudgetCategory {
 interface RawBudgetRow {
   id: string;
   user_id: string;
+  name?: string | null;
   category_id?: string | null;
   amount_planned?: number | string | null;
   planned?: number | string | null;
@@ -195,6 +196,7 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
   return {
     id: String(row.id) as UUID,
     user_id: String(row.user_id) as UUID,
+    name: String(row.name ?? '').trim(),
     category_id: categoryId,
     category_ids: categoryId ? [categoryId] : [],
     amount_planned: Number(resolvedAmount),
@@ -363,6 +365,7 @@ function mergeExpenseCategoriesWithFallback(
 export interface BudgetRow {
   id: UUID;
   user_id: UUID;
+  name: string;
   category_id: Nullable<UUID>;
   category_ids: UUID[];
   amount_planned: number;
@@ -457,6 +460,7 @@ export interface HighlightBudgetSelection {
 
 export interface UpsertBudgetInput {
   id?: UUID;
+  name: string;
   category_id?: UUID;
   category_ids?: UUID[];
   period: string; // YYYY-MM
@@ -926,6 +930,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
   const results = await Promise.allSettled(
     toCarryOver.map((row) =>
       upsertBudget({
+        name: row.name,
         category_id: row.category_id as string,
         category_ids: row.category_ids,
         period,
@@ -1348,9 +1353,65 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
   const normalizedCategoryIds = Array.from(
     new Set((input.category_ids ?? (input.category_id ? [input.category_id] : [])).filter(Boolean))
   );
+  const normalizedName = String(input.name ?? '').trim();
+  if (!normalizedName) {
+    throw new Error('Nama budget wajib diisi');
+  }
   const primaryCategoryId = normalizedCategoryIds[0] ?? input.category_id;
   if (!primaryCategoryId) {
     throw new Error('Kategori wajib dipilih');
+  }
+
+  if (input.id) {
+    const { data, error } = await supabase
+      .from('budgets')
+      .update({
+        name: normalizedName,
+        category_id: primaryCategoryId,
+        period_month: toMonthStart(input.period),
+        amount_planned: Number(input.amount_planned ?? 0),
+        carryover_enabled: Boolean(input.carryover_enabled),
+        notes: input.notes ?? null,
+      })
+      .eq('user_id', userId)
+      .eq('id', input.id)
+      .select('*, category:categories(id,name,type)')
+      .single();
+
+    if (error) {
+      throw new Error(error.message || 'Gagal menyimpan anggaran');
+    }
+
+    const normalized = normalizeBudgetRow(data as RawBudgetRow);
+
+    const payloadLinks = normalizedCategoryIds.map((categoryId) => ({
+      budget_id: normalized.id,
+      category_id: categoryId,
+      user_id: normalized.user_id,
+    }));
+
+    const { error: upsertLinksError } = await supabase
+      .from('budget_categories')
+      .upsert(payloadLinks, { onConflict: 'budget_id,category_id' });
+
+    if (upsertLinksError) {
+      const msg = (upsertLinksError.message ?? '').toLowerCase();
+      if (!(upsertLinksError.code === '42P01' || msg.includes('budget_categories'))) {
+        throw upsertLinksError;
+      }
+      return normalized;
+    }
+
+    const { error: deleteLinksError } = await supabase
+      .from('budget_categories')
+      .delete()
+      .eq('budget_id', normalized.id)
+      .not('category_id', 'in', `(${normalizedCategoryIds.map((id) => `"${id}"`).join(',')})`);
+
+    if (deleteLinksError) throw deleteLinksError;
+
+    const [withCategories] = await attachBudgetCategories([normalized]);
+    return withCategories;
   }
 
   const payload = {
@@ -1385,6 +1446,18 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
   }
 
   const normalized = normalizeBudgetRow(data as RawBudgetRow);
+
+  const { error: updateNameError } = await supabase
+    .from('budgets')
+    .update({ name: normalizedName })
+    .eq('user_id', normalized.user_id)
+    .eq('id', normalized.id);
+
+  if (updateNameError) {
+    throw updateNameError;
+  }
+
+  normalized.name = normalizedName;
 
   if (normalizedCategoryIds.length === 0) {
     return normalized;
