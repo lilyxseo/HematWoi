@@ -111,6 +111,7 @@ interface RawBudgetCategory {
 interface RawBudgetRow {
   id: string;
   user_id: string;
+  name?: string | null;
   category_id?: string | null;
   amount_planned?: number | string | null;
   planned?: number | string | null;
@@ -187,6 +188,8 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
   }
 
   const categoryId = row.category_id ? (String(row.category_id) as UUID) : null;
+  const categoryFallbackName = category?.name?.trim() ?? '';
+  const normalizedName = String(row.name ?? '').trim() || categoryFallbackName || 'Budget Tanpa Nama';
 
   const createdAt = row.created_at ? String(row.created_at) : new Date().toISOString();
   const updatedAtBase = row.updated_at ?? row.created_at;
@@ -195,6 +198,7 @@ function normalizeBudgetRow(row: RawBudgetRow): BudgetRow {
   return {
     id: String(row.id) as UUID,
     user_id: String(row.user_id) as UUID,
+    name: normalizedName,
     category_id: categoryId,
     category_ids: categoryId ? [categoryId] : [],
     amount_planned: Number(resolvedAmount),
@@ -363,6 +367,7 @@ function mergeExpenseCategoriesWithFallback(
 export interface BudgetRow {
   id: UUID;
   user_id: UUID;
+  name: string;
   category_id: Nullable<UUID>;
   category_ids: UUID[];
   amount_planned: number;
@@ -457,6 +462,7 @@ export interface HighlightBudgetSelection {
 
 export interface UpsertBudgetInput {
   id?: UUID;
+  name?: string;
   category_id?: UUID;
   category_ids?: UUID[];
   period: string; // YYYY-MM
@@ -706,7 +712,8 @@ async function ensureWeeklyCarryover(
       });
 
       toInsert.push({
-        category_id: categoryId,
+        name: normalizedName,
+    category_id: categoryId,
         week_start: nextWeekStart,
         planned_amount: budget.planned_amount,
         carryover_enabled: budget.carryover_enabled,
@@ -926,6 +933,7 @@ export async function listBudgets(period: string): Promise<BudgetRow[]> {
   const results = await Promise.allSettled(
     toCarryOver.map((row) =>
       upsertBudget({
+        name: row.name,
         category_id: row.category_id as string,
         category_ids: row.category_ids,
         period,
@@ -1345,6 +1353,8 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
     throw error;
   }
 
+  const normalizedName = input.name?.trim() || 'Budget Tanpa Nama';
+
   const normalizedCategoryIds = Array.from(
     new Set((input.category_ids ?? (input.category_id ? [input.category_id] : [])).filter(Boolean))
   );
@@ -1354,6 +1364,8 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
   }
 
   const payload = {
+    p_budget_id: input.id ?? null,
+    p_name: normalizedName,
     p_category_id: primaryCategoryId,
     p_month: toMonthStart(input.period),
     p_amount: Number(input.amount_planned ?? 0),
@@ -1375,7 +1387,7 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
     }
     const msg = (error.message || '').toLowerCase();
     if (error.code === '404' || msg.includes('bud_monthly_upsert') || msg.includes('bud_upsert')) {
-      throw new Error('Fungsi bud_monthly_upsert belum tersedia, jalankan migrasi SQL di server');
+      throw new Error('Fungsi bud_monthly_upsert belum tersedia/terbarui, jalankan migrasi SQL di server');
     }
     throw new Error(error.message || 'Gagal menyimpan anggaran');
   }

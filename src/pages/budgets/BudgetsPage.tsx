@@ -49,6 +49,7 @@ const TABS = [
 type TabValue = (typeof TABS)[number]['value'];
 
 type ViewTransactionsParams = {
+  categoryIds?: string[];
   categoryId?: string | null;
   categoryType?: 'income' | 'expense' | null;
   range: 'month' | 'custom';
@@ -81,6 +82,7 @@ function isoToPeriod(isoDate: string | null | undefined): string {
 
 const DEFAULT_MONTHLY_FORM: BudgetFormValues = {
   period: getCurrentPeriod(),
+  name: '',
   category_ids: [],
   amount_planned: 0,
   carryover_enabled: false,
@@ -275,6 +277,7 @@ export default function BudgetsPage() {
     if (editingMonthly) {
       return {
         period: isoToPeriod(editingMonthly.period_month),
+        name: editingMonthly.name ?? '',
         category_ids:
           editingMonthly.category_ids.length > 0
             ? editingMonthly.category_ids
@@ -566,7 +569,7 @@ export default function BudgetsPage() {
   });
 
   const handleDeleteMonthly = async (row: BudgetWithSpent) => {
-    const confirmed = window.confirm(`Hapus anggaran untuk ${row.category?.name ?? 'kategori ini'}?`);
+    const confirmed = window.confirm(`Hapus budget ${row.name}?`);
     if (!confirmed) return;
     try {
       setSubmittingMonthly(true);
@@ -596,6 +599,8 @@ export default function BudgetsPage() {
   const handleToggleCarryover = async (row: BudgetWithSpent, carryover: boolean) => {
     try {
       await upsertBudget({
+        id: row.id,
+        name: row.name,
         category_id: row.category_id,
         period: isoToPeriod(row.period_month),
         amount_planned: Number(row.amount_planned ?? 0),
@@ -630,6 +635,8 @@ export default function BudgetsPage() {
     try {
       setSubmittingMonthly(true);
       await upsertBudget({
+        id: editingMonthly?.id,
+        name: values.name,
         category_id: values.category_ids[0],
         category_ids: values.category_ids,
         period: values.period,
@@ -673,6 +680,7 @@ export default function BudgetsPage() {
   };
 
   const handleViewTransactions = ({
+    categoryIds,
     categoryId,
     categoryType,
     range,
@@ -694,8 +702,11 @@ export default function BudgetsPage() {
       params.delete('month');
     }
 
-    if (categoryId) {
-      params.set('categories', categoryId);
+    const mergedCategoryIds = [...(categoryIds ?? []), ...(categoryId ? [categoryId] : [])].filter(Boolean);
+
+    if (mergedCategoryIds.length > 0) {
+      const uniqueCategoryIds = Array.from(new Set(mergedCategoryIds));
+      params.set('categories', uniqueCategoryIds.join(','));
     }
 
     if (categoryType === 'income' || categoryType === 'expense') {
@@ -839,13 +850,14 @@ export default function BudgetsPage() {
             onToggleCarryover={handleToggleCarryover}
             onViewTransactions={(row) =>
               handleViewTransactions({
+                categoryIds: row.category_ids,
                 categoryId: row.category_id,
                 categoryType: row.category?.type ?? null,
                 range: 'month',
                 month: row.period_month?.slice(0, 7) ?? period,
               })
             }
-            onToggleHighlight={(row) => handleToggleHighlight('monthly', String(row.id), row.category_id)}
+            onToggleHighlight={(row) => handleToggleHighlight('monthly', String(row.id), row.category_ids[0] ?? row.category_id)}
           />
         </Section>
       ) : (
