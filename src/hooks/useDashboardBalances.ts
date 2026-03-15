@@ -20,6 +20,8 @@ type TransactionRow = {
   user_id: string
   account_id: string | null
   to_account_id: string | null
+  parent_id?: string | null
+  transfer_group_id?: string | null
   type: "income" | "expense" | "transfer"
   amount: number
   date: string
@@ -172,8 +174,13 @@ function sanitizeRange(range: DashboardRange): DashboardRange {
   return range
 }
 
-function isTransfer(tx: TransactionRow): boolean {
-  return tx.type === "transfer"
+function hasTruthyId(value: string | null | undefined): boolean {
+  return typeof value === "string" ? value.trim().length > 0 : false
+}
+
+function isTransferLike(tx: TransactionRow): boolean {
+  if (tx.type === "transfer") return true
+  return hasTruthyId(tx.parent_id) || hasTruthyId(tx.transfer_group_id)
 }
 
 function withinRange(tx: TransactionRow, range: DashboardRange): boolean {
@@ -267,7 +274,7 @@ function computeAccountBalances(
     const accountId = tx.account_id ?? undefined
     const toAccountId = tx.to_account_id ?? undefined
 
-    if (isTransfer(tx)) {
+    if (isTransferLike(tx)) {
       if (accountId) {
         perAccount.set(accountId, (perAccount.get(accountId) ?? 0) - amount)
       }
@@ -367,7 +374,7 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
   let income = 0
   let expense = 0
   for (const tx of rangeTransactions) {
-    if (isTransfer(tx)) continue
+    if (isTransferLike(tx)) continue
     const amount = asNumber(tx.amount)
     if (!amount) continue
     if (tx.type === "income") income += amount
@@ -380,7 +387,7 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
   let comparisonIncome = 0
   let comparisonExpense = 0
   for (const tx of comparisonTransactions) {
-    if (isTransfer(tx)) continue
+    if (isTransferLike(tx)) continue
     const amount = asNumber(tx.amount)
     if (!amount) continue
     if (tx.type === "income") comparisonIncome += amount
@@ -390,7 +397,7 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
   const dailyIncome = new Map<string, number>()
   const dailyExpense = new Map<string, number>()
   for (const tx of rangeTransactions) {
-    if (isTransfer(tx)) continue
+    if (isTransferLike(tx)) continue
     const txDate = (tx.date ?? "").slice(0, 10)
     if (!txDate) continue
     const amount = asNumber(tx.amount)
@@ -470,6 +477,11 @@ function buildMetrics({ transactions, accounts, range, preset }: BuildMetricsArg
   }
 }
 
+export const __dashboardBalanceInternals = {
+  isTransferLike,
+  buildMetrics,
+}
+
 function asNumber(value: number | string | null | undefined): number {
   if (typeof value === "number") return value
   if (typeof value === "string") {
@@ -482,6 +494,41 @@ function asNumber(value: number | string | null | undefined): number {
 function mapError(error: PostgrestError | Error): Error {
   if (error instanceof Error) return error
   return new Error(error.message)
+}
+
+const DASHBOARD_TRANSACTIONS_PAGE_SIZE = 1000
+
+async function fetchDashboardTransactions(uid: string): Promise<TransactionRow[]> {
+  let from = 0
+  const rows: TransactionRow[] = []
+
+  while (true) {
+    const to = from + DASHBOARD_TRANSACTIONS_PAGE_SIZE - 1
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id,user_id,account_id,to_account_id,parent_id,transfer_group_id,type,amount,date,deleted_at")
+      .eq("user_id", uid)
+      .is("deleted_at", null)
+      .order("date", { ascending: false })
+      .order("updated_at", { ascending: false, nullsLast: true })
+      .order("inserted_at", { ascending: false, nullsLast: true })
+      .range(from, to)
+
+    if (error) throw error
+    const chunk = (data ?? []) as TransactionRow[]
+    rows.push(...chunk)
+
+    if (chunk.length < DASHBOARD_TRANSACTIONS_PAGE_SIZE) {
+      break
+    }
+    from += DASHBOARD_TRANSACTIONS_PAGE_SIZE
+
+    if (from > 100_000) {
+      break
+    }
+  }
+
+  return rows
 }
 
 export function useDashboardBalances({ start, end }: DashboardRange, preset?: PeriodPreset) {
@@ -522,25 +569,16 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
           return
         }
 
-        const [{ data: accountsData, error: accountsError }, { data: transactionsData, error: transactionsError }] =
+        const [{ data: accountsData, error: accountsError }, transactionsData] =
           await Promise.all([
           supabase
             .from("accounts")
             .select("id,type")
             .eq("user_id", uid),
-            supabase
-              .from("transactions")
-              .select("id,user_id,account_id,to_account_id,type,amount,date,deleted_at")
-              .eq("user_id", uid)
-              .is("deleted_at", null)
-              .order("date", { ascending: false })
-              .order("updated_at", { ascending: false, nullsLast: true })
-              .order("inserted_at", { ascending: false, nullsLast: true })
-              .range(0, 4999),
+            fetchDashboardTransactions(uid),
           ])
 
         if (accountsError) throw accountsError
-        if (transactionsError) throw transactionsError
 
         const accounts = (accountsData ?? []) as AccountRow[]
         const transactions = (transactionsData ?? []) as TransactionRow[]
@@ -551,6 +589,31 @@ export function useDashboardBalances({ start, end }: DashboardRange, preset?: Pe
           range: currentRange,
           preset: currentPreset,
         })
+
+        if (import.meta.env.DEV) {
+          const inRange = transactions.filter((tx) => withinRange(tx, currentRange))
+          const included = inRange.filter((tx) => !isTransferLike(tx))
+          const debugIncome = sum(
+            included
+              .filter((tx) => tx.type === "income")
+              .map((tx) => asNumber(tx.amount)),
+          )
+          const debugExpense = sum(
+            included
+              .filter((tx) => tx.type === "expense")
+              .map((tx) => asNumber(tx.amount)),
+          )
+          console.debug("[dashboard:balance] recompute", {
+            fetchedTransactions: transactions.length,
+            inRangeTransactions: inRange.length,
+            countedTransactions: included.length,
+            skippedTransferLike: inRange.length - included.length,
+            incomeSubtotal: debugIncome,
+            expenseSubtotal: debugExpense,
+            finalBalance: computed.totalBalance,
+            range: currentRange,
+          })
+        }
 
         if (!mountedRef.current || requestId !== requestIdRef.current) return
         setMetrics(computed)
