@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
+      "@": path.resolve(projectRootDir, "src"),
       "lucide-react": path.resolve(
         projectRootDir,
         "src/lib/tabler-lucide-adapter.ts",
