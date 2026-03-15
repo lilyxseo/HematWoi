@@ -140,7 +140,8 @@ interface RawBudgetCategoryLinkRow {
 interface RawWeeklyBudgetRow {
   id: string;
   user_id: string;
-  category_id: string;
+  name?: string | null;
+  category_id?: string | null;
   amount_planned?: number | string | null;
   planned_amount?: number | string | null;
   carryover_enabled?: boolean | null;
@@ -150,6 +151,13 @@ interface RawWeeklyBudgetRow {
   week_start?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  category?: RawBudgetCategory | null;
+  categories?: RawBudgetCategory | null;
+}
+
+interface RawWeeklyBudgetCategoryLinkRow {
+  budget_weekly_id?: string | null;
+  category_id?: string | null;
   category?: RawBudgetCategory | null;
   categories?: RawBudgetCategory | null;
 }
@@ -293,10 +301,16 @@ function normalizeWeeklyBudgetRow(row: RawWeeklyBudgetRow): WeeklyBudgetRow {
   const updatedAtBase = row.updated_at ?? row.created_at;
   const updatedAt = updatedAtBase ? String(updatedAtBase) : createdAt;
 
+  const categoryId = row.category_id ? (String(row.category_id) as UUID) : null;
+  const categoryFallbackName = category?.name?.trim() ?? '';
+  const normalizedName = String(row.name ?? '').trim() || categoryFallbackName || 'Budget Tanpa Nama';
+
   return {
     id: String(row.id) as UUID,
     user_id: String(row.user_id) as UUID,
-    category_id: String(row.category_id) as UUID,
+    name: normalizedName,
+    category_id: categoryId,
+    category_ids: categoryId ? [categoryId] : [],
     amount_planned: Number(resolvedAmount),
     carryover_enabled: resolvedCarry,
     notes: normalizedNotes,
@@ -304,7 +318,53 @@ function normalizeWeeklyBudgetRow(row: RawWeeklyBudgetRow): WeeklyBudgetRow {
     created_at: createdAt,
     updated_at: updatedAt,
     category,
+    categories: category ? [category] : [],
   };
+}
+
+async function attachWeeklyBudgetCategories(rows: WeeklyBudgetRow[]): Promise<WeeklyBudgetRow[]> {
+  if (rows.length === 0) return rows;
+  const budgetIds = rows.map((row) => row.id);
+  const { data, error } = await supabase
+    .from('weekly_budget_categories')
+    .select('budget_weekly_id,category_id,category:categories(id,name,type)')
+    .in('budget_weekly_id', budgetIds);
+
+  if (error) {
+    const message = (error.message ?? '').toLowerCase();
+    if (error.code === '42P01' || message.includes('weekly_budget_categories')) {
+      return rows;
+    }
+    throw error;
+  }
+
+  const map = new Map<string, WeeklyBudgetRow['categories']>();
+  for (const link of (data ?? []) as RawWeeklyBudgetCategoryLinkRow[]) {
+    const budgetId = link.budget_weekly_id ? String(link.budget_weekly_id) : null;
+    const categoryId = link.category_id ? String(link.category_id) : null;
+    if (!budgetId || !categoryId) continue;
+    const raw = link.category ?? link.categories;
+    const list = map.get(budgetId) ?? [];
+    list.push({
+      id: categoryId,
+      name: String(raw?.name ?? 'Tanpa kategori'),
+      type: (raw?.type ?? raw?.category_type ?? null) as 'income' | 'expense' | null,
+    });
+    map.set(budgetId, list);
+  }
+
+  return rows.map((row) => {
+    const linked = map.get(String(row.id));
+    if (!linked || linked.length === 0) return row;
+    const categories = linked.filter((item, index, array) => array.findIndex((entry) => entry.id === item.id) === index);
+    return {
+      ...row,
+      category_ids: categories.map((item) => item.id as UUID),
+      category_id: categories[0]?.id ?? row.category_id,
+      category: categories[0] ?? row.category,
+      categories,
+    };
+  });
 }
 
 function mapCategoryRecordToExpense(category: {
@@ -408,7 +468,9 @@ export interface BudgetSummary {
 export interface WeeklyBudgetRow {
   id: UUID;
   user_id: UUID;
-  category_id: UUID;
+  name: string;
+  category_id: Nullable<UUID>;
+  category_ids: UUID[];
   amount_planned: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
@@ -420,6 +482,11 @@ export interface WeeklyBudgetRow {
     name: string;
     type?: 'income' | 'expense' | null;
   } | null;
+  categories: Array<{
+    id: UUID;
+    name: string;
+    type?: 'income' | 'expense' | null;
+  }>;
 }
 
 export interface WeeklyBudgetWithSpent extends WeeklyBudgetRow {
@@ -604,9 +671,11 @@ export function getWeeklyTransactionEndExclusive(period: string): string {
 }
 
 interface WeeklyCarryoverEntry {
-  planned_amount: number;
+  name: string;
+  amount_planned: number;
   carryover_enabled: boolean;
   notes: Nullable<string>;
+  category_ids: UUID[];
 }
 
 async function ensureWeeklyCarryover(
@@ -626,7 +695,7 @@ async function ensureWeeklyCarryover(
 
   const { data, error } = await supabase
     .from('budgets_weekly')
-    .select('category_id,planned_amount,carryover_enabled,notes,week_start')
+    .select('id,name,category_id,planned_amount,carryover_enabled,notes,week_start')
     .eq('user_id', userId)
     .gte('week_start', normalizedStart)
     .lt('week_start', rangeEnd)
@@ -634,35 +703,27 @@ async function ensureWeeklyCarryover(
 
   if (error) throw error;
 
+  const normalizedRows = (data ?? []).map((row) => normalizeWeeklyBudgetRow(row as RawWeeklyBudgetRow));
+  const withCategories = await attachWeeklyBudgetCategories(normalizedRows);
+
   const budgetsByWeek = new Map<string, Map<string, WeeklyCarryoverEntry>>();
 
-  for (const row of (data ?? []) as {
-    category_id: UUID | null;
-    planned_amount: number | null;
-    carryover_enabled: boolean | null;
-    notes: Nullable<string>;
-    week_start: string | null;
-  }[]) {
-    const categoryId = row.category_id ?? undefined;
-    const weekStartValue = row.week_start ?? undefined;
-    if (!categoryId || !weekStartValue) continue;
-
-    const normalizedWeekStart = getWeekStartForDate(parseIsoDate(weekStartValue));
+  for (const row of withCategories) {
+    if (!row.id || !row.week_start) continue;
+    const normalizedWeekStart = getWeekStartForDate(parseIsoDate(row.week_start));
     let currentWeekBudgets = budgetsByWeek.get(normalizedWeekStart);
     if (!currentWeekBudgets) {
       currentWeekBudgets = new Map();
       budgetsByWeek.set(normalizedWeekStart, currentWeekBudgets);
     }
 
-    const plannedAmount = Number(row.planned_amount ?? 0);
-    const carryoverEnabled = typeof row.carryover_enabled === 'boolean'
-      ? row.carryover_enabled
-      : Boolean(row.carryover_enabled);
-
-    currentWeekBudgets.set(categoryId, {
-      planned_amount: Number.isFinite(plannedAmount) ? plannedAmount : 0,
-      carryover_enabled: carryoverEnabled,
+    const plannedAmount = Number(row.amount_planned ?? 0);
+    currentWeekBudgets.set(String(row.id), {
+      name: row.name,
+      amount_planned: Number.isFinite(plannedAmount) ? plannedAmount : 0,
+      carryover_enabled: Boolean(row.carryover_enabled),
       notes: row.notes ?? null,
+      category_ids: row.category_ids.length > 0 ? row.category_ids : row.category_id ? [row.category_id] : [],
     });
   }
 
@@ -675,49 +736,46 @@ async function ensureWeeklyCarryover(
     weekStartDates.push(formatIsoDateUTC(current));
   }
 
-  const toInsert: {
-    category_id: UUID;
+  const toInsert: Array<{
+    name: string;
     week_start: string;
     planned_amount: number;
     carryover_enabled: boolean;
     notes: Nullable<string>;
-  }[] = [];
+    category_ids: UUID[];
+  }> = [];
 
   for (const weekStart of weekStartDates) {
     const currentBudgets = budgetsByWeek.get(weekStart);
     if (!currentBudgets) continue;
 
-    for (const [categoryId, budget] of currentBudgets.entries()) {
-      if (!budget.carryover_enabled) continue;
+    for (const budget of currentBudgets.values()) {
+      if (!budget.carryover_enabled || budget.category_ids.length === 0) continue;
 
       const nextWeekDate = parseIsoDate(weekStart);
       nextWeekDate.setUTCDate(nextWeekDate.getUTCDate() + 7);
       if (!(nextWeekDate < endDate)) continue;
 
       const nextWeekStart = formatIsoDateUTC(nextWeekDate);
-      let nextWeekBudgets = budgetsByWeek.get(nextWeekStart);
+      const nextWeekBudgets = budgetsByWeek.get(nextWeekStart);
+      const categoryKey = [...budget.category_ids].sort().join('|');
+      const duplicate = nextWeekBudgets
+        ? Array.from(nextWeekBudgets.values()).some((entry) => [...entry.category_ids].sort().join('|') === categoryKey)
+        : false;
+
+      if (duplicate) continue;
+
       if (!nextWeekBudgets) {
-        nextWeekBudgets = new Map();
-        budgetsByWeek.set(nextWeekStart, nextWeekBudgets);
+        budgetsByWeek.set(nextWeekStart, new Map());
       }
-
-      if (nextWeekBudgets.has(categoryId)) {
-        continue;
-      }
-
-      nextWeekBudgets.set(categoryId, {
-        planned_amount: budget.planned_amount,
-        carryover_enabled: budget.carryover_enabled,
-        notes: budget.notes ?? null,
-      });
 
       toInsert.push({
-        name: normalizedName,
-    category_id: categoryId,
+        name: budget.name,
         week_start: nextWeekStart,
-        planned_amount: budget.planned_amount,
+        planned_amount: budget.amount_planned,
         carryover_enabled: budget.carryover_enabled,
         notes: budget.notes ?? null,
+        category_ids: budget.category_ids,
       });
     }
   }
@@ -726,21 +784,16 @@ async function ensureWeeklyCarryover(
     return;
   }
 
-  const insertPayload = toInsert.map((item) => ({
-    user_id: userId,
-    category_id: item.category_id,
-    planned_amount: item.planned_amount,
-    carryover_enabled: item.carryover_enabled,
-    notes: item.notes ?? null,
-    week_start: item.week_start,
-  }));
-
-  const { error: upsertError } = await supabase
-    .from('budgets_weekly')
-    .upsert(insertPayload, { onConflict: 'user_id,category_id,week_start' });
-
-  if (upsertError) {
-    throw upsertError;
+  for (const item of toInsert) {
+    await upsertWeeklyBudget({
+      name: item.name,
+      category_ids: item.category_ids,
+      category_id: item.category_ids[0],
+      week_start: item.week_start,
+      amount_planned: item.planned_amount,
+      carryover_enabled: item.carryover_enabled,
+      notes: item.notes,
+    });
   }
 }
 
@@ -993,7 +1046,7 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
   const budgetsPromise = supabase
     .from('budgets_weekly')
     .select(
-      'id,user_id,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
+      'id,user_id,name,category_id,amount_planned:planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)'
     )
     .eq('user_id', userId)
     .gte('week_start', firstWeekStart)
@@ -1041,35 +1094,48 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
     }
   >();
 
-  const rows = ((budgetsResponse.data ?? []) as WeeklyBudgetRow[]).map((row) => {
+  const normalizedRows = (budgetsResponse.data ?? []).map((row) => normalizeWeeklyBudgetRow(row as RawWeeklyBudgetRow));
+  const rows = (await attachWeeklyBudgetCategories(normalizedRows)).map((row) => {
     const rawWeekStart = row.week_start ?? start;
     const normalizedWeekStart = getWeekStartForDate(parseIsoDate(rawWeekStart));
     const weekEnd = getWeekEndFromStart(normalizedWeekStart);
     const planned = Number(row.amount_planned ?? 0);
-    const transactions = transactionsByCategory.get(row.category_id) ?? [];
-    const spent = transactions.reduce((total, transaction) => {
-      return transaction.date >= normalizedWeekStart && transaction.date <= weekEnd
-        ? total + transaction.amount
-        : total;
+    const categoryIds = row.category_ids.length > 0 ? row.category_ids : row.category_id ? [row.category_id] : [];
+    const spent = categoryIds.reduce((total, categoryId) => {
+      const transactions = transactionsByCategory.get(categoryId) ?? [];
+      const subtotal = transactions.reduce((sum, transaction) => {
+        return transaction.date >= normalizedWeekStart && transaction.date <= weekEnd
+          ? sum + transaction.amount
+          : sum;
+      }, 0);
+      return total + subtotal;
     }, 0);
     const remaining = planned - spent;
     const carryoverEnabled = typeof row.carryover_enabled === 'boolean'
       ? row.carryover_enabled
       : Boolean(row.carryover_enabled);
 
-    if (!summaryAccumulator.has(row.category_id)) {
-      summaryAccumulator.set(row.category_id, {
-        category_id: row.category_id,
-        category_name: row.category?.name ?? 'Tanpa kategori',
-        category_type: row.category?.type ?? null,
-        planned: 0,
-        spent: 0,
-      });
-    }
-    const current = summaryAccumulator.get(row.category_id);
-    if (current) {
-      current.planned += planned;
-      current.spent += spent;
+    const summaryCategories = row.categories.length > 0
+      ? row.categories
+      : row.category && row.category.id
+      ? [row.category]
+      : [];
+
+    for (const category of summaryCategories) {
+      if (!summaryAccumulator.has(category.id)) {
+        summaryAccumulator.set(category.id, {
+          category_id: category.id,
+          category_name: category.name ?? 'Tanpa kategori',
+          category_type: category.type ?? null,
+          planned: 0,
+          spent: 0,
+        });
+      }
+      const current = summaryAccumulator.get(category.id);
+      if (current) {
+        current.planned += planned;
+        current.spent += spent;
+      }
     }
 
     return {
@@ -1128,7 +1194,9 @@ export async function listWeeklyBudgets(period: string): Promise<WeeklyBudgetsRe
 
 export interface UpsertWeeklyBudgetInput {
   id?: UUID;
-  category_id: UUID;
+  name?: string;
+  category_id?: UUID;
+  category_ids?: UUID[];
   week_start: string; // YYYY-MM-DD
   amount_planned: number;
   carryover_enabled: boolean;
@@ -1154,12 +1222,88 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
   }
 
   const normalizedWeekStart = normalizeWeekStart(input.week_start);
+  const normalizedCategoryIds = Array.from(
+    new Set(
+      [
+        ...(input.category_ids ?? []),
+        ...(input.category_id ? [input.category_id] : []),
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (normalizedCategoryIds.length === 0) {
+    throw new Error('Pilih minimal 1 kategori');
+  }
+
+  const normalizedName = String(input.name ?? '').trim() || 'Budget Tanpa Nama';
+
+  if (input.id) {
+    const { error: updateError } = await supabase
+      .from('budgets_weekly')
+      .update({
+        name: normalizedName,
+        planned_amount: Number(input.amount_planned ?? 0),
+        carryover_enabled: Boolean(input.carryover_enabled),
+        notes: input.notes ?? null,
+        week_start: normalizedWeekStart,
+      })
+      .eq('id', input.id)
+      .eq('user_id', userId);
+
+    if (updateError) {
+      throw new Error(updateError.message || 'Gagal menyimpan anggaran mingguan');
+    }
+
+    const { error: deleteLinkError } = await supabase
+      .from('weekly_budget_categories')
+      .delete()
+      .eq('user_id', userId)
+      .eq('budget_weekly_id', input.id);
+
+    if (deleteLinkError) {
+      const message = (deleteLinkError.message ?? '').toLowerCase();
+      if (!(deleteLinkError.code === '42P01' || message.includes('weekly_budget_categories'))) {
+        throw deleteLinkError;
+      }
+    }
+
+    const { error: insertLinkError } = await supabase
+      .from('weekly_budget_categories')
+      .insert(
+        normalizedCategoryIds.map((categoryId) => ({
+          user_id: userId,
+          budget_weekly_id: input.id,
+          category_id: categoryId,
+        }))
+      );
+
+    if (insertLinkError) {
+      const message = (insertLinkError.message ?? '').toLowerCase();
+      if (!(insertLinkError.code === '42P01' || message.includes('weekly_budget_categories'))) {
+        throw insertLinkError;
+      }
+    }
+
+    const { data, error } = await supabase
+      .from('budgets_weekly')
+      .select('id,user_id,name,category_id,planned_amount,carryover_enabled,notes,week_start,created_at,updated_at,category:categories(id,name,type)')
+      .eq('id', input.id)
+      .single();
+
+    if (error) throw error;
+    const [withCats] = await attachWeeklyBudgetCategories([normalizeWeeklyBudgetRow(data as RawWeeklyBudgetRow)]);
+    return withCats;
+  }
+
   const payload = {
-    p_category_id: input.category_id,
+    p_category_id: normalizedCategoryIds[0],
     p_week_start: normalizedWeekStart,
     p_planned_amount: Number(input.amount_planned ?? 0),
     p_carryover_enabled: Boolean(input.carryover_enabled),
     p_notes: input.notes ?? null,
+    p_name: normalizedName,
   };
 
   const { data, error } = await supabase.rpc('bud_weekly_upsert', payload);
@@ -1186,7 +1330,40 @@ export async function upsertWeeklyBudget(input: UpsertWeeklyBudgetInput): Promis
     throw new Error('Tidak ada data yang dikembalikan dari bud_weekly_upsert');
   }
 
-  return normalizeWeeklyBudgetRow(data as RawWeeklyBudgetRow);
+  const row = normalizeWeeklyBudgetRow(data as RawWeeklyBudgetRow);
+
+  const { error: deleteLinkError } = await supabase
+    .from('weekly_budget_categories')
+    .delete()
+    .eq('user_id', userId)
+    .eq('budget_weekly_id', row.id);
+
+  if (deleteLinkError) {
+    const message = (deleteLinkError.message ?? '').toLowerCase();
+    if (!(deleteLinkError.code === '42P01' || message.includes('weekly_budget_categories'))) {
+      throw deleteLinkError;
+    }
+  }
+
+  const { error: insertLinkError } = await supabase
+    .from('weekly_budget_categories')
+    .insert(
+      normalizedCategoryIds.map((categoryId) => ({
+        user_id: userId,
+        budget_weekly_id: row.id,
+        category_id: categoryId,
+      }))
+    );
+
+  if (insertLinkError) {
+    const message = (insertLinkError.message ?? '').toLowerCase();
+    if (!(insertLinkError.code === '42P01' || message.includes('weekly_budget_categories'))) {
+      throw insertLinkError;
+    }
+  }
+
+  const [withCats] = await attachWeeklyBudgetCategories([row]);
+  return withCats;
 }
 
 export async function deleteWeeklyBudget(id: UUID): Promise<void> {
@@ -1196,6 +1373,20 @@ export async function deleteWeeklyBudget(id: UUID): Promise<void> {
     await removeSync('budgets_weekly', id);
     return;
   }
+
+  const { error: deleteLinkError } = await supabase
+    .from('weekly_budget_categories')
+    .delete()
+    .eq('user_id', userId)
+    .eq('budget_weekly_id', id);
+
+  if (deleteLinkError) {
+    const message = (deleteLinkError.message ?? '').toLowerCase();
+    if (!(deleteLinkError.code === '42P01' || message.includes('weekly_budget_categories'))) {
+      throw deleteLinkError;
+    }
+  }
+
   const { error } = await supabase.from('budgets_weekly').delete().eq('user_id', userId).eq('id', id);
   if (error) throw error;
 }
