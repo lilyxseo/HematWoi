@@ -1359,8 +1359,89 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
     new Set((input.category_ids ?? (input.category_id ? [input.category_id] : [])).filter(Boolean))
   );
   const primaryCategoryId = normalizedCategoryIds[0] ?? input.category_id;
-  if (!primaryCategoryId) {
+  if (!primaryCategoryId || normalizedCategoryIds.length === 0) {
     throw new Error('Kategori wajib dipilih');
+  }
+
+  const budgetPayload = {
+    user_id: userId,
+    name: normalizedName,
+    category_id: primaryCategoryId,
+    month: toMonthStart(input.period),
+    period_month: toMonthStart(input.period),
+    amount_planned: Number(input.amount_planned ?? 0),
+    carryover_enabled: Boolean(input.carryover_enabled),
+    notes: input.notes ?? null,
+    budget_type: 'monthly',
+  };
+
+  const syncBudgetCategories = async (budget: BudgetRow): Promise<BudgetRow> => {
+    const { error: deleteLinksError } = await supabase
+      .from('budget_categories')
+      .delete()
+      .eq('budget_id', budget.id);
+
+    if (deleteLinksError) {
+      const message = (deleteLinksError.message ?? '').toLowerCase();
+      if (!(deleteLinksError.code === '42P01' || message.includes('budget_categories'))) {
+        throw deleteLinksError;
+      }
+      return budget;
+    }
+
+    const payloadLinks = normalizedCategoryIds.map((categoryId) => ({
+      budget_id: budget.id,
+      category_id: categoryId,
+      user_id: budget.user_id,
+    }));
+
+    const { error: insertLinksError } = await supabase.from('budget_categories').insert(payloadLinks);
+
+    if (insertLinksError) {
+      const message = (insertLinksError.message ?? '').toLowerCase();
+      if (!(insertLinksError.code === '42P01' || message.includes('budget_categories'))) {
+        throw insertLinksError;
+      }
+      return budget;
+    }
+
+    const [withCategories] = await attachBudgetCategories([budget]);
+    return withCategories;
+  };
+
+  const upsertViaTable = async (): Promise<BudgetRow> => {
+    if (input.id) {
+      const { data, error } = await supabase
+        .from('budgets')
+        .update(budgetPayload)
+        .eq('user_id', userId)
+        .eq('id', input.id)
+        .select('*, category:categories(id,name,type)')
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        throw new Error('Data anggaran tidak ditemukan');
+      }
+
+      return normalizeBudgetRow(data as RawBudgetRow);
+    }
+
+    const { data, error } = await supabase
+      .from('budgets')
+      .insert(budgetPayload)
+      .select('*, category:categories(id,name,type)')
+      .single();
+
+    if (error) throw error;
+    return normalizeBudgetRow(data as RawBudgetRow);
+  };
+
+  try {
+    const normalized = await upsertViaTable();
+    return await syncBudgetCategories(normalized);
+  } catch {
+    // Fallback untuk server lama yang masih bergantung pada RPC.
   }
 
   const payload = {
@@ -1397,39 +1478,7 @@ export async function upsertBudget(input: UpsertBudgetInput): Promise<BudgetRow>
   }
 
   const normalized = normalizeBudgetRow(data as RawBudgetRow);
-
-  if (normalizedCategoryIds.length === 0) {
-    return normalized;
-  }
-
-  const payloadLinks = normalizedCategoryIds.map((categoryId) => ({
-    budget_id: normalized.id,
-    category_id: categoryId,
-    user_id: normalized.user_id,
-  }));
-
-  const { error: upsertLinksError } = await supabase
-    .from('budget_categories')
-    .upsert(payloadLinks, { onConflict: 'budget_id,category_id' });
-
-  if (upsertLinksError) {
-    const msg = (upsertLinksError.message ?? '').toLowerCase();
-    if (!(upsertLinksError.code === '42P01' || msg.includes('budget_categories'))) {
-      throw upsertLinksError;
-    }
-    return normalized;
-  }
-
-  const { error: deleteLinksError } = await supabase
-    .from('budget_categories')
-    .delete()
-    .eq('budget_id', normalized.id)
-    .not('category_id', 'in', `(${normalizedCategoryIds.map((id) => `"${id}"`).join(',')})`);
-
-  if (deleteLinksError) throw deleteLinksError;
-
-  const [withCategories] = await attachBudgetCategories([normalized]);
-  return withCategories;
+  return syncBudgetCategories(normalized);
 }
 
 export async function deleteBudget(id: UUID): Promise<void> {

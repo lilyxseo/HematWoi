@@ -602,6 +602,7 @@ export default function BudgetsPage() {
         id: row.id,
         name: row.name,
         category_id: row.category_id,
+        category_ids: row.category_ids,
         period: isoToPeriod(row.period_month),
         amount_planned: Number(row.amount_planned ?? 0),
         carryover_enabled: carryover,
