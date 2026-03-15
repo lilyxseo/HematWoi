@@ -3,6 +3,7 @@ import type { ExpenseCategory } from '../../../lib/budgetApi';
 
 export interface BudgetFormValues {
   period: string;
+  name: string;
   category_ids: string[];
   amount_planned: number;
   carryover_enabled: boolean;
@@ -45,6 +46,9 @@ function validate(values: BudgetFormValues) {
   const errors: Partial<Record<keyof BudgetFormValues, string>> = {};
   if (!values.period) {
     errors.period = 'Periode wajib diisi';
+  }
+  if (!values.name.trim()) {
+    errors.name = 'Nama budget wajib diisi';
   }
   if (!values.category_ids.length) {
     errors.category_ids = 'Pilih minimal 1 kategori';
@@ -141,7 +145,7 @@ export default function BudgetFormModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const nextValues = { ...values, notes: values.notes.trim() };
+    const nextValues = { ...values, name: values.name.trim(), notes: values.notes.trim() };
     const validation = validate(nextValues);
     setErrors(validation);
     if (Object.keys(validation).length > 0) return;
@@ -180,6 +184,20 @@ export default function BudgetFormModal({
 
         <form className="mt-6 flex flex-col gap-5" onSubmit={handleSubmit}>
           <div className="grid gap-4 md:grid-cols-2">
+
+          <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+            Nama Budget
+            <input
+              type="text"
+              value={values.name}
+              onChange={(event) => handleChange('name', event.target.value)}
+              placeholder="Contoh: Kebutuhan Pokok"
+              className="h-11 w-full rounded-2xl border border-border bg-surface px-4 text-sm text-text shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              required
+            />
+            {errors.name ? <span className="text-xs font-medium text-rose-500">{errors.name}</span> : null}
+          </label>
+
             <label className="flex flex-col gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-300">
               Periode
               <input
