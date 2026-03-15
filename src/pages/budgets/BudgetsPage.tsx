@@ -91,7 +91,8 @@ const DEFAULT_MONTHLY_FORM: BudgetFormValues = {
 
 const DEFAULT_WEEKLY_FORM: WeeklyBudgetFormValues = {
   week_start: getFirstWeekStartOfPeriod(getCurrentPeriod()),
-  category_id: '',
+  name: '',
+  category_ids: [],
   amount_planned: 0,
   carryover_enabled: false,
   notes: '',
@@ -262,11 +263,23 @@ export default function BudgetsPage() {
     }
 
     for (const row of weekly.rows) {
-      ensureBudgetCategory(row.category_id, row.category ?? undefined);
+      if (row.categories.length > 0) {
+        for (const category of row.categories) {
+          ensureBudgetCategory(category.id, category);
+        }
+      } else {
+        ensureBudgetCategory(row.category_id, row.category ?? undefined);
+      }
     }
 
     ensureBudgetCategory(editingMonthly?.category_id, editingMonthly?.category ?? undefined);
-    ensureBudgetCategory(editingWeekly?.category_id, editingWeekly?.category ?? undefined);
+    if (editingWeekly?.categories.length) {
+      for (const category of editingWeekly.categories) {
+        ensureBudgetCategory(category.id, category);
+      }
+    } else {
+      ensureBudgetCategory(editingWeekly?.category_id, editingWeekly?.category ?? undefined);
+    }
 
     fallback.sort((a, b) => a.name.localeCompare(b.name, 'id-ID', { sensitivity: 'base' }));
 
@@ -296,7 +309,12 @@ export default function BudgetsPage() {
     if (editingWeekly) {
       return {
         week_start: editingWeekly.week_start,
-        category_id: editingWeekly.category_id ?? '',
+        name: editingWeekly.name ?? '',
+        category_ids: editingWeekly.category_ids.length > 0
+          ? editingWeekly.category_ids
+          : editingWeekly.category_id
+          ? [editingWeekly.category_id]
+          : [],
         amount_planned: Number(editingWeekly.amount_planned ?? 0),
         carryover_enabled: editingWeekly.carryover_enabled,
         notes: editingWeekly.notes ?? '',
@@ -330,9 +348,8 @@ export default function BudgetsPage() {
     for (const selection of highlightSelections) {
       if (selection.budget_type !== 'weekly') continue;
       const match = weekly.rows.find((row) => String(row.id) === String(selection.budget_id));
-      if (match?.category_id) {
-        categoryIds.add(String(match.category_id));
-      }
+      const ids = match?.category_ids?.length ? match.category_ids : match?.category_id ? [match.category_id] : [];
+      ids.forEach((id) => categoryIds.add(String(id)));
     }
     return categoryIds;
   }, [highlightSelections, weekly.rows]);
@@ -618,7 +635,9 @@ export default function BudgetsPage() {
     try {
       await upsertWeeklyBudget({
         id: row.id,
-        category_id: row.category_id,
+        name: row.name,
+        category_id: row.category_id ?? undefined,
+        category_ids: row.category_ids,
         week_start: row.week_start,
         amount_planned: Number(row.amount_planned ?? 0),
         carryover_enabled: carryover,
@@ -661,7 +680,9 @@ export default function BudgetsPage() {
       setSubmittingWeekly(true);
       await upsertWeeklyBudget({
         id: editingWeekly?.id,
-        category_id: values.category_id,
+        name: values.name,
+        category_id: values.category_ids[0],
+        category_ids: values.category_ids,
         week_start: values.week_start,
         amount_planned: Number(values.amount_planned),
         carryover_enabled: values.carryover_enabled,
@@ -727,8 +748,8 @@ export default function BudgetsPage() {
         const selectionForCategory = highlightSelections.find((selection) => {
           if (selection.budget_type !== 'weekly') return false;
           const match = weekly.rows.find((row) => String(row.id) === String(selection.budget_id));
-          if (!match?.category_id) return false;
-          return String(match.category_id) === normalizedCategoryId;
+          const ids = match?.category_ids?.length ? match.category_ids : match?.category_id ? [match.category_id] : [];
+          return ids.some((id) => String(id) === normalizedCategoryId);
         });
 
         if (selectionForCategory && String(selectionForCategory.budget_id) !== String(id)) {
@@ -871,6 +892,7 @@ export default function BudgetsPage() {
             onDelete={handleDeleteWeekly}
             onViewTransactions={(row) =>
               handleViewTransactions({
+                categoryIds: row.category_ids,
                 categoryId: row.category_id,
                 categoryType: row.category?.type ?? null,
                 range: 'custom',
@@ -879,7 +901,7 @@ export default function BudgetsPage() {
               })
             }
             onToggleCarryover={handleToggleWeeklyCarryover}
-            onToggleHighlight={(row) => handleToggleHighlight('weekly', String(row.id), row.category_id)}
+            onToggleHighlight={(row) => handleToggleHighlight('weekly', String(row.id), row.category_ids[0] ?? row.category_id)}
           />
         </Section>
       )}

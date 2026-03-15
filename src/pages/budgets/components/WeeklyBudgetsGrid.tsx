@@ -125,17 +125,20 @@ export default function WeeklyBudgetsGrid({
         const displayPercentage = Math.max(0, Math.min(100, Math.round(rawPercentage)));
         const progressColor = getProgressColor(rawPercentage);
         const carryoverEnabled = Boolean(row.carryover_enabled);
-        const categoryKey = row.category_id ? String(row.category_id) : null;
+        const categoryIds = row.category_ids.length > 0 ? row.category_ids : row.category_id ? [row.category_id] : [];
         const isHighlighted =
-          highlightSet.has(String(row.id)) || (categoryKey ? highlightCategorySet.has(categoryKey) : false);
+          highlightSet.has(String(row.id)) || categoryIds.some((id) => highlightCategorySet.has(String(id)));
 
         const categoryType = row.category?.type === 'income' ? 'Pemasukan' : 'Pengeluaran';
         const categoryTypeClass = row.category?.type === 'income'
           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
           : 'bg-rose-500/10 text-rose-600 dark:text-rose-300';
 
+        const budgetName = row.name?.trim() || row.category?.name || 'Budget Tanpa Nama';
         const categoryName = row.category?.name ?? 'Tanpa kategori';
-        const categoryInitial = categoryName.trim().charAt(0).toUpperCase() || 'B';
+        const categoryInitial = budgetName.trim().charAt(0).toUpperCase() || 'B';
+        const visibleCategories = row.categories.slice(0, 2);
+        const overflowCount = Math.max(0, row.categories.length - visibleCategories.length);
         const periodLabel = formatRange(row.week_start, row.week_end);
 
         const notes = row.notes?.trim();
@@ -170,7 +173,7 @@ export default function WeeklyBudgetsGrid({
               <div className="min-w-0 flex-1 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="line-clamp-1 break-words text-base font-semibold leading-tight tracking-tight text-text md:line-clamp-2 md:text-lg">
-                    {categoryName}
+                    {budgetName}
                   </h3>
                   <span
                     className={clsx(
@@ -186,6 +189,21 @@ export default function WeeklyBudgetsGrid({
                   {isHighlighted ? (
                     <span className="inline-flex items-center gap-1 shrink-0 rounded-full bg-brand/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-wide text-brand shadow-sm ring-1 ring-brand/40">
                       <Sparkles className="h-3.5 w-3.5" /> Highlight
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {visibleCategories.map((category) => (
+                    <span
+                      key={category.id}
+                      className="inline-flex items-center rounded-full bg-muted/30 px-2.5 py-1 text-[0.68rem] font-semibold text-muted-foreground"
+                    >
+                      {category.name}
+                    </span>
+                  ))}
+                  {overflowCount > 0 ? (
+                    <span className="inline-flex items-center rounded-full bg-muted/30 px-2.5 py-1 text-[0.68rem] font-semibold text-muted-foreground">
+                      +{overflowCount}
                     </span>
                   ) : null}
                 </div>
@@ -210,7 +228,7 @@ export default function WeeklyBudgetsGrid({
                 <RefreshCcw className="h-4 w-4 shrink-0" />
                 <span className="hidden whitespace-nowrap sm:inline">Carryover</span>
                 <span className="sm:hidden">CO</span>
-                <label className="relative inline-flex h-6 w-11 cursor-pointer items-center" aria-label={`Atur carryover untuk ${categoryName}`}>
+                <label className="relative inline-flex h-6 w-11 cursor-pointer items-center" aria-label={`Atur carryover untuk ${budgetName}`}>
                   <input
                     type="checkbox"
                     checked={carryoverEnabled}
@@ -258,7 +276,7 @@ export default function WeeklyBudgetsGrid({
                 type="button"
                 onClick={() => onViewTransactions(row)}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-surface/80 text-muted-foreground transition hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                aria-label={`Lihat transaksi untuk ${categoryName}`}
+                aria-label={`Lihat transaksi untuk ${budgetName}`}
               >
                 <Eye className="h-4 w-4" />
               </button>
@@ -266,7 +284,7 @@ export default function WeeklyBudgetsGrid({
                 type="button"
                 onClick={() => onToggleHighlight(row)}
                 aria-pressed={isHighlighted}
-                aria-label={`${isHighlighted ? 'Hapus' : 'Tambah'} highlight untuk ${categoryName}`}
+                aria-label={`${isHighlighted ? 'Hapus' : 'Tambah'} highlight untuk ${budgetName}`}
                 className={clsx(
                   'inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]',
                   isHighlighted
@@ -280,7 +298,7 @@ export default function WeeklyBudgetsGrid({
                 type="button"
                 onClick={() => onEdit(row)}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-surface/80 text-muted-foreground transition hover:text-text shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--brand-ring)]"
-                aria-label={`Edit ${categoryName}`}
+                aria-label={`Edit ${budgetName}`}
               >
                 <Pencil className="h-4 w-4" />
               </button>
@@ -288,7 +306,7 @@ export default function WeeklyBudgetsGrid({
                 type="button"
                 onClick={() => onDelete(row)}
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-500 transition hover:text-rose-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50 dark:border-rose-500/30 dark:text-rose-200"
-                aria-label={`Hapus ${categoryName}`}
+                aria-label={`Hapus ${budgetName}`}
               >
                 <Trash2 className="h-4 w-4" />
               </button>
