@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowDownCircle, ArrowUpCircle, ArrowLeftRight, Scissors, CalendarClock } from 'lucide-react';
 import Page from '../layout/Page';
 import PageHeader from '../layout/PageHeader';
@@ -9,6 +9,7 @@ import CurrencyInput from '../components/ui/CurrencyInput';
 import Input from '../components/ui/Input';
 import Select from '../components/ui/Select';
 import Textarea from '../components/ui/Textarea';
+import { listAccounts, listCategories } from '../lib/api';
 
 /**
  * Quick + advanced add transaction form with mode tabs.
@@ -17,6 +18,10 @@ import Textarea from '../components/ui/Textarea';
 export default function AddTransaction() {
   const [mode, setMode] = useState(() => localStorage.getItem('add_mode') || 'expense');
   const [advanced, setAdvanced] = useState(() => localStorage.getItem('add_advanced') === 'true');
+  const [loadingMasterData, setLoadingMasterData] = useState(true);
+  const [accounts, setAccounts] = useState([]);
+  const [categories, setCategories] = useState({ expense: [], income: [] });
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     localStorage.setItem('add_mode', mode);
@@ -25,6 +30,57 @@ export default function AddTransaction() {
   useEffect(() => {
     localStorage.setItem('add_advanced', advanced ? 'true' : 'false');
   }, [advanced]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadMasterData() {
+      setLoadingMasterData(true);
+      setLoadError('');
+      try {
+        const [accountRows, expenseRows, incomeRows] = await Promise.all([
+          listAccounts(),
+          listCategories('expense'),
+          listCategories('income'),
+        ]);
+        if (!active) return;
+        setAccounts(Array.isArray(accountRows) ? accountRows.filter(Boolean) : []);
+        setCategories({
+          expense: Array.isArray(expenseRows) ? expenseRows.filter(Boolean) : [],
+          income: Array.isArray(incomeRows) ? incomeRows.filter(Boolean) : [],
+        });
+      } catch (error) {
+        if (!active) return;
+        console.error(error);
+        setLoadError(error?.message || 'Gagal memuat data referensi');
+        setAccounts([]);
+        setCategories({ expense: [], income: [] });
+      } finally {
+        if (active) {
+          setLoadingMasterData(false);
+        }
+      }
+    }
+
+    loadMasterData();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const categoryOptions = useMemo(() => {
+    const list = categories[mode] || [];
+    return list.map((category) => ({
+      value: category.id,
+      label: category.name || '(Tanpa nama)',
+    }));
+  }, [categories, mode]);
+
+  const accountOptions = useMemo(
+    () => accounts.map((account) => ({ value: account.id, label: account.name || '(Tanpa nama)' })),
+    [accounts],
+  );
 
   return (
     <Page>
@@ -53,25 +109,54 @@ export default function AddTransaction() {
             />
           </div>
 
-          {advanced ? <AdvancedForm /> : <QuickForm />}
+          {loadError ? <p className="text-sm text-danger">{loadError}</p> : null}
+
+          {advanced ? (
+            <AdvancedForm
+              key={`advanced-${mode}`}
+              categoryOptions={categoryOptions}
+              accountOptions={accountOptions}
+              loading={loadingMasterData}
+            />
+          ) : (
+            <QuickForm key={`quick-${mode}`} categoryOptions={categoryOptions} loading={loadingMasterData} />
+          )}
         </div>
       </Section>
     </Page>
   );
 }
 
-function QuickForm() {
+function QuickForm({ categoryOptions, loading }) {
   const [amount, setAmount] = useState(0);
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (!categoryOptions.length) {
+      if (category) setCategory('');
+      return;
+    }
+    const exists = categoryOptions.some((option) => option.value === category);
+    if (!exists) {
+      setCategory(categoryOptions[0].value);
+    }
+  }, [categoryOptions, category]);
 
   return (
     <form>
       <Card>
         <CardBody className="space-y-4">
           <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
-          <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
+          <Select
+            label="Kategori"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            options={categoryOptions}
+            disabled={loading || !categoryOptions.length}
+            placeholder={loading ? 'Memuat...' : 'Pilih kategori'}
+          />
           <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
           <Textarea label="Catatan" value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="flex justify-end gap-2 pt-2">
@@ -84,7 +169,7 @@ function QuickForm() {
   );
 }
 
-function AdvancedForm() {
+function AdvancedForm({ categoryOptions, accountOptions, loading }) {
   const [amount, setAmount] = useState(0);
   const [category, setCategory] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -92,14 +177,44 @@ function AdvancedForm() {
   const [merchant, setMerchant] = useState('');
   const [note, setNote] = useState('');
 
+  useEffect(() => {
+    if (!accountOptions.length) {
+      if (account) setAccount('');
+    } else if (!accountOptions.some((option) => option.value === account)) {
+      setAccount(accountOptions[0].value);
+    }
+  }, [accountOptions, account]);
+
+  useEffect(() => {
+    if (!categoryOptions.length) {
+      if (category) setCategory('');
+    } else if (!categoryOptions.some((option) => option.value === category)) {
+      setCategory(categoryOptions[0].value);
+    }
+  }, [categoryOptions, category]);
+
   return (
     <form>
       <Card>
         <CardBody className="space-y-4">
           <CurrencyInput label="Jumlah" value={amount} onChangeNumber={setAmount} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Select label="Akun" value={account} onChange={(e) => setAccount(e.target.value)} options={['Cash']} />
-            <Select label="Kategori" value={category} onChange={(e) => setCategory(e.target.value)} options={['Umum']} />
+            <Select
+              label="Akun"
+              value={account}
+              onChange={(e) => setAccount(e.target.value)}
+              options={accountOptions}
+              disabled={loading || !accountOptions.length}
+              placeholder={loading ? 'Memuat...' : 'Pilih akun'}
+            />
+            <Select
+              label="Kategori"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              options={categoryOptions}
+              disabled={loading || !categoryOptions.length}
+              placeholder={loading ? 'Memuat...' : 'Pilih kategori'}
+            />
           </div>
           <Input type="date" label="Tanggal" value={date} onChange={(e) => setDate(e.target.value)} />
           <Input label="Merchant" value={merchant} onChange={(e) => setMerchant(e.target.value)} />
