@@ -14,18 +14,24 @@ export default function useSupabaseUser(): SupabaseUserState {
     let active = true;
 
     supabase.auth
-      .getUser()
+      .getSession()
       .then(({ data }) => {
         if (!active) return;
-        setState({ user: data.user ?? null, loading: false });
+        const user = data.session?.user ?? null;
+        console.info('[AUTH] useSupabaseUser bootstrap', user?.email ?? null);
+        setState({ user, loading: false });
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
+        console.error('[AUTH] useSupabaseUser bootstrap failed', error);
         setState({ user: null, loading: false });
       });
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
+      if (event === 'SIGNED_IN') {
+        console.info('[AUTH] useSupabaseUser SIGNED_IN', session?.user?.email ?? null);
+      }
       setState({ user: session?.user ?? null, loading: false });
     });
 
