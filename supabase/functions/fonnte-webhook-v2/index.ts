@@ -111,7 +111,12 @@ function extractDevice(body: WebhookBody): string {
 
 function extractWaMessageId(body: WebhookBody, sender: string, message: string): string {
   const raw =
-    body.id ?? body.message_id ?? body.msg_id ?? body.data?.id ?? body.data?.message_id ?? `${sender}-${message}`;
+    body.id ??
+    body.message_id ??
+    body.msg_id ??
+    body.data?.id ??
+    body.data?.message_id ??
+    `${sender}-${message}-${Date.now()}`;
   return String(raw);
 }
 
@@ -402,8 +407,9 @@ function isBotReply(body: WebhookBody, sender: string, device: string, message: 
       body.data?.from_me === true ||
       body.data?.fromMe === true ||
       body.data?.isMe === true ||
-      body.status === true ||
       statusText === "sent" ||
+      statusText === "delivered" ||
+      statusText === "read" ||
       (sender && device && sender === device) ||
       text.includes("sent via fonnte.com") ||
       hasBotPrefix,
@@ -721,7 +727,7 @@ Deno.serve(async (req: Request) => {
     try {
       if (waMessageId || sender || message) {
         await logMessage({
-          wa_message_id: waMessageId || `${sender}-${message || "empty"}`,
+          wa_message_id: waMessageId || `${sender}-${message || "empty"}-${Date.now()}`,
           phone: sender || "",
           user_id: userId,
           raw_text: message || "",
