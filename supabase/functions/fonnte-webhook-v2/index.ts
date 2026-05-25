@@ -47,7 +47,7 @@ type ParsedTransactionError = { error: "INVALID_DATE" };
 
 
 type ParsedSmartTransaction = {
-  accountName: string;
+  accountName: string | null;
   amount: number;
   title: string;
   date: string;
@@ -55,7 +55,7 @@ type ParsedSmartTransaction = {
 type NaturalTransactionType = "income" | "expense" | "transfer";
 type ParsedNaturalTransaction = {
   type: NaturalTransactionType;
-  accountName: string;
+  accountName: string | null;
   amount: number;
   title: string;
   date: string;
@@ -806,7 +806,7 @@ function normalizeHistoryTitle(text: string): { normalized: string; words: strin
 
 function parseSmartTransactionMessage(message: string): ParsedSmartTransaction | ParsedTransactionError | null {
   const parts = message.trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 3) return null;
+  if (parts.length < 2) return null;
 
   const firstToken = normalizeText(parts[0] ?? "");
   if (SMART_TRANSACTION_BLOCKED_COMMANDS.has(firstToken)) return null;
@@ -822,12 +822,10 @@ function parseSmartTransactionMessage(message: string): ParsedSmartTransaction |
     workParts = workParts.slice(0, -1);
   }
 
-  if (workParts.length < 3) return null;
+  if (workParts.length < 2) return null;
 
-  const accountName = workParts[workParts.length - 1];
   let amountIndex = -1;
-
-  for (let i = workParts.length - 2; i >= 1; i--) {
+  for (let i = workParts.length - 1; i >= 1; i--) {
     if (parseAmount(workParts[i]) > 0) {
       amountIndex = i;
       break;
@@ -840,7 +838,8 @@ function parseSmartTransactionMessage(message: string): ParsedSmartTransaction |
 
   const title = workParts.slice(0, amountIndex).join(" ").trim();
   if (!title) return null;
-
+  const trailingTokens = workParts.slice(amountIndex + 1);
+  const accountName = trailingTokens.length > 0 ? trailingTokens.join(" ") : null;
   return { title, amount, accountName, date: txDate };
 }
 
@@ -980,13 +979,10 @@ function parseNaturalTransactionMessage(
   const amount = extractNaturalAmountFromText(message);
   if (amount <= 0) return null;
   const account = extractAccountFromNaturalText(message, accounts);
-  if (!account) {
-    return { type, accountName: "", amount, title: "", date };
-  }
   const accountNames = accounts.map((a) => a.name);
   const title = cleanNaturalTitle(message, amount, accountNames);
   if (!title) return null;
-  return { type, accountName: account.name, amount, title, date };
+  return { type, accountName: account?.name ?? null, amount, title, date };
 }
 
 function findBestCategoryFromHistory(inputTitle: string, rows: Array<Record<string, JsonValue>>): { categoryId: string; score: number } | null {
@@ -1046,6 +1042,77 @@ async function findCategoryByTransactionHistory(userId: string, title: string): 
     .maybeSingle();
   if (categoryError) throw categoryError;
   return category;
+}
+
+async function getUserRecentTransactionsForLearning(userId: string): Promise<Array<Record<string, JsonValue>>> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("title,category_id,account_id,type,inserted_at")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .not("account_id", "is", null)
+    .not("title", "is", null)
+    .in("type", ["income", "expense"])
+    .order("inserted_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []) as Array<Record<string, JsonValue>>;
+}
+
+function findBestAccountFromHistory(
+  inputTitle: string,
+  categoryId: string | null,
+  txType: NaturalTransactionType | null,
+  rows: Array<Record<string, JsonValue>>,
+): { accountId: string; score: number } | null {
+  const input = normalizeHistoryTitle(inputTitle);
+  if (!input.normalized) return null;
+
+  let best: { accountId: string; score: number } | null = null;
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const historyTitle = String(row.title ?? "");
+    const accountId = String(row.account_id ?? "").trim();
+    if (!historyTitle || !accountId) continue;
+
+    const history = normalizeHistoryTitle(historyTitle);
+    if (!history.normalized) continue;
+
+    let score = 0;
+    if (history.normalized === input.normalized) score += 100;
+    if (history.normalized.includes(input.normalized)) score += 80;
+    if (input.normalized.includes(history.normalized)) score += 70;
+    score += input.words.filter((word) => history.words.includes(word)).length * 10;
+    if (categoryId && String(row.category_id ?? "") === categoryId) score += 40;
+    if (txType && String(row.type ?? "") === txType) score += 20;
+    score += Math.max(0, 10 - i * 0.05);
+
+    if (!best || score > best.score) best = { accountId, score };
+  }
+
+  if (!best || best.score < 30) return null;
+  return best;
+}
+
+async function findAccountByTransactionHistory(
+  userId: string,
+  title: string,
+  categoryId: string | null,
+  txType: NaturalTransactionType | null,
+): Promise<{ id: string; name: string; type: string } | null> {
+  const rows = await getUserRecentTransactionsForLearning(userId);
+  const best = findBestAccountFromHistory(title, categoryId, txType, rows);
+  if (!best) return null;
+
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("id,name,type,user_id")
+    .eq("id", best.accountId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return { id: String(data.id), name: String(data.name), type: String(data.type ?? "") };
 }
 
 function parseTransactionMessage(message: string): ParsedTransaction | ParsedTransactionError | null {
@@ -1122,6 +1189,58 @@ function parseDebtCommand(message: string): ParsedDebtCommand | null {
   if (!partyName || amount <= 0) return null;
 
   return { action: action as DebtAction, debtType, partyName, amount, accountName, date };
+}
+
+async function handleEditLastTransactionAccount(userId: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const accountNameInput = normalized.replace(/^edit akun\s+/, "").trim();
+  if (!accountNameInput) {
+    return { reply: "⚠️ Nama akun belum diisi.\n\nContoh:\nedit akun cash", parsedLog: { command: "edit_account_failed", reason: "missing_account_name" } };
+  }
+
+  const { data: lastTx, error: lastTxError } = await supabase
+    .from("transactions")
+    .select("id,title,type,account_id,notes")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .ilike("notes", "%WhatsApp%")
+    .order("inserted_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastTxError) throw lastTxError;
+  if (!lastTx) {
+    return { reply: "⚠️ Tidak ada transaksi WhatsApp yang bisa diubah.", parsedLog: { command: "edit_account_failed", reason: "last_transaction_not_found" } };
+  }
+
+  if (String(lastTx.type ?? "") === "transfer") {
+    return { reply: "⚠️ Edit akun belum mendukung transaksi transfer.", parsedLog: { command: "edit_account_failed", reason: "transfer_not_supported" } };
+  }
+
+  const newAccount = await findAccount(userId, accountNameInput);
+  if (!newAccount) {
+    return { reply: `❌ Akun *${accountNameInput}* tidak ditemukan.`, parsedLog: { command: "edit_account_failed", reason: "account_not_found", accountName: accountNameInput } };
+  }
+
+  const oldAccountId = String(lastTx.account_id ?? "");
+  const { data: oldAccount } = await supabase.from("accounts").select("name").eq("id", oldAccountId).eq("user_id", userId).maybeSingle();
+  const oldAccountName = String(oldAccount?.name ?? "-");
+
+  const { error: updateError } = await supabase
+    .from("transactions")
+    .update({ account_id: newAccount.id })
+    .eq("id", String(lastTx.id))
+    .eq("user_id", userId);
+  if (updateError) throw updateError;
+
+  return {
+    reply: [
+      "✅ Akun transaksi terakhir diperbarui",
+      "",
+      `Judul: ${String(lastTx.title ?? "-")}`,
+      `Akun lama: ${oldAccountName}`,
+      `Akun baru: ${newAccount.name}`,
+    ].join("\n"),
+    parsedLog: { command: "edit_account", transactionId: String(lastTx.id), oldAccountName, newAccountName: newAccount.name },
+  };
 }
 
 async function getOpenDebts(userId: string): Promise<Array<Record<string, JsonValue>>> {
@@ -1522,6 +1641,7 @@ function buildMenuMessage(): string {
     "➕ *Transaksi*",
     "• catat transaksi",
     "• catat natural",
+    "• smart akun otomatis",
     "• transfer",
     "• hutang / piutang",
     "",
@@ -1556,6 +1676,12 @@ function buildExampleMessage(): string {
     "• mixue 25000 cash",
     "• bensin 20000 cash 31/05",
     "",
+    "🤖 *Smart Auto Account*",
+    "• kopi 20rb",
+    "• momoyo 20000",
+    "• tadi beli momoyo 20rb",
+    "• edit akun cash",
+    "",
     "🗣️ *Bahasa Natural*",
     "• tadi beli kopi 20rb pake cash",
     "• beli bensin 50rb cash",
@@ -1565,6 +1691,8 @@ function buildExampleMessage(): string {
     "",
     "Catatan:",
     "Bot akan menebak kategori dari histori transaksi.",
+    "Jika akun tidak ditulis, bot akan menebak akun dari history transaksi.",
+    "Kalau salah, gunakan: edit akun namaAkun",
     "Jika belum ada histori yang cocok, gunakan format lengkap:",
     "• jajan kopi 10000 cash",
     "",
@@ -1691,6 +1819,10 @@ Deno.serve(async (req: Request) => {
       parsedLog = { command: "contoh" };
     } else if (normalized === "ping") {
       reply = "🏓 pong";
+    } else if (normalized.startsWith("edit akun")) {
+      const editResult = await handleEditLastTransactionAccount(userId, normalized);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
     } else if (
       normalized === "hutang" ||
       normalized.startsWith("tambah hutang") ||
@@ -2095,21 +2227,27 @@ Deno.serve(async (req: Request) => {
           if (!category) {
             const smartTx = parseSmartTransactionMessage(normalized);
             if (smartTx && !("error" in smartTx)) {
-              const smartAccount = await findAccount(userId, smartTx.accountName);
-              if (!smartAccount) {
+              const smartAccount = smartTx.accountName
+                ? await findAccount(userId, smartTx.accountName)
+                : await findAccountByTransactionHistory(userId, smartTx.title, null, null);
+              if (smartTx.accountName && !smartAccount) {
                 reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
+              } else if (!smartAccount) {
+                reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
               } else {
                 const smartCategory = await findCategoryByTransactionHistory(userId, smartTx.title);
                 if (!smartCategory) {
                   parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
                   reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
                 } else {
-                  parsedLog = { command: "smart_transaction", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, categoryName: smartCategory.name, categoryId: smartCategory.id, source: "history" };
+                  parsedLog = { command: "smart_transaction", title: smartTx.title, amount: smartTx.amount, categoryName: smartCategory.name, accountName: smartAccount.name, accountSource: smartTx.accountName ? "manual" : "history" };
                   const smartType = smartCategory.type === "income" ? "income" : "expense";
                   const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type: smartType, category_id: smartCategory.id, account_id: smartAccount.id, amount: smartTx.amount, title: smartTx.title, notes: `WhatsApp: ${message}` });
                   if (error) throw error;
                   const b = await getBalanceSummary(userId);
-                  const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`, "", "🤖 Kategori otomatis dari histori transaksi."];
+                  const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`];
+                  if (smartTx.accountName) lines.push("", "🤖 Kategori otomatis dari history.");
+                  else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${smartAccount.name}`);
                   if (smartType === "expense") {
                     lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
                   }
@@ -2181,8 +2319,6 @@ Deno.serve(async (req: Request) => {
               reply = "❌ Format tidak dikenali. Ketik menu untuk bantuan.";
             } else if ("error" in naturalTx && naturalTx.error === "INVALID_DATE") {
               reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
-            } else if (!naturalTx.accountName) {
-              reply = ["⚠️ Akun tidak ditemukan.", "", "Sebutkan akun di pesan.", "Contoh:", "beli kopi 20rb cash"].join("\n");
             } else {
               const category = await findCategoryByTransactionHistory(userId, naturalTx.title);
               if (!category) {
@@ -2206,9 +2342,13 @@ Deno.serve(async (req: Request) => {
                     category.type = forcedCategory.data.type;
                   }
                 }
-                const account = accounts.find((a) => a.name.toLowerCase() === naturalTx.accountName.toLowerCase());
-                if (!account) {
+                const account = naturalTx.accountName
+                  ? accounts.find((a) => a.name.toLowerCase() === naturalTx.accountName!.toLowerCase()) ?? null
+                  : await findAccountByTransactionHistory(userId, naturalTx.title, category.id, finalType);
+                if (naturalTx.accountName && !account) {
                   reply = ["⚠️ Akun tidak ditemukan.", "", "Sebutkan akun di pesan.", "Contoh:", "beli kopi 20rb cash"].join("\n");
+                } else if (!account) {
+                  reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
                 } else {
                   const { error } = await supabase.from("transactions").insert({
                     user_id: userId,
@@ -2221,7 +2361,7 @@ Deno.serve(async (req: Request) => {
                     notes: `WhatsApp natural: ${message}`,
                   });
                   if (error) throw error;
-                  parsedLog = { command: "natural_transaction", type: finalType, title: naturalTx.title, amount: naturalTx.amount, accountName: account.name, categoryName: category.name, date: naturalTx.date };
+                  parsedLog = { command: "natural_transaction", type: finalType, title: naturalTx.title, amount: naturalTx.amount, accountName: account.name, categoryName: category.name, date: naturalTx.date, accountSource: naturalTx.accountName ? "manual" : "history" };
                   const b = await getBalanceSummary(userId);
                   const lines = [
                     finalType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
@@ -2233,6 +2373,9 @@ Deno.serve(async (req: Request) => {
                     `Akun: ${account.name}`,
                     "",
                     "🤖 Diproses dari bahasa natural.",
+                    ...(naturalTx.accountName
+                      ? []
+                      : ["", "🤖 Akun otomatis dari history.", "Kalau salah, ketik:", `edit akun ${account.name}`]),
                     "",
                     "💰 Saldo Saat Ini",
                     `Cash: ${formatIDR(b.cash)}`,
@@ -2254,21 +2397,27 @@ Deno.serve(async (req: Request) => {
           } else if ("error" in smartTx && smartTx.error === "INVALID_DATE") {
             reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
           } else {
-            const account = await findAccount(userId, smartTx.accountName);
-            if (!account) {
+            const account = smartTx.accountName
+              ? await findAccount(userId, smartTx.accountName)
+              : await findAccountByTransactionHistory(userId, smartTx.title, null, null);
+            if (smartTx.accountName && !account) {
               reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
+            } else if (!account) {
+              reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
             } else {
               const category = await findCategoryByTransactionHistory(userId, smartTx.title);
               if (!category) {
                 parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
                 reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
               } else {
-                parsedLog = { command: "smart_transaction", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, categoryName: category.name, categoryId: category.id, source: "history" };
+                parsedLog = { command: "smart_transaction", title: smartTx.title, amount: smartTx.amount, categoryName: category.name, accountName: account.name, accountSource: smartTx.accountName ? "manual" : "history" };
                 const type = category.type === "income" ? "income" : "expense";
                 const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type, category_id: category.id, account_id: account.id, amount: smartTx.amount, title: smartTx.title, notes: `WhatsApp: ${message}` });
                 if (error) throw error;
                 const b = await getBalanceSummary(userId);
-                const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`, "", "🤖 Kategori otomatis dari histori transaksi."];
+                const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`];
+                if (smartTx.accountName) lines.push("", "🤖 Kategori otomatis dari history.");
+                else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${account.name}`);
                 if (type === "expense") lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
                 reply = lines.join("\n");
               }
