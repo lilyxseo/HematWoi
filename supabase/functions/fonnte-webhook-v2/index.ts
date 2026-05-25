@@ -67,7 +67,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FONNTE_TOKEN = Deno.env.get("FONNTE_TOKEN") ?? "";
 
-const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆"];
+const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️"];
 const MENU_COMMANDS = new Set(["menu", "help", "bantuan", ".menu"]);
 
 const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -154,6 +154,26 @@ function getNextMonthStart(date = new Date()): string {
   const y = String(next.getFullYear());
   const m = String(next.getMonth() + 1).padStart(2, "0");
   return `${y}-${m}-01`;
+}
+
+function getWeekStartJakarta(date = new Date()): string {
+  const jakarta = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const day = jakarta.getDay();
+  const offset = day === 0 ? 6 : day - 1;
+  jakarta.setDate(jakarta.getDate() - offset);
+  const y = String(jakarta.getFullYear());
+  const m = String(jakarta.getMonth() + 1).padStart(2, "0");
+  const d = String(jakarta.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getNextWeekStartJakarta(date = new Date()): string {
+  const weekStart = new Date(`${getWeekStartJakarta(date)}T00:00:00+07:00`);
+  weekStart.setDate(weekStart.getDate() + 7);
+  const y = String(weekStart.getFullYear());
+  const m = String(weekStart.getMonth() + 1).padStart(2, "0");
+  const d = String(weekStart.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 async function replyWhatsApp(target: string, message: string): Promise<void> {
@@ -352,45 +372,190 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string): Promi
   return { categoryNames, planned, used, remaining, percentage };
 }
 
-function buildBudgetLines(info: BudgetInfo): string {
-  const lines = [
-    "📊 Info Budget",
-    `Kategori: ${info.categoryNames.join(", ")}`,
-    `Terpakai: ${formatIDR(info.used)} / ${formatIDR(info.planned)}`,
-    `Sisa: ${formatIDR(info.remaining)}`,
-  ];
-  if (info.percentage >= 80) {
-    lines.push(`⚠️ Budget hampir habis (${info.percentage.toFixed(1)}%)`);
+async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promise<BudgetInfo | null> {
+  const category = await findCategory(userId, categoryName);
+  if (!category) return null;
+  console.log("[WEEKLY BUDGET] category", category);
+
+  const weekStart = getWeekStartJakarta();
+  const nextWeekStart = getNextWeekStartJakarta();
+  console.log("[WEEKLY BUDGET] weekStart", { weekStart, nextWeekStart });
+
+  const fullSelect = "id,user_id,category_id,name,amount_planned,planned,amount,week_start,start_date,created_at";
+  const minimalSelect = "id,user_id,category_id,name,amount_planned,planned,amount";
+  const isSchemaIssue = (error: unknown): boolean => {
+    const message = String((error as { message?: string } | null)?.message ?? error ?? "").toLowerCase();
+    return message.includes("does not exist") || message.includes("column") || message.includes("relation") || message.includes("schema cache");
+  };
+
+  const pickWeeklyBudget = (rows: Array<Record<string, JsonValue>>): Record<string, JsonValue> | null => {
+    if (!rows.length) return null;
+    const rowByWeekStart = rows.find((row) => String(row.week_start ?? "") === weekStart);
+    if (rowByWeekStart) return rowByWeekStart;
+    const rowByStartDate = rows.find((row) => String(row.start_date ?? "") === weekStart);
+    if (rowByStartDate) return rowByStartDate;
+    const rowByCategory = rows.find((row) => String(row.category_id ?? "") === category.id);
+    return rowByCategory ?? rows[0];
+  };
+
+  let directBudgets: Array<Record<string, JsonValue>> = [];
+  const { data: fullDirect, error: fullDirectErr } = await supabase
+    .from("budgets_weekly")
+    .select(fullSelect)
+    .eq("user_id", userId)
+    .eq("category_id", category.id);
+
+  if (fullDirectErr) {
+    const { data: fallbackDirect, error: fallbackDirectErr } = await supabase
+      .from("budgets_weekly")
+      .select(minimalSelect)
+      .eq("user_id", userId)
+      .eq("category_id", category.id);
+    if (fallbackDirectErr) {
+      if (isSchemaIssue(fallbackDirectErr)) return null;
+      throw fallbackDirectErr;
+    }
+    directBudgets = (fallbackDirect ?? []) as Array<Record<string, JsonValue>>;
+  } else {
+    directBudgets = (fullDirect ?? []) as Array<Record<string, JsonValue>>;
   }
-  return lines.join("\n");
+  console.log("[WEEKLY BUDGET] directBudgets", directBudgets);
+
+  let pickedBudget: Record<string, JsonValue> | null = pickWeeklyBudget(directBudgets);
+
+  const { data: mappedRawRows, error: mappedRowsErr } = await supabase
+    .from("weekly_budget_categories")
+    .select("budget_weekly_id,category_id")
+    .eq("category_id", category.id);
+  if (mappedRowsErr) {
+    if (!isSchemaIssue(mappedRowsErr)) throw mappedRowsErr;
+  }
+  const mappedRows = (mappedRawRows ?? []) as Array<Record<string, JsonValue>>;
+  console.log("[WEEKLY BUDGET] mappedRows", mappedRows);
+
+  if (!pickedBudget) {
+    const mappedBudgetIds = [...new Set(mappedRows.map((row) => String(row.budget_weekly_id ?? "")).filter(Boolean))];
+
+    if (mappedBudgetIds.length > 0) {
+      const { data: mappedBudgetsFull, error: mappedBudgetsFullErr } = await supabase
+        .from("budgets_weekly")
+        .select(fullSelect)
+        .in("id", mappedBudgetIds)
+        .eq("user_id", userId);
+
+      let mappedBudgetRows: Array<Record<string, JsonValue>> = [];
+      if (mappedBudgetsFullErr) {
+        const { data: mappedBudgetsMin, error: mappedBudgetsMinErr } = await supabase
+          .from("budgets_weekly")
+          .select(minimalSelect)
+          .in("id", mappedBudgetIds)
+          .eq("user_id", userId);
+        if (mappedBudgetsMinErr) {
+          if (isSchemaIssue(mappedBudgetsMinErr)) return null;
+          throw mappedBudgetsMinErr;
+        }
+        mappedBudgetRows = (mappedBudgetsMin ?? []) as Array<Record<string, JsonValue>>;
+      } else {
+        mappedBudgetRows = (mappedBudgetsFull ?? []) as Array<Record<string, JsonValue>>;
+      }
+
+      pickedBudget = pickWeeklyBudget(mappedBudgetRows);
+    }
+  }
+
+  console.log("[WEEKLY BUDGET] selectedBudget", pickedBudget);
+  if (!pickedBudget) return null;
+
+  const planned = Number(pickedBudget.amount_planned ?? pickedBudget.planned ?? pickedBudget.amount ?? 0);
+  if (planned <= 0) return null;
+
+  const weeklyBudgetId = String(pickedBudget.id ?? "");
+  let categoryIds: string[] = [category.id];
+
+  const { data: linkedCats, error: linkedCatsErr } = await supabase
+    .from("weekly_budget_categories")
+    .select("category_id")
+    .eq("budget_weekly_id", weeklyBudgetId);
+  if (linkedCatsErr && !isSchemaIssue(linkedCatsErr)) throw linkedCatsErr;
+
+  if (linkedCats && linkedCats.length > 0) {
+    const linkedIds = linkedCats.map((v: Record<string, JsonValue>) => String(v.category_id)).filter(Boolean);
+    categoryIds = [...new Set([...categoryIds, ...linkedIds])];
+  }
+
+  const { data: categoryNameRows } = await supabase
+    .from("categories")
+    .select("id,name")
+    .in("id", categoryIds);
+  const categoryNames = (categoryNameRows ?? []).map((row: Record<string, JsonValue>) => String(row.name));
+
+  const { data: txRows, error: txErr } = await supabase
+    .from("transactions")
+    .select("amount")
+    .eq("user_id", userId)
+    .eq("type", "expense")
+    .is("deleted_at", null)
+    .is("to_account_id", null)
+    .in("category_id", categoryIds)
+    .gte("date", weekStart)
+    .lt("date", nextWeekStart);
+  if (txErr) throw txErr;
+
+  const used = (txRows ?? []).reduce((acc, item: Record<string, JsonValue>) => acc + Number(item.amount ?? 0), 0);
+  console.log("[WEEKLY BUDGET] used", { used, categoryIds });
+  const remaining = planned - used;
+  const percentage = planned > 0 ? (used / planned) * 100 : 0;
+
+  return { categoryNames, planned, used, remaining, percentage };
+}
+
+function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget: BudgetInfo | null): string[] {
+  const lines: string[] = [];
+
+  if (monthlyBudget) {
+    lines.push("📆 Budget Bulanan");
+    lines.push(`• Terpakai: ${formatIDR(monthlyBudget.used)} / ${formatIDR(monthlyBudget.planned)}`);
+    lines.push(`• Sisa: ${formatIDR(monthlyBudget.remaining)}`);
+    if (monthlyBudget.percentage >= 80) lines.push(`⚠️ Budget bulanan hampir habis (${monthlyBudget.percentage.toFixed(1)}%)`);
+  }
+
+  if (weeklyBudget) {
+    if (lines.length > 0) lines.push("");
+    lines.push("🗓️ Budget Mingguan");
+    lines.push(`• Terpakai: ${formatIDR(weeklyBudget.used)} / ${formatIDR(weeklyBudget.planned)}`);
+    lines.push(`• Sisa: ${formatIDR(weeklyBudget.remaining)}`);
+    if (weeklyBudget.percentage >= 80) lines.push(`⚠️ Budget mingguan hampir habis (${weeklyBudget.percentage.toFixed(1)}%)`);
+  }
+
+  return lines;
 }
 
 function buildMenuMessage(): string {
   return [
     "📋 *Menu HematWoi*",
     "",
+    "💰 *Cek Data*",
     "• saldo",
     "• summary",
     "• riwayat",
-    "• riwayat hari ini",
-    "• riwayat namaKategori",
-    "• budget namaKategori",
-    "• tf nominal akun_asal akun_tujuan",
-    "• kategori nominal akun",
-    "• kategori judul nominal akun",
-    "• hapus",
-    "• undo",
+    "• info",
+    "",
+    "➕ *Catat Transaksi*",
+    "• jajan 10000 cash",
+    "• jajan beli kopi 10000 cash",
+    "• gaji freelance 500000 seabank",
+    "",
+    "🔁 *Transfer*",
+    "• tf 50000 cash seabank",
+    "",
+    "🎯 *Budget*",
+    "• budget jajan",
+    "",
+    "🧾 *Lainnya*",
     "• kategori",
     "• akun",
-    "• info",
+    "• hapus",
     "• ping",
-    "",
-    "Contoh:",
-    "- jajan 10000 cash",
-    "- jajan beli kopi 10000 cash",
-    "- gaji freelance 500000 seabank",
-    "- tf 50000 cash seabank",
-    "- budget jajan",
   ].join("\n");
 }
 
@@ -516,7 +681,7 @@ Deno.serve(async (req: Request) => {
       const arg = normalized.replace(/^riwayat\s*/, "").trim();
       let query = supabase
         .from("transactions")
-        .select("title,amount,type,date,categories(name),accounts(name),category_id")
+        .select("id,title,amount,type,date,category_id,account_id,to_account_id")
         .eq("user_id", userId)
         .is("deleted_at", null)
         .order("inserted_at", { ascending: false })
@@ -534,25 +699,68 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!reply) {
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data || data.length === 0) {
-          reply = "📚 Tidak ada riwayat transaksi.";
+        const { data: txRows, error: txErr } = await query;
+        if (txErr) throw txErr;
+
+        const transactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
+        if (transactions.length === 0) {
+          reply = "📚 Belum ada riwayat transaksi.";
         } else {
-          const lines = data.map((tx: Record<string, JsonValue>, i: number) => {
+          const categoryIds = [...new Set(transactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
+          const accountIds = [...new Set(
+            transactions
+              .flatMap((tx) => [String(tx.account_id ?? ""), String(tx.to_account_id ?? "")])
+              .filter(Boolean),
+          )];
+
+          const categoryMap = new Map<string, string>();
+          const accountMap = new Map<string, string>();
+
+          if (categoryIds.length > 0) {
+            const { data: categoryRows } = await supabase.from("categories").select("id,name").in("id", categoryIds);
+            for (const row of (categoryRows ?? []) as Array<Record<string, JsonValue>>) {
+              categoryMap.set(String(row.id), String(row.name));
+            }
+          }
+
+          if (accountIds.length > 0) {
+            const { data: accountRows } = await supabase.from("accounts").select("id,name").in("id", accountIds);
+            for (const row of (accountRows ?? []) as Array<Record<string, JsonValue>>) {
+              accountMap.set(String(row.id), String(row.name));
+            }
+          }
+
+          const lines = transactions.map((tx, i) => {
             const type = String(tx.type ?? "expense");
-            const sign = type === "income" ? "+" : type === "transfer" ? "↔" : "-";
-            const cat = (tx.categories as { name?: string } | null)?.name ?? "-";
-            const acc = (tx.accounts as { name?: string } | null)?.name ?? "-";
-            return `${i + 1}. ${String(tx.date)} | ${cat}\n   ${sign}${formatIDR(Number(tx.amount ?? 0))} via ${acc}\n   ${String(tx.title ?? "-")}`;
+            const amount = Number(tx.amount ?? 0);
+            if (type === "transfer") {
+              const fromName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
+              const toName = accountMap.get(String(tx.to_account_id ?? "")) ?? "-";
+              return `${i + 1}. ${String(tx.date)}\n   Transfer ${fromName} → ${toName}\n   ↔ ${formatIDR(amount)}`;
+            }
+            const sign = type === "income" ? "+" : "-";
+            const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
+            const title = String(tx.title ?? "-");
+            const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
+            return `${i + 1}. ${String(tx.date)}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)} via ${accountName}`;
           });
-          reply = `📚 Riwayat Transaksi\n\n${lines.join("\n")}`;
+
+          reply = `📚 *Riwayat Transaksi*\n\n${lines.join("\n\n")}`;
         }
       }
     } else if (normalized.startsWith("budget ")) {
       const categoryName = normalized.replace(/^budget\s+/, "").trim();
-      const info = await getMonthlyBudgetInfo(userId, categoryName);
-      reply = info ? buildBudgetLines(info) : `❌ Budget untuk kategori *${categoryName}* tidak ditemukan.`;
+      const [monthlyBudget, weeklyBudget] = await Promise.all([
+        getMonthlyBudgetInfo(userId, categoryName),
+        getWeeklyBudgetInfo(userId, categoryName),
+      ]);
+      if (!monthlyBudget && !weeklyBudget) {
+        reply = `📊 Budget untuk kategori *${categoryName}* belum ada.`;
+      } else {
+        const categoryLabel = monthlyBudget?.categoryNames?.[0] ?? weeklyBudget?.categoryNames?.[0] ?? categoryName;
+        const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
+        reply = ["📊 *Info Budget*", `Kategori: ${categoryLabel}`, "", ...budgetLines].join("\n");
+      }
     } else if (normalized === "kategori") {
       const { data, error } = await supabase.from("categories").select("name,type").eq("user_id", userId).order("name");
       if (error) throw error;
@@ -659,44 +867,33 @@ Deno.serve(async (req: Request) => {
             });
             if (error) throw error;
 
-            if (type === "income") {
-              const b = await getBalanceSummary(userId);
-              reply = [
-                "✅ Pemasukan tercatat",
-                "",
-                `Kategori: ${category.name}`,
-                `Judul: ${tx.title}`,
-                `Nominal: ${formatIDR(tx.amount)}`,
-                `Akun: ${account.name}`,
-                "",
-                "💰 Saldo Saat Ini",
-                `Cash: ${formatIDR(b.cash)}`,
-                `Non Cash: ${formatIDR(b.nonCash)}`,
-                `Total: ${formatIDR(b.total)}`,
-              ].join("\n");
-            } else {
-              const b = await getBalanceSummary(userId);
-              const budgetInfo = await getMonthlyBudgetInfo(userId, category.name);
-              const budgetText = budgetInfo
-                ? ["📆 Budget Bulanan", `• Terpakai: ${formatIDR(budgetInfo.used)} / ${formatIDR(budgetInfo.planned)}`, `• Sisa: ${formatIDR(budgetInfo.remaining)}`].join("\n")
-                : "📆 Budget Bulanan\n• Terpakai: -\n• Sisa: -";
+            const b = await getBalanceSummary(userId);
+            const baseLines = [
+              type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
+              "",
+              `Kategori: ${category.name}`,
+              `Judul: ${tx.title}`,
+              `Nominal: ${formatIDR(tx.amount)}`,
+              `Akun: ${account.name}`,
+              "",
+              "💰 Saldo Saat Ini",
+              `Cash: ${formatIDR(b.cash)}`,
+              `Non Cash: ${formatIDR(b.nonCash)}`,
+              `Total: ${formatIDR(b.total)}`,
+            ];
 
-              reply = [
-                "✅ Pengeluaran tercatat",
-                "",
-                `Kategori: ${category.name}`,
-                `Judul: ${tx.title}`,
-                `Nominal: ${formatIDR(tx.amount)}`,
-                `Akun: ${account.name}`,
-                "",
-                "💰 Saldo Saat Ini",
-                `Cash: ${formatIDR(b.cash)}`,
-                `Non Cash: ${formatIDR(b.nonCash)}`,
-                `Total: ${formatIDR(b.total)}`,
-                "",
-                budgetText,
-              ].join("\n");
+            if (type === "expense") {
+              const [monthlyBudget, weeklyBudget] = await Promise.all([
+                getMonthlyBudgetInfo(userId, category.name),
+                getWeeklyBudgetInfo(userId, category.name),
+              ]);
+              const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
+              if (budgetLines.length > 0) {
+                baseLines.push("", ...budgetLines);
+              }
             }
+
+            reply = baseLines.join("\n");
           }
         }
       }
