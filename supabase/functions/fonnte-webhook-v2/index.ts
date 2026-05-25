@@ -628,7 +628,6 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string): Promi
 
 async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promise<BudgetInfo | null> {
   const category = await findCategory(userId, categoryName);
-  console.log("[WEEKLY BUDGET] category", { userId, categoryName, category });
   if (!category) return null;
 
   const weekStart = getWeekStartJakarta();
@@ -637,29 +636,26 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
   let budgetId: string | null = null;
   let planned = 0;
   let categoryIds: string[] = [category.id];
-  let selectedBudget: Record<string, JsonValue> | null = null;
-
-  const { data: directBudgets, error: directErr } = await supabase
+  const { data: directBudget, error: directErr } = await supabase
     .from("budgets_weekly")
-    .select("id,user_id,category_id,name,planned,amount_planned,amount,created_at")
+    .select("id,user_id,category_id,name,planned_amount,week_start,month_start,created_at")
     .eq("user_id", userId)
     .eq("category_id", category.id)
-    .order("created_at", { ascending: false });
+    .eq("week_start", weekStart)
+    .maybeSingle();
   if (directErr) throw directErr;
-  console.log("[WEEKLY BUDGET] directBudgets", directBudgets ?? []);
 
-  if ((directBudgets ?? []).length > 0) {
-    selectedBudget = (directBudgets ?? [])[0] as Record<string, JsonValue>;
-    budgetId = String(selectedBudget.id ?? "");
-    planned = Number(selectedBudget.planned ?? selectedBudget.amount_planned ?? selectedBudget.amount ?? 0);
+  if (directBudget) {
+    budgetId = String((directBudget as Record<string, JsonValue>).id ?? "");
+    planned = Number((directBudget as Record<string, JsonValue>).planned_amount ?? 0);
   }
 
   const { data: mappedRows, error: mappedErr } = await supabase
     .from("weekly_budget_categories")
     .select("budget_weekly_id,category_id")
+    .eq("user_id", userId)
     .eq("category_id", category.id);
   if (mappedErr) throw mappedErr;
-  console.log("[WEEKLY BUDGET] mappedRows", mappedRows ?? []);
 
   if (!budgetId) {
     const mappedBudgetIds = [...new Set((mappedRows ?? [])
@@ -667,36 +663,30 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
       .filter(Boolean))];
 
     if (mappedBudgetIds.length > 0) {
-      const { data: mappedBudgets, error: mappedBudgetErr } = await supabase
+      const { data: mappedBudget, error: mappedBudgetErr } = await supabase
         .from("budgets_weekly")
-        .select("id,user_id,category_id,name,planned,amount_planned,amount,created_at")
+        .select("id,user_id,category_id,name,planned_amount,week_start,month_start,created_at")
         .eq("user_id", userId)
+        .eq("week_start", weekStart)
         .in("id", mappedBudgetIds)
-        .order("created_at", { ascending: false });
+        .maybeSingle();
       if (mappedBudgetErr) throw mappedBudgetErr;
 
-      if ((mappedBudgets ?? []).length > 0) {
-        selectedBudget = (mappedBudgets ?? [])[0] as Record<string, JsonValue>;
-        budgetId = String(selectedBudget.id ?? "");
-        planned = Number(selectedBudget.planned ?? selectedBudget.amount_planned ?? selectedBudget.amount ?? 0);
+      if (mappedBudget) {
+        budgetId = String((mappedBudget as Record<string, JsonValue>).id ?? "");
+        planned = Number((mappedBudget as Record<string, JsonValue>).planned_amount ?? 0);
       }
     }
   }
 
-  console.log("[WEEKLY BUDGET] selectedBudget", selectedBudget);
-  console.log("[WEEKLY BUDGET] planned", planned);
+  if (!budgetId) return null;
 
-  if (!budgetId || planned <= 0) return null;
-
-  // 3. Ambil semua kategori yang terhubung ke budget mingguan ini
   const { data: linkedRows, error: linkedErr } = await supabase
     .from("weekly_budget_categories")
     .select("category_id")
+    .eq("user_id", userId)
     .eq("budget_weekly_id", budgetId);
-
-  if (linkedErr) {
-    console.error("[WEEKLY BUDGET LINKED ERROR]", linkedErr);
-  }
+  if (linkedErr) throw linkedErr;
 
   const linkedCategoryIds = (linkedRows ?? [])
     .map((row: Record<string, JsonValue>) => String(row.category_id ?? ""))
@@ -706,7 +696,6 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
     categoryIds = [...new Set([...categoryIds, ...linkedCategoryIds])];
   }
 
-  // 4. Ambil nama kategori
   const { data: categoryNameRows } = await supabase
     .from("categories")
     .select("id,name")
@@ -716,7 +705,6 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
     .map((row: Record<string, JsonValue>) => String(row.name ?? ""))
     .filter(Boolean);
 
-  // 5. Hitung pemakaian minggu berjalan
   const { data: txRows, error: txErr } = await supabase
     .from("transactions")
     .select("amount")
@@ -727,11 +715,7 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
     .in("category_id", categoryIds)
     .gte("date", weekStart)
     .lt("date", nextWeekStart);
-
-  if (txErr) {
-    console.error("[WEEKLY BUDGET TX ERROR]", txErr);
-    throw txErr;
-  }
+  if (txErr) throw txErr;
 
   const used = (txRows ?? []).reduce(
     (sum: number, tx: Record<string, JsonValue>) => sum + Number(tx.amount ?? 0),
@@ -740,8 +724,6 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
 
   const remaining = planned - used;
   const percentage = planned > 0 ? (used / planned) * 100 : 0;
-
-  console.log("[WEEKLY BUDGET] used", used);
 
   return {
     categoryNames: categoryNames.length > 0 ? categoryNames : [category.name],
