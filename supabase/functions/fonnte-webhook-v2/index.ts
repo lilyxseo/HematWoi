@@ -41,7 +41,9 @@ type ParsedTransaction = {
   accountName: string;
   amount: number;
   title: string;
+  date: string;
 };
+type ParsedTransactionError = { error: "INVALID_DATE" };
 
 type ParsedTransfer = {
   amount: number;
@@ -163,10 +165,10 @@ function isDateToken(token: string): boolean {
 }
 
 function parseCustomDateToken(token: string): string | null {
-  if (!isDateToken(token)) return null;
-  const [dayRaw, monthRaw] = token.trim().split("/");
-  const day = Number(dayRaw);
-  const month = Number(monthRaw);
+  const match = token.trim().match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
   if (!Number.isInteger(day) || !Number.isInteger(month)) return null;
   if (day < 1 || day > 31 || month < 1 || month > 12) return null;
   const now = new Date();
@@ -594,29 +596,42 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
   return { intent, reply: `🤖 *AI Finance Chat*\n\n${b.verdict.toUpperCase()} untuk beli ${formatIDR(b.amount)}.\nAlasan: ${b.reason}` };
 }
 
-function parseTransactionMessage(message: string): ParsedTransaction | null {
+function parseTransactionMessage(message: string): ParsedTransaction | ParsedTransactionError | null {
   const parts = message.trim().split(/\s+/);
   if (parts.length < 3) return null;
 
-  const categoryName = parts[0];
-  const accountName = parts[parts.length - 1];
+  let txDate = getTodayJakarta();
+  let workParts = [...parts];
+  const lastToken = workParts[workParts.length - 1];
+
+  if (isDateToken(lastToken)) {
+    const parsedDate = parseCustomDateToken(lastToken);
+    if (!parsedDate) return { error: "INVALID_DATE" };
+    txDate = parsedDate;
+    workParts = workParts.slice(0, -1);
+  }
+
+  if (workParts.length < 3) return null;
+
+  const categoryName = workParts[0];
+  const accountName = workParts[workParts.length - 1];
   let amountIndex = -1;
 
-  for (let i = parts.length - 2; i >= 1; i--) {
-    if (parseAmount(parts[i]) > 0) {
+  for (let i = workParts.length - 2; i >= 1; i--) {
+    if (parseAmount(workParts[i]) > 0) {
       amountIndex = i;
       break;
     }
   }
 
   if (amountIndex < 1) return null;
-  const amount = parseAmount(parts[amountIndex]);
+  const amount = parseAmount(workParts[amountIndex]);
   if (amount <= 0) return null;
 
-  const titleParts = parts.slice(1, amountIndex);
+  const titleParts = workParts.slice(1, amountIndex);
   const title = titleParts.length > 0 ? titleParts.join(" ") : categoryName;
 
-  return { categoryName, accountName, amount, title };
+  return { categoryName, accountName, amount, title, date: txDate };
 }
 
 function parseTransferMessage(message: string): ParsedTransfer | null {
@@ -826,12 +841,13 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
   };
 }
 
-async function getMonthlyBudgetInfo(userId: string, categoryName: string): Promise<BudgetInfo | null> {
+async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?: string): Promise<BudgetInfo | null> {
   const category = await findCategory(userId, categoryName);
   if (!category) return null;
 
-  const monthStart = getMonthStart();
-  const nextMonthStart = getNextMonthStart();
+  const dateRef = date ? new Date(`${date}T00:00:00+07:00`) : new Date();
+  const monthStart = getMonthStart(dateRef);
+  const nextMonthStart = getNextMonthStart(dateRef);
 
   const { data: directBudgets, error: directErr } = await supabase
     .from("budgets")
@@ -906,12 +922,13 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string): Promi
   return { categoryNames, planned, used, remaining, percentage };
 }
 
-async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promise<BudgetInfo | null> {
+async function getWeeklyBudgetInfo(userId: string, categoryName: string, date?: string): Promise<BudgetInfo | null> {
   const category = await findCategory(userId, categoryName);
   if (!category) return null;
 
-  const weekStart = getWeekStartJakarta();
-  const nextWeekStart = getNextWeekStartJakarta();
+  const dateRef = date ? new Date(`${date}T00:00:00+07:00`) : new Date();
+  const weekStart = getWeekStartJakarta(dateRef);
+  const nextWeekStart = getNextWeekStartJakarta(dateRef);
 
   let budgetId: string | null = null;
   let planned = 0;
@@ -1052,6 +1069,8 @@ function buildMenuMessage(): string {
     "• jajan 10000 cash",
     "• jajan beli kopi 10000 cash",
     "• gaji freelance 500000 seabank",
+    "• jajan kopi 10000 cash 31/05",
+    "Tanggal opsional: DD/MM",
     "",
     "🔁 *Transfer*",
     "• tf 50000 cash seabank",
@@ -1423,6 +1442,8 @@ Deno.serve(async (req: Request) => {
         const tx = parseTransactionMessage(normalized);
         if (!tx) {
           reply = "❌ Format tidak dikenali. Ketik menu untuk bantuan.";
+        } else if ("error" in tx && tx.error === "INVALID_DATE") {
+          reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
         } else {
           parsedLog = { command: "transaction", category: tx.categoryName, account: tx.accountName, amount: tx.amount, title: tx.title };
           const category = await findCategory(userId, tx.categoryName);
@@ -1433,12 +1454,11 @@ Deno.serve(async (req: Request) => {
           } else if (!account) {
             reply = `❌ Akun *${tx.accountName}* tidak ditemukan.`;
           } else {
-            const today = getTodayJakarta();
             const type = category.type === "income" ? "income" : "expense";
 
             const { error } = await supabase.from("transactions").insert({
               user_id: userId,
-              date: today,
+              date: tx.date,
               type,
               category_id: category.id,
               account_id: account.id,
@@ -1452,6 +1472,7 @@ Deno.serve(async (req: Request) => {
             const baseLines = [
               type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
               "",
+              `Tanggal: ${tx.date}`,
               `Kategori: ${category.name}`,
               `Judul: ${tx.title}`,
               `Nominal: ${formatIDR(tx.amount)}`,
@@ -1465,8 +1486,8 @@ Deno.serve(async (req: Request) => {
 
             if (type === "expense") {
               const [monthlyBudget, weeklyBudget] = await Promise.all([
-                getMonthlyBudgetInfo(userId, category.name),
-                getWeeklyBudgetInfo(userId, category.name),
+                getMonthlyBudgetInfo(userId, category.name, tx.date),
+                getWeeklyBudgetInfo(userId, category.name, tx.date),
               ]);
 
               const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
