@@ -258,6 +258,260 @@ async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
   return { cash: cashBalance, nonCash: nonCashBalance, total: totalBalance };
 }
 
+
+type AiIntent =
+  | "SPENDING_TOP"
+  | "SPENDING_CATEGORY"
+  | "BUDGET_STATUS"
+  | "BALANCE_SAFETY"
+  | "SUBSCRIPTION_SUMMARY"
+  | "DEBT_STATUS"
+  | "GOAL_PROGRESS"
+  | "BUY_DECISION"
+  | "UNKNOWN";
+
+type PeriodType = "month" | "week";
+
+function getMonthRangeJakarta(date = new Date()): { start: string; end: string; label: string; daysInPeriod: number; daysPassed: number; daysRemaining: number } {
+  const jakarta = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const year = jakarta.getFullYear();
+  const month = jakarta.getMonth();
+  const start = `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  const next = new Date(year, month + 1, 1);
+  const end = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+  const daysInPeriod = new Date(year, month + 1, 0).getDate();
+  const daysPassed = jakarta.getDate();
+  const daysRemaining = Math.max(0, daysInPeriod - daysPassed);
+  return { start, end, label: "bulan ini", daysInPeriod, daysPassed, daysRemaining };
+}
+
+function getWeekRangeJakarta(date = new Date()): { start: string; end: string; label: string; daysInPeriod: number; daysPassed: number; daysRemaining: number } {
+  const start = getWeekStartJakarta(date);
+  const end = getNextWeekStartJakarta(date);
+  const jakarta = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const day = jakarta.getDay();
+  const passed = day === 0 ? 7 : day;
+  return { start, end, label: "minggu ini", daysInPeriod: 7, daysPassed: passed, daysRemaining: Math.max(0, 7 - passed) };
+}
+
+function extractPeriod(text: string): PeriodType {
+  if (/(minggu|pekan)/i.test(text)) return "week";
+  return "month";
+}
+
+function detectAiIntent(question: string): AiIntent {
+  const q = normalizeText(question);
+  if (/(aman|boleh).*(beli)/.test(q) || /(beli).*(\d|rb|ribu|jt|juta)/.test(q)) return "BUY_DECISION";
+  if (/(paling boros|pengeluaran terbesar|terbesar apa)/.test(q)) return "SPENDING_TOP";
+  if (/(budget).*(sisa|aman)/.test(q)) return "BUDGET_STATUS";
+  if (/(saldo).*aman|cukup sampai (akhir bulan|gajian)/.test(q)) return "BALANCE_SAFETY";
+  if (/(subscription|langganan)/.test(q)) return "SUBSCRIPTION_SUMMARY";
+  if (/(hutang|piutang).*(lunas|belum|apa saja|siapa)/.test(q) || /(hutang|piutang)/.test(q)) return "DEBT_STATUS";
+  if (/(goal|goals|target|progress)/.test(q)) return "GOAL_PROGRESS";
+  if (/(pengeluaran|jajan|makan|belanja)/.test(q) && /(berapa)/.test(q)) return "SPENDING_CATEGORY";
+  return "UNKNOWN";
+}
+
+function extractAmountFromText(text: string): number {
+  const q = normalizeText(text);
+  const m = q.match(/(\d+[\d.,]*)\s*(rb|ribu|jt|juta|k)?/i);
+  if (!m) return 0;
+  const base = Number(m[1].replace(/[^\d]/g, ""));
+  if (!Number.isFinite(base) || base <= 0) return 0;
+  const unit = (m[2] ?? "").toLowerCase();
+  if (unit === "rb" || unit === "ribu" || unit === "k") return base * 1000;
+  if (unit === "jt" || unit === "juta") return base * 1000000;
+  return base;
+}
+
+async function getCategoryExpenseTotal(userId: string, question: string): Promise<{ categoryName: string | null; total: number; periodLabel: string }> {
+  const period = extractPeriod(question) === "week" ? getWeekRangeJakarta() : getMonthRangeJakarta();
+  const { data: categories, error: catErr } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("type", "expense");
+  if (catErr) throw catErr;
+  const q = normalizeText(question);
+  let selected: Record<string, JsonValue> | null = null;
+  for (const c of (categories ?? []) as Array<Record<string, JsonValue>>) {
+    const name = normalizeText(String(c.name ?? ""));
+    if (name && q.includes(name)) { selected = c; break; }
+  }
+  if (!selected) return { categoryName: null, total: 0, periodLabel: period.label };
+  const { data: txs, error: txErr } = await supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").eq("category_id", String(selected.id)).is("deleted_at", null).gte("date", period.start).lt("date", period.end);
+  if (txErr) throw txErr;
+  const total = (txs ?? []).reduce((a, b: Record<string, JsonValue>) => a + Number(b.amount ?? 0), 0);
+  return { categoryName: String(selected.name ?? "-"), total, periodLabel: period.label };
+}
+
+async function getTopExpenseCategories(userId: string): Promise<Array<{ name: string; total: number }>> {
+  const period = getMonthRangeJakarta();
+  const { data: txs, error } = await supabase.from("transactions").select("amount,category_id").eq("user_id", userId).eq("type", "expense").is("deleted_at", null).gte("date", period.start).lt("date", period.end);
+  if (error) throw error;
+  const map = new Map<string, number>();
+  for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
+    const cid = String(tx.category_id ?? "");
+    if (!cid) continue;
+    map.set(cid, (map.get(cid) ?? 0) + Number(tx.amount ?? 0));
+  }
+  const ids = [...map.keys()];
+  const nameMap = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data: cats } = await supabase.from("categories").select("id,name").in("id", ids);
+    for (const c of (cats ?? []) as Array<Record<string, JsonValue>)) nameMap.set(String(c.id), String(c.name));
+  }
+  return [...map.entries()].map(([id, total]) => ({ name: nameMap.get(id) ?? "-", total })).sort((a,b)=>b.total-a.total).slice(0,3);
+}
+
+async function getBalanceSafety(userId: string): Promise<{ total: number; avgDaily: number; safeDays: number; daysRemaining: number }> {
+  const balance = await getBalanceSummary(userId);
+  const period = getMonthRangeJakarta();
+  const { data: txs, error } = await supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").is("deleted_at", null).gte("date", period.start).lt("date", period.end);
+  if (error) throw error;
+  const totalExpense = (txs ?? []).reduce((a, b: Record<string, JsonValue>) => a + Number(b.amount ?? 0), 0);
+  const avgDaily = period.daysPassed > 0 ? totalExpense / period.daysPassed : 0;
+  const safeDays = avgDaily > 0 ? Math.floor(balance.total / avgDaily) : 999;
+  return { total: balance.total, avgDaily, safeDays, daysRemaining: period.daysRemaining };
+}
+
+async function getSubscriptionSummary(userId: string): Promise<{ monthlyCharge: number; activeNames: string[] }> {
+  const period = getMonthRangeJakarta();
+  const { data: subs, error: sErr } = await supabase.from("subscriptions").select("id,name,is_active,status").eq("user_id", userId);
+  if (sErr) throw sErr;
+  const active = (subs ?? []).filter((s: Record<string, JsonValue>) => s.is_active === true || String(s.status ?? "").toLowerCase() === "active");
+  const activeIds = active.map((s: Record<string, JsonValue>) => String(s.id));
+  let monthlyCharge = 0;
+  if (activeIds.length > 0) {
+    const { data: charges, error: cErr } = await supabase.from("subscription_charges").select("amount,subscription_id,charge_date,date").eq("user_id", userId).in("subscription_id", activeIds).gte("charge_date", period.start).lt("charge_date", period.end);
+    if (cErr) throw cErr;
+    monthlyCharge = (charges ?? []).reduce((a, c: Record<string, JsonValue>) => a + Number(c.amount ?? 0), 0);
+  }
+  return { monthlyCharge, activeNames: active.map((s: Record<string, JsonValue>) => String(s.name ?? "-")) };
+}
+
+async function getDebtStatus(userId: string): Promise<Array<{ name: string; remaining: number; type: string }>> {
+  const { data: debts, error } = await supabase.from("debts").select("id,name,person_name,counterparty_name,type,amount,total_amount,is_paid,status,remaining_amount").eq("user_id", userId);
+  if (error) throw error;
+  return (debts ?? [])
+    .filter((d: Record<string, JsonValue>) => !(d.is_paid === true || String(d.status ?? "").toLowerCase() === "paid"))
+    .map((d: Record<string, JsonValue>) => ({ name: String(d.name ?? d.person_name ?? d.counterparty_name ?? "-"), remaining: Number(d.remaining_amount ?? d.amount ?? d.total_amount ?? 0), type: String(d.type ?? "debt") }));
+}
+
+async function getGoalProgress(userId: string, question: string): Promise<Array<{ name: string; target: number; current: number; percentage: number }>> {
+  const { data: goals, error } = await supabase.from("goals").select("id,name,target_amount,amount_target,current_amount").eq("user_id", userId);
+  if (error) throw error;
+  const q = normalizeText(question);
+  const filtered = (goals ?? []).filter((g: Record<string, JsonValue>) => q.includes(normalizeText(String(g.name ?? ""))) || /goals|goal|progress|target/.test(q));
+  const rows = filtered.length > 0 ? filtered : (goals ?? []);
+  const goalIds = rows.map((g: Record<string, JsonValue>) => String(g.id));
+  const progressMap = new Map<string, number>();
+  if (goalIds.length > 0) {
+    const { data: entries } = await supabase.from("goal_entries").select("goal_id,amount").in("goal_id", goalIds).eq("user_id", userId);
+    for (const e of (entries ?? []) as Array<Record<string, JsonValue>)) progressMap.set(String(e.goal_id), (progressMap.get(String(e.goal_id)) ?? 0) + Number(e.amount ?? 0));
+  }
+  return rows.map((g: Record<string, JsonValue>) => {
+    const target = Number(g.target_amount ?? g.amount_target ?? 0);
+    const current = Number(g.current_amount ?? progressMap.get(String(g.id)) ?? 0);
+    return { name: String(g.name ?? "-"), target, current, percentage: target > 0 ? (current / target) * 100 : 0 };
+  });
+}
+
+async function getBuyDecision(userId: string, question: string): Promise<{ amount: number; verdict: string; reason: string }> {
+  const amount = extractAmountFromText(question);
+  const safety = await getBalanceSafety(userId);
+  const projectedNeed = safety.avgDaily * safety.daysRemaining;
+  const after = safety.total - amount;
+  if (amount <= 0) return { amount: 0, verdict: "hati-hati", reason: "Nominal belum terbaca" };
+  if (after >= projectedNeed * 1.2) return { amount, verdict: "aman", reason: "Saldo setelah beli masih lebih dari kebutuhan sampai akhir bulan" };
+  if (after >= projectedNeed) return { amount, verdict: "hati-hati", reason: "Masih cukup, tapi tipis untuk sisa bulan ini" };
+  return { amount, verdict: "tidak disarankan", reason: "Berisiko mengganggu kebutuhan sampai akhir bulan" };
+}
+
+async function handleAiFinanceChat(userId: string, question: string): Promise<{ reply: string; intent: AiIntent }> {
+  const intent = detectAiIntent(question);
+  if (intent === "UNKNOWN") {
+    return { intent, reply: "🤖 Saya belum paham pertanyaan itu.
+
+Contoh yang bisa kamu tanyakan:
+• ai bulan ini paling boros apa
+• ai budget jajan sisa berapa
+• ai saldo aman sampai akhir bulan?
+• ai aman beli barang 500rb?" };
+  }
+  if (intent === "SPENDING_TOP") {
+    const tops = await getTopExpenseCategories(userId);
+    const lines = tops.length > 0 ? tops.map((t,i)=>`${i+1}. ${t.name} — ${formatIDR(t.total)}`).join("
+") : "Belum ada pengeluaran bulan ini.";
+    return { intent, reply: `🤖 *AI Finance Chat*
+
+Bulan ini pengeluaran terbesar kamu ada di:
+
+${lines}` };
+  }
+  if (intent === "SPENDING_CATEGORY") {
+    const res = await getCategoryExpenseTotal(userId, question);
+    if (!res.categoryName) return { intent, reply: "🤖 *AI Finance Chat*
+
+Kategori belum ketemu di pertanyaan kamu." };
+    return { intent, reply: `🤖 *AI Finance Chat*
+
+Pengeluaran *${res.categoryName}* ${res.periodLabel}: *${formatIDR(res.total)}*` };
+  }
+  if (intent === "BUDGET_STATUS") {
+    const cat = question.replace(/^.*budget\s+/i, "").replace(/(sisa|aman|tidak|berapa)/gi, "").trim();
+    const monthly = cat ? await getMonthlyBudgetInfo(userId, cat) : null;
+    const weekly = cat ? await getWeeklyBudgetInfo(userId, cat) : null;
+    if (!monthly && !weekly) return { intent, reply: "🤖 *AI Finance Chat*
+
+Budget kategori itu belum ditemukan." };
+    const lines = buildCombinedBudgetLines(monthly, weekly).join("
+");
+    return { intent, reply: `🤖 *AI Finance Chat*
+
+${lines}` };
+  }
+  if (intent === "BALANCE_SAFETY") {
+    const s = await getBalanceSafety(userId);
+    const status = s.safeDays >= s.daysRemaining ? "Aman" : "Perlu hemat";
+    return { intent, reply: `🤖 *AI Finance Chat*
+
+${status}.
+Estimasi hari aman: *${s.safeDays} hari*
+Sisa hari bulan ini: *${s.daysRemaining} hari*
+Rata-rata harian: *${formatIDR(s.avgDaily)}*` };
+  }
+  if (intent === "SUBSCRIPTION_SUMMARY") {
+    const s = await getSubscriptionSummary(userId);
+    const names = s.activeNames.length > 0 ? s.activeNames.map((n,i)=>`${i+1}. ${n}`).join("
+") : "-";
+    return { intent, reply: `🤖 *AI Finance Chat*
+
+Subscription aktif:
+${names}
+
+Total charge bulan ini: *${formatIDR(s.monthlyCharge)}*` };
+  }
+  if (intent === "DEBT_STATUS") {
+    const rows = await getDebtStatus(userId);
+    const lines = rows.length > 0 ? rows.map((r,i)=>`${i+1}. ${r.name} (${r.type}) — ${formatIDR(r.remaining)}`).join("
+") : "Tidak ada hutang/piutang aktif.";
+    return { intent, reply: `🤖 *AI Finance Chat*
+
+${lines}` };
+  }
+  if (intent === "GOAL_PROGRESS") {
+    const rows = await getGoalProgress(userId, question);
+    const lines = rows.length > 0 ? rows.slice(0,3).map((g,i)=>`${i+1}. ${g.name} — ${g.percentage.toFixed(1)}% (${formatIDR(g.current)} / ${formatIDR(g.target)})`).join("
+") : "Belum ada goals.";
+    return { intent, reply: `🤖 *AI Finance Chat*
+
+Progress goals:
+${lines}` };
+  }
+  const b = await getBuyDecision(userId, question);
+  return { intent, reply: `🤖 *AI Finance Chat*
+
+${b.verdict.toUpperCase()} untuk beli ${formatIDR(b.amount)}.
+Alasan: ${b.reason}` };
+}
+
 function parseTransactionMessage(message: string): ParsedTransaction | null {
   const parts = message.trim().split(/\s+/);
   if (parts.length < 3) return null;
@@ -626,6 +880,11 @@ Deno.serve(async (req: Request) => {
       reply = buildMenuMessage();
     } else if (normalized === "ping") {
       reply = "🏓 pong";
+    } else if (normalized.startsWith("ai ")) {
+      const question = message.trim().replace(/^ai\s+/i, "").trim();
+      const ai = await handleAiFinanceChat(userId, question);
+      parsedLog = { command: "ai", intent: ai.intent, question };
+      reply = ai.reply;
     } else if (normalized === "saldo") {
       const b = await getBalanceSummary(userId);
       reply = ["💰 Saldo HematWoi", "", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`].join("\n");
