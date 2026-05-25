@@ -375,134 +375,133 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string): Promi
 async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promise<BudgetInfo | null> {
   const category = await findCategory(userId, categoryName);
   if (!category) return null;
-  console.log("[WEEKLY BUDGET] category", category);
 
   const weekStart = getWeekStartJakarta();
   const nextWeekStart = getNextWeekStartJakarta();
-  console.log("[WEEKLY BUDGET] weekStart", { weekStart, nextWeekStart });
 
-  const fullSelect = "id,user_id,category_id,name,amount_planned,planned,amount,week_start,start_date,created_at";
-  const minimalSelect = "id,user_id,category_id,name,amount_planned,planned,amount";
-  const isSchemaIssue = (error: unknown): boolean => {
-    const message = String((error as { message?: string } | null)?.message ?? error ?? "").toLowerCase();
-    return message.includes("does not exist") || message.includes("column") || message.includes("relation") || message.includes("schema cache");
+  let budgetId: string | null = null;
+  let planned = 0;
+  let categoryIds: string[] = [category.id];
+
+  const isMissingColumnError = (error: unknown): boolean => {
+    const msg = String((error as { message?: string } | null)?.message ?? error ?? "").toLowerCase();
+    return msg.includes("column") && msg.includes("does not exist");
   };
-  const getWeeklyMappingRows = async (categoryId: string): Promise<{ rows: Array<Record<string, JsonValue>>; key: string | null }> => {
-    const mappingKeys = ["budget_weekly_id", "weekly_budget_id", "budget_id"];
-    for (const key of mappingKeys) {
-      const { data, error } = await supabase
-        .from("weekly_budget_categories")
-        .select(`${key},category_id`)
-        .eq("category_id", categoryId);
-      if (!error) return { rows: (data ?? []) as Array<Record<string, JsonValue>>, key };
-      if (!isSchemaIssue(error)) throw error;
+
+  const selectWeeklyBudgets = async (extraFilter?: (query: any) => any) => {
+    const selects = [
+      "id,user_id,category_id,name,planned,amount_planned,amount,created_at",
+      "id,user_id,category_id,name,planned,amount_planned,created_at",
+      "id,user_id,category_id,name,amount_planned,amount,created_at",
+      "id,user_id,category_id,name,planned,amount,created_at",
+      "id,user_id,category_id,name,planned,created_at",
+      "id,user_id,category_id,name,amount_planned,created_at",
+      "id,user_id,category_id,name,amount,created_at",
+      "id,user_id,category_id,name,planned,amount_planned,amount",
+      "id,user_id,category_id,name,planned",
+      "id,user_id,category_id,name,amount_planned",
+      "id,user_id,category_id,name,amount",
+      "id,user_id,category_id,name",
+    ];
+
+    let lastError: unknown = null;
+
+    for (const selectCols of selects) {
+      let query = supabase.from("budgets_weekly").select(selectCols).eq("user_id", userId);
+      if (extraFilter) query = extraFilter(query);
+      query = query.order("created_at", { ascending: false }).limit(1);
+
+      const { data, error } = await query;
+      if (!error) return { data: (data ?? []) as Array<Record<string, JsonValue>>, error: null };
+
+      lastError = error;
+      if (!isMissingColumnError(error)) break;
     }
-    return { rows: [], key: null };
+
+    return { data: [] as Array<Record<string, JsonValue>>, error: lastError };
   };
 
-  const pickWeeklyBudget = (rows: Array<Record<string, JsonValue>>): Record<string, JsonValue> | null => {
-    if (!rows.length) return null;
-    const rowByWeekStart = rows.find((row) => String(row.week_start ?? "") === weekStart);
-    if (rowByWeekStart) return rowByWeekStart;
-    const rowByStartDate = rows.find((row) => String(row.start_date ?? "") === weekStart);
-    if (rowByStartDate) return rowByStartDate;
-    const rowByCategory = rows.find((row) => String(row.category_id ?? "") === category.id);
-    return rowByCategory ?? rows[0];
-  };
-
-  let directBudgets: Array<Record<string, JsonValue>> = [];
-  const { data: fullDirect, error: fullDirectErr } = await supabase
-    .from("budgets_weekly")
-    .select(fullSelect)
-    .eq("user_id", userId)
-    .eq("category_id", category.id);
-
-  if (fullDirectErr) {
-    const { data: fallbackDirect, error: fallbackDirectErr } = await supabase
-      .from("budgets_weekly")
-      .select(minimalSelect)
-      .eq("user_id", userId)
-      .eq("category_id", category.id);
-    if (fallbackDirectErr) {
-      if (!isSchemaIssue(fallbackDirectErr)) throw fallbackDirectErr;
-      // Lanjut ke mekanisme mapped budget bila direct query gagal karena perbedaan schema.
-      directBudgets = [];
-    } else {
-      directBudgets = (fallbackDirect ?? []) as Array<Record<string, JsonValue>>;
-    }
-  } else {
-    directBudgets = (fullDirect ?? []) as Array<Record<string, JsonValue>>;
+  // 1. Cek budget mingguan direct dari budgets_weekly.category_id
+  const directRes = await selectWeeklyBudgets((query) => query.eq("category_id", category.id));
+  if (directRes.error) {
+    console.error("[WEEKLY BUDGET DIRECT ERROR]", directRes.error);
   }
-  console.log("[WEEKLY BUDGET] directBudgets", directBudgets);
 
-  let pickedBudget: Record<string, JsonValue> | null = pickWeeklyBudget(directBudgets);
+  const directBudgets = directRes.data;
+  if (directBudgets.length > 0) {
+    const b = directBudgets[0];
+    budgetId = String(b.id ?? "");
+    planned = Number(b.planned ?? b.amount_planned ?? b.amount ?? 0);
+  }
 
-  const { rows: mappedRows, key: mappingBudgetKey } = await getWeeklyMappingRows(category.id);
-  console.log("[WEEKLY BUDGET] mappedRows", mappedRows);
+  // 2. Kalau direct tidak ada, cek multi kategori dari weekly_budget_categories
+  if (!budgetId) {
+    const { data: mappedRows, error: mappedErr } = await supabase
+      .from("weekly_budget_categories")
+      .select("budget_weekly_id,category_id")
+      .eq("category_id", category.id);
 
-  if (!pickedBudget) {
-    const mappedBudgetIds = [...new Set(mappedRows.map((row) => String(row[mappingBudgetKey ?? ""] ?? "")).filter(Boolean))];
+    if (mappedErr) {
+      console.error("[WEEKLY BUDGET MAP ERROR]", mappedErr);
+    }
+
+    const mappedBudgetIds = [...new Set((mappedRows ?? [])
+      .map((row: Record<string, JsonValue>) => String(row.budget_weekly_id ?? ""))
+      .filter(Boolean))];
 
     if (mappedBudgetIds.length > 0) {
-      const { data: mappedBudgetsFull, error: mappedBudgetsFullErr } = await supabase
-        .from("budgets_weekly")
-        .select(fullSelect)
-        .in("id", mappedBudgetIds)
-        .eq("user_id", userId);
-
-      let mappedBudgetRows: Array<Record<string, JsonValue>> = [];
-      if (mappedBudgetsFullErr) {
-        const { data: mappedBudgetsMin, error: mappedBudgetsMinErr } = await supabase
-          .from("budgets_weekly")
-          .select(minimalSelect)
-          .in("id", mappedBudgetIds)
-          .eq("user_id", userId);
-        if (mappedBudgetsMinErr) {
-          if (isSchemaIssue(mappedBudgetsMinErr)) {
-            mappedBudgetRows = [];
-          } else {
-            throw mappedBudgetsMinErr;
-          }
-        } else {
-          mappedBudgetRows = (mappedBudgetsMin ?? []) as Array<Record<string, JsonValue>>;
-        }
-      } else {
-        mappedBudgetRows = (mappedBudgetsFull ?? []) as Array<Record<string, JsonValue>>;
+      const mappedRes = await selectWeeklyBudgets((query) => query.in("id", mappedBudgetIds));
+      if (mappedRes.error) {
+        console.error("[WEEKLY BUDGET MAPPED ERROR]", mappedRes.error);
       }
 
-      pickedBudget = pickWeeklyBudget(mappedBudgetRows);
+      if (mappedRes.data.length > 0) {
+        const b = mappedRes.data[0];
+        budgetId = String(b.id ?? "");
+        planned = Number(b.planned ?? b.amount_planned ?? b.amount ?? 0);
+      }
     }
   }
 
-  console.log("[WEEKLY BUDGET] selectedBudget", pickedBudget);
-  if (!pickedBudget) return null;
-
-  const planned = Number(pickedBudget.amount_planned ?? pickedBudget.planned ?? pickedBudget.amount ?? 0);
-  if (planned <= 0) return null;
-
-  const weeklyBudgetId = String(pickedBudget.id ?? "");
-  let categoryIds: string[] = [category.id];
-  let linkedCats: Array<Record<string, JsonValue>> = [];
-  if (mappingBudgetKey) {
-    const { data: linkedData, error: linkedCatsErr } = await supabase
-      .from("weekly_budget_categories")
-      .select("category_id")
-      .eq(mappingBudgetKey, weeklyBudgetId);
-    if (linkedCatsErr && !isSchemaIssue(linkedCatsErr)) throw linkedCatsErr;
-    linkedCats = (linkedData ?? []) as Array<Record<string, JsonValue>>;
+  if (!budgetId || planned <= 0) {
+    console.log("[WEEKLY BUDGET NOT FOUND]", {
+      categoryName,
+      categoryId: category.id,
+      budgetId,
+      planned,
+    });
+    return null;
   }
 
-  if (linkedCats.length > 0) {
-    const linkedIds = linkedCats.map((v: Record<string, JsonValue>) => String(v.category_id)).filter(Boolean);
-    categoryIds = [...new Set([...categoryIds, ...linkedIds])];
+  // 3. Ambil semua kategori yang terhubung ke budget mingguan ini
+  const { data: linkedRows, error: linkedErr } = await supabase
+    .from("weekly_budget_categories")
+    .select("category_id")
+    .eq("budget_weekly_id", budgetId);
+
+  if (linkedErr) {
+    console.error("[WEEKLY BUDGET LINKED ERROR]", linkedErr);
   }
 
+  const linkedCategoryIds = (linkedRows ?? [])
+    .map((row: Record<string, JsonValue>) => String(row.category_id ?? ""))
+    .filter(Boolean);
+
+  if (linkedCategoryIds.length > 0) {
+    categoryIds = [...new Set([...categoryIds, ...linkedCategoryIds])];
+  }
+
+  // 4. Ambil nama kategori
   const { data: categoryNameRows } = await supabase
     .from("categories")
     .select("id,name")
     .in("id", categoryIds);
-  const categoryNames = (categoryNameRows ?? []).map((row: Record<string, JsonValue>) => String(row.name));
 
+  const categoryNames = (categoryNameRows ?? [])
+    .map((row: Record<string, JsonValue>) => String(row.name ?? ""))
+    .filter(Boolean);
+
+  // 5. Hitung pemakaian minggu berjalan
   const { data: txRows, error: txErr } = await supabase
     .from("transactions")
     .select("amount")
@@ -513,15 +512,40 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
     .in("category_id", categoryIds)
     .gte("date", weekStart)
     .lt("date", nextWeekStart);
-  if (txErr) throw txErr;
 
-  const used = (txRows ?? []).reduce((acc, item: Record<string, JsonValue>) => acc + Number(item.amount ?? 0), 0);
-  console.log("[WEEKLY BUDGET] used", { used, categoryIds });
+  if (txErr) {
+    console.error("[WEEKLY BUDGET TX ERROR]", txErr);
+    throw txErr;
+  }
+
+  const used = (txRows ?? []).reduce(
+    (sum: number, tx: Record<string, JsonValue>) => sum + Number(tx.amount ?? 0),
+    0,
+  );
+
   const remaining = planned - used;
   const percentage = planned > 0 ? (used / planned) * 100 : 0;
 
-  return { categoryNames, planned, used, remaining, percentage };
+  console.log("[WEEKLY BUDGET OK]", {
+    categoryName,
+    budgetId,
+    planned,
+    used,
+    remaining,
+    weekStart,
+    nextWeekStart,
+    categoryIds,
+  });
+
+  return {
+    categoryNames: categoryNames.length > 0 ? categoryNames : [category.name],
+    planned,
+    used,
+    remaining,
+    percentage,
+  };
 }
+
 
 function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget: BudgetInfo | null): string[] {
   const lines: string[] = [];
@@ -768,12 +792,23 @@ Deno.serve(async (req: Request) => {
         getMonthlyBudgetInfo(userId, categoryName),
         getWeeklyBudgetInfo(userId, categoryName),
       ]);
+
       if (!monthlyBudget && !weeklyBudget) {
         reply = `📊 Budget untuk kategori *${categoryName}* belum ada.`;
       } else {
-        const categoryLabel = monthlyBudget?.categoryNames?.[0] ?? weeklyBudget?.categoryNames?.[0] ?? categoryName;
+        const categoryLabel =
+          monthlyBudget?.categoryNames?.[0] ??
+          weeklyBudget?.categoryNames?.[0] ??
+          categoryName;
+
         const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
-        reply = ["📊 *Info Budget*", `Kategori: ${categoryLabel}`, "", ...budgetLines].join("\n");
+
+        reply = [
+          "📊 *Info Budget*",
+          `Kategori: ${categoryLabel}`,
+          "",
+          ...budgetLines,
+        ].join("\n");
       }
     } else if (normalized === "kategori") {
       const { data, error } = await supabase.from("categories").select("name,type").eq("user_id", userId).order("name");
@@ -901,7 +936,9 @@ Deno.serve(async (req: Request) => {
                 getMonthlyBudgetInfo(userId, category.name),
                 getWeeklyBudgetInfo(userId, category.name),
               ]);
+
               const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
+
               if (budgetLines.length > 0) {
                 baseLines.push("", ...budgetLines);
               }
