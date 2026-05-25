@@ -380,6 +380,71 @@ async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
 
 
 type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "UNKNOWN";
+type AiSuggestionItem = { no: number; question: string };
+
+const AI_SUGGESTION_COMMANDS = new Set(["ai", "ai help", "ai menu", "ai contoh", "tanya ai"]);
+const AI_STATIC_SUGGESTIONS: string[] = [
+  "berapa jajan bulan ini",
+  "berapa pengeluaran hari ini",
+  "pengeluaran terbesar minggu ini",
+  "saldo seabank",
+  "saldo cash",
+  "berapa total nongkrong bulan lalu",
+  "merchant paling sering",
+  "kategori paling boros",
+  "berapa pengeluaran kopi bulan ini",
+  "berapa pemasukan bulan ini",
+  "berapa pengeluaran minggu ini",
+  "budget jajan aman?",
+  "sisa budget makan",
+  "transaksi terakhir",
+  "berapa total transfer bulan ini",
+  "berapa pengeluaran shopee bulan ini",
+  "berapa pengeluaran weekend ini",
+  "hari paling boros",
+  "jam paling boros",
+  "top kategori bulan ini",
+  "pengeluaran tertinggi hari ini",
+  "berapa cashflow bulan ini",
+  "berapa pengeluaran transport bulan lalu",
+  "berapa pengeluaran game bulan ini",
+  "berapa transaksi hari ini",
+  "berapa transaksi minggu ini",
+  "berapa saldo total",
+  "berapa pengeluaran cash",
+  "berapa pengeluaran seabank",
+  "berapa pemasukan freelance",
+  "berapa pengeluaran nongkrong",
+  "berapa rata rata pengeluaran harian",
+  "berapa pengeluaran kopi minggu ini",
+  "kategori paling sering",
+  "akun paling sering dipakai",
+  "merchant paling mahal",
+  "berapa total hutang",
+  "berapa total piutang",
+  "berapa cicilan bulan ini",
+  "berapa pengeluaran tengah malam",
+  "berapa pengeluaran tanggal tua",
+  "berapa pengeluaran bulan lalu",
+  "berapa pemasukan bulan lalu",
+  "berapa selisih bulan ini",
+  "budget apa yang hampir habis",
+  "pengeluaran apa yang naik",
+  "apakah bulan ini boros",
+  "berapa rata-rata transaksi saya",
+  "akun mana yang paling sering dipakai",
+  "kategori mana yang paling sering dipakai",
+  "berapa pengeluaran makan minggu ini",
+];
+
+function shuffleArray<T>(arr: T[]): T[] {
+  const cloned = [...arr];
+  for (let i = cloned.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cloned[i], cloned[j]] = [cloned[j], cloned[i]];
+  }
+  return cloned;
+}
 type PeriodType = "month" | "week";
 
 function getMonthRangeJakarta(
@@ -582,6 +647,80 @@ function detectAiIntent(question: string): AiIntent {
   return "UNKNOWN";
 }
 
+async function getDynamicAISuggestions(userId: string): Promise<string[]> {
+  const { data: txs, error: txError } = await supabase
+    .from("transactions")
+    .select("title,category_id,account_id,amount,type,date,inserted_at")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .order("inserted_at", { ascending: false })
+    .limit(200);
+  if (txError) throw txError;
+  const rows = (txs ?? []) as Array<Record<string, JsonValue>>;
+  if (rows.length === 0) return [];
+
+  const categoryIds = Array.from(new Set(rows.map((r) => String(r.category_id ?? "")).filter(Boolean)));
+  const accountIds = Array.from(new Set(rows.map((r) => String(r.account_id ?? "")).filter(Boolean)));
+  const { data: categories } = categoryIds.length > 0 ? await supabase.from("categories").select("id,name").in("id", categoryIds) : { data: [] };
+  const { data: accounts } = accountIds.length > 0 ? await supabase.from("accounts").select("id,name").in("id", accountIds) : { data: [] };
+
+  const catMap = new Map<string, string>();
+  for (const c of (categories ?? []) as Array<Record<string, JsonValue>>) catMap.set(String(c.id ?? ""), String(c.name ?? "").trim());
+  const accMap = new Map<string, string>();
+  for (const a of (accounts ?? []) as Array<Record<string, JsonValue>>) accMap.set(String(a.id ?? ""), String(a.name ?? "").trim());
+
+  const categoryCount = new Map<string, number>();
+  const accountCount = new Map<string, number>();
+  const titleCount = new Map<string, number>();
+  for (const tx of rows) {
+    const catName = catMap.get(String(tx.category_id ?? ""));
+    const accountName = accMap.get(String(tx.account_id ?? ""));
+    const title = String(tx.title ?? "").trim().toLowerCase();
+    if (catName) categoryCount.set(catName, (categoryCount.get(catName) ?? 0) + 1);
+    if (accountName) accountCount.set(accountName, (accountCount.get(accountName) ?? 0) + 1);
+    if (title && title.length >= 3) titleCount.set(title, (titleCount.get(title) ?? 0) + 1);
+  }
+
+  const topCategories = [...categoryCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name);
+  const topAccounts = [...accountCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name);
+  const topTitles = [...titleCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([name]) => name);
+
+  const out: string[] = [];
+  for (const category of topCategories) {
+    out.push(`berapa pengeluaran ${category} bulan ini`, `sisa budget ${category}?`, `apakah budget ${category} aman?`, `berapa pengeluaran ${category} minggu ini`);
+  }
+  for (const account of topAccounts) {
+    out.push(`pengeluaran ${account} minggu ini berapa?`, `pengeluaran ${account} bulan ini berapa?`, `saldo ${account} berapa?`, `akun ${account} sering dipakai untuk apa?`);
+  }
+  for (const title of topTitles) {
+    out.push(`berapa total ${title} bulan ini?`, `seberapa sering saya transaksi ${title}?`, `berapa pengeluaran ${title} minggu ini?`);
+  }
+  return out;
+}
+
+async function getRandomAISuggestions(userId: string, count = 10): Promise<AiSuggestionItem[]> {
+  const dynamic = await getDynamicAISuggestions(userId);
+  const uniquePool = Array.from(new Set([...AI_STATIC_SUGGESTIONS, ...dynamic].map((q) => q.trim()).filter(Boolean)));
+  return shuffleArray(uniquePool).slice(0, count).map((question, idx) => ({ no: idx + 1, question }));
+}
+
+function buildAISuggestionMessage(suggestions: AiSuggestionItem[]): string {
+  const lines = suggestions.map((s) => `${s.no}. ${s.question.charAt(0).toUpperCase()}${s.question.slice(1)}${/[?!.]$/.test(s.question) ? "" : "?"}`);
+  return [
+    "🤖 *AI Finance Assistant*",
+    "",
+    "Pilih pertanyaan atau ketik bebas:",
+    "",
+    ...lines,
+    "",
+    "Balas angka:",
+    "1",
+    "",
+    "Atau tanya langsung:",
+    "berapa jajan bulan ini",
+  ].join("\n");
+}
+
 function extractAmountFromText(text: string): number {
   const q = normalizeText(text);
   const m = q.match(/(\d+[\d.,]*)\s*(rb|ribu|jt|juta|k)?/i);
@@ -760,11 +899,7 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
       reply: [
         "🤖 Saya belum paham pertanyaan itu.",
         "",
-        "Contoh yang bisa kamu tanyakan:",
-        "• ai bulan ini paling boros apa",
-        "• ai budget jajan sisa berapa",
-        "• ai saldo aman sampai akhir bulan?",
-        "• ai aman beli barang 500rb?",
+        "Ketik *ai* untuk melihat contoh pertanyaan.",
       ].join("\n"),
     };
   }
@@ -821,6 +956,10 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
 
   const b = await getBuyDecision(userId, question);
   return { intent, reply: `🤖 *AI Finance Chat*\n\n${b.verdict.toUpperCase()} untuk beli ${formatIDR(b.amount)}.\nAlasan: ${b.reason}` };
+}
+
+async function handleAiQuestion(userId: string, question: string): Promise<{ reply: string; intent: AiIntent }> {
+  return await handleAiFinanceChat(userId, question);
 }
 
 function normalizeHistoryTitle(text: string): { normalized: string; words: string[] } {
@@ -1911,8 +2050,10 @@ function buildMenuMessage(): string {
     "• hutang / piutang",
     "• edit transaksi",
     "",
-    "🤖 *AI Finance*",
+    "🤖 *AI Assistant*",
     "• ai",
+    "• pilih nomor pertanyaan",
+    "• tanya bebas",
     "",
     "🧾 *Data*",
     "• kategori",
@@ -2006,10 +2147,12 @@ function buildExampleMessage(): string {
     "• top kategori",
     "• cashflow",
     "",
-    "🤖 *AI Finance*",
-    "• ai bulan ini paling boros apa",
-    "• ai budget jajan aman?",
-    "• ai aman beli keyboard 500rb?",
+    "🤖 *AI Query*",
+    "• ai",
+    "• pilih nomor 1-10",
+    "• berapa jajan bulan ini",
+    "• saldo cash",
+    "• merchant paling sering",
     "",
     "🗓️ *Tanggal Opsional*",
     "Format tanggal:",
@@ -2119,10 +2262,45 @@ Deno.serve(async (req: Request) => {
       const debtRes = await handleDebtCommand(userId, message, normalized);
       reply = debtRes.reply;
       parsedLog = debtRes.parsedLog;
+    } else if (AI_SUGGESTION_COMMANDS.has(normalized)) {
+      const suggestions = await getRandomAISuggestions(userId, 10);
+      reply = buildAISuggestionMessage(suggestions);
+      parsedLog = { command: "ai_suggestion", suggestions };
+    } else if (/^(10|[1-9])$/.test(normalized)) {
+      const pickedNumber = Number(normalized);
+      const { data: latestSuggestionLog, error: latestSuggestionError } = await supabase
+        .from("whatsapp_message_logs")
+        .select("parsed,created_at")
+        .eq("user_id", userId)
+        .eq("phone", sender)
+        .eq("status", "success")
+        .eq("parsed->>command", "ai_suggestion")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestSuggestionError) throw latestSuggestionError;
+      const suggestions = Array.isArray((latestSuggestionLog?.parsed as Record<string, JsonValue> | null)?.suggestions)
+        ? ((latestSuggestionLog?.parsed as Record<string, JsonValue>).suggestions as Array<Record<string, JsonValue>>)
+        : [];
+      if (!latestSuggestionLog || suggestions.length === 0) {
+        reply = ["⚠️ Belum ada daftar pertanyaan AI.", "", "Ketik:", "ai", "", "lalu pilih nomor."].join("\n");
+        parsedLog = { command: "ai_suggestion_pick", number: pickedNumber, question: null };
+      } else {
+        const selected = suggestions.find((s) => Number(s.no ?? 0) === pickedNumber);
+        if (!selected) {
+          reply = ["⚠️ Nomor pertanyaan tidak tersedia.", "", "Pilih nomor dari daftar AI terakhir."].join("\n");
+          parsedLog = { command: "ai_suggestion_pick", number: pickedNumber, question: null };
+        } else {
+          const question = String(selected.question ?? "").trim();
+          const ai = await handleAiQuestion(userId, question);
+          reply = ai.reply;
+          parsedLog = { command: "ai_suggestion_pick", number: pickedNumber, question, intent: ai.intent };
+        }
+      }
     } else if (normalized.startsWith("ai ")) {
       const question = message.trim().replace(/^ai\s+/i, "").trim();
-      const ai = await handleAiFinanceChat(userId, question);
-      parsedLog = { command: "ai", intent: ai.intent, question };
+      const ai = await handleAiQuestion(userId, question);
+      parsedLog = { command: "ai_question", intent: ai.intent, question };
       reply = ai.reply;
     } else if (normalized === "minggu ini") {
       const weekRange = getWeekRangeJakarta();
