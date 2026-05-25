@@ -52,6 +52,14 @@ type ParsedSmartTransaction = {
   title: string;
   date: string;
 };
+type NaturalTransactionType = "income" | "expense" | "transfer";
+type ParsedNaturalTransaction = {
+  type: NaturalTransactionType;
+  accountName: string;
+  amount: number;
+  title: string;
+  date: string;
+};
 
 type ParsedTransfer = {
   amount: number;
@@ -113,6 +121,11 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "kategori",
   "info",
   "ping",
+]);
+const NATURAL_RESERVED_COMMANDS = new Set([
+  "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "history", "riwayat", "budget", "hutang",
+  "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
+  "top kategori", "cashflow", "kategori", "akun", "info", "ping", "hapus", "undo",
 ]);
 
 
@@ -831,6 +844,109 @@ function parseSmartTransactionMessage(message: string): ParsedSmartTransaction |
   return { title, amount, accountName, date: txDate };
 }
 
+function isReservedCommand(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return true;
+  if (NATURAL_RESERVED_COMMANDS.has(normalized)) return true;
+  for (const command of NATURAL_RESERVED_COMMANDS) {
+    if (normalized.startsWith(`${command} `)) return true;
+  }
+  return false;
+}
+
+function detectNaturalTransactionType(message: string): NaturalTransactionType | null {
+  const normalized = normalizeText(message);
+  const incomeKeywords = ["gaji", "gajian", "dibayar", "dapat", "bonus", "masuk", "terima", "pemasukan"];
+  const expenseKeywords = ["beli", "bayar", "jajan", "makan", "minum", "isi", "topup", "keluar", "pakai", "pake"];
+  const transferKeywords = ["pindah", "transfer"];
+
+  if (transferKeywords.some((keyword) => normalized.includes(keyword))) return "transfer";
+  if (incomeKeywords.some((keyword) => normalized.includes(keyword))) return "income";
+  if (expenseKeywords.some((keyword) => normalized.includes(keyword))) return "expense";
+  return null;
+}
+
+function extractAmountFromText(message: string): number {
+  const compact = message.toLowerCase().replace(/\s+/g, "");
+  const withUnit = compact.match(/rp?(\d+[.,]?\d*)(rb|ribu|k|jt|juta)\b|(\d+[.,]?\d*)(rb|ribu|k|jt|juta)\b/i);
+  if (withUnit) {
+    const rawNumber = (withUnit[1] || withUnit[3] || "").replace(",", ".");
+    const unit = (withUnit[2] || withUnit[4] || "").toLowerCase();
+    const base = Number(rawNumber);
+    if (!Number.isFinite(base) || base <= 0) return 0;
+    if (unit === "rb" || unit === "ribu" || unit === "k") return Math.round(base * 1000);
+    if (unit === "jt" || unit === "juta") return Math.round(base * 1000000);
+  }
+
+  const numeric = message.match(/rp?\s?(\d{1,3}(?:[.,]\d{3})+|\d+)/i);
+  if (!numeric) return 0;
+  const cleaned = numeric[1].replace(/[.,]/g, "");
+  const amount = Number(cleaned);
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  return Math.floor(amount);
+}
+
+function cleanNaturalTitle(message: string, amount: number, accountNames: string[]): string {
+  let title = ` ${message.toLowerCase()} `;
+  const noiseWords = ["tadi", "hari ini", "beli", "bayar", "pakai", "pake", "dari", "lewat", "via", "ke", "masuk", "dapat", "dibayar", "terima"];
+  for (const noise of noiseWords) {
+    title = title.replace(new RegExp(`\\b${noise}\\b`, "gi"), " ");
+  }
+  for (const accountName of accountNames) {
+    title = title.replace(new RegExp(`\\b${accountName.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"), " ");
+  }
+  if (amount > 0) {
+    const amountStr = String(amount);
+    title = title.replace(new RegExp(`\\b${amountStr}\\b`, "g"), " ");
+  }
+  title = title
+    .replace(/rp\s?\d[\d.,]*/gi, " ")
+    .replace(/\b\d+[.,]?\d*\s?(rb|ribu|k|jt|juta)\b/gi, " ")
+    .replace(/\b\d{1,2}\/\d{1,2}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return title;
+}
+
+function extractAccountFromNaturalText(message: string, accounts: Array<{ id: string; name: string; type: string }>): { id: string; name: string; type: string } | null {
+  const normalized = ` ${normalizeText(message)} `;
+  const sorted = [...accounts].sort((a, b) => b.name.length - a.name.length);
+  for (const account of sorted) {
+    const pattern = new RegExp(`\\b${account.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (pattern.test(normalized)) return account;
+  }
+  return null;
+}
+
+function parseNaturalTransactionMessage(
+  message: string,
+  accounts: Array<{ id: string; name: string; type: string }>,
+): ParsedNaturalTransaction | ParsedTransactionError | null {
+  if (isReservedCommand(message)) return null;
+
+  let date = getTodayJakarta();
+  const parts = message.trim().split(/\s+/).filter(Boolean);
+  const lastToken = parts[parts.length - 1] ?? "";
+  if (isDateToken(lastToken)) {
+    const parsedDate = parseCustomDateToken(lastToken);
+    if (!parsedDate) return { error: "INVALID_DATE" };
+    date = parsedDate;
+  }
+
+  const type = detectNaturalTransactionType(message);
+  if (!type || type === "transfer") return null;
+  const amount = extractAmountFromText(message);
+  if (amount <= 0) return null;
+  const account = extractAccountFromNaturalText(message, accounts);
+  if (!account) {
+    return { type, accountName: "", amount, title: "", date };
+  }
+  const accountNames = accounts.map((a) => a.name);
+  const title = cleanNaturalTitle(message, amount, accountNames);
+  if (!title) return null;
+  return { type, accountName: account.name, amount, title, date };
+}
+
 function findBestCategoryFromHistory(inputTitle: string, rows: Array<Record<string, JsonValue>>): { categoryId: string; score: number } | null {
   const input = normalizeHistoryTitle(inputTitle);
   if (!input.normalized) return null;
@@ -1363,6 +1479,7 @@ function buildMenuMessage(): string {
     "",
     "➕ *Transaksi*",
     "• catat transaksi",
+    "• catat natural",
     "• transfer",
     "• hutang / piutang",
     "",
@@ -1396,6 +1513,13 @@ function buildExampleMessage(): string {
     "• kopi 10000 cash",
     "• mixue 25000 cash",
     "• bensin 20000 cash 31/05",
+    "",
+    "🗣️ *Bahasa Natural*",
+    "• tadi beli kopi 20rb pake cash",
+    "• beli bensin 50rb cash",
+    "• dibayar freelance 500rb ke seabank",
+    "• gajian 3000000 masuk seabank",
+    "• tadi beli kopi 20rb cash 31/05",
     "",
     "Catatan:",
     "Bot akan menebak kategori dari histori transaksi.",
@@ -2004,7 +2128,87 @@ Deno.serve(async (req: Request) => {
         } else {
           const smartTx = parseSmartTransactionMessage(normalized);
           if (!smartTx) {
-            reply = "❌ Format tidak dikenali. Ketik menu untuk bantuan.";
+            const { data: accountRows, error: accountErr } = await supabase
+              .from("accounts")
+              .select("id,name,type")
+              .eq("user_id", userId);
+            if (accountErr) throw accountErr;
+            const accounts = (accountRows ?? []) as Array<{ id: string; name: string; type: string }>;
+            const naturalTx = parseNaturalTransactionMessage(normalized, accounts);
+            if (!naturalTx) {
+              reply = "❌ Format tidak dikenali. Ketik menu untuk bantuan.";
+            } else if ("error" in naturalTx && naturalTx.error === "INVALID_DATE") {
+              reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
+            } else if (!naturalTx.accountName) {
+              reply = ["⚠️ Akun tidak ditemukan.", "", "Sebutkan akun di pesan.", "Contoh:", "beli kopi 20rb cash"].join("\n");
+            } else {
+              const category = await findCategoryByTransactionHistory(userId, naturalTx.title);
+              if (!category) {
+                parsedLog = { command: "natural_transaction_failed", reason: "category_not_found", title: naturalTx.title, amount: naturalTx.amount, accountName: naturalTx.accountName };
+                reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 20000 cash", "", "Setelah itu sistem bisa belajar dari histori."].join("\n");
+              } else {
+                const finalType = naturalTx.type === "income" ? "income" : "expense";
+                if (category.type !== finalType) {
+                  const forcedCategory = await supabase
+                    .from("categories")
+                    .select("id,name,type")
+                    .eq("user_id", userId)
+                    .eq("type", finalType)
+                    .order("name")
+                    .limit(1)
+                    .maybeSingle();
+                  if (forcedCategory.error) throw forcedCategory.error;
+                  if (forcedCategory.data) {
+                    category.id = forcedCategory.data.id;
+                    category.name = forcedCategory.data.name;
+                    category.type = forcedCategory.data.type;
+                  }
+                }
+                const account = accounts.find((a) => a.name.toLowerCase() === naturalTx.accountName.toLowerCase());
+                if (!account) {
+                  reply = ["⚠️ Akun tidak ditemukan.", "", "Sebutkan akun di pesan.", "Contoh:", "beli kopi 20rb cash"].join("\n");
+                } else {
+                  const { error } = await supabase.from("transactions").insert({
+                    user_id: userId,
+                    date: naturalTx.date,
+                    type: finalType,
+                    category_id: category.id,
+                    account_id: account.id,
+                    amount: naturalTx.amount,
+                    title: naturalTx.title,
+                    notes: `WhatsApp natural: ${message}`,
+                  });
+                  if (error) throw error;
+                  parsedLog = { command: "natural_transaction", type: finalType, title: naturalTx.title, amount: naturalTx.amount, accountName: account.name, categoryName: category.name, date: naturalTx.date };
+                  const b = await getBalanceSummary(userId);
+                  const lines = [
+                    finalType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
+                    "",
+                    `Tanggal: ${naturalTx.date}`,
+                    `Kategori: ${category.name}`,
+                    `Judul: ${naturalTx.title}`,
+                    `Nominal: ${formatIDR(naturalTx.amount)}`,
+                    `Akun: ${account.name}`,
+                    "",
+                    "🤖 Diproses dari bahasa natural.",
+                    "",
+                    "💰 Saldo Saat Ini",
+                    `Cash: ${formatIDR(b.cash)}`,
+                    `Non Cash: ${formatIDR(b.nonCash)}`,
+                    `Total: ${formatIDR(b.total)}`,
+                  ];
+                  if (finalType === "expense") {
+                    const [monthlyBudget, weeklyBudget] = await Promise.all([
+                      getMonthlyBudgetInfo(userId, category.name, naturalTx.date),
+                      getWeeklyBudgetInfo(userId, category.name, naturalTx.date),
+                    ]);
+                    const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
+                    if (budgetLines.length > 0) lines.push("", ...budgetLines);
+                  }
+                  reply = lines.join("\n");
+                }
+              }
+            }
           } else if ("error" in smartTx && smartTx.error === "INVALID_DATE") {
             reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
           } else {
