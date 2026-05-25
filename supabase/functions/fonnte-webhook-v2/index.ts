@@ -866,7 +866,7 @@ function detectNaturalTransactionType(message: string): NaturalTransactionType |
   return null;
 }
 
-function extractAmountFromText(message: string): number {
+function extractNaturalAmountFromText(message: string): number {
   const compact = message.toLowerCase().replace(/\s+/g, "");
   const withUnit = compact.match(/rp?(\d+[.,]?\d*)(rb|ribu|k|jt|juta)\b|(\d+[.,]?\d*)(rb|ribu|k|jt|juta)\b/i);
   if (withUnit) {
@@ -935,7 +935,7 @@ function parseNaturalTransactionMessage(
 
   const type = detectNaturalTransactionType(message);
   if (!type || type === "transfer") return null;
-  const amount = extractAmountFromText(message);
+  const amount = extractNaturalAmountFromText(message);
   if (amount <= 0) return null;
   const account = extractAccountFromNaturalText(message, accounts);
   if (!account) {
