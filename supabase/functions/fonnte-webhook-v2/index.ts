@@ -386,26 +386,31 @@ async function findCategory(userId: string, name: string): Promise<{ id: string;
 }
 
 async function findAccount(userId: string, name: string): Promise<{ id: string; name: string; type: string } | null> {
-  const { data, error } = await supabase
-    .from("accounts")
-    .select("id,name,type")
-    .eq("user_id", userId)
+  const { data, error } = await getAccountsBaseQuery(userId, "id,name,type")
     .ilike("name", name.trim())
     .maybeSingle();
   if (error) throw error;
   return data;
 }
 
+function getAccountsBaseQuery(userId: string, columns = "*") {
+  console.log("[ACCOUNT QUERY]", {
+    userId,
+  });
+
+  return supabase
+    .from("accounts")
+    .select(columns)
+    .eq("user_id", userId);
+}
+
+
 async function getRealtimeBalanceSummary(userId: string): Promise<BalanceSummary> {
   const { data, error } = await supabase.rpc("get_account_type_balances", { p_user_id: userId });
   if (error) throw new Error(`RPC_BALANCE_FAILED: ${error.message}`);
   console.log("[RPC BALANCE]", data);
 
-  const { data: accountRows, error: accountError } = await supabase
-    .from("accounts")
-    .select("id,name,type")
-    .eq("user_id", userId)
-    .is("deleted_at", null);
+  const { data: accountRows, error: accountError } = await getAccountsBaseQuery(userId, "id,name,type");
   if (accountError) throw accountError;
 
   const row = Array.isArray(data) ? (data[0] ?? {}) : (data ?? {});
@@ -1593,11 +1598,8 @@ async function findAccountByTransactionHistory(
   const best = findBestAccountFromHistory(title, categoryId, txType, rows);
   if (!best) return null;
 
-  const { data, error } = await supabase
-    .from("accounts")
-    .select("id,name,type,user_id")
+  const { data, error } = await getAccountsBaseQuery(userId, "id,name,type,user_id")
     .eq("id", best.accountId)
-    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
@@ -3065,10 +3067,7 @@ Deno.serve(async (req: Request) => {
         } else {
           const smartTx = parseSmartTransactionMessage(normalized);
           if (!smartTx) {
-            const { data: accountRows, error: accountErr } = await supabase
-              .from("accounts")
-              .select("id,name,type")
-              .eq("user_id", userId);
+            const { data: accountRows, error: accountErr } = await getAccountsBaseQuery(userId, "id,name,type");
             if (accountErr) throw accountErr;
             const accounts = (accountRows ?? []) as Array<{ id: string; name: string; type: string }>;
             const naturalTx = parseNaturalTransactionMessage(normalized, accounts);
