@@ -4,10 +4,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - "supabase/functions/**"
-      - "supabase/config.toml"
-  workflow_dispatch:
 
 jobs:
   deploy:
@@ -24,4 +20,7 @@ jobs:
         with:
           version: latest
 
-      - run: supabase functions deploy fonnte-webhook-v2 --project-ref $PROJECT_ID
+      - run: |
+          supabase functions deploy fonnte-webhook-v2 \
+            --project-ref $PROJECT_ID \
+            --no-verify-jwt
