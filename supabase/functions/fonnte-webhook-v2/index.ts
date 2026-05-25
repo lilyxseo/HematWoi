@@ -337,6 +337,162 @@ function getWeekRangeJakarta(
   return { start, end, label: "minggu ini", daysInPeriod: 7, daysPassed: passed, daysRemaining: Math.max(0, 7 - passed) };
 }
 
+
+
+type TransactionSummary = {
+  income: number;
+  expense: number;
+  net: number;
+  transactionCount: number;
+  topExpenseCategoryName: string;
+  topExpenseCategoryAmount: number;
+};
+
+function getPreviousMonthRangeJakarta(
+  date = new Date(),
+): { start: string; end: string; label: string; daysInPeriod: number; daysPassed: number; daysRemaining: number } {
+  const jakarta = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const year = jakarta.getFullYear();
+  const month = jakarta.getMonth();
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 1);
+  const daysInPeriod = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+  const start = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}`;
+  const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-${String(endDate.getDate()).padStart(2, "0")}`;
+  return { start, end, label: "bulan lalu", daysInPeriod, daysPassed: daysInPeriod, daysRemaining: 0 };
+}
+
+async function getTransactionSummaryByRange(userId: string, start: string, end: string): Promise<TransactionSummary> {
+  const { data: txs, error } = await supabase
+    .from("transactions")
+    .select("amount,type,category_id")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .gte("date", start)
+    .lt("date", end);
+  if (error) throw error;
+
+  let income = 0;
+  let expense = 0;
+  const catMap = new Map<string, number>();
+
+  for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
+    const amount = Number(tx.amount ?? 0);
+    const type = String(tx.type ?? "");
+    if (type === "income") income += amount;
+    if (type === "expense") {
+      expense += amount;
+      const cid = String(tx.category_id ?? "");
+      if (cid) catMap.set(cid, (catMap.get(cid) ?? 0) + amount);
+    }
+  }
+
+  let topExpenseCategoryName = "-";
+  let topExpenseCategoryAmount = 0;
+  if (catMap.size > 0) {
+    const [topId, topAmount] = [...catMap.entries()].sort((a, b) => b[1] - a[1])[0];
+    const { data: cat } = await supabase.from("categories").select("name").eq("id", topId).maybeSingle();
+    topExpenseCategoryName = String(cat?.name ?? "-");
+    topExpenseCategoryAmount = Number(topAmount ?? 0);
+  }
+
+  return {
+    income,
+    expense,
+    net: income - expense,
+    transactionCount: (txs ?? []).length,
+    topExpenseCategoryName,
+    topExpenseCategoryAmount,
+  };
+}
+
+async function getTopExpenseCategoriesByRange(userId: string, start: string, end: string, limit = 5): Promise<Array<{ name: string; total: number }>> {
+  const { data: txs, error } = await supabase
+    .from("transactions")
+    .select("amount,category_id")
+    .eq("user_id", userId)
+    .eq("type", "expense")
+    .is("deleted_at", null)
+    .gte("date", start)
+    .lt("date", end);
+  if (error) throw error;
+
+  const map = new Map<string, number>();
+  for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
+    const cid = String(tx.category_id ?? "");
+    if (!cid) continue;
+    map.set(cid, (map.get(cid) ?? 0) + Number(tx.amount ?? 0));
+  }
+
+  const ids = [...map.keys()];
+  const nameMap = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data: cats } = await supabase.from("categories").select("id,name").in("id", ids);
+    for (const c of (cats ?? []) as Array<Record<string, JsonValue>>) {
+      nameMap.set(String(c.id), String(c.name ?? "-"));
+    }
+  }
+
+  return [...map.entries()]
+    .map(([id, total]) => ({ name: nameMap.get(id) ?? "-", total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, limit);
+}
+
+function buildQuickStatsReply(type: "weekly" | "monthly" | "top_category", summary: TransactionSummary | null, topCategories: Array<{ name: string; total: number }>, daysPassed = 0): string {
+  if (type === "top_category") {
+    if (topCategories.length === 0) return "🏆 *Top Kategori Bulan Ini*\n\nBelum ada pengeluaran bulan ini.";
+    return [
+      "🏆 *Top Kategori Bulan Ini*",
+      "",
+      ...topCategories.map((row, i) => `${i + 1}. ${row.name} — ${formatIDR(row.total)}`),
+    ].join("\n");
+  }
+
+  if (!summary) return "⚠️ Data statistik tidak tersedia.";
+
+  const title = type === "weekly" ? "📊 *Minggu Ini*" : "📊 *Bulan Ini*";
+  const lines = [
+    title,
+    "",
+    `Pemasukan: ${formatIDR(summary.income)}`,
+    `Pengeluaran: ${formatIDR(summary.expense)}`,
+    `Selisih: ${formatIDR(summary.net)}`,
+    `Transaksi: ${summary.transactionCount} data`,
+  ];
+
+  if (type === "monthly") {
+    const avgDaily = daysPassed > 0 ? summary.expense / daysPassed : 0;
+    lines.push(`Rata-rata/hari: ${formatIDR(avgDaily)}`);
+  }
+
+  lines.push("", "Kategori terbesar:", `${summary.topExpenseCategoryName} — ${formatIDR(summary.topExpenseCategoryAmount)}`);
+
+  if (type === "weekly") lines.push("", summary.net >= 0 ? "✅ Minggu ini masih positif." : "⚠️ Pengeluaran minggu ini lebih besar dari pemasukan.");
+  return lines.join("\n");
+}
+
+function buildCashflowReply(current: TransactionSummary, previous: TransactionSummary): string {
+  const change = previous.expense === 0
+    ? (current.expense > 0 ? 100 : 0)
+    : ((current.expense - previous.expense) / previous.expense) * 100;
+  const trend = change >= 0 ? "naik" : "turun";
+  return [
+    "📈 *Cashflow*",
+    "",
+    "Bulan Ini:",
+    `Pemasukan: ${formatIDR(current.income)}`,
+    `Pengeluaran: ${formatIDR(current.expense)}`,
+    `Selisih: ${formatIDR(current.net)}`,
+    "",
+    "Bulan Lalu:",
+    `Pemasukan: ${formatIDR(previous.income)}`,
+    `Pengeluaran: ${formatIDR(previous.expense)}`,
+    `Selisih: ${formatIDR(previous.net)}`,
+    "",
+    `Pengeluaran ${trend}: ${Math.abs(change).toFixed(1)}%`,
+  ].join("\n");
+}
 function extractPeriod(text: string): PeriodType {
   if (/(minggu|pekan)/i.test(text)) return "week";
   return "month";
@@ -1062,6 +1218,10 @@ function buildMenuMessage(): string {
     "• summary",
     "• riwayat",
     "• budget",
+    "• minggu ini",
+    "• bulan ini",
+    "• top kategori",
+    "• cashflow",
     "",
     "➕ *Transaksi*",
     "• catat transaksi",
@@ -1115,6 +1275,12 @@ function buildExampleMessage(): string {
     "• bayar hutang shopee 25000 seabank",
     "• tambah piutang andi 50000 cash",
     "• bayar piutang andi 50000 cash",
+    "",
+    "📊 *Statistik Cepat*",
+    "• minggu ini",
+    "• bulan ini",
+    "• top kategori",
+    "• cashflow",
     "",
     "🤖 *AI Finance*",
     "• ai bulan ini paling boros apa",
@@ -1226,6 +1392,28 @@ Deno.serve(async (req: Request) => {
       const ai = await handleAiFinanceChat(userId, question);
       parsedLog = { command: "ai", intent: ai.intent, question };
       reply = ai.reply;
+    } else if (normalized === "minggu ini") {
+      const weekRange = getWeekRangeJakarta();
+      const summary = await getTransactionSummaryByRange(userId, weekRange.start, weekRange.end);
+      reply = buildQuickStatsReply("weekly", summary, [], weekRange.daysPassed);
+      parsedLog = { command: "quick_stats", type: "weekly" };
+    } else if (normalized === "bulan ini") {
+      const monthRange = getMonthRangeJakarta();
+      const summary = await getTransactionSummaryByRange(userId, monthRange.start, monthRange.end);
+      reply = buildQuickStatsReply("monthly", summary, [], monthRange.daysPassed);
+      parsedLog = { command: "quick_stats", type: "monthly" };
+    } else if (normalized === "top kategori") {
+      const monthRange = getMonthRangeJakarta();
+      const topCategories = await getTopExpenseCategoriesByRange(userId, monthRange.start, monthRange.end, 5);
+      reply = buildQuickStatsReply("top_category", null, topCategories);
+      parsedLog = { command: "quick_stats", type: "top_category" };
+    } else if (normalized === "cashflow") {
+      const currentRange = getMonthRangeJakarta();
+      const previousRange = getPreviousMonthRangeJakarta();
+      const current = await getTransactionSummaryByRange(userId, currentRange.start, currentRange.end);
+      const previous = await getTransactionSummaryByRange(userId, previousRange.start, previousRange.end);
+      reply = buildCashflowReply(current, previous);
+      parsedLog = { command: "quick_stats", type: "cashflow" };
     } else if (normalized === "saldo") {
       const b = await getBalanceSummary(userId);
       reply = ["💰 Saldo HematWoi", "", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`].join("\n");
