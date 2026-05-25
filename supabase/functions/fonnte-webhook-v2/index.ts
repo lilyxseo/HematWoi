@@ -79,7 +79,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FONNTE_TOKEN = Deno.env.get("FONNTE_TOKEN") ?? "";
 
-const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️"];
+const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️", "📘"];
 const MENU_COMMANDS = new Set(["menu", "help", "bantuan", ".menu"]);
 
 const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -1057,23 +1057,50 @@ function buildMenuMessage(): string {
   return [
     "📋 *Menu HematWoi*",
     "",
-    "💰 *Cek Data*",
+    "💰 *Keuangan*",
     "• saldo",
     "• summary",
     "• riwayat",
-    "• riwayat 31/05",
-    "• riwayat jajan 31/05",
+    "• budget",
+    "",
+    "➕ *Transaksi*",
+    "• catat transaksi",
+    "• transfer",
+    "• hutang / piutang",
+    "",
+    "🤖 *AI Finance*",
+    "• ai",
+    "",
+    "🧾 *Data*",
+    "• kategori",
+    "• akun",
     "• info",
+    "",
+    "⚙️ *Lainnya*",
+    "• hapus",
+    "• ping",
+    "• contoh",
+    "",
+    "Ketik *contoh* untuk melihat cara penggunaan.",
+  ].join("\n");
+}
+
+function buildExampleMessage(): string {
+  return [
+    "📘 *Contoh Penggunaan HematWoi*",
     "",
     "➕ *Catat Transaksi*",
     "• jajan 10000 cash",
-    "• jajan beli kopi 10000 cash",
-    "• gaji freelance 500000 seabank",
+    "• jajan kopi 10000 cash",
     "• jajan kopi 10000 cash 31/05",
-    "Tanggal opsional: DD/MM",
     "",
     "🔁 *Transfer*",
     "• tf 50000 cash seabank",
+    "",
+    "📚 *Riwayat*",
+    "• riwayat",
+    "• riwayat 31/05",
+    "• riwayat jajan 31/05",
     "",
     "🎯 *Budget*",
     "• budget jajan",
@@ -1084,13 +1111,19 @@ function buildMenuMessage(): string {
     "• bayar hutang shopee 25000 seabank",
     "• tambah piutang andi 50000 cash",
     "• bayar piutang andi 50000 cash",
-    "• tambah hutang shopee 100000 seabank 31/05",
     "",
-    "🧾 *Lainnya*",
-    "• kategori",
-    "• akun",
-    "• hapus",
-    "• ping",
+    "🤖 *AI Finance*",
+    "• ai bulan ini paling boros apa",
+    "• ai budget jajan aman?",
+    "• ai aman beli keyboard 500rb?",
+    "",
+    "🗓️ *Tanggal Opsional*",
+    "Format tanggal:",
+    "• DD/MM",
+    "",
+    "Contoh:",
+    "• 31/05",
+    "• 01/06",
   ].join("\n");
 }
 
@@ -1169,6 +1202,9 @@ Deno.serve(async (req: Request) => {
 
     if (MENU_COMMANDS.has(normalized)) {
       reply = buildMenuMessage();
+    } else if (normalized === "contoh") {
+      reply = buildExampleMessage();
+      parsedLog = { command: "contoh" };
     } else if (normalized === "ping") {
       reply = "🏓 pong";
     } else if (
