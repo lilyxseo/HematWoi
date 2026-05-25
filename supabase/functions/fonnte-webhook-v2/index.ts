@@ -1101,6 +1101,10 @@ function buildExampleMessage(): string {
     "• riwayat",
     "• riwayat 31/05",
     "• riwayat jajan 31/05",
+    "• hapus 3",
+    "",
+    "Setelah menampilkan riwayat, kamu bisa hapus berdasarkan nomor:",
+    "hapus 3",
     "",
     "🎯 *Budget*",
     "• budget jajan",
@@ -1346,19 +1350,44 @@ Deno.serve(async (req: Request) => {
             }
           }
 
+          const displayedTransactions: JsonValue[] = [];
           const lines = transactions.map((tx, i) => {
+            const no = i + 1;
             const type = String(tx.type ?? "expense");
             const amount = Number(tx.amount ?? 0);
+            const txId = String(tx.id ?? "");
+            const txDate = String(tx.date ?? "");
+            const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
+            const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
+            const title = String(tx.title ?? "-");
             if (type === "transfer") {
               const fromName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
               const toName = accountMap.get(String(tx.to_account_id ?? "")) ?? "-";
-              return `${i + 1}. ${String(tx.date)}\n   Transfer ${fromName} → ${toName}\n   ↔ ${formatIDR(amount)}`;
+              displayedTransactions.push({
+                no,
+                id: txId,
+                title,
+                amount,
+                type,
+                date: txDate,
+                categoryName,
+                accountName,
+                toAccountName: toName,
+              });
+              return `${no}. ${txDate}\n   Transfer ${fromName} → ${toName}\n   ↔ ${formatIDR(amount)}`;
             }
             const sign = type === "income" ? "+" : "-";
-            const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
-            const title = String(tx.title ?? "-");
-            const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
-            return `${i + 1}. ${String(tx.date)}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)} via ${accountName}`;
+            displayedTransactions.push({
+              no,
+              id: txId,
+              title,
+              amount,
+              type,
+              date: txDate,
+              categoryName,
+              accountName,
+            });
+            return `${no}. ${txDate}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)} via ${accountName}`;
           });
 
           const headerLines = ["📚 *Riwayat Transaksi*"];
@@ -1369,8 +1398,84 @@ Deno.serve(async (req: Request) => {
           if (categoryLabel) {
             headerLines.push(`Kategori: ${categoryLabel.charAt(0).toUpperCase()}${categoryLabel.slice(1)}`);
           }
+          parsedLog = { command: "riwayat", categoryName, targetDate, displayedTransactions };
           const header = headerLines.length > 1 ? `${headerLines.join("\n")}\n` : headerLines[0];
           reply = `${header}\n\n${lines.join("\n\n")}`;
+        }
+      }
+    } else if (/^hapus\s+\d+$/.test(normalized)) {
+      const number = Number(normalized.replace(/^hapus\s+/, "").trim());
+      parsedLog = { command: "hapus_riwayat", number };
+
+      if (!Number.isInteger(number) || number < 1 || number > 5) {
+        reply = "⚠️ Nomor riwayat tidak valid.\n\nPilih nomor dari hasil riwayat terakhir.";
+      } else {
+        const { data: lastHistoryLog, error: lastHistoryError } = await supabase
+          .from("whatsapp_message_logs")
+          .select("parsed")
+          .eq("user_id", userId)
+          .eq("phone", sender)
+          .eq("status", "success")
+          .eq("parsed->>command", "riwayat")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (lastHistoryError) throw lastHistoryError;
+
+        const parsedHistory = (lastHistoryLog?.parsed ?? null) as Record<string, JsonValue> | null;
+        const displayedTransactions = (parsedHistory?.displayedTransactions ?? []) as Array<Record<string, JsonValue>>;
+
+        if (!parsedHistory || displayedTransactions.length === 0) {
+          reply = "⚠️ Belum ada riwayat terakhir.\n\nKirim *riwayat* dulu, lalu gunakan:\nhapus 3";
+        } else {
+          const selectedTransaction = displayedTransactions.find((item) => Number(item.no ?? 0) === number);
+          if (!selectedTransaction) {
+            reply = "⚠️ Nomor riwayat tidak ditemukan.\n\nKirim *riwayat* dulu, lalu pilih nomor yang ingin dihapus.\nContoh: hapus 3";
+          } else {
+            const transactionId = String(selectedTransaction.id ?? "");
+            const { data: deletedTx, error: deleteError } = await supabase
+              .from("transactions")
+              .update({ deleted_at: new Date().toISOString() })
+              .eq("id", transactionId)
+              .eq("user_id", userId)
+              .is("deleted_at", null)
+              .select("id")
+              .maybeSingle();
+            if (deleteError) throw deleteError;
+
+            if (!deletedTx) {
+              reply = "⚠️ Transaksi ini sudah tidak aktif atau sudah dihapus.";
+            } else {
+              parsedLog = { command: "hapus_riwayat", number, transactionId, deletedTransaction: selectedTransaction };
+              const type = String(selectedTransaction.type ?? "expense");
+              const date = String(selectedTransaction.date ?? "-");
+              const amount = Number(selectedTransaction.amount ?? 0);
+
+              if (type === "transfer") {
+                const fromName = String(selectedTransaction.accountName ?? "-");
+                const toName = String(selectedTransaction.toAccountName ?? "-");
+                reply = [
+                  "🗑️ Transfer berhasil dihapus",
+                  "",
+                  `No: ${number}`,
+                  `Tanggal: ${date}`,
+                  `Transfer: ${fromName} → ${toName}`,
+                  `Nominal: ${formatIDR(amount)}`,
+                ].join("\n");
+              } else {
+                reply = [
+                  "🗑️ Transaksi berhasil dihapus",
+                  "",
+                  `No: ${number}`,
+                  `Tanggal: ${date}`,
+                  `Kategori: ${String(selectedTransaction.categoryName ?? "-")}`,
+                  `Judul: ${String(selectedTransaction.title ?? "-")}`,
+                  `Nominal: ${formatIDR(amount)}`,
+                  `Akun: ${String(selectedTransaction.accountName ?? "-")}`,
+                ].join("\n");
+              }
+            }
+          }
         }
       }
     } else if (normalized.startsWith("budget ")) {
