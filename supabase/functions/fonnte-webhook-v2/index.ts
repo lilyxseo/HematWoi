@@ -168,6 +168,10 @@ function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function isSuggestionNumber(text: string): boolean {
+  return /^(10|[1-9])$/.test(text.trim());
+}
+
 function normalizePhone(raw: string): string {
   const trimmed = raw.trim();
   const noPlus = trimmed.startsWith("+62") ? trimmed.slice(1) : trimmed;
@@ -2266,35 +2270,41 @@ Deno.serve(async (req: Request) => {
       const suggestions = await getRandomAISuggestions(userId, 10);
       reply = buildAISuggestionMessage(suggestions);
       parsedLog = { command: "ai_suggestion", suggestions };
-    } else if (/^(10|[1-9])$/.test(normalized)) {
-      const pickedNumber = Number(normalized);
-      const { data: latestSuggestionLog, error: latestSuggestionError } = await supabase
+    } else if (isSuggestionNumber(normalized)) {
+      const selectedNumber = Number(normalized);
+      const { data: lastSuggestionLog, error: latestSuggestionError } = await supabase
         .from("whatsapp_message_logs")
         .select("parsed,created_at")
         .eq("user_id", userId)
         .eq("phone", sender)
         .eq("status", "success")
-        .eq("parsed->>command", "ai_suggestion")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
       if (latestSuggestionError) throw latestSuggestionError;
-      const suggestions = Array.isArray((latestSuggestionLog?.parsed as Record<string, JsonValue> | null)?.suggestions)
-        ? ((latestSuggestionLog?.parsed as Record<string, JsonValue>).suggestions as Array<Record<string, JsonValue>>)
-        : [];
-      if (!latestSuggestionLog || suggestions.length === 0) {
-        reply = ["⚠️ Belum ada daftar pertanyaan AI.", "", "Ketik:", "ai", "", "lalu pilih nomor."].join("\n");
-        parsedLog = { command: "ai_suggestion_pick", number: pickedNumber, question: null };
+      console.log("[AI SUGGESTION LAST]", lastSuggestionLog);
+
+      const lastParsed = (lastSuggestionLog?.parsed ?? null) as Record<string, JsonValue> | null;
+      if (!lastSuggestionLog || lastParsed?.command !== "ai_suggestion") {
+        reply = ["⚠️ Belum ada daftar pertanyaan AI.", "", "Ketik:", "ai"].join("\n");
+        parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: null };
       } else {
-        const selected = suggestions.find((s) => Number(s.no ?? 0) === pickedNumber);
+        const suggestions = Array.isArray(lastParsed.suggestions)
+          ? (lastParsed.suggestions as Array<Record<string, JsonValue>>)
+          : [];
+        const selected = suggestions.find((s) => Number(s.no ?? 0) === selectedNumber);
         if (!selected) {
-          reply = ["⚠️ Nomor pertanyaan tidak tersedia.", "", "Pilih nomor dari daftar AI terakhir."].join("\n");
-          parsedLog = { command: "ai_suggestion_pick", number: pickedNumber, question: null };
+          reply = "⚠️ Nomor pertanyaan tidak tersedia.";
+          parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: null };
         } else {
-          const question = String(selected.question ?? "").trim();
-          const ai = await handleAiQuestion(userId, question);
+          const selectedQuestion = String(selected.question ?? "").trim();
+          console.log("[AI PICK]", {
+            selectedNumber,
+            selectedQuestion,
+          });
+          const ai = await handleAiQuestion(userId, selectedQuestion);
           reply = ai.reply;
-          parsedLog = { command: "ai_suggestion_pick", number: pickedNumber, question, intent: ai.intent };
+          parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: selectedQuestion, intent: ai.intent };
         }
       }
     } else if (normalized.startsWith("ai ")) {
