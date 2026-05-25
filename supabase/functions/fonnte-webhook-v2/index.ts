@@ -452,6 +452,14 @@ async function getRealtimeBalanceSummary(userId: string): Promise<BalanceSummary
   return { cash: cashBalance, nonCash: nonCashBalance, total: totalBalance, accounts: [...accountMap.values()] };
 }
 
+async function getRpcBalanceData(userId: string): Promise<Array<Record<string, JsonValue>>> {
+  const { data, error } = await supabase.rpc("get_account_type_balances", { p_user_id: userId });
+  if (error) throw new Error(`RPC_BALANCE_FAILED: ${error.message}`);
+  console.log("[RPC BALANCE RAW]", data);
+  if (!data) return [];
+  return Array.isArray(data) ? data as Array<Record<string, JsonValue>> : [data as Record<string, JsonValue>];
+}
+
 
 type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "ACCOUNT_EXPENSE" | "ACCOUNT_BALANCE" | "TITLE_TOTAL" | "TRANSACTION_COUNT" | "ACCOUNT_USAGE" | "TITLE_FREQUENCY" | "TOP_CATEGORY" | "CATEGORY_FREQUENCY" | "BOROS_CHECK" | "CASHFLOW" | "UNKNOWN";
 type AiSuggestionItem = { no: number; question: string };
@@ -1162,12 +1170,53 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
     };
   }
   if (intent === "ACCOUNT_BALANCE") {
+    const rpcRows = await getRpcBalanceData(userId);
+    const summaryRow = (rpcRows[0] ?? {}) as Record<string, JsonValue>;
+    const hasSummaryShape = rpcRows.length > 0 && (
+      "cash_balance" in summaryRow || "non_cash_balance" in summaryRow || "total_balance" in summaryRow
+    );
+    const detailRows = rpcRows.filter((row) => ("account_id" in row) || ("account_name" in row) || ("balance" in row));
+    const rpcShape = detailRows.length > 0 ? "detail" : hasSummaryShape ? "summary" : "unknown";
+
     if (/saldo total|total saldo|saldo semua/.test(q)) {
-      const balance = await getRealtimeBalanceSummary(userId);
-    return { intent, keyword: null, period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo total:\n${formatIDR(balance.total)}` };
+      const cashBalance = Number(summaryRow.cash_balance ?? 0);
+      const nonCashBalance = Number(summaryRow.non_cash_balance ?? 0);
+      const totalBalance = Number(summaryRow.total_balance ?? (cashBalance + nonCashBalance));
+      return { intent, keyword: null, period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo Total:\n${formatIDR(totalBalance)}` };
+    }
+    if (/saldo cash/.test(q)) {
+      const cashBalance = Number(summaryRow.cash_balance ?? 0);
+      return { intent, keyword: "cash", period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo Cash:\n${formatIDR(cashBalance)}` };
+    }
+    if (/saldo non cash|saldo noncash|saldo dana|saldo e-?wallet|saldo bank/.test(q)) {
+      const nonCashBalance = Number(summaryRow.non_cash_balance ?? 0);
+      return { intent, keyword: "non_cash", period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo Non Cash:\n${formatIDR(nonCashBalance)}` };
     }
     if (!matchedAccount) return { intent: "UNKNOWN", keyword: null, period: period.label, reply: "🤖 *AI Finance Chat*\n\nAkun belum ketemu di pertanyaan kamu." };
-    return { intent, keyword: String(matchedAccount.name ?? "-"), period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo ${String(matchedAccount.name ?? "-")}:\n${formatSignedIDR(Number(matchedAccount.balance ?? 0))}` };
+
+    const accountName = String(matchedAccount.name ?? "-");
+    const matchedAccountId = String(matchedAccount.id ?? "");
+    const normalizedAccountName = normalizeText(accountName);
+    const matchedRpc = detailRows.find((row) => {
+      const rpcAccountId = String(row.account_id ?? row.id ?? "");
+      const rpcAccountName = normalizeText(String(row.account_name ?? row.name ?? ""));
+      return (matchedAccountId && rpcAccountId === matchedAccountId) ||
+        (rpcAccountName && (rpcAccountName.includes(normalizedAccountName) || normalizedAccountName.includes(rpcAccountName)));
+    });
+    const foundInRpc = Boolean(matchedRpc);
+    console.log("[AI BALANCE ACCOUNT]", { question, accountName, rpcShape, foundInRpc });
+
+    if (!matchedRpc) {
+      return {
+        intent,
+        keyword: accountName,
+        period: period.label,
+        reply: `🤖 *AI Finance Chat*\n\nSaldo detail akun ${accountName} belum tersedia dari RPC saldo.\n\nGunakan command:\nsaldo`,
+      };
+    }
+
+    const accountBalance = Number((matchedRpc as Record<string, JsonValue>).balance ?? (matchedRpc as Record<string, JsonValue>).current_balance ?? 0);
+    return { intent, keyword: accountName, period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo ${accountName}:\n${formatSignedIDR(accountBalance)}` };
   }
   if (intent === "TRANSACTION_COUNT") {
     const { count, error } = await supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", userId).is("deleted_at", null).gte("date", period.startDate).lt("date", period.endDate);
