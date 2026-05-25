@@ -87,6 +87,12 @@ type BalanceSummary = {
   cash: number;
   nonCash: number;
   total: number;
+  accounts: Array<{
+    id: string;
+    name: string;
+    type: string;
+    balance: number;
+  }>;
 };
 
 type BudgetInfo = {
@@ -390,14 +396,41 @@ async function findAccount(userId: string, name: string): Promise<{ id: string; 
   return data;
 }
 
-async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
+async function getRealtimeBalanceSummary(userId: string): Promise<BalanceSummary> {
   const { data, error } = await supabase.rpc("get_account_type_balances", { p_user_id: userId });
-  if (error) throw error;
+  if (error) throw new Error(`RPC_BALANCE_FAILED: ${error.message}`);
+  console.log("[RPC BALANCE]", data);
+
+  const { data: accountRows, error: accountError } = await supabase
+    .from("accounts")
+    .select("id,name,type")
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+  if (accountError) throw accountError;
 
   const row = Array.isArray(data) ? (data[0] ?? {}) : (data ?? {});
   const cashBalance = Number((row as Record<string, JsonValue>).cash_balance ?? 0);
   const nonCashBalance = Number((row as Record<string, JsonValue>).non_cash_balance ?? 0);
   const totalBalance = Number((row as Record<string, JsonValue>).total_balance ?? cashBalance + nonCashBalance);
+
+  const accountMap = new Map<string, { id: string; name: string; type: string; balance: number }>();
+  for (const account of (accountRows ?? []) as Array<Record<string, JsonValue>>) {
+    const accountId = String(account.id ?? "");
+    if (!accountId) continue;
+    accountMap.set(accountId, {
+      id: accountId,
+      name: String(account.name ?? "-"),
+      type: String(account.type ?? "non_cash"),
+      balance: 0,
+    });
+  }
+
+  for (const item of (Array.isArray(data) ? data : [data]) as Array<Record<string, JsonValue>>) {
+    const accountId = String(item.account_id ?? item.id ?? "");
+    if (!accountId || !accountMap.has(accountId)) continue;
+    const current = accountMap.get(accountId)!;
+    accountMap.set(accountId, { ...current, balance: Number(item.balance ?? item.current_balance ?? 0) });
+  }
 
   if (Array.isArray(data) && data.length > 1) {
     let cash = 0;
@@ -408,10 +441,10 @@ async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
       if (type.includes("non")) nonCash += amount;
       else if (type.includes("cash")) cash += amount;
     }
-    if (cash || nonCash) return { cash, nonCash, total: cash + nonCash };
+    if (cash || nonCash) return { cash, nonCash, total: cash + nonCash, accounts: [...accountMap.values()] };
   }
 
-  return { cash: cashBalance, nonCash: nonCashBalance, total: totalBalance };
+  return { cash: cashBalance, nonCash: nonCashBalance, total: totalBalance, accounts: [...accountMap.values()] };
 }
 
 
@@ -911,7 +944,7 @@ async function getTopExpenseCategories(userId: string): Promise<Array<{ name: st
 }
 
 async function getBalanceSafety(userId: string): Promise<{ total: number; avgDaily: number; safeDays: number; daysRemaining: number }> {
-  const balance = await getBalanceSummary(userId);
+  const balance = await getRealtimeBalanceSummary(userId);
   const period = getMonthRangeJakarta();
   const { data: txs, error } = await supabase
     .from("transactions")
@@ -1008,9 +1041,9 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
   const period = detectPeriodFromQuestion(question);
   let intent = detectAiIntent(question);
   const { data: categories } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("type", "expense");
-  const { data: accounts } = await supabase.from("accounts").select("id,name,balance").eq("user_id", userId);
+  const balanceSummary = await getRealtimeBalanceSummary(userId);
   const categoryList = (categories ?? []) as Array<Record<string, JsonValue>>;
-  const accountList = (accounts ?? []) as Array<Record<string, JsonValue>>;
+  const accountList = balanceSummary.accounts as Array<Record<string, JsonValue>>;
   const matchedCategory = findBestCategoryMatch(question, categoryList);
   const matchedAccount = findBestAccountMatch(question, accountList);
   const extractEntityKeyword = (text: string): string => {
@@ -1063,7 +1096,7 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
   }
   if (intent === "ACCOUNT_BALANCE") {
     if (/saldo total|total saldo|saldo semua/.test(q)) {
-      const balance = await getBalanceSummary(userId);
+      const balance = await getRealtimeBalanceSummary(userId);
     return { intent, keyword: null, period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo total:\n${formatIDR(balance.total)}` };
     }
     if (!matchedAccount) return { intent: "UNKNOWN", keyword: null, period: period.label, reply: "🤖 *AI Finance Chat*\n\nAkun belum ketemu di pertanyaan kamu." };
@@ -2526,7 +2559,7 @@ Deno.serve(async (req: Request) => {
       reply = buildCashflowReply(current, previous);
       parsedLog = { command: "quick_stats", type: "cashflow" };
     } else if (normalized === "saldo") {
-      const b = await getBalanceSummary(userId);
+      const b = await getRealtimeBalanceSummary(userId);
       reply = ["💰 Saldo HematWoi", "", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`].join("\n");
     } else if (normalized === "summary") {
       const today = getTodayJakarta();
@@ -2901,7 +2934,7 @@ Deno.serve(async (req: Request) => {
                   const smartType = smartCategory.type === "income" ? "income" : "expense";
                   const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type: smartType, category_id: smartCategory.id, account_id: smartAccount.id, amount: smartTx.amount, title: smartTx.title, notes: `WhatsApp: ${message}` });
                   if (error) throw error;
-                  const b = await getBalanceSummary(userId);
+                  const b = await getRealtimeBalanceSummary(userId);
                   const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`];
                   if (smartTx.accountName) lines.push("", "🤖 Kategori otomatis dari history.");
                   else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${smartAccount.name}`);
@@ -2931,7 +2964,7 @@ Deno.serve(async (req: Request) => {
             });
             if (error) throw error;
 
-            const b = await getBalanceSummary(userId);
+            const b = await getRealtimeBalanceSummary(userId);
             const baseLines = [
               type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
               "",
@@ -3019,7 +3052,7 @@ Deno.serve(async (req: Request) => {
                   });
                   if (error) throw error;
                   parsedLog = { command: "natural_transaction", type: finalType, title: naturalTx.title, amount: naturalTx.amount, accountName: account.name, categoryName: category.name, date: naturalTx.date, accountSource: naturalTx.accountName ? "manual" : "history" };
-                  const b = await getBalanceSummary(userId);
+                  const b = await getRealtimeBalanceSummary(userId);
                   const lines = [
                     finalType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
                     "",
@@ -3071,7 +3104,7 @@ Deno.serve(async (req: Request) => {
                 const type = category.type === "income" ? "income" : "expense";
                 const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type, category_id: category.id, account_id: account.id, amount: smartTx.amount, title: smartTx.title, notes: `WhatsApp: ${message}` });
                 if (error) throw error;
-                const b = await getBalanceSummary(userId);
+                const b = await getRealtimeBalanceSummary(userId);
                 const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`];
                 if (smartTx.accountName) lines.push("", "🤖 Kategori otomatis dari history.");
                 else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${account.name}`);
@@ -3101,7 +3134,9 @@ Deno.serve(async (req: Request) => {
 
     if (sender && canReplyOnError) {
       try {
-        await replyWhatsApp(sender, "❌ Terjadi error pada sistem. Coba lagi beberapa saat.");
+        const errorMessage = error instanceof Error ? error.message : String(error ?? "");
+        if (errorMessage.includes("RPC_BALANCE_FAILED")) await replyWhatsApp(sender, "⚠️ Gagal mengambil saldo realtime.");
+        else await replyWhatsApp(sender, "❌ Terjadi error pada sistem. Coba lagi beberapa saat.");
       } catch (_e) {
       }
     }
