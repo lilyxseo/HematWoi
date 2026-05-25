@@ -98,7 +98,7 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "contoh",
   "saldo",
   "summary",
-  "riwayat",
+  "history",
   "budget",
   "hutang",
   "piutang",
@@ -1354,7 +1354,7 @@ function buildMenuMessage(): string {
     "💰 *Keuangan*",
     "• saldo",
     "• summary",
-    "• riwayat",
+    "• history",
     "• budget",
     "• minggu ini",
     "• bulan ini",
@@ -1405,13 +1405,13 @@ function buildExampleMessage(): string {
     "🔁 *Transfer*",
     "• tf 50000 cash seabank",
     "",
-    "📚 *Riwayat*",
-    "• riwayat",
-    "• riwayat 31/05",
-    "• riwayat jajan 31/05",
+    "📚 *History*",
+    "• history",
+    "• history 31/05",
+    "• history jajan 31/05",
     "• hapus 3",
     "",
-    "Setelah menampilkan riwayat, kamu bisa hapus berdasarkan nomor:",
+    "Setelah menampilkan history, kamu bisa hapus berdasarkan nomor:",
     "hapus 3",
     "",
     "🎯 *Budget*",
@@ -1604,7 +1604,9 @@ Deno.serve(async (req: Request) => {
         `Kategori terbesar: ${biggestCategory}`,
       ].join("\n");
     } else if (normalized.startsWith("riwayat")) {
-      const arg = normalized.replace(/^riwayat\s*/, "").trim();
+      reply = "⚠️ Command sudah diganti.\n\nGunakan:\nhistory";
+    } else if (normalized.startsWith("history")) {
+      const arg = normalized.replace(/^history\s*/, "").trim();
       const tokens = arg ? arg.split(/\s+/).filter(Boolean) : [];
       let categoryName = "";
       let targetDate: string | null = null;
@@ -1629,7 +1631,7 @@ Deno.serve(async (req: Request) => {
         }
       }
 
-      parsedLog = { command: "riwayat", categoryName, targetDate };
+      parsedLog = { command: "history", categoryName, targetDate };
 
       let query = supabase
         .from("transactions")
@@ -1660,7 +1662,7 @@ Deno.serve(async (req: Request) => {
 
         const transactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
         if (transactions.length === 0) {
-          reply = "📚 Tidak ada riwayat transaksi.";
+          reply = "📚 Tidak ada history transaksi.";
         } else {
           const categoryIds = [...new Set(transactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
           const accountIds = [...new Set(
@@ -1726,7 +1728,7 @@ Deno.serve(async (req: Request) => {
             return `${no}. ${txDate}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)} via ${accountName}`;
           });
 
-          const headerLines = ["📚 *Riwayat Transaksi*"];
+          const headerLines = ["📚 *History Transaksi*"];
           if (targetDate) {
             const [year, month, day] = targetDate.split("-");
             headerLines.push(`Tanggal: ${day}/${month}/${year}`);
@@ -1734,17 +1736,17 @@ Deno.serve(async (req: Request) => {
           if (categoryLabel) {
             headerLines.push(`Kategori: ${categoryLabel.charAt(0).toUpperCase()}${categoryLabel.slice(1)}`);
           }
-          parsedLog = { command: "riwayat", categoryName, targetDate, displayedTransactions };
+          parsedLog = { command: "history", categoryName, targetDate, displayedTransactions };
           const header = headerLines.length > 1 ? `${headerLines.join("\n")}\n` : headerLines[0];
           reply = `${header}\n\n${lines.join("\n\n")}`;
         }
       }
     } else if (/^hapus\s+\d+$/.test(normalized)) {
       const number = Number(normalized.replace(/^hapus\s+/, "").trim());
-      parsedLog = { command: "hapus_riwayat", number };
+      parsedLog = { command: "hapus_history", number };
 
       if (!Number.isInteger(number) || number < 1 || number > 5) {
-        reply = "⚠️ Nomor riwayat tidak valid.\n\nPilih nomor dari hasil riwayat terakhir.";
+        reply = "⚠️ Nomor history tidak valid.\n\nPilih nomor dari hasil history terakhir.";
       } else {
         const { data: lastHistoryLog, error: lastHistoryError } = await supabase
           .from("whatsapp_message_logs")
@@ -1752,7 +1754,7 @@ Deno.serve(async (req: Request) => {
           .eq("user_id", userId)
           .eq("phone", sender)
           .eq("status", "success")
-          .eq("parsed->>command", "riwayat")
+          .eq("parsed->>command", "history")
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
@@ -1762,11 +1764,11 @@ Deno.serve(async (req: Request) => {
         const displayedTransactions = (parsedHistory?.displayedTransactions ?? []) as Array<Record<string, JsonValue>>;
 
         if (!parsedHistory || displayedTransactions.length === 0) {
-          reply = "⚠️ Belum ada riwayat terakhir.\n\nKirim *riwayat* dulu, lalu gunakan:\nhapus 3";
+          reply = "⚠️ Belum ada history terakhir.\n\nKirim *history* dulu, lalu gunakan:\nhapus 3";
         } else {
           const selectedTransaction = displayedTransactions.find((item) => Number(item.no ?? 0) === number);
           if (!selectedTransaction) {
-            reply = "⚠️ Nomor riwayat tidak ditemukan.\n\nKirim *riwayat* dulu, lalu pilih nomor yang ingin dihapus.\nContoh: hapus 3";
+            reply = "⚠️ Nomor history tidak ditemukan.\n\nKirim *history* dulu, lalu pilih nomor yang ingin dihapus.\nContoh: hapus 3";
           } else {
             const transactionId = String(selectedTransaction.id ?? "");
             const { data: deletedTx, error: deleteError } = await supabase
@@ -1782,7 +1784,7 @@ Deno.serve(async (req: Request) => {
             if (!deletedTx) {
               reply = "⚠️ Transaksi ini sudah tidak aktif atau sudah dihapus.";
             } else {
-              parsedLog = { command: "hapus_riwayat", number, transactionId, deletedTransaction: selectedTransaction };
+              parsedLog = { command: "hapus_history", number, transactionId, deletedTransaction: selectedTransaction };
               const type = String(selectedTransaction.type ?? "expense");
               const date = String(selectedTransaction.date ?? "-");
               const amount = Number(selectedTransaction.amount ?? 0);
