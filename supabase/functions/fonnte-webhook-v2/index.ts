@@ -385,8 +385,11 @@ async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
 
 type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "ACCOUNT_EXPENSE" | "ACCOUNT_BALANCE" | "TITLE_TOTAL" | "TRANSACTION_COUNT" | "ACCOUNT_USAGE" | "TITLE_FREQUENCY" | "UNKNOWN";
 type AiSuggestionItem = { no: number; question: string };
+type AiSuggestionSession = { createdAt: number; suggestions: AiSuggestionItem[] };
 
 const AI_SUGGESTION_COMMANDS = new Set(["ai", "ai help", "ai menu", "ai contoh", "tanya ai"]);
+const AI_SUGGESTION_SESSION_TTL_MS = 10 * 60 * 1000;
+const aiSuggestionSessions = new Map<string, AiSuggestionSession>();
 const AI_STATIC_SUGGESTIONS: string[] = [
   "berapa transaksi minggu ini",
   "berapa pengeluaran seabank",
@@ -412,6 +415,27 @@ function shuffleArray<T>(arr: T[]): T[] {
   }
   return cloned;
 }
+
+function getAiSuggestionSessionKey(userId: string, phone: string): string {
+  return `${userId}:${phone}`;
+}
+
+function getValidAiSuggestionSession(userId: string, phone: string): AiSuggestionSession | null {
+  const sessionKey = getAiSuggestionSessionKey(userId, phone);
+  const session = aiSuggestionSessions.get(sessionKey);
+  if (!session) return null;
+  const isExpired = Date.now() - session.createdAt > AI_SUGGESTION_SESSION_TTL_MS;
+  if (isExpired) {
+    aiSuggestionSessions.delete(sessionKey);
+    return null;
+  }
+  return session;
+}
+
+function resetAiSuggestionSession(userId: string, phone: string): void {
+  aiSuggestionSessions.delete(getAiSuggestionSessionKey(userId, phone));
+}
+
 type PeriodType = "month" | "week";
 
 function getMonthRangeJakarta(
@@ -2124,6 +2148,7 @@ function buildMenuMessage(): string {
     "",
     "🤖 *AI Assistant*",
     "• ai",
+    "• 🤖 ai → buka AI Finance Assistant",
     "• pilih nomor pertanyaan",
     "• tanya bebas",
     "",
@@ -2221,6 +2246,7 @@ function buildExampleMessage(): string {
     "",
     "🤖 *AI Query*",
     "• ai",
+    "• 🤖 ai → buka AI Finance Assistant",
     "• pilih nomor 1-10",
     "• berapa jajan bulan ini",
     "• saldo cash",
@@ -2306,6 +2332,12 @@ Deno.serve(async (req: Request) => {
     userId = waUser.user_id;
     const normalized = normalizeText(message);
 
+    const isAiSuggestionCommand = AI_SUGGESTION_COMMANDS.has(normalized);
+    const isAiSelection = isSuggestionNumber(normalized);
+    if (!isAiSuggestionCommand && !isAiSelection) {
+      resetAiSuggestionSession(userId, sender);
+    }
+
     let reply = "";
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
 
@@ -2336,31 +2368,17 @@ Deno.serve(async (req: Request) => {
       parsedLog = debtRes.parsedLog;
     } else if (AI_SUGGESTION_COMMANDS.has(normalized)) {
       const suggestions = await getRandomAISuggestions(userId, 10);
+      aiSuggestionSessions.set(getAiSuggestionSessionKey(userId, sender), { createdAt: Date.now(), suggestions });
       reply = buildAISuggestionMessage(suggestions);
       parsedLog = { command: "ai_suggestion", suggestions };
     } else if (isSuggestionNumber(normalized)) {
       const selectedNumber = Number(normalized);
-      const { data: lastSuggestionLog, error: latestSuggestionError } = await supabase
-        .from("whatsapp_message_logs")
-        .select("parsed,created_at")
-        .eq("user_id", userId)
-        .eq("phone", sender)
-        .eq("status", "success")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (latestSuggestionError) throw latestSuggestionError;
-      console.log("[AI SUGGESTION LAST]", lastSuggestionLog);
-
-      const lastParsed = (lastSuggestionLog?.parsed ?? null) as Record<string, JsonValue> | null;
-      if (!lastSuggestionLog || lastParsed?.command !== "ai_suggestion") {
-        reply = ["⚠️ Belum ada daftar pertanyaan AI.", "", "Ketik:", "ai"].join("\n");
-        parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: null };
+      const activeSession = getValidAiSuggestionSession(userId, sender);
+      if (!activeSession) {
+        reply = ["⚠️ Sesi AI sudah habis.", "", "Ketik:", "ai"].join("\n");
+        parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: null, session: "expired_or_missing" };
       } else {
-        const suggestions = Array.isArray(lastParsed.suggestions)
-          ? (lastParsed.suggestions as Array<Record<string, JsonValue>>)
-          : [];
-        const selected = suggestions.find((s) => Number(s.no ?? 0) === selectedNumber);
+        const selected = activeSession.suggestions.find((s) => Number(s.no) === selectedNumber);
         if (!selected) {
           reply = "⚠️ Nomor pertanyaan tidak tersedia.";
           parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: null };
