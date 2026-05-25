@@ -76,6 +76,12 @@ type ParsedDebtCommand = {
   accountName: string;
   date: string;
 };
+type EditField = "amount" | "title" | "category" | "account" | "date";
+type ParsedEditTransactionCommand = {
+  number: number;
+  field: EditField;
+  value: string | number;
+};
 
 type BalanceSummary = {
   cash: number;
@@ -1191,6 +1197,132 @@ function parseDebtCommand(message: string): ParsedDebtCommand | null {
   return { action: action as DebtAction, debtType, partyName, amount, accountName, date };
 }
 
+function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionCommand | null {
+  const parts = rawMessage.trim().split(/\s+/);
+  if (parts.length < 3 || normalizeText(parts[0]) !== "edit") return null;
+  const number = Number(parts[1]);
+  if (!Number.isInteger(number) || number < 1) return null;
+  const rest = parts.slice(2);
+  if (rest.length === 0) return null;
+
+  const firstToken = normalizeText(rest[0]);
+  if (firstToken === "judul" || firstToken === "title") {
+    const titleValue = rest.slice(1).join(" ").trim();
+    if (!titleValue) return null;
+    return { number, field: "title", value: titleValue };
+  }
+  if (firstToken === "kategori") {
+    const categoryValue = rest.slice(1).join(" ").trim();
+    if (!categoryValue) return null;
+    return { number, field: "category", value: categoryValue };
+  }
+  if (firstToken === "akun") {
+    const accountValue = rest.slice(1).join(" ").trim();
+    if (!accountValue) return null;
+    return { number, field: "account", value: accountValue };
+  }
+  if (firstToken === "tanggal") {
+    const dateValue = rest[1] ?? "";
+    if (!dateValue) return null;
+    return { number, field: "date", value: dateValue };
+  }
+
+  const amount = parseAmount(rest.join(" "));
+  if (amount <= 0) return null;
+  return { number, field: "amount", value: amount };
+}
+
+async function getLastHistoryTransactions(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
+  const { data, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("parsed")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .eq("status", "success")
+    .eq("parsed->>command", "history")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  const parsed = (data?.parsed ?? null) as Record<string, JsonValue> | null;
+  return (parsed?.displayedTransactions ?? []) as Array<Record<string, JsonValue>>;
+}
+
+function findDisplayedTransactionByNumber(displayedTransactions: Array<Record<string, JsonValue>>, number: number): Record<string, JsonValue> | null {
+  return displayedTransactions.find((item) => Number(item.no ?? 0) === number) ?? null;
+}
+
+async function handleEditTransaction(userId: string, phone: string, rawMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const parsedEdit = parseEditTransactionCommand(rawMessage);
+  if (!parsedEdit) {
+    return { reply: "⚠️ Format edit tidak valid.\n\nContoh:\nedit 3 15000", parsedLog: { command: "edit_transaction_failed", reason: "invalid_format" } };
+  }
+  const displayedTransactions = await getLastHistoryTransactions(userId, phone);
+  if (displayedTransactions.length === 0) {
+    return { reply: "⚠️ Belum ada history terakhir.\n\nKirim *history* dulu lalu pilih nomor transaksi.\nContoh:\nedit 3 15000", parsedLog: { command: "edit_transaction_failed", reason: "history_not_found" } };
+  }
+  const selectedTransaction = findDisplayedTransactionByNumber(displayedTransactions, parsedEdit.number);
+  if (!selectedTransaction) {
+    return { reply: "⚠️ Nomor history tidak ditemukan.\n\nKirim *history* dulu lalu pilih nomor transaksi.\nContoh:\nedit 3 15000", parsedLog: { command: "edit_transaction_failed", reason: "number_not_found", number: parsedEdit.number } };
+  }
+
+  const transactionId = String(selectedTransaction.id ?? "");
+  const { data: txRow, error: txError } = await supabase
+    .from("transactions")
+    .select("id,title,amount,type,date,category_id,account_id,to_account_id")
+    .eq("id", transactionId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (txError) throw txError;
+  if (!txRow) return { reply: "⚠️ Transaksi ini sudah tidak aktif atau sudah dihapus.", parsedLog: { command: "edit_transaction_failed", reason: "transaction_not_found", transactionId } };
+
+  const txType = String(txRow.type ?? "expense");
+  if (txType === "transfer" && parsedEdit.field === "account") {
+    return { reply: "⚠️ Edit akun transfer belum didukung.", parsedLog: { command: "edit_transaction_failed", reason: "transfer_account_not_supported", transactionId } };
+  }
+
+  if (parsedEdit.field === "amount") {
+    const oldValue = Number(txRow.amount ?? 0);
+    const newValue = Number(parsedEdit.value);
+    const { error } = await supabase.from("transactions").update({ amount: newValue }).eq("id", transactionId).eq("user_id", userId);
+    if (error) throw error;
+    return { reply: [`✅ Nominal transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Judul: ${String(txRow.title ?? "-")}`, `Nominal lama: ${formatIDR(oldValue)}`, `Nominal baru: ${formatIDR(newValue)}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "amount", oldValue, newValue } };
+  }
+  if (parsedEdit.field === "title") {
+    const oldValue = String(txRow.title ?? "-");
+    const newValue = String(parsedEdit.value);
+    const { error } = await supabase.from("transactions").update({ title: newValue }).eq("id", transactionId).eq("user_id", userId);
+    if (error) throw error;
+    return { reply: [`✅ Judul transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Judul lama: ${oldValue}`, `Judul baru: ${newValue}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "title", oldValue, newValue } };
+  }
+  if (parsedEdit.field === "category") {
+    const categoryInput = String(parsedEdit.value);
+    const category = await findCategory(userId, categoryInput);
+    if (!category) return { reply: `⚠️ Kategori tidak ditemukan: ${categoryInput}`, parsedLog: { command: "edit_transaction_failed", reason: "category_not_found", transactionId, field: "category", value: categoryInput } };
+    const oldValue = String(selectedTransaction.categoryName ?? "-");
+    const { error } = await supabase.from("transactions").update({ category_id: category.id, type: category.type }).eq("id", transactionId).eq("user_id", userId);
+    if (error) throw error;
+    return { reply: [`✅ Kategori transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Kategori lama: ${oldValue}`, `Kategori baru: ${category.name}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "category", oldValue, newValue: category.name } };
+  }
+  if (parsedEdit.field === "account") {
+    const accountInput = String(parsedEdit.value);
+    const account = await findAccount(userId, accountInput);
+    if (!account) return { reply: `❌ Akun *${accountInput}* tidak ditemukan.`, parsedLog: { command: "edit_transaction_failed", reason: "account_not_found", transactionId, field: "account", value: accountInput } };
+    const oldValue = String(selectedTransaction.accountName ?? "-");
+    const { error } = await supabase.from("transactions").update({ account_id: account.id }).eq("id", transactionId).eq("user_id", userId);
+    if (error) throw error;
+    return { reply: [`✅ Akun transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Akun lama: ${oldValue}`, `Akun baru: ${account.name}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "account", oldValue, newValue: account.name } };
+  }
+  const dateInput = String(parsedEdit.value);
+  const newDate = parseCustomDateToken(dateInput);
+  if (!newDate) return { reply: "⚠️ Format tanggal tidak valid.\n\nGunakan format:\n31/05", parsedLog: { command: "edit_transaction_failed", reason: "invalid_date", transactionId, value: dateInput } };
+  const oldValue = String(txRow.date ?? "-");
+  const { error } = await supabase.from("transactions").update({ date: newDate }).eq("id", transactionId).eq("user_id", userId);
+  if (error) throw error;
+  return { reply: [`✅ Tanggal transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Tanggal lama: ${oldValue}`, `Tanggal baru: ${newDate}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "date", oldValue, newValue: newDate } };
+}
+
 async function handleEditLastTransactionAccount(userId: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   const accountNameInput = normalized.replace(/^edit akun\s+/, "").trim();
   if (!accountNameInput) {
@@ -1644,6 +1776,7 @@ function buildMenuMessage(): string {
     "• smart akun otomatis",
     "• transfer",
     "• hutang / piutang",
+    "• edit transaksi",
     "",
     "🤖 *AI Finance*",
     "• ai",
@@ -1681,6 +1814,7 @@ function buildExampleMessage(): string {
     "• momoyo 20000",
     "• tadi beli momoyo 20rb",
     "• edit akun cash",
+    "• edit 3 15000",
     "",
     "🗣️ *Bahasa Natural*",
     "• tadi beli kopi 20rb pake cash",
@@ -1707,6 +1841,15 @@ function buildExampleMessage(): string {
     "",
     "Setelah menampilkan history, kamu bisa hapus berdasarkan nomor:",
     "hapus 3",
+    "",
+    "✏️ *Edit Transaksi*",
+    "• edit 3 15000",
+    "• edit 3 judul kopi susu",
+    "• edit 3 kategori makan",
+    "• edit 3 akun cash",
+    "• edit 3 tanggal 31/05",
+    "",
+    "Catatan: Gunakan nomor dari history terakhir.",
     "",
     "🎯 *Budget*",
     "• budget jajan",
@@ -1819,6 +1962,10 @@ Deno.serve(async (req: Request) => {
       parsedLog = { command: "contoh" };
     } else if (normalized === "ping") {
       reply = "🏓 pong";
+    } else if (/^edit\s+\d+(\s|$)/.test(normalized)) {
+      const editResult = await handleEditTransaction(userId, sender, message);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
     } else if (normalized.startsWith("edit akun")) {
       const editResult = await handleEditLastTransactionAccount(userId, normalized);
       reply = editResult.reply;
@@ -2046,25 +2193,11 @@ Deno.serve(async (req: Request) => {
       if (!Number.isInteger(number) || number < 1 || number > 5) {
         reply = "⚠️ Nomor history tidak valid.\n\nPilih nomor dari hasil history terakhir.";
       } else {
-        const { data: lastHistoryLog, error: lastHistoryError } = await supabase
-          .from("whatsapp_message_logs")
-          .select("parsed")
-          .eq("user_id", userId)
-          .eq("phone", sender)
-          .eq("status", "success")
-          .eq("parsed->>command", "history")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (lastHistoryError) throw lastHistoryError;
-
-        const parsedHistory = (lastHistoryLog?.parsed ?? null) as Record<string, JsonValue> | null;
-        const displayedTransactions = (parsedHistory?.displayedTransactions ?? []) as Array<Record<string, JsonValue>>;
-
-        if (!parsedHistory || displayedTransactions.length === 0) {
+        const displayedTransactions = await getLastHistoryTransactions(userId, sender);
+        if (displayedTransactions.length === 0) {
           reply = "⚠️ Belum ada history terakhir.\n\nKirim *history* dulu, lalu gunakan:\nhapus 3";
         } else {
-          const selectedTransaction = displayedTransactions.find((item) => Number(item.no ?? 0) === number);
+          const selectedTransaction = findDisplayedTransactionByNumber(displayedTransactions, number);
           if (!selectedTransaction) {
             reply = "⚠️ Nomor history tidak ditemukan.\n\nKirim *history* dulu, lalu pilih nomor yang ingin dihapus.\nContoh: hapus 3";
           } else {
