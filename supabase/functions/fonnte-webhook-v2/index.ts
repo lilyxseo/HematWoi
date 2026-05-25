@@ -216,6 +216,38 @@ function formatIDR(amount: number): string {
   }).format(amount || 0);
 }
 
+function formatSignedIDR(amount: number): string {
+  if (amount < 0) return `Minus ${formatIDR(Math.abs(amount))}`;
+  return formatIDR(amount);
+}
+
+function findBestCategoryMatch(question: string, categories: Array<Record<string, JsonValue>>): Record<string, JsonValue> | null {
+  const q = normalizeText(question);
+  if (!q) return null;
+  const normalized = categories
+    .map((c) => ({ row: c, name: normalizeText(String(c.name ?? "")) }))
+    .filter((c) => c.name.length > 0);
+  const exact = normalized.find((c) => c.name === q);
+  if (exact) return exact.row;
+  const contains = normalized.find((c) => q.includes(c.name));
+  if (contains) return contains.row;
+  const partial = normalized.find((c) => c.name.includes(q) || q.split(" ").some((w) => w.length >= 3 && c.name.includes(w)));
+  return partial?.row ?? null;
+}
+
+function findBestAccountMatch(question: string, accounts: Array<Record<string, JsonValue>>): Record<string, JsonValue> | null {
+  const q = normalizeText(question);
+  if (!q) return null;
+  const normalized = accounts
+    .map((a) => ({ row: a, name: normalizeText(String(a.name ?? "")) }))
+    .filter((a) => a.name.length > 0);
+  const exact = normalized.find((a) => a.name === q);
+  if (exact) return exact.row;
+  const contains = normalized.find((a) => q.includes(a.name));
+  if (contains) return contains.row;
+  return normalized.find((a) => a.name.includes(q))?.row ?? null;
+}
+
 function parseAmount(raw: string): number {
   const cleaned = raw.replace(/[^0-9]/g, "");
   const value = Number(cleaned);
@@ -686,12 +718,14 @@ function extractPeriod(text: string): PeriodType {
 
 function detectAiIntent(question: string): AiIntent {
   const q = normalizeText(question);
+  if (/(sisa\s+budget|budget|aman|hampir habis|over budget)/.test(q)) return "BUDGET_STATUS";
+  if (/(pengeluaran|total)/.test(q) && /(kategori|category|jajan)/.test(q)) return "SPENDING_CATEGORY";
+  if (/saldo/.test(q)) return "ACCOUNT_BALANCE";
+  if (/(pengeluaran|total)/.test(q) && /akun/.test(q)) return "ACCOUNT_EXPENSE";
+  if (/akun/.test(q) && /sering dipakai/.test(q)) return "ACCOUNT_USAGE";
   if (/(seberapa sering|berapa kali|frekuensi)/.test(q)) return "TITLE_FREQUENCY";
-  if (/saldo/.test(q)) return /total/.test(q) ? "BALANCE_SAFETY" : "ACCOUNT_BALANCE";
-  if (/budget/.test(q)) return "BUDGET_STATUS";
   if (/(pengeluaran|total)/.test(q)) return "TITLE_TOTAL";
   if (/(kategori|category|jajan)/.test(q)) return "SPENDING_CATEGORY";
-  if (/akun/.test(q) && /sering dipakai/.test(q)) return "ACCOUNT_USAGE";
   if (/(paling boros|pengeluaran terbesar|terbesar apa|top kategori)/.test(q)) return "SPENDING_TOP";
   if (/cashflow/.test(q)) return "SPENDING_TOP";
   if (/transaksi terakhir/.test(q)) return "UNKNOWN";
@@ -977,8 +1011,8 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
   const { data: accounts } = await supabase.from("accounts").select("id,name,balance").eq("user_id", userId);
   const categoryList = (categories ?? []) as Array<Record<string, JsonValue>>;
   const accountList = (accounts ?? []) as Array<Record<string, JsonValue>>;
-  const matchedCategory = categoryList.find((c) => q.includes(normalizeText(String(c.name ?? ""))));
-  const matchedAccount = accountList.find((a) => q.includes(normalizeText(String(a.name ?? ""))));
+  const matchedCategory = findBestCategoryMatch(question, categoryList);
+  const matchedAccount = findBestAccountMatch(question, accountList);
   const extractEntityKeyword = (text: string): string => {
     let k = text.replace(/\?/g, "");
     k = k.replace(/^.*(total|pengeluaran|transaksi|beli)\s+/i, "");
@@ -997,13 +1031,22 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
   };
   const titleFrequencyKeyword = /(seberapa sering|berapa kali|frekuensi)/.test(q) ? extractTitleKeyword(question) : "";
 
-  if (/saldo/.test(q)) intent = matchedAccount ? "ACCOUNT_BALANCE" : intent;
+  if (/(budget|sisa budget|aman|hampir habis|over budget)/.test(q)) intent = "BUDGET_STATUS";
+  if (/saldo/.test(q)) intent = "ACCOUNT_BALANCE";
   if (/akun/.test(q) && /sering dipakai/.test(q)) intent = "ACCOUNT_USAGE";
   if (/(seberapa sering|berapa kali|frekuensi)/.test(q) && titleFrequencyKeyword) intent = "TITLE_FREQUENCY";
   if (/transaksi/.test(q) && /(berapa|jumlah|hitung)/.test(q) && !titleFrequencyKeyword) intent = "TRANSACTION_COUNT";
+  if (/(pengeluaran|total)/.test(q) && matchedCategory) intent = "SPENDING_CATEGORY";
   if (/(pengeluaran|total)/.test(q) && matchedAccount) intent = "ACCOUNT_EXPENSE";
-  if (/(pengeluaran|total)/.test(q) && !matchedCategory && !matchedAccount) intent = "TITLE_TOTAL";
+  if (/(pengeluaran|total)/.test(q) && !matchedCategory && !matchedAccount && intent !== "BUDGET_STATUS") intent = "TITLE_TOTAL";
   const keywordForLog = intent === "TITLE_FREQUENCY" ? titleFrequencyKeyword : extractEntityKeyword(question);
+  console.log("[AI ENTITY DETECT]", {
+    question,
+    detectedCategory: matchedCategory ? String(matchedCategory.name ?? "-") : null,
+    detectedAccount: matchedAccount ? String(matchedAccount.name ?? "-") : null,
+    detectedMerchant: keywordForLog || null,
+    intent,
+  });
   console.log("[AI INTENT]", { question, intent, keyword: keywordForLog, period: period.label });
 
   if (intent === "UNKNOWN") {
@@ -1024,7 +1067,7 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
     return { intent, keyword: null, period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo total:\n${formatIDR(balance.total)}` };
     }
     if (!matchedAccount) return { intent: "UNKNOWN", keyword: null, period: period.label, reply: "🤖 *AI Finance Chat*\n\nAkun belum ketemu di pertanyaan kamu." };
-    return { intent, keyword: String(matchedAccount.name ?? "-"), period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo ${String(matchedAccount.name ?? "-")}:\n${formatIDR(Number(matchedAccount.balance ?? 0))}` };
+    return { intent, keyword: String(matchedAccount.name ?? "-"), period: period.label, reply: `🤖 *AI Finance Chat*\n\nSaldo ${String(matchedAccount.name ?? "-")}:\n${formatSignedIDR(Number(matchedAccount.balance ?? 0))}` };
   }
   if (intent === "TRANSACTION_COUNT") {
     const { count, error } = await supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", userId).is("deleted_at", null).gte("date", period.startDate).lt("date", period.endDate);
@@ -1092,12 +1135,20 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
   }
 
   if (intent === "BUDGET_STATUS") {
-    const cat = question.replace(/^.*budget\s+/i, "").replace(/(sisa|aman|tidak|berapa)/gi, "").trim();
-    const monthly = cat ? await getMonthlyBudgetInfo(userId, cat) : null;
-    const weekly = cat ? await getWeeklyBudgetInfo(userId, cat) : null;
-    if (!monthly && !weekly) return { intent, reply: "🤖 *AI Finance Chat*\n\nBudget kategori itu belum ditemukan." };
-    const lines = buildCombinedBudgetLines(monthly, weekly).join("\n");
-    return { intent, reply: `🤖 *AI Finance Chat*\n\n${lines}` };
+    const budgetCategory = matchedCategory ? String(matchedCategory.name ?? "").trim() : question.replace(/^.*budget\s+/i, "").replace(/(sisa|aman|tidak|berapa|apakah|\?)/gi, "").trim();
+    const monthly = budgetCategory ? await getMonthlyBudgetInfo(userId, budgetCategory) : null;
+    if (!monthly) return { intent, reply: "🤖 *AI Finance Chat*\n\nBudget kategori itu belum ditemukan." };
+    const used = monthly.used;
+    const limit = monthly.planned;
+    const remaining = monthly.remaining;
+    const pct = monthly.percentage;
+    if (remaining < 0) {
+      return { intent, reply: `🤖 *AI Finance Chat*\n\n🚨 Budget ${budgetCategory} sudah melewati limit.\n\nTerpakai:\n${formatIDR(used)} / ${formatIDR(limit)}\n\nSisa:\n${formatSignedIDR(remaining)}\nPersen: ${pct.toFixed(1)}%` };
+    }
+    if (pct >= 80) {
+      return { intent, reply: `🤖 *AI Finance Chat*\n\n⚠️ Budget ${budgetCategory} hampir habis.\n\nTerpakai:\n${formatIDR(used)} / ${formatIDR(limit)}\n\nSisa:\n${formatIDR(remaining)}\nPersen: ${pct.toFixed(1)}%` };
+    }
+    return { intent, reply: `🤖 *AI Finance Chat*\n\nBudget ${budgetCategory} masih aman.\n\nTerpakai:\n${formatIDR(used)} / ${formatIDR(limit)}\n\nSisa:\n${formatIDR(remaining)}\nPersen: ${pct.toFixed(1)}%` };
   }
 
   if (intent === "BALANCE_SAFETY") {
