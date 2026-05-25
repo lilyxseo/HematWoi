@@ -158,6 +158,31 @@ function parseOptionalDateToken(raw: string): string | null {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function isDateToken(token: string): boolean {
+  return /^\d{1,2}\/\d{1,2}$/.test(token.trim());
+}
+
+function parseCustomDateToken(token: string): string | null {
+  if (!isDateToken(token)) return null;
+  const [dayRaw, monthRaw] = token.trim().split("/");
+  const day = Number(dayRaw);
+  const month = Number(monthRaw);
+  if (!Number.isInteger(day) || !Number.isInteger(month)) return null;
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  const now = new Date();
+  const jakartaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const year = jakartaNow.getFullYear();
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== (month - 1) ||
+    candidate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function getTodayJakarta(): string {
   const now = new Date();
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" });
@@ -1019,6 +1044,8 @@ function buildMenuMessage(): string {
     "• saldo",
     "• summary",
     "• riwayat",
+    "• riwayat 31/05",
+    "• riwayat jajan 31/05",
     "• info",
     "",
     "➕ *Catat Transaksi*",
@@ -1183,6 +1210,32 @@ Deno.serve(async (req: Request) => {
       ].join("\n");
     } else if (normalized.startsWith("riwayat")) {
       const arg = normalized.replace(/^riwayat\s*/, "").trim();
+      const tokens = arg ? arg.split(/\s+/).filter(Boolean) : [];
+      let categoryName = "";
+      let targetDate: string | null = null;
+      const lastToken = tokens[tokens.length - 1] ?? "";
+
+      if (lastToken && isDateToken(lastToken)) {
+        const parsedDate = parseCustomDateToken(lastToken);
+        if (!parsedDate) {
+          reply = "⚠️ Format tanggal tidak valid.\n\nGunakan format:\n31/05";
+        } else {
+          targetDate = parsedDate;
+          tokens.pop();
+        }
+      }
+
+      const remainingArg = tokens.join(" ").trim();
+      if (!reply) {
+        if (remainingArg === "hari ini") {
+          targetDate = getTodayJakarta();
+        } else if (remainingArg) {
+          categoryName = remainingArg;
+        }
+      }
+
+      parsedLog = { command: "riwayat", categoryName, targetDate };
+
       let query = supabase
         .from("transactions")
         .select("id,title,amount,type,date,category_id,account_id,to_account_id")
@@ -1191,14 +1244,18 @@ Deno.serve(async (req: Request) => {
         .order("inserted_at", { ascending: false })
         .limit(5);
 
-      if (arg === "hari ini") {
-        query = query.eq("date", getTodayJakarta());
-      } else if (arg) {
-        const cat = await findCategory(userId, arg);
+      if (targetDate) {
+        query = query.eq("date", targetDate);
+      }
+
+      let categoryLabel = "";
+      if (!reply && categoryName) {
+        const cat = await findCategory(userId, categoryName);
         if (!cat) {
-          reply = `❌ Kategori *${arg}* tidak ditemukan.`;
+          reply = `⚠️ Kategori tidak ditemukan: ${categoryName}`;
         } else {
           query = query.eq("category_id", cat.id);
+          categoryLabel = cat.name;
         }
       }
 
@@ -1208,7 +1265,7 @@ Deno.serve(async (req: Request) => {
 
         const transactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
         if (transactions.length === 0) {
-          reply = "📚 Belum ada riwayat transaksi.";
+          reply = "📚 Tidak ada riwayat transaksi.";
         } else {
           const categoryIds = [...new Set(transactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
           const accountIds = [...new Set(
@@ -1249,7 +1306,16 @@ Deno.serve(async (req: Request) => {
             return `${i + 1}. ${String(tx.date)}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)} via ${accountName}`;
           });
 
-          reply = `📚 *Riwayat Transaksi*\n\n${lines.join("\n\n")}`;
+          const headerLines = ["📚 *Riwayat Transaksi*"];
+          if (targetDate) {
+            const [year, month, day] = targetDate.split("-");
+            headerLines.push(`Tanggal: ${day}/${month}/${year}`);
+          }
+          if (categoryLabel) {
+            headerLines.push(`Kategori: ${categoryLabel.charAt(0).toUpperCase()}${categoryLabel.slice(1)}`);
+          }
+          const header = headerLines.length > 1 ? `${headerLines.join("\n")}\n` : headerLines[0];
+          reply = `${header}\n\n${lines.join("\n\n")}`;
         }
       }
     } else if (normalized.startsWith("budget ")) {
