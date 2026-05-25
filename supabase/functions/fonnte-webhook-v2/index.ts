@@ -45,6 +45,14 @@ type ParsedTransaction = {
 };
 type ParsedTransactionError = { error: "INVALID_DATE" };
 
+
+type ParsedSmartTransaction = {
+  accountName: string;
+  amount: number;
+  title: string;
+  date: string;
+};
+
 type ParsedTransfer = {
   amount: number;
   fromAccountName: string;
@@ -81,6 +89,32 @@ const FONNTE_TOKEN = Deno.env.get("FONNTE_TOKEN") ?? "";
 
 const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️", "📘"];
 const MENU_COMMANDS = new Set(["menu", "help", "bantuan", ".menu"]);
+
+const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
+  "menu",
+  "help",
+  "bantuan",
+  ".menu",
+  "contoh",
+  "saldo",
+  "summary",
+  "riwayat",
+  "budget",
+  "hutang",
+  "piutang",
+  "tf",
+  "ai",
+  "minggu",
+  "bulan",
+  "top",
+  "cashflow",
+  "hapus",
+  "akun",
+  "kategori",
+  "info",
+  "ping",
+]);
+
 
 const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -752,6 +786,110 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
   return { intent, reply: `🤖 *AI Finance Chat*\n\n${b.verdict.toUpperCase()} untuk beli ${formatIDR(b.amount)}.\nAlasan: ${b.reason}` };
 }
 
+function normalizeHistoryTitle(text: string): { normalized: string; words: string[] } {
+  const normalized = text.toLowerCase().replace(/[^a-z0-9\s]/gi, " ").replace(/\s+/g, " ").trim();
+  return { normalized, words: normalized ? normalized.split(" ") : [] };
+}
+
+function parseSmartTransactionMessage(message: string): ParsedSmartTransaction | ParsedTransactionError | null {
+  const parts = message.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 3) return null;
+
+  const firstToken = normalizeText(parts[0] ?? "");
+  if (SMART_TRANSACTION_BLOCKED_COMMANDS.has(firstToken)) return null;
+
+  let txDate = getTodayJakarta();
+  let workParts = [...parts];
+  const lastToken = workParts[workParts.length - 1];
+
+  if (isDateToken(lastToken)) {
+    const parsedDate = parseCustomDateToken(lastToken);
+    if (!parsedDate) return { error: "INVALID_DATE" };
+    txDate = parsedDate;
+    workParts = workParts.slice(0, -1);
+  }
+
+  if (workParts.length < 3) return null;
+
+  const accountName = workParts[workParts.length - 1];
+  let amountIndex = -1;
+
+  for (let i = workParts.length - 2; i >= 1; i--) {
+    if (parseAmount(workParts[i]) > 0) {
+      amountIndex = i;
+      break;
+    }
+  }
+
+  if (amountIndex < 1) return null;
+  const amount = parseAmount(workParts[amountIndex]);
+  if (amount <= 0) return null;
+
+  const title = workParts.slice(0, amountIndex).join(" ").trim();
+  if (!title) return null;
+
+  return { title, amount, accountName, date: txDate };
+}
+
+function findBestCategoryFromHistory(inputTitle: string, rows: Array<Record<string, JsonValue>>): { categoryId: string; score: number } | null {
+  const input = normalizeHistoryTitle(inputTitle);
+  if (!input.normalized) return null;
+
+  let best: { categoryId: string; score: number } | null = null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const title = String(row.title ?? "");
+    const categoryId = String(row.category_id ?? "").trim();
+    if (!title || !categoryId) continue;
+
+    const history = normalizeHistoryTitle(title);
+    if (!history.normalized) continue;
+
+    let score = 0;
+    if (history.normalized === input.normalized) score = 100;
+    else if (history.normalized.includes(input.normalized)) score = 80;
+    else if (input.normalized.includes(history.normalized)) score = 70;
+
+    const overlapCount = input.words.filter((word) => history.words.includes(word)).length;
+    score += overlapCount * 10;
+    score += Math.max(0, 5 - i * 0.05);
+
+    if (!best || score > best.score) {
+      best = { categoryId, score };
+    }
+  }
+
+  if (!best || best.score < 30) return null;
+  return best;
+}
+
+async function findCategoryByTransactionHistory(userId: string, title: string): Promise<{ id: string; name: string; type: string } | null> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("title,category_id,type,inserted_at")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .not("category_id", "is", null)
+    .not("title", "is", null)
+    .in("type", ["income", "expense"])
+    .order("inserted_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+
+  const best = findBestCategoryFromHistory(title, (data ?? []) as Array<Record<string, JsonValue>>);
+  if (!best) return null;
+
+  const { data: category, error: categoryError } = await supabase
+    .from("categories")
+    .select("id,name,type")
+    .eq("id", best.categoryId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (categoryError) throw categoryError;
+  return category;
+}
+
 function parseTransactionMessage(message: string): ParsedTransaction | ParsedTransactionError | null {
   const parts = message.trim().split(/\s+/);
   if (parts.length < 3) return null;
@@ -1253,6 +1391,16 @@ function buildExampleMessage(): string {
     "• jajan 10000 cash",
     "• jajan kopi 10000 cash",
     "• jajan kopi 10000 cash 31/05",
+    "",
+    "🤖 *Smart Auto Category*",
+    "• kopi 10000 cash",
+    "• mixue 25000 cash",
+    "• bensin 20000 cash 31/05",
+    "",
+    "Catatan:",
+    "Bot akan menebak kategori dari histori transaksi.",
+    "Jika belum ada histori yang cocok, gunakan format lengkap:",
+    "• jajan kopi 10000 cash",
     "",
     "🔁 *Transfer*",
     "• tf 50000 cash seabank",
@@ -1769,17 +1917,40 @@ Deno.serve(async (req: Request) => {
         }
       } else {
         const tx = parseTransactionMessage(normalized);
-        if (!tx) {
-          reply = "❌ Format tidak dikenali. Ketik menu untuk bantuan.";
-        } else if ("error" in tx && tx.error === "INVALID_DATE") {
+        if (tx && "error" in tx && tx.error === "INVALID_DATE") {
           reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
-        } else {
+        } else if (tx && !("error" in tx)) {
           parsedLog = { command: "transaction", category: tx.categoryName, account: tx.accountName, amount: tx.amount, title: tx.title };
           const category = await findCategory(userId, tx.categoryName);
           const account = await findAccount(userId, tx.accountName);
 
           if (!category) {
-            reply = `❌ Kategori *${tx.categoryName}* tidak ditemukan.`;
+            const smartTx = parseSmartTransactionMessage(normalized);
+            if (smartTx && !("error" in smartTx)) {
+              const smartAccount = await findAccount(userId, smartTx.accountName);
+              if (!smartAccount) {
+                reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
+              } else {
+                const smartCategory = await findCategoryByTransactionHistory(userId, smartTx.title);
+                if (!smartCategory) {
+                  parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
+                  reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
+                } else {
+                  parsedLog = { command: "smart_transaction", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, categoryName: smartCategory.name, categoryId: smartCategory.id, source: "history" };
+                  const smartType = smartCategory.type === "income" ? "income" : "expense";
+                  const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type: smartType, category_id: smartCategory.id, account_id: smartAccount.id, amount: smartTx.amount, title: smartTx.title, notes: `WhatsApp: ${message}` });
+                  if (error) throw error;
+                  const b = await getBalanceSummary(userId);
+                  const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`, "", "🤖 Kategori otomatis dari histori transaksi."];
+                  if (smartType === "expense") {
+                    lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
+                  }
+                  reply = lines.join("\n");
+                }
+              }
+            } else {
+              reply = `❌ Kategori *${tx.categoryName}* tidak ditemukan.`;
+            }
           } else if (!account) {
             reply = `❌ Akun *${tx.accountName}* tidak ditemukan.`;
           } else {
@@ -1827,6 +1998,33 @@ Deno.serve(async (req: Request) => {
             }
 
             reply = baseLines.join("\n");
+          }
+        } else {
+          const smartTx = parseSmartTransactionMessage(normalized);
+          if (!smartTx) {
+            reply = "❌ Format tidak dikenali. Ketik menu untuk bantuan.";
+          } else if ("error" in smartTx && smartTx.error === "INVALID_DATE") {
+            reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
+          } else {
+            const account = await findAccount(userId, smartTx.accountName);
+            if (!account) {
+              reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
+            } else {
+              const category = await findCategoryByTransactionHistory(userId, smartTx.title);
+              if (!category) {
+                parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
+                reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
+              } else {
+                parsedLog = { command: "smart_transaction", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, categoryName: category.name, categoryId: category.id, source: "history" };
+                const type = category.type === "income" ? "income" : "expense";
+                const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type, category_id: category.id, account_id: account.id, amount: smartTx.amount, title: smartTx.title, notes: `WhatsApp: ${message}` });
+                if (error) throw error;
+                const b = await getBalanceSummary(userId);
+                const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`, "", "🤖 Kategori otomatis dari histori transaksi."];
+                if (type === "expense") lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
+                reply = lines.join("\n");
+              }
+            }
           }
         }
       }
