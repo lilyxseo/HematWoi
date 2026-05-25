@@ -383,62 +383,25 @@ async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
 }
 
 
-type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "UNKNOWN";
+type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "ACCOUNT_EXPENSE" | "ACCOUNT_BALANCE" | "TITLE_TOTAL" | "TRANSACTION_COUNT" | "ACCOUNT_USAGE" | "TITLE_FREQUENCY" | "UNKNOWN";
 type AiSuggestionItem = { no: number; question: string };
 
 const AI_SUGGESTION_COMMANDS = new Set(["ai", "ai help", "ai menu", "ai contoh", "tanya ai"]);
 const AI_STATIC_SUGGESTIONS: string[] = [
-  "berapa jajan bulan ini",
-  "berapa pengeluaran hari ini",
-  "pengeluaran terbesar minggu ini",
-  "saldo seabank",
-  "saldo cash",
-  "berapa total nongkrong bulan lalu",
-  "merchant paling sering",
-  "kategori paling boros",
-  "berapa pengeluaran kopi bulan ini",
-  "berapa pemasukan bulan ini",
-  "berapa pengeluaran minggu ini",
-  "budget jajan aman?",
-  "sisa budget makan",
-  "transaksi terakhir",
-  "berapa total transfer bulan ini",
-  "berapa pengeluaran shopee bulan ini",
-  "berapa pengeluaran weekend ini",
-  "hari paling boros",
-  "jam paling boros",
-  "top kategori bulan ini",
-  "pengeluaran tertinggi hari ini",
-  "berapa cashflow bulan ini",
-  "berapa pengeluaran transport bulan lalu",
-  "berapa pengeluaran game bulan ini",
-  "berapa transaksi hari ini",
   "berapa transaksi minggu ini",
-  "berapa saldo total",
-  "berapa pengeluaran cash",
   "berapa pengeluaran seabank",
-  "berapa pemasukan freelance",
-  "berapa pengeluaran nongkrong",
-  "berapa rata rata pengeluaran harian",
-  "berapa pengeluaran kopi minggu ini",
+  "sisa budget makan",
   "kategori paling sering",
-  "akun paling sering dipakai",
-  "merchant paling mahal",
-  "berapa total hutang",
-  "berapa total piutang",
-  "berapa cicilan bulan ini",
-  "berapa pengeluaran tengah malam",
-  "berapa pengeluaran tanggal tua",
-  "berapa pengeluaran bulan lalu",
-  "berapa pemasukan bulan lalu",
-  "berapa selisih bulan ini",
-  "budget apa yang hampir habis",
-  "pengeluaran apa yang naik",
-  "apakah bulan ini boros",
-  "berapa rata-rata transaksi saya",
-  "akun mana yang paling sering dipakai",
-  "kategori mana yang paling sering dipakai",
+  "merchant paling sering",
+  "berapa pengeluaran hari ini",
   "berapa pengeluaran makan minggu ini",
+  "akun cash sering dipakai untuk apa",
+  "apakah bulan ini boros",
+  "sisa budget motor",
+  "berapa total es budeh bulan ini",
+  "saldo seabank",
+  "transaksi terakhir",
+  "top kategori bulan ini",
 ];
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -640,15 +603,41 @@ function extractPeriod(text: string): PeriodType {
 
 function detectAiIntent(question: string): AiIntent {
   const q = normalizeText(question);
+  if (/saldo/.test(q)) return /total/.test(q) ? "BALANCE_SAFETY" : "ACCOUNT_BALANCE";
+  if (/transaksi terakhir/.test(q)) return "UNKNOWN";
+  if (/transaksi/.test(q) && /(berapa|jumlah|hitung)/.test(q)) return "TRANSACTION_COUNT";
+  if (/akun/.test(q) && /sering dipakai/.test(q)) return "ACCOUNT_USAGE";
+  if (/seberapa sering/.test(q)) return "TITLE_FREQUENCY";
+  if (/(pengeluaran|total)/.test(q)) return "SPENDING_CATEGORY";
+  if (/budget/.test(q)) return "BUDGET_STATUS";
   if (/(aman|boleh).*(beli)/.test(q) || /(beli).*(\d|rb|ribu|jt|juta)/.test(q)) return "BUY_DECISION";
   if (/(paling boros|pengeluaran terbesar|terbesar apa)/.test(q)) return "SPENDING_TOP";
-  if (/(budget).*(sisa|aman)/.test(q)) return "BUDGET_STATUS";
   if (/(saldo).*aman|cukup sampai (akhir bulan|gajian)/.test(q)) return "BALANCE_SAFETY";
   if (/(subscription|langganan)/.test(q)) return "SUBSCRIPTION_SUMMARY";
   if (/(hutang|piutang)/.test(q)) return "DEBT_STATUS";
   if (/(goal|goals|target|progress)/.test(q)) return "GOAL_PROGRESS";
-  if (/(pengeluaran|jajan|makan|belanja)/.test(q) && /(berapa)/.test(q)) return "SPENDING_CATEGORY";
   return "UNKNOWN";
+}
+
+function detectPeriodFromQuestion(question: string): { label: "hari ini" | "minggu ini" | "bulan ini" | "bulan lalu"; startDate: string; endDate: string } {
+  const q = normalizeText(question);
+  if (/hari ini/.test(q)) {
+    const today = getTodayJakarta();
+    const next = new Date(`${today}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const endDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+    return { label: "hari ini", startDate: today, endDate };
+  }
+  if (/minggu ini|pekan ini/.test(q)) {
+    const p = getWeekRangeJakarta();
+    return { label: "minggu ini", startDate: p.start, endDate: p.end };
+  }
+  if (/bulan lalu/.test(q)) {
+    const p = getPreviousMonthRangeJakarta();
+    return { label: "bulan lalu", startDate: p.start, endDate: p.end };
+  }
+  const p = getMonthRangeJakarta();
+  return { label: "bulan ini", startDate: p.start, endDate: p.end };
 }
 
 async function getDynamicAISuggestions(userId: string): Promise<string[]> {
@@ -896,7 +885,30 @@ async function getBuyDecision(userId: string, question: string): Promise<{ amoun
 }
 
 async function handleAiFinanceChat(userId: string, question: string): Promise<{ reply: string; intent: AiIntent }> {
-  const intent = detectAiIntent(question);
+  const q = normalizeText(question);
+  const period = detectPeriodFromQuestion(question);
+  let intent = detectAiIntent(question);
+  const { data: categories } = await supabase.from("categories").select("id,name").eq("user_id", userId).eq("type", "expense");
+  const { data: accounts } = await supabase.from("accounts").select("id,name,balance").eq("user_id", userId);
+  const categoryList = (categories ?? []) as Array<Record<string, JsonValue>>;
+  const accountList = (accounts ?? []) as Array<Record<string, JsonValue>>;
+  const matchedCategory = categoryList.find((c) => q.includes(normalizeText(String(c.name ?? ""))));
+  const matchedAccount = accountList.find((a) => q.includes(normalizeText(String(a.name ?? ""))));
+  const extractEntityKeyword = (text: string): string => {
+    let k = text.replace(/\?/g, "");
+    k = k.replace(/^.*(total|pengeluaran|transaksi|beli)\s+/i, "");
+    k = k.replace(/\b(saya|untuk|dari|di|pada)\b/gi, "");
+    k = k.replace(/\b(hari ini|minggu ini|bulan ini|bulan lalu)\b/gi, "");
+    return k.trim();
+  };
+
+  if (/saldo/.test(q)) intent = matchedAccount ? "ACCOUNT_BALANCE" : intent;
+  if (/akun/.test(q) && /sering dipakai/.test(q)) intent = "ACCOUNT_USAGE";
+  if (/seberapa sering/.test(q)) intent = "TITLE_FREQUENCY";
+  if (/transaksi/.test(q) && /(berapa|jumlah|hitung)/.test(q)) intent = "TRANSACTION_COUNT";
+  if (/(pengeluaran|total)/.test(q) && matchedAccount) intent = "ACCOUNT_EXPENSE";
+  if (/(pengeluaran|total)/.test(q) && !matchedCategory && !matchedAccount) intent = "TITLE_TOTAL";
+
   if (intent === "UNKNOWN") {
     return {
       intent,
@@ -907,6 +919,49 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
       ].join("\n"),
     };
   }
+  if (intent === "ACCOUNT_BALANCE") {
+    if (/saldo total|total saldo|saldo semua/.test(q)) {
+      const balance = await getBalanceSummary(userId);
+      return { intent, reply: `🤖 *AI Finance Chat*\n\nSaldo total:\n${formatIDR(balance.total)}` };
+    }
+    if (!matchedAccount) return { intent: "UNKNOWN", reply: "🤖 *AI Finance Chat*\n\nAkun belum ketemu di pertanyaan kamu." };
+    return { intent, reply: `🤖 *AI Finance Chat*\n\nSaldo ${String(matchedAccount.name ?? "-")}:\n${formatIDR(Number(matchedAccount.balance ?? 0))}` };
+  }
+  if (intent === "TRANSACTION_COUNT") {
+    const { count, error } = await supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", userId).is("deleted_at", null).gte("date", period.startDate).lt("date", period.endDate);
+    if (error) throw error;
+    return { intent, reply: `🤖 *AI Finance Chat*\n\nTransaksi ${period.label}:\n${count ?? 0} data` };
+  }
+  if (intent === "ACCOUNT_USAGE") {
+    if (!matchedAccount) return { intent: "UNKNOWN", reply: "🤖 *AI Finance Chat*\n\nAkun belum ketemu di pertanyaan kamu." };
+    const { data: txs, error } = await supabase.from("transactions").select("amount,category_id").eq("user_id", userId).eq("account_id", String(matchedAccount.id)).eq("type", "expense").is("deleted_at", null).gte("date", period.startDate).lt("date", period.endDate);
+    if (error) throw error;
+    const totals = new Map<string, number>();
+    for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) totals.set(String(tx.category_id ?? ""), (totals.get(String(tx.category_id ?? "")) ?? 0) + Number(tx.amount ?? 0));
+    const ids = [...totals.keys()].filter(Boolean);
+    const { data: catRows } = ids.length > 0 ? await supabase.from("categories").select("id,name").in("id", ids) : { data: [] };
+    const cmap = new Map<string, string>();
+    for (const c of (catRows ?? []) as Array<Record<string, JsonValue>>) cmap.set(String(c.id), String(c.name ?? "-"));
+    const lines = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, total], i) => `${i + 1}. ${cmap.get(id) ?? "-"} — ${formatIDR(total)}`);
+    return { intent, reply: `🤖 *AI Finance Chat*\n\nAkun ${String(matchedAccount.name ?? "-")} paling sering dipakai untuk:\n\n${lines.join("\n") || "-"}` };
+  }
+  if (intent === "TITLE_FREQUENCY" || intent === "TITLE_TOTAL") {
+    const keyword = extractEntityKeyword(question);
+    if (!keyword) return { intent: "UNKNOWN", reply: "🤖 *AI Finance Chat*\n\nSaya belum paham pertanyaan itu." };
+    const { data: txs, error } = await supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").is("deleted_at", null).ilike("title", `%${keyword}%`).gte("date", period.startDate).lt("date", period.endDate);
+    if (error) throw error;
+    const total = (txs ?? []).reduce((acc, it: Record<string, JsonValue>) => acc + Number(it.amount ?? 0), 0);
+    const count = (txs ?? []).length;
+    if (intent === "TITLE_FREQUENCY") return { intent, reply: `🤖 *AI Finance Chat*\n\nTransaksi "${keyword}" ${period.label}:\n${count} kali\nTotal: ${formatIDR(total)}` };
+    return { intent: "TITLE_TOTAL", reply: `🤖 *AI Finance Chat*\n\nTotal pengeluaran "${keyword}" ${period.label}:\n${formatIDR(total)}\nJumlah transaksi: ${count} data` };
+  }
+  if (intent === "ACCOUNT_EXPENSE") {
+    if (!matchedAccount) return { intent: "UNKNOWN", reply: "🤖 *AI Finance Chat*\n\nAkun belum ketemu di pertanyaan kamu." };
+    const { data: txs, error } = await supabase.from("transactions").select("amount").eq("user_id", userId).eq("account_id", String(matchedAccount.id)).eq("type", "expense").is("deleted_at", null).gte("date", period.startDate).lt("date", period.endDate);
+    if (error) throw error;
+    const total = (txs ?? []).reduce((a, b: Record<string, JsonValue>) => a + Number(b.amount ?? 0), 0);
+    return { intent, reply: `🤖 *AI Finance Chat*\n\nPengeluaran dari ${String(matchedAccount.name ?? "-")} ${period.label}:\n${formatIDR(total)}` };
+  }
 
   if (intent === "SPENDING_TOP") {
     const tops = await getTopExpenseCategories(userId);
@@ -916,7 +971,20 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
 
   if (intent === "SPENDING_CATEGORY") {
     const res = await getCategoryExpenseTotal(userId, question);
-    if (!res.categoryName) return { intent, reply: "🤖 *AI Finance Chat*\n\nKategori belum ketemu di pertanyaan kamu." };
+    if (!res.categoryName) {
+      const keyword = extractEntityKeyword(question);
+      if (matchedAccount) {
+        const { data: txs } = await supabase.from("transactions").select("amount").eq("user_id", userId).eq("account_id", String(matchedAccount.id)).eq("type", "expense").is("deleted_at", null).gte("date", period.startDate).lt("date", period.endDate);
+        const total = (txs ?? []).reduce((a, b: Record<string, JsonValue>) => a + Number(b.amount ?? 0), 0);
+        return { intent: "ACCOUNT_EXPENSE", reply: `🤖 *AI Finance Chat*\n\nPengeluaran dari ${String(matchedAccount.name ?? "-")} ${period.label}:\n${formatIDR(total)}` };
+      }
+      if (keyword) {
+        const { data: txs } = await supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").is("deleted_at", null).ilike("title", `%${keyword}%`).gte("date", period.startDate).lt("date", period.endDate);
+        const total = (txs ?? []).reduce((a, b: Record<string, JsonValue>) => a + Number(b.amount ?? 0), 0);
+        return { intent: "TITLE_TOTAL", reply: `🤖 *AI Finance Chat*\n\nTotal pengeluaran "${keyword}" ${period.label}:\n${formatIDR(total)}\nJumlah transaksi: ${(txs ?? []).length} data` };
+      }
+      return { intent: "UNKNOWN", reply: "🤖 *AI Finance Chat*\n\nSaya belum paham pertanyaan itu." };
+    }
     return { intent, reply: `🤖 *AI Finance Chat*\n\nPengeluaran *${res.categoryName}* ${res.periodLabel}: *${formatIDR(res.total)}*` };
   }
 
