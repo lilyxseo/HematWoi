@@ -383,22 +383,54 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
   let planned = 0;
   let categoryIds: string[] = [category.id];
 
-  // 1. Cek budget mingguan direct dari budgets_weekly.category_id
-  const { data: directBudgets, error: directErr } = await supabase
-    .from("budgets_weekly")
-    .select("id,user_id,category_id,name,planned,amount_planned,amount,created_at")
-    .eq("user_id", userId)
-    .eq("category_id", category.id)
-    .order("created_at", { ascending: false })
-    .limit(1);
+  const isMissingColumnError = (error: unknown): boolean => {
+    const msg = String((error as { message?: string } | null)?.message ?? error ?? "").toLowerCase();
+    return msg.includes("column") && msg.includes("does not exist");
+  };
 
-  if (directErr) {
-    console.error("[WEEKLY BUDGET DIRECT ERROR]", directErr);
+  const selectWeeklyBudgets = async (extraFilter?: (query: any) => any) => {
+    const selects = [
+      "id,user_id,category_id,name,planned,amount_planned,amount,created_at",
+      "id,user_id,category_id,name,planned,amount_planned,created_at",
+      "id,user_id,category_id,name,amount_planned,amount,created_at",
+      "id,user_id,category_id,name,planned,amount,created_at",
+      "id,user_id,category_id,name,planned,created_at",
+      "id,user_id,category_id,name,amount_planned,created_at",
+      "id,user_id,category_id,name,amount,created_at",
+      "id,user_id,category_id,name,planned,amount_planned,amount",
+      "id,user_id,category_id,name,planned",
+      "id,user_id,category_id,name,amount_planned",
+      "id,user_id,category_id,name,amount",
+      "id,user_id,category_id,name",
+    ];
+
+    let lastError: unknown = null;
+
+    for (const selectCols of selects) {
+      let query = supabase.from("budgets_weekly").select(selectCols).eq("user_id", userId);
+      if (extraFilter) query = extraFilter(query);
+      query = query.order("created_at", { ascending: false }).limit(1);
+
+      const { data, error } = await query;
+      if (!error) return { data: (data ?? []) as Array<Record<string, JsonValue>>, error: null };
+
+      lastError = error;
+      if (!isMissingColumnError(error)) break;
+    }
+
+    return { data: [] as Array<Record<string, JsonValue>>, error: lastError };
+  };
+
+  // 1. Cek budget mingguan direct dari budgets_weekly.category_id
+  const directRes = await selectWeeklyBudgets((query) => query.eq("category_id", category.id));
+  if (directRes.error) {
+    console.error("[WEEKLY BUDGET DIRECT ERROR]", directRes.error);
   }
 
-  if (directBudgets && directBudgets.length > 0) {
-    const b = directBudgets[0] as Record<string, JsonValue>;
-    budgetId = String(b.id);
+  const directBudgets = directRes.data;
+  if (directBudgets.length > 0) {
+    const b = directBudgets[0];
+    budgetId = String(b.id ?? "");
     planned = Number(b.planned ?? b.amount_planned ?? b.amount ?? 0);
   }
 
@@ -418,21 +450,14 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
       .filter(Boolean))];
 
     if (mappedBudgetIds.length > 0) {
-      const { data: mappedBudgets, error: budgetErr } = await supabase
-        .from("budgets_weekly")
-        .select("id,user_id,category_id,name,planned,amount_planned,amount,created_at")
-        .eq("user_id", userId)
-        .in("id", mappedBudgetIds)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (budgetErr) {
-        console.error("[WEEKLY BUDGET MAPPED ERROR]", budgetErr);
+      const mappedRes = await selectWeeklyBudgets((query) => query.in("id", mappedBudgetIds));
+      if (mappedRes.error) {
+        console.error("[WEEKLY BUDGET MAPPED ERROR]", mappedRes.error);
       }
 
-      if (mappedBudgets && mappedBudgets.length > 0) {
-        const b = mappedBudgets[0] as Record<string, JsonValue>;
-        budgetId = String(b.id);
+      if (mappedRes.data.length > 0) {
+        const b = mappedRes.data[0];
+        budgetId = String(b.id ?? "");
         planned = Number(b.planned ?? b.amount_planned ?? b.amount ?? 0);
       }
     }
