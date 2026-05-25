@@ -374,6 +374,7 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string): Promi
 
 async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promise<BudgetInfo | null> {
   const category = await findCategory(userId, categoryName);
+  console.log("[WEEKLY BUDGET] category", { userId, categoryName, category });
   if (!category) return null;
 
   const weekStart = getWeekStartJakarta();
@@ -382,96 +383,56 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
   let budgetId: string | null = null;
   let planned = 0;
   let categoryIds: string[] = [category.id];
+  let selectedBudget: Record<string, JsonValue> | null = null;
 
-  const isMissingColumnError = (error: unknown): boolean => {
-    const msg = String((error as { message?: string } | null)?.message ?? error ?? "").toLowerCase();
-    return msg.includes("column") && msg.includes("does not exist");
-  };
+  const { data: directBudgets, error: directErr } = await supabase
+    .from("budgets_weekly")
+    .select("id,user_id,category_id,name,planned,amount_planned,amount,created_at")
+    .eq("user_id", userId)
+    .eq("category_id", category.id)
+    .order("created_at", { ascending: false });
+  if (directErr) throw directErr;
+  console.log("[WEEKLY BUDGET] directBudgets", directBudgets ?? []);
 
-  const selectWeeklyBudgets = async (extraFilter?: (query: any) => any) => {
-    const selects = [
-      "id,user_id,category_id,name,planned,amount_planned,amount,created_at",
-      "id,user_id,category_id,name,planned,amount_planned,created_at",
-      "id,user_id,category_id,name,amount_planned,amount,created_at",
-      "id,user_id,category_id,name,planned,amount,created_at",
-      "id,user_id,category_id,name,planned,created_at",
-      "id,user_id,category_id,name,amount_planned,created_at",
-      "id,user_id,category_id,name,amount,created_at",
-      "id,user_id,category_id,name,planned,amount_planned,amount",
-      "id,user_id,category_id,name,planned",
-      "id,user_id,category_id,name,amount_planned",
-      "id,user_id,category_id,name,amount",
-      "id,user_id,category_id,name",
-    ];
-
-    let lastError: unknown = null;
-
-    for (const selectCols of selects) {
-      let query = supabase.from("budgets_weekly").select(selectCols).eq("user_id", userId);
-      if (extraFilter) query = extraFilter(query);
-      query = query.order("created_at", { ascending: false }).limit(1);
-
-      const { data, error } = await query;
-      if (!error) return { data: (data ?? []) as Array<Record<string, JsonValue>>, error: null };
-
-      lastError = error;
-      if (!isMissingColumnError(error)) break;
-    }
-
-    return { data: [] as Array<Record<string, JsonValue>>, error: lastError };
-  };
-
-  // 1. Cek budget mingguan direct dari budgets_weekly.category_id
-  const directRes = await selectWeeklyBudgets((query) => query.eq("category_id", category.id));
-  if (directRes.error) {
-    console.error("[WEEKLY BUDGET DIRECT ERROR]", directRes.error);
+  if ((directBudgets ?? []).length > 0) {
+    selectedBudget = (directBudgets ?? [])[0] as Record<string, JsonValue>;
+    budgetId = String(selectedBudget.id ?? "");
+    planned = Number(selectedBudget.planned ?? selectedBudget.amount_planned ?? selectedBudget.amount ?? 0);
   }
 
-  const directBudgets = directRes.data;
-  if (directBudgets.length > 0) {
-    const b = directBudgets[0];
-    budgetId = String(b.id ?? "");
-    planned = Number(b.planned ?? b.amount_planned ?? b.amount ?? 0);
-  }
+  const { data: mappedRows, error: mappedErr } = await supabase
+    .from("weekly_budget_categories")
+    .select("budget_weekly_id,category_id")
+    .eq("category_id", category.id);
+  if (mappedErr) throw mappedErr;
+  console.log("[WEEKLY BUDGET] mappedRows", mappedRows ?? []);
 
-  // 2. Kalau direct tidak ada, cek multi kategori dari weekly_budget_categories
   if (!budgetId) {
-    const { data: mappedRows, error: mappedErr } = await supabase
-      .from("weekly_budget_categories")
-      .select("budget_weekly_id,category_id")
-      .eq("category_id", category.id);
-
-    if (mappedErr) {
-      console.error("[WEEKLY BUDGET MAP ERROR]", mappedErr);
-    }
-
     const mappedBudgetIds = [...new Set((mappedRows ?? [])
       .map((row: Record<string, JsonValue>) => String(row.budget_weekly_id ?? ""))
       .filter(Boolean))];
 
     if (mappedBudgetIds.length > 0) {
-      const mappedRes = await selectWeeklyBudgets((query) => query.in("id", mappedBudgetIds));
-      if (mappedRes.error) {
-        console.error("[WEEKLY BUDGET MAPPED ERROR]", mappedRes.error);
-      }
+      const { data: mappedBudgets, error: mappedBudgetErr } = await supabase
+        .from("budgets_weekly")
+        .select("id,user_id,category_id,name,planned,amount_planned,amount,created_at")
+        .eq("user_id", userId)
+        .in("id", mappedBudgetIds)
+        .order("created_at", { ascending: false });
+      if (mappedBudgetErr) throw mappedBudgetErr;
 
-      if (mappedRes.data.length > 0) {
-        const b = mappedRes.data[0];
-        budgetId = String(b.id ?? "");
-        planned = Number(b.planned ?? b.amount_planned ?? b.amount ?? 0);
+      if ((mappedBudgets ?? []).length > 0) {
+        selectedBudget = (mappedBudgets ?? [])[0] as Record<string, JsonValue>;
+        budgetId = String(selectedBudget.id ?? "");
+        planned = Number(selectedBudget.planned ?? selectedBudget.amount_planned ?? selectedBudget.amount ?? 0);
       }
     }
   }
 
-  if (!budgetId || planned <= 0) {
-    console.log("[WEEKLY BUDGET NOT FOUND]", {
-      categoryName,
-      categoryId: category.id,
-      budgetId,
-      planned,
-    });
-    return null;
-  }
+  console.log("[WEEKLY BUDGET] selectedBudget", selectedBudget);
+  console.log("[WEEKLY BUDGET] planned", planned);
+
+  if (!budgetId || planned <= 0) return null;
 
   // 3. Ambil semua kategori yang terhubung ke budget mingguan ini
   const { data: linkedRows, error: linkedErr } = await supabase
@@ -526,16 +487,7 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string): Promis
   const remaining = planned - used;
   const percentage = planned > 0 ? (used / planned) * 100 : 0;
 
-  console.log("[WEEKLY BUDGET OK]", {
-    categoryName,
-    budgetId,
-    planned,
-    used,
-    remaining,
-    weekStart,
-    nextWeekStart,
-    categoryIds,
-  });
+  console.log("[WEEKLY BUDGET] used", used);
 
   return {
     categoryNames: categoryNames.length > 0 ? categoryNames : [category.name],
