@@ -168,7 +168,7 @@ function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function isSuggestionNumber(text: string): boolean {
+function isAISuggestionNumber(text: string): boolean {
   return /^(10|[1-9])$/.test(text.trim());
 }
 
@@ -385,11 +385,19 @@ async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
 
 type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "ACCOUNT_EXPENSE" | "ACCOUNT_BALANCE" | "TITLE_TOTAL" | "TRANSACTION_COUNT" | "ACCOUNT_USAGE" | "TITLE_FREQUENCY" | "UNKNOWN";
 type AiSuggestionItem = { no: number; question: string };
-type AiSuggestionSession = { createdAt: number; suggestions: AiSuggestionItem[] };
+type AiSuggestionSession = {
+  id: string;
+  created_at: string;
+  parsed: {
+    command?: string;
+    sessionId?: string;
+    suggestions?: AiSuggestionItem[];
+    active?: boolean;
+  };
+};
 
 const AI_SUGGESTION_COMMANDS = new Set(["ai", "ai help", "ai menu", "ai contoh", "tanya ai"]);
 const AI_SUGGESTION_SESSION_TTL_MS = 10 * 60 * 1000;
-const aiSuggestionSessions = new Map<string, AiSuggestionSession>();
 const AI_STATIC_SUGGESTIONS: string[] = [
   "berapa transaksi minggu ini",
   "berapa pengeluaran seabank",
@@ -416,24 +424,73 @@ function shuffleArray<T>(arr: T[]): T[] {
   return cloned;
 }
 
-function getAiSuggestionSessionKey(userId: string, phone: string): string {
-  return `${userId}:${phone}`;
+async function getLastAISuggestionSession(
+  userId: string,
+  phone: string,
+): Promise<{ session: AiSuggestionSession | null; isExpired: boolean }> {
+  const { data: logs, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("id,created_at,parsed")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) throw error;
+
+  const session = ((logs ?? []) as AiSuggestionSession[]).find((log) =>
+    log.parsed?.command === "ai_suggestion" && log.parsed?.active !== false
+  ) ?? null;
+  if (!session) return { session: null, isExpired: false };
+
+  const isExpired = Date.now() - new Date(session.created_at).getTime() > AI_SUGGESTION_SESSION_TTL_MS;
+  if (isExpired) return { session: null, isExpired: true };
+
+  return { session, isExpired: false };
 }
 
-function getValidAiSuggestionSession(userId: string, phone: string): AiSuggestionSession | null {
-  const sessionKey = getAiSuggestionSessionKey(userId, phone);
-  const session = aiSuggestionSessions.get(sessionKey);
-  if (!session) return null;
-  const isExpired = Date.now() - session.createdAt > AI_SUGGESTION_SESSION_TTL_MS;
+async function handleAISuggestionPick(
+  userId: string,
+  phone: string,
+  numberText: string,
+): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const selectedNumber = Number(numberText);
+  const { session, isExpired } = await getLastAISuggestionSession(userId, phone);
   if (isExpired) {
-    aiSuggestionSessions.delete(sessionKey);
-    return null;
+    return {
+      reply: ["⚠️ Sesi AI sudah habis.", "", "Ketik:", "ai"].join("\n"),
+      parsedLog: { command: "ai_suggestion_pick", number: selectedNumber, question: null, session: "expired" },
+    };
   }
-  return session;
-}
 
-function resetAiSuggestionSession(userId: string, phone: string): void {
-  aiSuggestionSessions.delete(getAiSuggestionSessionKey(userId, phone));
+  if (!session) {
+    return {
+      reply: ["⚠️ Belum ada daftar pertanyaan AI.", "", "Ketik:", "ai"].join("\n"),
+      parsedLog: { command: "ai_suggestion_pick", number: selectedNumber, question: null, session: "missing" },
+    };
+  }
+
+  const suggestions = Array.isArray(session.parsed?.suggestions) ? session.parsed.suggestions : [];
+  const selected = suggestions.find((item) => Number(item.no) === selectedNumber);
+  if (!selected) {
+    return {
+      reply: ["⚠️ Nomor pertanyaan tidak tersedia.", "", "Pilih nomor dari daftar AI terakhir."].join("\n"),
+      parsedLog: { command: "ai_suggestion_pick", number: selectedNumber, question: null, sourceSessionId: session.parsed?.sessionId ?? null },
+    };
+  }
+
+  const selectedQuestion = String(selected.question ?? "").trim();
+  const ai = await handleAiQuestion(userId, selectedQuestion);
+  return {
+    reply: ai.reply,
+    parsedLog: {
+      command: "ai_suggestion_pick",
+      number: selectedNumber,
+      question: selectedQuestion,
+      sourceSessionId: session.parsed?.sessionId ?? null,
+      intent: ai.intent,
+    },
+  };
 }
 
 type PeriodType = "month" | "week";
@@ -2332,12 +2389,6 @@ Deno.serve(async (req: Request) => {
     userId = waUser.user_id;
     const normalized = normalizeText(message);
 
-    const isAiSuggestionCommand = AI_SUGGESTION_COMMANDS.has(normalized);
-    const isAiSelection = isSuggestionNumber(normalized);
-    if (!isAiSuggestionCommand && !isAiSelection) {
-      resetAiSuggestionSession(userId, sender);
-    }
-
     let reply = "";
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
 
@@ -2368,31 +2419,12 @@ Deno.serve(async (req: Request) => {
       parsedLog = debtRes.parsedLog;
     } else if (AI_SUGGESTION_COMMANDS.has(normalized)) {
       const suggestions = await getRandomAISuggestions(userId, 10);
-      aiSuggestionSessions.set(getAiSuggestionSessionKey(userId, sender), { createdAt: Date.now(), suggestions });
       reply = buildAISuggestionMessage(suggestions);
-      parsedLog = { command: "ai_suggestion", suggestions };
-    } else if (isSuggestionNumber(normalized)) {
-      const selectedNumber = Number(normalized);
-      const activeSession = getValidAiSuggestionSession(userId, sender);
-      if (!activeSession) {
-        reply = ["⚠️ Sesi AI sudah habis.", "", "Ketik:", "ai"].join("\n");
-        parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: null, session: "expired_or_missing" };
-      } else {
-        const selected = activeSession.suggestions.find((s) => Number(s.no) === selectedNumber);
-        if (!selected) {
-          reply = "⚠️ Nomor pertanyaan tidak tersedia.";
-          parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: null };
-        } else {
-          const selectedQuestion = String(selected.question ?? "").trim();
-          console.log("[AI PICK]", {
-            selectedNumber,
-            selectedQuestion,
-          });
-          const ai = await handleAiQuestion(userId, selectedQuestion);
-          reply = ai.reply;
-          parsedLog = { command: "ai_suggestion_pick", number: selectedNumber, question: selectedQuestion, intent: ai.intent };
-        }
-      }
+      parsedLog = { command: "ai_suggestion", sessionId: crypto.randomUUID(), suggestions, active: true };
+    } else if (isAISuggestionNumber(normalized)) {
+      const aiPick = await handleAISuggestionPick(userId, sender, normalized);
+      reply = aiPick.reply;
+      parsedLog = aiPick.parsedLog;
     } else if (normalized.startsWith("ai ")) {
       const question = message.trim().replace(/^ai\s+/i, "").trim();
       const ai = await handleAiQuestion(userId, question);
