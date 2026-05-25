@@ -96,6 +96,24 @@ type BudgetInfo = {
   remaining: number;
   percentage: number;
 };
+type BudgetPeriodType = "monthly" | "weekly";
+type BudgetPeriodKey = "current" | "previous" | "next";
+type BudgetPeriodCommand = { periodType: BudgetPeriodType; period: BudgetPeriodKey };
+type BudgetPeriodRange = {
+  start: string;
+  end: string;
+  periodMonth: string;
+  periodType: BudgetPeriodType;
+  period: BudgetPeriodKey;
+};
+type BudgetPeriodItem = {
+  categoryNames: string[];
+  planned: number;
+  used: number;
+  remaining: number;
+  percentage: number;
+  createdAt: string;
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -1756,6 +1774,202 @@ function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget
   return lines;
 }
 
+function parseBudgetPeriodCommand(text: string): BudgetPeriodCommand | null {
+  const normalized = normalizeText(text);
+  const map: Record<string, BudgetPeriodCommand> = {
+    "budget bulan ini": { periodType: "monthly", period: "current" },
+    "budget bulan lalu": { periodType: "monthly", period: "previous" },
+    "budget bulan besok": { periodType: "monthly", period: "next" },
+    "budget minggu ini": { periodType: "weekly", period: "current" },
+    "budget minggu lalu": { periodType: "weekly", period: "previous" },
+    "budget minggu besok": { periodType: "weekly", period: "next" },
+    "budget now": { periodType: "monthly", period: "current" },
+    "budget prev": { periodType: "monthly", period: "previous" },
+    "budget next": { periodType: "monthly", period: "next" },
+  };
+  return map[normalized] ?? null;
+}
+
+function getBudgetPeriodRange(periodType: BudgetPeriodType, period: BudgetPeriodKey): BudgetPeriodRange {
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const target = new Date(now);
+  if (periodType === "monthly") target.setMonth(target.getMonth() + (period === "previous" ? -1 : period === "next" ? 1 : 0));
+  if (periodType === "weekly") target.setDate(target.getDate() + (period === "previous" ? -7 : period === "next" ? 7 : 0));
+
+  if (periodType === "monthly") {
+    const start = getMonthStart(target);
+    const end = getNextMonthStart(target);
+    return { start, end, periodMonth: start, periodType, period };
+  }
+
+  const start = getWeekStartJakarta(target);
+  const end = getNextWeekStartJakarta(target);
+  const periodMonth = getMonthStart(target);
+  return { start, end, periodMonth, periodType, period };
+}
+
+async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRange): Promise<BudgetPeriodItem[]> {
+  const { data, error } = await supabase.from("budgets")
+    .select("id,user_id,name,amount_planned,planned,category_id,period_month,month,created_at")
+    .eq("user_id", userId)
+    .or(`period_month.eq.${range.periodMonth},month.eq.${range.periodMonth}`);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  if (rows.length === 0) return [];
+
+  const budgetIds = rows.map((r) => String(r.id ?? "")).filter(Boolean);
+  const { data: links } = await supabase.from("budget_categories").select("budget_id,category_id").in("budget_id", budgetIds);
+  const linkMap = new Map<string, string[]>();
+  for (const row of (links ?? []) as Array<Record<string, JsonValue>>) {
+    const bid = String(row.budget_id ?? "");
+    const cid = String(row.category_id ?? "");
+    if (!bid || !cid) continue;
+    linkMap.set(bid, [...(linkMap.get(bid) ?? []), cid]);
+  }
+
+  const allCategoryIds = new Set<string>();
+  const budgetCategoryMap = new Map<string, string[]>();
+  for (const row of rows) {
+    const bid = String(row.id ?? "");
+    const direct = String(row.category_id ?? "");
+    const linked = linkMap.get(bid) ?? [];
+    const merged = [...new Set([...(direct ? [direct] : []), ...linked])];
+    budgetCategoryMap.set(bid, merged);
+    for (const cid of merged) allCategoryIds.add(cid);
+  }
+
+  const categoryIdList = [...allCategoryIds];
+  const { data: categories } = categoryIdList.length > 0
+    ? await supabase.from("categories").select("id,name").in("id", categoryIdList)
+    : { data: [] as Array<Record<string, JsonValue>> };
+  const categoryNameMap = new Map((categories ?? []).map((c: Record<string, JsonValue>) => [String(c.id), String(c.name)]));
+
+  const { data: txs, error: txErr } = categoryIdList.length > 0
+    ? await supabase.from("transactions").select("amount,category_id")
+      .eq("user_id", userId).eq("type", "expense").is("deleted_at", null).is("to_account_id", null)
+      .gte("date", range.start).lt("date", range.end).in("category_id", categoryIdList)
+    : { data: [], error: null };
+  if (txErr) throw txErr;
+  const txSumByCategory = new Map<string, number>();
+  for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
+    const cid = String(tx.category_id ?? "");
+    if (!cid) continue;
+    txSumByCategory.set(cid, (txSumByCategory.get(cid) ?? 0) + Number(tx.amount ?? 0));
+  }
+
+  return rows
+    .map((row) => {
+      const planned = Number(row.amount_planned ?? row.planned ?? 0);
+      if (planned <= 0) return null;
+      const bid = String(row.id ?? "");
+      const categoryIds = budgetCategoryMap.get(bid) ?? [];
+      const used = categoryIds.reduce((sum, cid) => sum + (txSumByCategory.get(cid) ?? 0), 0);
+      return {
+        categoryNames: categoryIds.map((cid) => categoryNameMap.get(cid) ?? "-").filter(Boolean),
+        planned,
+        used,
+        remaining: planned - used,
+        percentage: planned > 0 ? Math.round((used / planned) * 100) : 0,
+        createdAt: String(row.created_at ?? ""),
+      };
+    })
+    .filter((v): v is BudgetPeriodItem => Boolean(v))
+    .sort((a, b) => (b.planned - a.planned) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+}
+
+async function getWeeklyBudgetsByPeriod(userId: string, range: BudgetPeriodRange): Promise<BudgetPeriodItem[]> {
+  const { data, error } = await supabase.from("budgets_weekly")
+    .select("id,user_id,name,category_id,amount_planned,planned,amount,week_start,start_date,created_at")
+    .eq("user_id", userId)
+    .or(`week_start.eq.${range.start},start_date.eq.${range.start}`);
+  if (error) throw error;
+  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  if (rows.length === 0) return [];
+  const ids = rows.map((r) => String(r.id ?? "")).filter(Boolean);
+
+  const [linkA, linkB, linkC] = await Promise.all([
+    supabase.from("weekly_budget_categories").select("budget_weekly_id,category_id").in("budget_weekly_id", ids),
+    supabase.from("weekly_budget_categories").select("weekly_budget_id,category_id").in("weekly_budget_id", ids),
+    supabase.from("weekly_budget_categories").select("budget_id,category_id").in("budget_id", ids),
+  ]);
+  const mergedLinks = [...(linkA.data ?? []), ...(linkB.data ?? []), ...(linkC.data ?? [])] as Array<Record<string, JsonValue>>;
+  const linkMap = new Map<string, string[]>();
+  for (const row of mergedLinks) {
+    const bid = String(row.budget_weekly_id ?? row.weekly_budget_id ?? row.budget_id ?? "");
+    const cid = String(row.category_id ?? "");
+    if (!bid || !cid) continue;
+    linkMap.set(bid, [...(linkMap.get(bid) ?? []), cid]);
+  }
+  const allCategoryIds = new Set<string>();
+  const budgetCategoryMap = new Map<string, string[]>();
+  for (const row of rows) {
+    const bid = String(row.id ?? "");
+    const direct = String(row.category_id ?? "");
+    const merged = [...new Set([...(direct ? [direct] : []), ...(linkMap.get(bid) ?? [])])];
+    budgetCategoryMap.set(bid, merged);
+    for (const cid of merged) allCategoryIds.add(cid);
+  }
+  const categoryIds = [...allCategoryIds];
+  const { data: categories } = categoryIds.length > 0 ? await supabase.from("categories").select("id,name").in("id", categoryIds) : { data: [] };
+  const nameMap = new Map((categories ?? []).map((c: Record<string, JsonValue>) => [String(c.id), String(c.name)]));
+  const { data: txs, error: txErr } = categoryIds.length > 0
+    ? await supabase.from("transactions").select("amount,category_id")
+      .eq("user_id", userId).eq("type", "expense").is("deleted_at", null).is("to_account_id", null)
+      .gte("date", range.start).lt("date", range.end).in("category_id", categoryIds)
+    : { data: [], error: null };
+  if (txErr) throw txErr;
+  const usedByCat = new Map<string, number>();
+  for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
+    const cid = String(tx.category_id ?? "");
+    usedByCat.set(cid, (usedByCat.get(cid) ?? 0) + Number(tx.amount ?? 0));
+  }
+  return rows.map((row) => {
+    const planned = Number(row.amount_planned ?? row.planned ?? row.amount ?? 0);
+    if (planned <= 0) return null;
+    const bid = String(row.id ?? "");
+    const cids = budgetCategoryMap.get(bid) ?? [];
+    const used = cids.reduce((sum, cid) => sum + (usedByCat.get(cid) ?? 0), 0);
+    return { categoryNames: cids.map((cid) => nameMap.get(cid) ?? "-"), planned, used, remaining: planned - used, percentage: planned > 0 ? Math.round((used / planned) * 100) : 0, createdAt: String(row.created_at ?? "") };
+  }).filter((v): v is BudgetPeriodItem => Boolean(v))
+    .sort((a, b) => (b.planned - a.planned) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+}
+
+function buildBudgetPeriodMessage(command: BudgetPeriodCommand, monthly: BudgetPeriodItem[], weekly: BudgetPeriodItem[]): string {
+  if (monthly.length === 0 && weekly.length === 0) return "📊 Belum ada budget untuk periode ini.";
+  const titleMap: Record<BudgetPeriodType, Record<BudgetPeriodKey, string>> = {
+    monthly: { current: "📊 Budget Bulan Ini", previous: "📊 Budget Bulan Lalu", next: "📊 Budget Bulan Besok" },
+    weekly: { current: "📊 Budget Minggu Ini", previous: "📊 Budget Minggu Lalu", next: "📊 Budget Minggu Besok" },
+  };
+  const lines: string[] = [titleMap[command.periodType][command.period]];
+  if (monthly.length > 0) {
+    lines.push("", "📆 Bulanan", "");
+    monthly.forEach((b, i) => {
+      lines.push(`${i + 1}. ${b.categoryNames.join(", ")}`);
+      lines.push(`💰 ${formatIDR(b.planned)}`);
+      lines.push(`📉 ${formatIDR(b.used)}`);
+      lines.push(`💵 Sisa ${formatIDR(b.remaining)}`);
+      lines.push(`📈 ${b.percentage}%`);
+      if (b.percentage >= 100) lines.push("🚨 Budget terlampaui");
+      else if (b.percentage >= 80) lines.push("⚠️ Hampir habis");
+      lines.push("");
+    });
+  }
+  if (weekly.length > 0) {
+    lines.push("🗓️ Mingguan", "");
+    weekly.forEach((b, i) => {
+      lines.push(`${i + 1}. ${b.categoryNames.join(", ")}`);
+      lines.push(`💰 ${formatIDR(b.planned)}`);
+      lines.push(`📉 ${formatIDR(b.used)}`);
+      lines.push(`💵 Sisa ${formatIDR(b.remaining)}`);
+      lines.push(`📈 ${b.percentage}%`);
+      if (b.percentage >= 100) lines.push("🚨 Budget terlampaui");
+      else if (b.percentage >= 80) lines.push("⚠️ Hampir habis");
+      lines.push("");
+    });
+  }
+  return lines.join("\n").trim();
+}
+
 function buildMenuMessage(): string {
   return [
     "📋 *Menu HematWoi*",
@@ -1765,6 +1979,10 @@ function buildMenuMessage(): string {
     "• summary",
     "• history",
     "• budget",
+    "• budget bulan ini",
+    "• budget bulan lalu",
+    "• budget bulan besok",
+    "• budget minggu ini",
     "• minggu ini",
     "• bulan ini",
     "• top kategori",
@@ -1815,6 +2033,13 @@ function buildExampleMessage(): string {
     "• tadi beli momoyo 20rb",
     "• edit akun cash",
     "• edit 3 15000",
+    "",
+    "📊 *Budget Periode*",
+    "• budget bulan ini",
+    "• budget bulan lalu",
+    "• budget bulan besok",
+    "• budget minggu ini",
+    "• budget minggu lalu",
     "",
     "🗣️ *Bahasa Natural*",
     "• tadi beli kopi 20rb pake cash",
@@ -2247,6 +2472,15 @@ Deno.serve(async (req: Request) => {
           }
         }
       }
+    } else if (parseBudgetPeriodCommand(normalized)) {
+      const periodCommand = parseBudgetPeriodCommand(normalized) as BudgetPeriodCommand;
+      const range = getBudgetPeriodRange(periodCommand.periodType, periodCommand.period);
+      const [monthlyBudgets, weeklyBudgets] = await Promise.all([
+        getMonthlyBudgetsByPeriod(userId, range),
+        getWeeklyBudgetsByPeriod(userId, range),
+      ]);
+      reply = buildBudgetPeriodMessage(periodCommand, monthlyBudgets, weeklyBudgets);
+      parsedLog = { command: "budget_period", periodType: periodCommand.periodType, period: periodCommand.period };
     } else if (normalized.startsWith("budget ")) {
       const categoryName = normalized.replace(/^budget\s+/, "").trim();
       const [monthlyBudget, weeklyBudget] = await Promise.all([
