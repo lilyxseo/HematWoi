@@ -48,6 +48,16 @@ type ParsedTransfer = {
   fromAccountName: string;
   toAccountName: string;
 };
+type DebtType = "debt" | "receivable";
+type DebtAction = "tambah" | "bayar";
+type ParsedDebtCommand = {
+  action: DebtAction;
+  debtType: DebtType;
+  partyName: string;
+  amount: number;
+  accountName: string;
+  date: string;
+};
 
 type BalanceSummary = {
   cash: number;
@@ -134,6 +144,18 @@ function parseAmount(raw: string): number {
   const value = Number(cleaned);
   if (!Number.isFinite(value) || value <= 0) return 0;
   return Math.floor(value);
+}
+
+function parseOptionalDateToken(raw: string): string | null {
+  const match = raw.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!match) return null;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  const now = new Date();
+  const jakartaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const year = jakartaNow.getFullYear();
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function getTodayJakarta(): string {
@@ -581,6 +603,204 @@ function parseTransferMessage(message: string): ParsedTransfer | null {
   return { amount, fromAccountName: parts[2], toAccountName: parts[3] };
 }
 
+function parseDebtCommand(message: string): ParsedDebtCommand | null {
+  const parts = message.trim().split(/\s+/);
+  if (parts.length < 5) return null;
+  const action = normalizeText(parts[0]);
+  const debtWord = normalizeText(parts[1]);
+  if ((action !== "tambah" && action !== "bayar") || (debtWord !== "hutang" && debtWord !== "piutang")) return null;
+  const debtType: DebtType = debtWord === "hutang" ? "debt" : "receivable";
+
+  let date = getTodayJakarta();
+  let workParts = [...parts];
+  const maybeDate = parseOptionalDateToken(workParts[workParts.length - 1]);
+  if (maybeDate) {
+    date = maybeDate;
+    workParts = workParts.slice(0, -1);
+  }
+
+  if (workParts.length < 5) return null;
+  const accountName = workParts[workParts.length - 1];
+  const core = workParts.slice(2, -1);
+  const amountIndex = core.findIndex((p) => parseAmount(p) > 0);
+  if (amountIndex <= 0) return null;
+
+  const partyName = core.slice(0, amountIndex).join(" ").trim();
+  const amount = parseAmount(core[amountIndex]);
+  if (!partyName || amount <= 0) return null;
+
+  return { action: action as DebtAction, debtType, partyName, amount, accountName, date };
+}
+
+async function getOpenDebts(userId: string): Promise<Array<Record<string, JsonValue>>> {
+  const { data, error } = await supabase
+    .from("debts")
+    .select("id,type,party_name,amount,paid_total,status")
+    .eq("user_id", userId)
+    .eq("status", "ongoing")
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Array<Record<string, JsonValue>>;
+}
+
+async function findOpenDebtByParty(userId: string, debtType: DebtType, partyName: string): Promise<Record<string, JsonValue> | null> {
+  const { data, error } = await supabase
+    .from("debts")
+    .select("id,type,party_name,amount,paid_total,status")
+    .eq("user_id", userId)
+    .eq("type", debtType)
+    .eq("status", "ongoing")
+    .ilike("party_name", partyName)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data as Record<string, JsonValue> | null;
+}
+
+async function createDebtPayment(input: {
+  userId: string;
+  debtId: string;
+  accountId: string;
+  transactionId: string;
+  amount: number;
+  date: string;
+  notes: string;
+}): Promise<void> {
+  const { error } = await supabase.from("debt_payments").insert({
+    debt_id: input.debtId,
+    user_id: input.userId,
+    account_id: input.accountId,
+    transaction_id: input.transactionId,
+    amount: input.amount,
+    date: input.date,
+    notes: input.notes,
+  });
+  if (error) throw error;
+}
+
+async function handleDebtCommand(userId: string, rawMessage: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  if (normalized === "hutang") {
+    const rows = await getOpenDebts(userId);
+    if (rows.length === 0) return { reply: "💳 Belum ada hutang/piutang aktif.", parsedLog: { command: "debt", action: "list" } };
+    const lines = rows.map((row, i) => {
+      const amount = Number(row.amount ?? 0);
+      const paid = Number(row.paid_total ?? 0);
+      const remaining = Math.max(0, amount - paid);
+      const label = String(row.type ?? "debt") === "receivable" ? "Piutang" : "Hutang";
+      return `${i + 1}. ${label} - ${String(row.party_name ?? "-")}\n   Total: ${formatIDR(amount)}\n   Dibayar: ${formatIDR(paid)}\n   Sisa: ${formatIDR(remaining)}`;
+    });
+    return { reply: `💳 *Hutang & Piutang*\n\n${lines.join("\n\n")}`, parsedLog: { command: "debt", action: "list" } };
+  }
+
+  const parsed = parseDebtCommand(rawMessage);
+  if (!parsed) {
+    return {
+      reply: ["⚠️ Format hutang/piutang salah.", "", "Contoh:", "• tambah hutang shopee 100000 seabank", "• bayar hutang shopee 25000 seabank", "• tambah piutang andi 50000 cash", "• bayar piutang andi 50000 cash"].join("\n"),
+      parsedLog: { command: "debt", action: "invalid" },
+    };
+  }
+
+  const account = await findAccount(userId, parsed.accountName);
+  if (!account) {
+    return {
+      reply: `⚠️ Akun tidak ditemukan: ${parsed.accountName}`,
+      parsedLog: { command: "debt", action: parsed.action, debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+    };
+  }
+
+  if (parsed.action === "tambah") {
+    const { error: debtErr } = await supabase.from("debts").insert({
+      user_id: userId,
+      type: parsed.debtType,
+      party_name: parsed.partyName,
+      title: `${parsed.debtType === "debt" ? "Hutang" : "Piutang"} ${parsed.partyName}`,
+      date: parsed.date,
+      amount: parsed.amount,
+      paid_total: 0,
+      status: "ongoing",
+      notes: `WhatsApp: ${rawMessage}`,
+    });
+    if (debtErr) throw debtErr;
+
+    const { error: txErr } = await supabase.from("transactions").insert({
+      user_id: userId,
+      date: parsed.date,
+      type: "expense",
+      account_id: account.id,
+      amount: parsed.amount,
+      title: `${parsed.debtType === "debt" ? "Tambah hutang" : "Tambah piutang"} ${parsed.partyName}`,
+      notes: parsed.debtType === "debt" ? `WhatsApp debt add: ${rawMessage}` : `WhatsApp receivable add: ${rawMessage}`,
+    });
+    if (txErr) throw txErr;
+
+    return {
+      reply: [`✅ ${parsed.debtType === "debt" ? "Hutang" : "Piutang"} berhasil dicatat`, "", `Nama: ${parsed.partyName}`, `Nominal: ${formatIDR(parsed.amount)}`, `Akun: ${account.name}`].join("\n"),
+      parsedLog: { command: "debt", action: "tambah", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+    };
+  }
+
+  const debt = await findOpenDebtByParty(userId, parsed.debtType, parsed.partyName);
+  if (!debt) {
+    return {
+      reply: "⚠️ Data hutang/piutang tidak ditemukan.",
+      parsedLog: { command: "debt", action: "bayar", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+    };
+  }
+
+  const totalAmount = Number(debt.amount ?? 0);
+  const paidTotal = Number(debt.paid_total ?? 0);
+  const remaining = Math.max(0, totalAmount - paidTotal);
+  if (parsed.amount > remaining) {
+    return {
+      reply: `⚠️ Nominal melebihi sisa hutang.\n\nSisa hutang: ${formatIDR(remaining)}`,
+      parsedLog: { command: "debt", action: "bayar", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+    };
+  }
+
+  const txType = parsed.debtType === "debt" ? "expense" : "income";
+  const { data: paymentTx, error: paymentTxErr } = await supabase.from("transactions").insert({
+    user_id: userId,
+    date: parsed.date,
+    type: txType,
+    account_id: account.id,
+    amount: parsed.amount,
+    title: `${parsed.debtType === "debt" ? "Bayar hutang" : "Bayar piutang"} ${String(debt.party_name ?? parsed.partyName)}`,
+    notes: parsed.debtType === "debt" ? `WhatsApp debt payment: ${rawMessage}` : `WhatsApp receivable payment: ${rawMessage}`,
+  }).select("id").single();
+  if (paymentTxErr) throw paymentTxErr;
+
+  await createDebtPayment({
+    userId,
+    debtId: String(debt.id),
+    accountId: account.id,
+    transactionId: String(paymentTx.id),
+    amount: parsed.amount,
+    date: parsed.date,
+    notes: `WhatsApp: ${rawMessage}`,
+  });
+
+  const newPaidTotal = paidTotal + parsed.amount;
+  const newRemaining = Math.max(0, totalAmount - newPaidTotal);
+  const nextStatus = newRemaining === 0 ? "paid" : "ongoing";
+  const { error: updateDebtErr } = await supabase.from("debts").update({ paid_total: newPaidTotal, status: nextStatus }).eq("id", String(debt.id)).eq("user_id", userId);
+  if (updateDebtErr) throw updateDebtErr;
+
+  const isDebt = parsed.debtType === "debt";
+  return {
+    reply: [
+      `✅ Pembayaran ${isDebt ? "hutang" : "piutang"} tercatat`,
+      "",
+      `Nama: ${String(debt.party_name ?? parsed.partyName)}`,
+      `${isDebt ? "Dibayar" : "Diterima"}: ${formatIDR(parsed.amount)}`,
+      `Sisa: ${formatIDR(newRemaining)}`,
+      `Akun: ${account.name}`,
+      `Status: ${nextStatus === "paid" ? "Lunas" : "Berjalan"}`,
+    ].join("\n"),
+    parsedLog: { command: "debt", action: "bayar", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+  };
+}
+
 async function getMonthlyBudgetInfo(userId: string, categoryName: string): Promise<BudgetInfo | null> {
   const category = await findCategory(userId, categoryName);
   if (!category) return null;
@@ -812,6 +1032,14 @@ function buildMenuMessage(): string {
     "🎯 *Budget*",
     "• budget jajan",
     "",
+    "💳 *Hutang / Piutang*",
+    "• hutang",
+    "• tambah hutang shopee 100000 seabank",
+    "• bayar hutang shopee 25000 seabank",
+    "• tambah piutang andi 50000 cash",
+    "• bayar piutang andi 50000 cash",
+    "• tambah hutang shopee 100000 seabank 31/05",
+    "",
     "🧾 *Lainnya*",
     "• kategori",
     "• akun",
@@ -897,6 +1125,16 @@ Deno.serve(async (req: Request) => {
       reply = buildMenuMessage();
     } else if (normalized === "ping") {
       reply = "🏓 pong";
+    } else if (
+      normalized === "hutang" ||
+      normalized.startsWith("tambah hutang") ||
+      normalized.startsWith("tambah piutang") ||
+      normalized.startsWith("bayar hutang") ||
+      normalized.startsWith("bayar piutang")
+    ) {
+      const debtRes = await handleDebtCommand(userId, message, normalized);
+      reply = debtRes.reply;
+      parsedLog = debtRes.parsedLog;
     } else if (normalized.startsWith("ai ")) {
       const question = message.trim().replace(/^ai\s+/i, "").trim();
       const ai = await handleAiFinanceChat(userId, question);
