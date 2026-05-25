@@ -448,7 +448,7 @@ async function getRealtimeBalanceSummary(userId: string): Promise<BalanceSummary
 }
 
 
-type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "ACCOUNT_EXPENSE" | "ACCOUNT_BALANCE" | "TITLE_TOTAL" | "TRANSACTION_COUNT" | "ACCOUNT_USAGE" | "TITLE_FREQUENCY" | "UNKNOWN";
+type AiIntent = "SPENDING_TOP" | "SPENDING_CATEGORY" | "BUDGET_STATUS" | "BALANCE_SAFETY" | "SUBSCRIPTION_SUMMARY" | "DEBT_STATUS" | "GOAL_PROGRESS" | "BUY_DECISION" | "ACCOUNT_EXPENSE" | "ACCOUNT_BALANCE" | "TITLE_TOTAL" | "TRANSACTION_COUNT" | "ACCOUNT_USAGE" | "TITLE_FREQUENCY" | "TOP_CATEGORY" | "CATEGORY_FREQUENCY" | "BOROS_CHECK" | "CASHFLOW" | "UNKNOWN";
 type AiSuggestionItem = { no: number; question: string };
 type AiSuggestionSession = {
   id: string;
@@ -752,15 +752,18 @@ function extractPeriod(text: string): PeriodType {
 function detectAiIntent(question: string): AiIntent {
   const q = normalizeText(question);
   if (/(sisa\s+budget|budget|aman|hampir habis|over budget)/.test(q)) return "BUDGET_STATUS";
+  if (/(top kategori|kategori paling boros|kategori terbesar|pengeluaran terbesar kategori|kategori paling besar)/.test(q)) return "TOP_CATEGORY";
+  if (/(apakah bulan ini boros|bulan ini boros|apakah saya boros|boros)/.test(q)) return "BOROS_CHECK";
+  if (/(kategori paling sering|kategori yang paling sering|kategori paling banyak)/.test(q)) return "CATEGORY_FREQUENCY";
   if (/(pengeluaran|total)/.test(q) && /(kategori|category|jajan)/.test(q)) return "SPENDING_CATEGORY";
   if (/saldo/.test(q)) return "ACCOUNT_BALANCE";
   if (/(pengeluaran|total)/.test(q) && /akun/.test(q)) return "ACCOUNT_EXPENSE";
   if (/akun/.test(q) && /sering dipakai/.test(q)) return "ACCOUNT_USAGE";
   if (/(seberapa sering|berapa kali|frekuensi)/.test(q)) return "TITLE_FREQUENCY";
+  if (/cashflow/.test(q)) return "CASHFLOW";
   if (/(pengeluaran|total)/.test(q)) return "TITLE_TOTAL";
   if (/(kategori|category|jajan)/.test(q)) return "SPENDING_CATEGORY";
   if (/(paling boros|pengeluaran terbesar|terbesar apa|top kategori)/.test(q)) return "SPENDING_TOP";
-  if (/cashflow/.test(q)) return "SPENDING_TOP";
   if (/transaksi terakhir/.test(q)) return "UNKNOWN";
   if (/transaksi/.test(q) && /(berapa|jumlah|hitung)/.test(q)) return "TRANSACTION_COUNT";
   if (/(aman|boleh).*(beli)/.test(q) || /(beli).*(\d|rb|ribu|jt|juta)/.test(q)) return "BUY_DECISION";
@@ -845,7 +848,8 @@ async function getDynamicAISuggestions(userId: string): Promise<string[]> {
 
 async function getRandomAISuggestions(userId: string, count = 10): Promise<AiSuggestionItem[]> {
   const dynamic = await getDynamicAISuggestions(userId);
-  const uniquePool = Array.from(new Set([...AI_STATIC_SUGGESTIONS, ...dynamic].map((q) => q.trim()).filter(Boolean)));
+  const uniquePool = Array.from(new Set([...AI_STATIC_SUGGESTIONS, ...dynamic].map((q) => q.trim()).filter(Boolean)))
+    .filter((q) => detectAiIntent(q) !== "UNKNOWN");
   return shuffleArray(uniquePool).slice(0, count).map((question, idx) => ({ no: idx + 1, question }));
 }
 
@@ -1063,15 +1067,27 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
       .trim();
   };
   const titleFrequencyKeyword = /(seberapa sering|berapa kali|frekuensi)/.test(q) ? extractTitleKeyword(question) : "";
+  const isTopCategoryQuestion = /(top kategori|kategori paling|kategori terbesar|pengeluaran terbesar kategori)/.test(q);
+  const isBorosQuestion = /(apakah bulan ini boros|bulan ini boros|apakah saya boros|boros)/.test(q);
+  const isCategoryFrequencyQuestion = /(kategori paling sering|kategori yang paling sering|kategori paling banyak)/.test(q);
 
+  // Priority:
+  // 1 BUDGET_STATUS, 2 TOP_CATEGORY, 3 BOROS_CHECK, 4 CATEGORY_FREQUENCY, 5 ACCOUNT_BALANCE,
+  // 6 ACCOUNT_USAGE, 7 CATEGORY_EXPENSE, 8 ACCOUNT_EXPENSE, 9 TITLE_FREQUENCY, 10 TITLE_TOTAL,
+  // 11 TRANSACTION_COUNT, 12 CASHFLOW, 13 fallback
   if (/(budget|sisa budget|aman|hampir habis|over budget)/.test(q)) intent = "BUDGET_STATUS";
-  if (/saldo/.test(q)) intent = "ACCOUNT_BALANCE";
-  if (/akun/.test(q) && /sering dipakai/.test(q)) intent = "ACCOUNT_USAGE";
-  if (/(seberapa sering|berapa kali|frekuensi)/.test(q) && titleFrequencyKeyword) intent = "TITLE_FREQUENCY";
-  if (/transaksi/.test(q) && /(berapa|jumlah|hitung)/.test(q) && !titleFrequencyKeyword) intent = "TRANSACTION_COUNT";
-  if (/(pengeluaran|total)/.test(q) && matchedCategory) intent = "SPENDING_CATEGORY";
-  if (/(pengeluaran|total)/.test(q) && matchedAccount) intent = "ACCOUNT_EXPENSE";
-  if (/(pengeluaran|total)/.test(q) && !matchedCategory && !matchedAccount && intent !== "BUDGET_STATUS") intent = "TITLE_TOTAL";
+  else if (isTopCategoryQuestion) intent = "TOP_CATEGORY";
+  else if (isBorosQuestion) intent = "BOROS_CHECK";
+  else if (isCategoryFrequencyQuestion) intent = "CATEGORY_FREQUENCY";
+  else if (/saldo/.test(q)) intent = "ACCOUNT_BALANCE";
+  else if (/akun/.test(q) && /sering dipakai/.test(q)) intent = "ACCOUNT_USAGE";
+  else if (/(pengeluaran|total)/.test(q) && matchedCategory) intent = "SPENDING_CATEGORY";
+  else if (/(pengeluaran|total)/.test(q) && matchedAccount) intent = "ACCOUNT_EXPENSE";
+  else if (/(seberapa sering|berapa kali|frekuensi)/.test(q) && titleFrequencyKeyword) intent = "TITLE_FREQUENCY";
+  else if (/(pengeluaran|total)/.test(q) && !isTopCategoryQuestion && !isBorosQuestion && !isCategoryFrequencyQuestion) intent = "TITLE_TOTAL";
+  else if (/transaksi/.test(q) && /(berapa|jumlah|hitung)/.test(q) && !titleFrequencyKeyword) intent = "TRANSACTION_COUNT";
+  else if (/cashflow/.test(q)) intent = "CASHFLOW";
+  else intent = "UNKNOWN";
   const keywordForLog = intent === "TITLE_FREQUENCY" ? titleFrequencyKeyword : extractEntityKeyword(question);
   console.log("[AI ENTITY DETECT]", {
     question,
@@ -1081,6 +1097,7 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
     intent,
   });
   console.log("[AI INTENT]", { question, intent, keyword: keywordForLog, period: period.label });
+  console.log({ command: "ai_question", question, intent, period: period.label });
 
   if (intent === "UNKNOWN") {
       return {
@@ -1092,6 +1109,51 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
         "",
         "Ketik *ai* untuk melihat contoh pertanyaan.",
       ].join("\n"),
+    };
+  }
+  if (intent === "TOP_CATEGORY") {
+    const tops = await getTopExpenseCategoriesByRange(userId, period.startDate, period.endDate, 5);
+    if (tops.length === 0) return { intent, period: period.label, reply: "🤖 *AI Finance Chat*\n\nBelum ada pengeluaran bulan ini." };
+    const lines = tops.map((row, i) => `${i + 1}. ${row.name} — ${formatIDR(row.total)}`).join("\n");
+    return { intent, period: period.label, reply: `🤖 *AI Finance Chat*\n\n🏆 Top kategori ${period.label}:\n\n${lines}` };
+  }
+  if (intent === "CATEGORY_FREQUENCY") {
+    const { data: txs, error } = await supabase.from("transactions").select("category_id").eq("user_id", userId).eq("type", "expense").is("deleted_at", null).gte("date", period.startDate).lt("date", period.endDate);
+    if (error) throw error;
+    const freqMap = new Map<string, number>();
+    for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
+      const cid = String(tx.category_id ?? "");
+      if (!cid) continue;
+      freqMap.set(cid, (freqMap.get(cid) ?? 0) + 1);
+    }
+    const ids = [...freqMap.keys()];
+    const { data: cats } = ids.length > 0 ? await supabase.from("categories").select("id,name").in("id", ids) : { data: [] };
+    const nameMap = new Map<string, string>();
+    for (const cat of (cats ?? []) as Array<Record<string, JsonValue>>) nameMap.set(String(cat.id ?? ""), String(cat.name ?? "-"));
+    const lines = [...freqMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([id, count], i) => `${i + 1}. ${nameMap.get(id) ?? "-"} — ${count} transaksi`);
+    return { intent, period: period.label, reply: `🤖 *AI Finance Chat*\n\nKategori paling sering ${period.label}:\n\n${lines.join("\n") || "Belum ada pengeluaran bulan ini."}` };
+  }
+  if (intent === "BOROS_CHECK") {
+    const summary = await getTransactionSummaryByRange(userId, period.startDate, period.endDate);
+    const monthRange = getMonthRangeJakarta();
+    const daysPassed = Math.max(1, monthRange.daysPassed);
+    const avgDailyExpense = summary.expense / daysPassed;
+    const projectedExpense = avgDailyExpense * monthRange.daysInPeriod;
+    const ratio = summary.income > 0 ? summary.expense / summary.income : null;
+    let status = "✅ Bulan ini masih aman.";
+    if (ratio !== null) {
+      if (ratio >= 0.9) status = "⚠️ Bulan ini mulai boros.";
+      else if (ratio >= 0.7) status = "⚠️ Perlu hati-hati, pengeluaran mulai tinggi.";
+    } else {
+      const balance = await getRealtimeBalanceSummary(userId);
+      if (balance.total < projectedExpense) status = "⚠️ Bulan ini mulai boros.";
+      else status = "⚠️ Income belum tercatat, tapi saldo masih relatif aman.";
+    }
+    const topCategorySuggestion = summary.topExpenseCategoryName && summary.topExpenseCategoryName !== "-" ? summary.topExpenseCategoryName : "kategori terbesar";
+    return {
+      intent,
+      period: period.label,
+      reply: `🤖 *AI Finance Chat*\n\n📊 Analisa ${period.label}:\n\nPemasukan: ${formatIDR(summary.income)}\nPengeluaran: ${formatIDR(summary.expense)}\nSelisih: ${formatIDR(summary.net)}\nRata-rata/hari: ${formatIDR(avgDailyExpense)}\n\nStatus:\n${status}\n\nSaran:\nCoba tekan kategori terbesar: ${topCategorySuggestion}.\nEstimasi pengeluaran sampai akhir bulan: ${formatIDR(projectedExpense)}`,
     };
   }
   if (intent === "ACCOUNT_BALANCE") {
@@ -1146,6 +1208,11 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
     const tops = await getTopExpenseCategories(userId);
     const lines = tops.length > 0 ? tops.map((t, i) => `${i + 1}. ${t.name} — ${formatIDR(t.total)}`).join("\n") : "Belum ada pengeluaran bulan ini.";
     return { intent, reply: `🤖 *AI Finance Chat*\n\nBulan ini pengeluaran terbesar kamu ada di:\n\n${lines}` };
+  }
+  if (intent === "CASHFLOW") {
+    const current = await getTransactionSummaryByRange(userId, getMonthRangeJakarta().start, getMonthRangeJakarta().end);
+    const previous = await getTransactionSummaryByRange(userId, getPreviousMonthRangeJakarta().start, getPreviousMonthRangeJakarta().end);
+    return { intent, period: period.label, reply: `🤖 *AI Finance Chat*\n\n${buildCashflowReply(current, previous)}` };
   }
 
   if (intent === "SPENDING_CATEGORY") {
