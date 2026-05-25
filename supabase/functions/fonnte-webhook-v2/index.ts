@@ -886,12 +886,49 @@ function extractNaturalAmountFromText(message: string): number {
   return Math.floor(amount);
 }
 
+const NATURAL_NOISE_WORDS = [
+  "tadi",
+  "barusan",
+  "baru",
+  "hari",
+  "ini",
+  "beli",
+  "bayar",
+  "jajan",
+  "makan",
+  "minum",
+  "isi",
+  "topup",
+  "top",
+  "up",
+  "pakai",
+  "pake",
+  "pakaiin",
+  "dari",
+  "via",
+  "lewat",
+  "ke",
+  "masuk",
+  "keluar",
+  "dibayar",
+  "dapat",
+  "terima",
+  "gaji",
+  "gajian",
+  "bonus",
+  "uang",
+  "buat",
+  "untuk",
+  "di",
+  "deh",
+  "dong",
+  "nih",
+];
+
 function cleanNaturalTitle(message: string, amount: number, accountNames: string[]): string {
-  let title = ` ${message.toLowerCase()} `;
-  const noiseWords = ["tadi", "hari ini", "beli", "bayar", "pakai", "pake", "dari", "lewat", "via", "ke", "masuk", "dapat", "dibayar", "terima"];
-  for (const noise of noiseWords) {
-    title = title.replace(new RegExp(`\\b${noise}\\b`, "gi"), " ");
-  }
+  const fallbackTitle = message.toLowerCase().replace(/\s+/g, " ").trim();
+  let title = ` ${fallbackTitle} `;
+
   for (const accountName of accountNames) {
     title = title.replace(new RegExp(`\\b${accountName.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"), " ");
   }
@@ -899,13 +936,18 @@ function cleanNaturalTitle(message: string, amount: number, accountNames: string
     const amountStr = String(amount);
     title = title.replace(new RegExp(`\\b${amountStr}\\b`, "g"), " ");
   }
+
   title = title
     .replace(/rp\s?\d[\d.,]*/gi, " ")
     .replace(/\b\d+[.,]?\d*\s?(rb|ribu|k|jt|juta)\b/gi, " ")
-    .replace(/\b\d{1,2}\/\d{1,2}\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return title;
+    .replace(/\b\d{1,2}\/\d{1,2}\b/g, " ");
+
+  for (const noiseWord of NATURAL_NOISE_WORDS) {
+    title = title.replace(new RegExp(`\\b${noiseWord}\\b`, "gi"), " ");
+  }
+
+  const cleanedTitle = title.replace(/\s+/g, " ").trim();
+  return cleanedTitle || fallbackTitle;
 }
 
 function extractAccountFromNaturalText(message: string, accounts: Array<{ id: string; name: string; type: string }>): { id: string; name: string; type: string } | null {
