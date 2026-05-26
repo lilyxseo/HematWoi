@@ -461,18 +461,19 @@ async function getHistoryByAccount(
 
 async function getHistoryByDateRange(
   userId: string,
-  startDate: string,
-  endDate: string,
+  startDate: string | null,
+  endDate: string | null,
   opts: { categoryId?: string; accountId?: string; limit?: number } = {},
 ): Promise<Array<Record<string, JsonValue>>> {
   let query = supabase.from("transactions")
-    .select("id,title,amount,type,date,category_id,account_id,to_account_id")
+    .select("id,title,amount,type,date,category_id,account_id,to_account_id,inserted_at")
     .eq("user_id", userId)
     .is("deleted_at", null)
-    .gte("date", startDate)
-    .lt("date", endDate)
     .order("inserted_at", { ascending: false })
-    .limit(opts.limit ?? 15);
+    .limit(opts.limit ?? 10);
+  if (startDate && endDate) {
+    query = query.gte("date", startDate).lte("date", endDate);
+  }
   if (opts.categoryId) query = query.eq("category_id", opts.categoryId);
   if (opts.accountId) query = query.eq("account_id", opts.accountId);
   const { data, error } = await query;
@@ -664,9 +665,9 @@ function buildDateRange(period: "today" | "yesterday" | "this_week" | "last_week
   return { startDate: p.start, endDate: p.end, label: "bulan ini" };
 }
 
-function parseNaturalDateRange(rawInput: string): { startDate: string; endDate: string; label: string; remainingText: string } | null {
+function parseNaturalDateRange(rawInput: string): { startDate: string | null; endDate: string | null; label: string | null; remainingText: string } {
   const input = normalizeText(rawInput);
-  if (!input) return null;
+  if (!input) return { startDate: null, endDate: null, label: null, remainingText: "" };
   const monthMap: Record<string, string> = {
     januari: "01", februari: "02", maret: "03", april: "04", mei: "05", juni: "06",
     juli: "07", agustus: "08", september: "09", oktober: "10", november: "11", desember: "12",
@@ -728,7 +729,7 @@ function parseNaturalDateRange(rawInput: string): { startDate: string; endDate: 
       return { startDate: iso, endDate, label: formatHistoryDate(iso), remainingText: input.replace(singleDateMatch[1], "").trim() };
     }
   }
-  return null;
+  return { startDate: null, endDate: null, label: null, remainingText: input };
 }
 
 async function replyWhatsApp(target: string, message: string): Promise<boolean> {
@@ -1377,7 +1378,7 @@ function detectAiIntent(question: string): AiIntent {
 
 function detectPeriodFromQuestion(question: string): { label: string; startDate: string; endDate: string } {
   const parsed = parseNaturalDateRange(question);
-  if (parsed) return { label: parsed.label, startDate: parsed.startDate, endDate: parsed.endDate };
+  if (parsed.startDate && parsed.endDate && parsed.label) return { label: parsed.label, startDate: parsed.startDate, endDate: parsed.endDate };
   const p = buildDateRange("this_month");
   return { label: p.label, startDate: p.startDate, endDate: p.endDate };
 }
@@ -3376,17 +3377,24 @@ Deno.serve(async (req: Request) => {
       console.log("[HISTORY COMMAND]", { normalized, userId, sender: replyContextKey });
       const rawInput = normalized.replace(/^history\s*/, "").trim();
       const parsedRange = parseNaturalDateRange(rawInput);
-      const dateRange = parsedRange ?? buildDateRange("today");
-      const entityQuery = parsedRange ? parsedRange.remainingText : rawInput;
+      const dateRange = parsedRange;
+      const entityQuery = parsedRange.remainingText;
       const entity = await detectHistoryEntity(userId, entityQuery);
       const entityType = entity.entityType;
       const entityName = entity.entityName;
-      const msDiff = new Date(`${dateRange.endDate}T00:00:00+07:00`).getTime() - new Date(`${dateRange.startDate}T00:00:00+07:00`).getTime();
-      const daySpan = Math.max(1, Math.ceil(msDiff / (24 * 60 * 60 * 1000)));
-      const limit = daySpan > 30 ? 30 : 15;
+      const hasDateFilter = Boolean(dateRange.startDate && dateRange.endDate);
+      const limit = 10;
       console.log("[DATE RANGE PARSER]", { rawInput, startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName });
+      console.log("[HISTORY FILTER]", {
+        rawInput,
+        entityType,
+        entityName,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        hasDateFilter,
+      });
 
-      if (!parsedRange && rawInput && !entityType) {
+      if (rawInput && !entityType && !hasDateFilter) {
         reply = "❌ Kategori atau akun tidak ditemukan.";
       }
       if (!reply) {
@@ -3395,6 +3403,7 @@ Deno.serve(async (req: Request) => {
           accountId: entity.accountId,
           limit,
         });
+        console.log("[HISTORY RESULT]", { count: finalTransactions.length });
         if (finalTransactions.length === 0) {
           reply = "📚 Tidak ada history transaksi.";
         } else {
@@ -3421,8 +3430,13 @@ Deno.serve(async (req: Request) => {
               accountMap.set(String(row.id), String(row.name));
             }
           }
-          const entityLabel = entityName ? `${entityName.charAt(0).toUpperCase()}${entityName.slice(1)} ` : "";
-          const headerLines = [`📚 *History ${entityLabel}${dateRange.label.charAt(0).toUpperCase()}${dateRange.label.slice(1)}*`];
+          const titleSuffix = [
+            entityType === "account" && entityName ? `Akun ${entityName}` : "",
+            entityType === "category" && entityName ? `Kategori ${entityName}` : "",
+            !entityType ? "Transaksi" : "",
+            dateRange.label ? dateRange.label.charAt(0).toUpperCase() + dateRange.label.slice(1) : "",
+          ].filter(Boolean).join(" ");
+          const headerLines = [`📚 *History ${titleSuffix}*`];
           const { reply: historyReply, displayedTransactions } = buildHistoryMessage(
             headerLines.join("\n"),
             finalTransactions,
