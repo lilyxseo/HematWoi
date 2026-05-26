@@ -3313,6 +3313,7 @@ Deno.serve(async (req: Request) => {
     } else if (normalized.startsWith("riwayat")) {
       reply = "⚠️ Command sudah diganti.\n\nGunakan:\nhistory";
     } else if (normalized.startsWith("history")) {
+      console.log("[HISTORY COMMAND]", { normalized, userId, sender: replyContextKey });
       const rawInput = normalized.replace(/^history\s*/, "").trim();
       const parsedRange = parseNaturalDateRange(rawInput);
       const dateRange = parsedRange ?? buildDateRange("today");
