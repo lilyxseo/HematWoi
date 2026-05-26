@@ -3,7 +3,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 type WhatsappUser = {
   user_id: string;
   phone: string;
-  is_active?: boolean;
 };
 
 type ExpenseTransaction = {
@@ -188,8 +187,8 @@ function buildInsight(params: {
   return "✅ Pengeluaran hari ini masih terkontrol.";
 }
 
-async function sendWhatsAppMessage(phone: string, message: string): Promise<void> {
-  const response = await fetch("https://api.fonnte.com/send", {
+async function sendWhatsAppMessage(phone: string, message: string): Promise<Response> {
+  return await fetch("https://api.fonnte.com/send", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -201,11 +200,6 @@ async function sendWhatsAppMessage(phone: string, message: string): Promise<void
       countryCode: "62",
     }),
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Fonnte error ${response.status}: ${errorText}`);
-  }
 }
 
 function json(body: unknown, status = 200) {
@@ -219,6 +213,7 @@ function json(body: unknown, status = 200) {
 
 Deno.serve(async (req: Request) => {
   try {
+    console.log("[DAILY SUMMARY STEP] start");
     console.log("[DAILY SUMMARY REQUEST]", {
       method: req.method,
       hasCronSecret: Boolean(req.headers.get("x-cron-secret")),
@@ -248,43 +243,59 @@ Deno.serve(async (req: Request) => {
       }, 401);
     }
 
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !FONNTE_TOKEN) {
-      return json({ ok: false, message: "Missing required environment variables" }, 500);
+    const missingEnv: string[] = [];
+    if (!SUPABASE_URL) missingEnv.push("SUPABASE_URL");
+    if (!SUPABASE_SERVICE_ROLE_KEY) missingEnv.push("SUPABASE_SERVICE_ROLE_KEY");
+    if (!FONNTE_TOKEN) missingEnv.push("FONNTE_TOKEN");
+    if (!cronSecret) missingEnv.push("CRON_SECRET");
+
+    if (missingEnv.length > 0) {
+      console.error("[DAILY SUMMARY MISSING ENV]", missingEnv);
+      return json({ ok: false, error: "Missing env", missingEnv }, 500);
     }
+    console.log("[DAILY SUMMARY STEP] env ok");
 
     const today = getTodayJakarta();
-
+    console.log("[DAILY SUMMARY STEP] fetch users");
     const { data: users, error: usersError } = await supabase
       .from("whatsapp_users")
-      .select("user_id, phone, is_active")
-      .eq("is_active", true);
+      .select("phone,user_id");
 
     if (usersError) {
-      return json({ ok: false, message: usersError.message }, 500);
+      console.error("[DAILY SUMMARY USERS ERROR]", usersError);
+      return json({ ok: false, error: usersError.message }, 500);
     }
 
     const activeUsers = (users ?? []) as WhatsappUser[];
-    let totalSent = 0;
+    console.log("[DAILY SUMMARY STEP] users fetched", { count: activeUsers.length });
+    let sent = 0;
+    let skipped = 0;
+    let failed = 0;
 
     for (const user of activeUsers) {
       try {
         const userId = user.user_id;
         const phone = user.phone;
+        console.log("[DAILY SUMMARY STEP] process user", { userId, phone });
 
+        console.log("[DAILY SUMMARY STEP] fetch transactions");
         const { data: transactionsData, error: transactionsError } = await supabase
           .from("transactions")
-          .select("id, user_id, category_id, amount, title, date")
+          .select("id,title,amount,type,date,category_id,account_id")
           .eq("user_id", userId)
           .eq("type", "expense")
           .eq("date", today)
           .is("deleted_at", null);
 
         if (transactionsError) {
-          throw transactionsError;
+          failed += 1;
+          console.error("[DAILY SUMMARY TRANSACTIONS ERROR]", { userId, phone, error: transactionsError });
+          continue;
         }
 
         const transactions = (transactionsData ?? []) as ExpenseTransaction[];
         if (transactions.length === 0) {
+          skipped += 1;
           continue;
         }
 
@@ -300,11 +311,13 @@ Deno.serve(async (req: Request) => {
         if (categoryIds.length > 0) {
           const { data: categoriesData, error: categoriesError } = await supabase
             .from("categories")
-            .select("id, name")
+            .select("id,name")
             .in("id", categoryIds);
 
           if (categoriesError) {
-            throw categoriesError;
+            failed += 1;
+            console.error("[DAILY SUMMARY CATEGORY ERROR]", { userId, phone, error: categoriesError });
+            continue;
           }
 
           categoryMap = new Map(
@@ -323,7 +336,26 @@ Deno.serve(async (req: Request) => {
 
         const largestCategory = getLargestCategory(transactions, categoryMap);
         const largestTransaction = getLargestTransaction(transactions, categoryMap);
-        const balanceSummary = await getBalanceSummary(userId);
+        console.log("[DAILY SUMMARY STEP] get balance");
+        let balanceText = [
+          "💰 Saldo Saat Ini",
+          "Gagal mengambil saldo.",
+        ];
+        try {
+          const balanceSummary = await getBalanceSummary(userId);
+          balanceText = [
+            "💰 Saldo Saat Ini",
+            `Cash: ${formatIDR(balanceSummary.cash)}`,
+            `Non Cash: ${formatIDR(balanceSummary.nonCash)}`,
+            `Total: ${formatIDR(balanceSummary.total)}`,
+          ];
+        } catch (balanceError) {
+          console.error("[DAILY SUMMARY BALANCE ERROR]", {
+            userId,
+            phone,
+            error: balanceError instanceof Error ? balanceError.message : String(balanceError),
+          });
+        }
 
         const insight = buildInsight({
           totalExpense,
@@ -352,10 +384,7 @@ Deno.serve(async (req: Request) => {
           "📊 Rata-rata Transaksi",
           formatIDR(averageTransaction),
           "",
-          "💰 Saldo Saat Ini",
-          `Cash: ${formatIDR(balanceSummary.cash)}`,
-          `Non Cash: ${formatIDR(balanceSummary.nonCash)}`,
-          `Total: ${formatIDR(balanceSummary.total)}`,
+          ...balanceText,
           "",
           "💡 Insight",
           insight,
@@ -368,27 +397,44 @@ Deno.serve(async (req: Request) => {
           totalTransactions,
         });
 
-        await sendWhatsAppMessage(phone, message);
-        totalSent += 1;
-      } catch (error) {
-        console.error("[DAILY SUMMARY][ERROR]", {
-          userId: user.user_id,
-          phone: user.phone,
-          error: error instanceof Error ? error.message : String(error),
+        console.log("[DAILY SUMMARY STEP] send whatsapp");
+        const response = await sendWhatsAppMessage(phone, message);
+        if (!response.ok) {
+          failed += 1;
+          const responseText = await response.text();
+          console.error("[DAILY SUMMARY FONNTE ERROR]", {
+            phone,
+            status: response.status,
+            body: responseText,
+          });
+          continue;
+        }
+        sent += 1;
+      } catch (userError) {
+        failed += 1;
+        console.error("[DAILY SUMMARY USER ERROR]", {
+          user,
+          error: String(userError),
         });
       }
     }
 
+    console.log("[DAILY SUMMARY STEP] done");
     return json({
       ok: true,
       processed: activeUsers.length,
-      sent: totalSent,
+      sent,
+      skipped,
+      failed,
     });
   } catch (error) {
-    console.error("[DAILY SUMMARY FATAL]", error);
+    console.error("[DAILY SUMMARY FATAL]", {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : null,
+    });
     return json({
       ok: false,
-      error: String(error),
+      error: error instanceof Error ? error.message : String(error),
     }, 500);
   }
 });
