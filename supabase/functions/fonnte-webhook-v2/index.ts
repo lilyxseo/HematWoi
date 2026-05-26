@@ -2382,19 +2382,37 @@ function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionC
   return { number, field: "amount", value: amount };
 }
 
-async function getLastHistoryTransactions(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
-  const { data, error } = await supabase
+async function getLastHistoryLog(userId: string, phone: string): Promise<Record<string, JsonValue> | null> {
+  const { data: logs, error } = await supabase
     .from("whatsapp_message_logs")
-    .select("parsed")
+    .select("id,created_at,parsed")
     .eq("user_id", userId)
     .eq("phone", phone)
     .eq("status", "success")
-    .eq("parsed->>command", "history")
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(30);
   if (error) throw error;
-  const parsed = (data?.parsed ?? null) as Record<string, JsonValue> | null;
+
+  const historyLog = (logs ?? []).find((log) => {
+    const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
+    return parsed?.command === "history" &&
+      Array.isArray(parsed?.displayedTransactions) &&
+      parsed.displayedTransactions.length > 0;
+  }) as Record<string, JsonValue> | undefined;
+
+  console.log("[LAST HISTORY LOG FOUND]", {
+    found: Boolean(historyLog),
+    count: Array.isArray((historyLog?.parsed as Record<string, JsonValue> | null)?.displayedTransactions)
+      ? (((historyLog?.parsed as Record<string, JsonValue>).displayedTransactions as JsonValue[]).length)
+      : 0,
+  });
+
+  return historyLog ?? null;
+}
+
+async function getLastHistoryTransactions(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
+  const historyLog = await getLastHistoryLog(userId, phone);
+  const parsed = (historyLog?.parsed ?? null) as Record<string, JsonValue> | null;
   return (parsed?.displayedTransactions ?? []) as Array<Record<string, JsonValue>>;
 }
 
@@ -3490,24 +3508,34 @@ Deno.serve(async (req: Request) => {
             categoryMap,
             accountMap,
           );
-          parsedLog = { command: "history_date", startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName, displayedTransactions };
+          console.log("[HISTORY DISPLAYED TRANSACTIONS]", {
+            count: displayedTransactions.length,
+            ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
+          });
+          parsedLog = { command: "history", startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName, displayedTransactions };
           reply = historyReply;
         }
       }
-    } else if (/^hapus\s+\d+$/.test(normalized)) {
-      const number = Number(normalized.replace(/^hapus\s+/, "").trim());
+    } else if (/^hapus\s+(\d+)$/.test(normalized)) {
+      const deleteMatch = normalized.match(/^hapus\s+(\d+)$/);
+      const number = Number(deleteMatch?.[1] ?? 0);
+      console.log("[DELETE FROM HISTORY]", {
+        userId,
+        phone: replyContextKey,
+        number,
+      });
       parsedLog = { command: "hapus_history", number };
 
-      if (!Number.isInteger(number) || number < 1 || number > 5) {
+      if (!Number.isInteger(number) || number < 1) {
         reply = "⚠️ Nomor history tidak valid.\n\nPilih nomor dari hasil history terakhir.";
       } else {
         const displayedTransactions = await getLastHistoryTransactions(userId, replyContextKey);
         if (displayedTransactions.length === 0) {
-          reply = "⚠️ Belum ada history terakhir.\n\nKirim *history* dulu, lalu gunakan:\nhapus 3";
+          reply = "⚠️ Belum ada history terakhir.\n\nKirim history dulu, lalu gunakan:\nhapus 3";
         } else {
           const selectedTransaction = findDisplayedTransactionByNumber(displayedTransactions, number);
           if (!selectedTransaction) {
-            reply = "⚠️ Nomor history tidak ditemukan.\n\nKirim *history* dulu, lalu pilih nomor yang ingin dihapus.\nContoh: hapus 3";
+            reply = "⚠️ Nomor history tidak ditemukan.";
           } else {
             const transactionId = String(selectedTransaction.id ?? "");
             const { data: deletedTx, error: deleteError } = await supabase
