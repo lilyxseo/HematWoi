@@ -208,170 +208,187 @@ async function sendWhatsAppMessage(phone: string, message: string): Promise<void
   }
 }
 
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+}
+
 Deno.serve(async (req: Request) => {
-  const cronSecret = req.headers.get("x-cron-secret");
-  const expectedSecret = Deno.env.get("CRON_SECRET");
-
-  if (!expectedSecret || cronSecret !== expectedSecret) {
-    return new Response(JSON.stringify({ ok: false, message: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
+  try {
+    console.log("[DAILY SUMMARY REQUEST]", {
+      method: req.method,
+      hasCronSecret: Boolean(req.headers.get("x-cron-secret")),
+      userAgent: req.headers.get("user-agent"),
     });
-  }
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !FONNTE_TOKEN) {
-    return new Response(
-      JSON.stringify({ ok: false, message: "Missing required environment variables" }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  }
+    const cronSecret = Deno.env.get("CRON_SECRET") ?? "";
+    const requestSecret = req.headers.get("x-cron-secret") ?? "";
 
-  const today = getTodayJakarta();
+    if (!cronSecret) {
+      console.error("[DAILY SUMMARY] CRON_SECRET env is missing");
+      return json({
+        ok: false,
+        error: "CRON_SECRET env is missing",
+      }, 500);
+    }
 
-  const { data: users, error: usersError } = await supabase
-    .from("whatsapp_users")
-    .select("user_id, phone, is_active")
-    .eq("is_active", true);
+    if (requestSecret !== cronSecret) {
+      console.error("[DAILY SUMMARY] Invalid cron secret", {
+        hasRequestSecret: Boolean(requestSecret),
+      });
 
-  if (usersError) {
-    return new Response(
-      JSON.stringify({ ok: false, message: usersError.message }),
-      {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      },
-    );
-  }
+      return json({
+        ok: false,
+        error: "Invalid cron secret",
+        hint: "Add x-cron-secret header in Supabase Cron job",
+      }, 401);
+    }
 
-  const activeUsers = (users ?? []) as WhatsappUser[];
-  let totalSent = 0;
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !FONNTE_TOKEN) {
+      return json({ ok: false, message: "Missing required environment variables" }, 500);
+    }
 
-  for (const user of activeUsers) {
-    try {
-      const userId = user.user_id;
-      const phone = user.phone;
+    const today = getTodayJakarta();
 
-      const { data: transactionsData, error: transactionsError } = await supabase
-        .from("transactions")
-        .select("id, user_id, category_id, amount, title, date")
-        .eq("user_id", userId)
-        .eq("type", "expense")
-        .eq("date", today)
-        .is("deleted_at", null);
+    const { data: users, error: usersError } = await supabase
+      .from("whatsapp_users")
+      .select("user_id, phone, is_active")
+      .eq("is_active", true);
 
-      if (transactionsError) {
-        throw transactionsError;
-      }
+    if (usersError) {
+      return json({ ok: false, message: usersError.message }, 500);
+    }
 
-      const transactions = (transactionsData ?? []) as ExpenseTransaction[];
-      if (transactions.length === 0) {
-        continue;
-      }
+    const activeUsers = (users ?? []) as WhatsappUser[];
+    let totalSent = 0;
 
-      const categoryIds = Array.from(
-        new Set(
-          transactions
-            .map((trx) => trx.category_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      );
+    for (const user of activeUsers) {
+      try {
+        const userId = user.user_id;
+        const phone = user.phone;
 
-      let categoryMap = new Map<string, string>();
-      if (categoryIds.length > 0) {
-        const { data: categoriesData, error: categoriesError } = await supabase
-          .from("categories")
-          .select("id, name")
-          .in("id", categoryIds);
+        const { data: transactionsData, error: transactionsError } = await supabase
+          .from("transactions")
+          .select("id, user_id, category_id, amount, title, date")
+          .eq("user_id", userId)
+          .eq("type", "expense")
+          .eq("date", today)
+          .is("deleted_at", null);
 
-        if (categoriesError) {
-          throw categoriesError;
+        if (transactionsError) {
+          throw transactionsError;
         }
 
-        categoryMap = new Map(
-          ((categoriesData ?? []) as Category[]).map((cat) => [cat.id, cat.name]),
+        const transactions = (transactionsData ?? []) as ExpenseTransaction[];
+        if (transactions.length === 0) {
+          continue;
+        }
+
+        const categoryIds = Array.from(
+          new Set(
+            transactions
+              .map((trx) => trx.category_id)
+              .filter((id): id is string => Boolean(id)),
+          ),
         );
+
+        let categoryMap = new Map<string, string>();
+        if (categoryIds.length > 0) {
+          const { data: categoriesData, error: categoriesError } = await supabase
+            .from("categories")
+            .select("id, name")
+            .in("id", categoryIds);
+
+          if (categoriesError) {
+            throw categoriesError;
+          }
+
+          categoryMap = new Map(
+            ((categoriesData ?? []) as Category[]).map((cat) => [cat.id, cat.name]),
+          );
+        }
+
+        const totalExpense = transactions.reduce(
+          (sum, trx) => sum + Number(trx.amount ?? 0),
+          0,
+        );
+        const totalTransactions = transactions.length;
+        const averageTransaction = totalTransactions > 0
+          ? totalExpense / totalTransactions
+          : 0;
+
+        const largestCategory = getLargestCategory(transactions, categoryMap);
+        const largestTransaction = getLargestTransaction(transactions, categoryMap);
+        const balanceSummary = await getBalanceSummary(userId);
+
+        const insight = buildInsight({
+          totalExpense,
+          totalTransactions,
+          largestCategoryName: largestCategory.name,
+          largestCategoryRatio: largestCategory.ratio,
+        });
+
+        const message = [
+          "📊 *Summary Pengeluaran Hari Ini*",
+          "",
+          `📅 ${formatTanggalIndonesia(today)}`,
+          "",
+          "💸 Total Pengeluaran",
+          formatIDR(totalExpense),
+          "",
+          "🧾 Total Transaksi",
+          `${totalTransactions} transaksi`,
+          "",
+          "🏆 Kategori Terbesar",
+          `${largestCategory.name} — ${formatIDR(largestCategory.amount)}`,
+          "",
+          "🔥 Transaksi Terbesar",
+          `${largestTransaction.title} — ${formatIDR(largestTransaction.amount)}`,
+          "",
+          "📊 Rata-rata Transaksi",
+          formatIDR(averageTransaction),
+          "",
+          "💰 Saldo Saat Ini",
+          `Cash: ${formatIDR(balanceSummary.cash)}`,
+          `Non Cash: ${formatIDR(balanceSummary.nonCash)}`,
+          `Total: ${formatIDR(balanceSummary.total)}`,
+          "",
+          "💡 Insight",
+          insight,
+        ].join("\n");
+
+        console.log("[DAILY SUMMARY]", {
+          userId,
+          phone,
+          totalExpense,
+          totalTransactions,
+        });
+
+        await sendWhatsAppMessage(phone, message);
+        totalSent += 1;
+      } catch (error) {
+        console.error("[DAILY SUMMARY][ERROR]", {
+          userId: user.user_id,
+          phone: user.phone,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
-
-      const totalExpense = transactions.reduce(
-        (sum, trx) => sum + Number(trx.amount ?? 0),
-        0,
-      );
-      const totalTransactions = transactions.length;
-      const averageTransaction = totalTransactions > 0
-        ? totalExpense / totalTransactions
-        : 0;
-
-      const largestCategory = getLargestCategory(transactions, categoryMap);
-      const largestTransaction = getLargestTransaction(transactions, categoryMap);
-      const balanceSummary = await getBalanceSummary(userId);
-
-      const insight = buildInsight({
-        totalExpense,
-        totalTransactions,
-        largestCategoryName: largestCategory.name,
-        largestCategoryRatio: largestCategory.ratio,
-      });
-
-      const message = [
-        "📊 *Summary Pengeluaran Hari Ini*",
-        "",
-        `📅 ${formatTanggalIndonesia(today)}`,
-        "",
-        "💸 Total Pengeluaran",
-        formatIDR(totalExpense),
-        "",
-        "🧾 Total Transaksi",
-        `${totalTransactions} transaksi`,
-        "",
-        "🏆 Kategori Terbesar",
-        `${largestCategory.name} — ${formatIDR(largestCategory.amount)}`,
-        "",
-        "🔥 Transaksi Terbesar",
-        `${largestTransaction.title} — ${formatIDR(largestTransaction.amount)}`,
-        "",
-        "📊 Rata-rata Transaksi",
-        formatIDR(averageTransaction),
-        "",
-        "💰 Saldo Saat Ini",
-        `Cash: ${formatIDR(balanceSummary.cash)}`,
-        `Non Cash: ${formatIDR(balanceSummary.nonCash)}`,
-        `Total: ${formatIDR(balanceSummary.total)}`,
-        "",
-        "💡 Insight",
-        insight,
-      ].join("\n");
-
-      console.log("[DAILY SUMMARY]", {
-        userId,
-        phone,
-        totalExpense,
-        totalTransactions,
-      });
-
-      await sendWhatsAppMessage(phone, message);
-      totalSent += 1;
-    } catch (error) {
-      console.error("[DAILY SUMMARY][ERROR]", {
-        userId: user.user_id,
-        phone: user.phone,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      continue;
     }
-  }
 
-  return new Response(
-    JSON.stringify({
+    return json({
       ok: true,
       processed: activeUsers.length,
       sent: totalSent,
-    }),
-    {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+    });
+  } catch (error) {
+    console.error("[DAILY SUMMARY FATAL]", error);
+    return json({
+      ok: false,
+      error: String(error),
+    }, 500);
+  }
 });
