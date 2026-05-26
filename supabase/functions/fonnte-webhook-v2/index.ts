@@ -208,22 +208,25 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-function normalizeFonnteTarget(target: string): string {
+function buildFonnteTargets(target: string): string[] {
   const value = String(target || "").trim();
+  const targets: string[] = [];
+
+  if (!value) return targets;
+
+  const noGus = value.replace("@g.us", "");
+  const noWhatsappNet = value.replace("@s.whatsapp.net", "").replace("@c.us", "");
 
   if (value.includes("@g.us")) {
-    return value.replace("@g.us", "");
+    targets.push(value);
+    targets.push(noGus);
+    targets.push(`${noGus}@g.us`);
+  } else {
+    targets.push(value);
+    targets.push(noWhatsappNet.replace(/[^\d]/g, ""));
   }
 
-  if (value.includes("@s.whatsapp.net")) {
-    return value.replace("@s.whatsapp.net", "");
-  }
-
-  if (value.includes("@c.us")) {
-    return value.replace("@c.us", "");
-  }
-
-  return value.replace(/[^\d]/g, "");
+  return [...new Set(targets.filter(Boolean))];
 }
 
 function isGroupJid(raw: string): boolean {
@@ -701,35 +704,59 @@ function parseNaturalDateRange(rawInput: string): { startDate: string; endDate: 
   return null;
 }
 
-async function replyWhatsApp(target: string, message: string): Promise<void> {
-  if (!FONNTE_TOKEN || !target || !message) return;
-  const finalTarget = normalizeFonnteTarget(target);
+async function replyWhatsApp(target: string, message: string): Promise<boolean> {
+  if (!FONNTE_TOKEN || !target || !message) return false;
+  const targets = buildFonnteTargets(target);
+  let lastResult = "";
 
   console.log("[SEND WHATSAPP]", {
     originalTarget: target,
-    finalTarget,
+    targets,
     isGroup: target.includes("@g.us"),
   });
 
-  const form = new FormData();
-  form.append("target", finalTarget);
-  form.append("message", message);
+  for (const finalTarget of targets) {
+    const form = new FormData();
+    form.append("target", finalTarget);
+    form.append("message", message);
 
-  try {
-    const response = await fetch("https://api.fonnte.com/send", {
-      method: "POST",
-      headers: { Authorization: FONNTE_TOKEN },
-      body: form,
-    });
-    const result = await response.text();
+    try {
+      const response = await fetch("https://api.fonnte.com/send", {
+        method: "POST",
+        headers: { Authorization: FONNTE_TOKEN },
+        body: form,
+      });
+      const resultText = await response.text();
+      lastResult = resultText;
 
-    console.log("[FONNTE RESPONSE]", {
-      status: response.status,
-      result,
-    });
-  } catch (error) {
-    console.error("[FONNTE SEND ERROR]", error);
+      console.log("[FONNTE RESPONSE]", {
+        target,
+        finalTarget,
+        status: response.status,
+        result: resultText,
+      });
+
+      let parsed: { status?: boolean } | null = null;
+      try {
+        parsed = JSON.parse(resultText);
+      } catch (_error) {
+      }
+
+      if (response.ok && parsed?.status === true) {
+        return true;
+      }
+    } catch (error) {
+      console.error("[FONNTE SEND ERROR]", { target, finalTarget, error });
+    }
   }
+
+  console.error("[FONNTE SEND FAILED ALL TARGETS]", {
+    target,
+    tried: targets,
+    lastResult,
+  });
+
+  return false;
 }
 
 async function logMessage(input: {
@@ -3124,6 +3151,8 @@ Deno.serve(async (req: Request) => {
     canReplyOnError = Boolean(chatTarget || sender);
 
     const isGroup = isGroupMessage(body);
+    console.log("[GROUP PAYLOAD KEYS]", Object.keys(body));
+    console.log("[GROUP DATA KEYS]", body.data ? Object.keys(body.data) : []);
     console.log("[GROUP PAYLOAD DEBUG]", {
       rawSender: body.sender,
       rawFrom: body.from,
@@ -3725,7 +3754,11 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    await replyWhatsApp(chatTarget || sender, reply);
+    const replyTarget = chatTarget || sender;
+    const sent = await replyWhatsApp(replyTarget, reply);
+    if (!sent && isGroup && participant) {
+      await replyWhatsApp(participant, "⚠️ Bot belum bisa membalas ke grup ini. Group ID Fonnte tidak valid.");
+    }
     await logMessage({
       wa_message_id: waMessageId,
       phone: replyContextKey,
