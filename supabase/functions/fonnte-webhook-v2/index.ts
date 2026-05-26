@@ -18,6 +18,7 @@ type WebhookBody = {
   chatId?: string;
   member?: string;
   memberlid?: string;
+  senderlid?: string;
   memberNumber?: string;
   pushNameNumber?: string;
   phone?: string;
@@ -46,6 +47,7 @@ type WebhookBody = {
     chatId?: string;
     member?: string;
     memberlid?: string;
+    senderlid?: string;
     memberNumber?: string;
     pushNameNumber?: string;
     phone?: string;
@@ -250,6 +252,19 @@ function buildPossibleGroupTargets(groupId: string): string[] {
   ];
 
   return [...new Set(candidates.filter(Boolean))];
+}
+
+function extractLid(body: any): string | null {
+  const lid =
+    body?.memberlid ||
+    body?.senderlid ||
+    body?.data?.memberlid ||
+    body?.data?.senderlid ||
+    null;
+
+  if (!lid) return null;
+
+  return String(lid).trim();
 }
 
 function isGroupJid(raw: string): boolean {
@@ -732,17 +747,36 @@ function parseNaturalDateRange(rawInput: string): { startDate: string | null; en
   return { startDate: null, endDate: null, label: null, remainingText: input };
 }
 
-async function replyWhatsApp(target: string, message: string): Promise<boolean> {
+async function replyWhatsApp(input: { target: string; message: string; memberlid?: string | null; senderlid?: string | null }): Promise<boolean> {
+  const { target, message, memberlid = null, senderlid = null } = input;
   if (!FONNTE_TOKEN || !target || !message) return false;
   const isGroup = target.includes("@g.us");
   const cached = groupIdCache.get(target);
+  const normalizedMemberLid = memberlid ? String(memberlid).trim() : "";
+  const normalizedSenderLid = senderlid ? String(senderlid).trim() : "";
+  const memberLidNoSuffix = normalizedMemberLid.replace(/@lid$/i, "");
+  const senderLidNoSuffix = normalizedSenderLid.replace(/@lid$/i, "");
 
   const targets = isGroup
-    ? [...new Set([...(cached ? [cached] : []), ...buildPossibleGroupTargets(target)])]
+    ? [
+      ...new Set([
+        ...(cached ? [cached] : []),
+        ...buildPossibleGroupTargets(target),
+        normalizedMemberLid,
+        memberLidNoSuffix,
+        normalizedSenderLid,
+        senderLidNoSuffix,
+      ].filter(Boolean)),
+    ]
     : buildFonnteTargets(target);
   let lastResult = "";
 
   if (isGroup) {
+    console.log("[GROUP LID DEBUG]", {
+      memberlid: normalizedMemberLid || null,
+      senderlid: normalizedSenderLid || null,
+      targets,
+    });
     console.log("[GROUP TARGET TRY]", {
       originalTarget: target,
       candidates: targets,
@@ -3231,8 +3265,8 @@ Deno.serve(async (req: Request) => {
     if (isGroup && (!sender || !participant)) {
       console.log("[GROUP PAYLOAD COMPACT]", JSON.stringify(body));
       if (chatTarget) {
-        await replyWhatsApp(chatTarget, "⚠️ Bot menerima pesan grup, tapi nomor pengirim tidak terbaca.\n\nCek payload Fonnte: participant/author/sender.");
-        await replyWhatsApp(chatTarget, "⚠️ Tidak bisa membaca pengirim grup. Coba kirim ulang atau cek payload Fonnte.");
+        await replyWhatsApp({ target: chatTarget, message: "⚠️ Bot menerima pesan grup, tapi nomor pengirim tidak terbaca.\n\nCek payload Fonnte: participant/author/sender." });
+        await replyWhatsApp({ target: chatTarget, message: "⚠️ Tidak bisa membaca pengirim grup. Coba kirim ulang atau cek payload Fonnte." });
       }
       return json({ ok: true, handled: true, reason: "group participant not found" });
     }
@@ -3260,7 +3294,7 @@ Deno.serve(async (req: Request) => {
         status: "failed",
         error_message: "WA user not found",
       });
-      await replyWhatsApp(chatTarget || sender, "❌ Nomor belum terdaftar di HematWoi.");
+      await replyWhatsApp({ target: chatTarget || sender, message: "❌ Nomor belum terdaftar di HematWoi." });
       return json({ ok: true, handled: true, reason: "user not found" });
     }
 
@@ -3837,9 +3871,15 @@ Deno.serve(async (req: Request) => {
         sender,
       });
     }
-    const sent = await replyWhatsApp(replyTarget, reply);
+    const parsedLid = extractLid(body);
+    const sent = await replyWhatsApp({
+      target: replyTarget,
+      message: reply,
+      memberlid: body.memberlid ?? body.data?.memberlid ?? parsedLid,
+      senderlid: body.senderlid ?? body.data?.senderlid ?? parsedLid,
+    });
     if (!sent && isGroup && participant) {
-      await replyWhatsApp(participant, "⚠️ Bot belum bisa membalas ke grup ini karena Group ID Fonnte belum valid.");
+      await replyWhatsApp({ target: participant, message: "⚠️ Bot belum bisa membalas ke grup ini karena Group ID Fonnte belum valid." });
     }
     await logMessage({
       wa_message_id: waMessageId,
@@ -3858,8 +3898,8 @@ Deno.serve(async (req: Request) => {
     if (sender && canReplyOnError) {
       try {
         const errorMessage = error instanceof Error ? error.message : String(error ?? "");
-        if (errorMessage.includes("RPC_BALANCE_FAILED")) await replyWhatsApp(chatTarget || sender, "⚠️ Gagal mengambil saldo realtime.");
-        else await replyWhatsApp(chatTarget || sender, "❌ Terjadi error pada sistem. Coba lagi beberapa saat.");
+        if (errorMessage.includes("RPC_BALANCE_FAILED")) await replyWhatsApp({ target: chatTarget || sender, message: "⚠️ Gagal mengambil saldo realtime." });
+        else await replyWhatsApp({ target: chatTarget || sender, message: "❌ Terjadi error pada sistem. Coba lagi beberapa saat." });
       } catch (_e) {
       }
     }
