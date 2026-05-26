@@ -12,6 +12,7 @@ type ExpenseTransaction = {
   amount: number;
   title: string | null;
   date: string;
+  inserted_at?: string;
 };
 
 type Category = {
@@ -65,20 +66,35 @@ async function getBalanceSummary(userId: string): Promise<BalanceSummary> {
   const { data, error } = await supabase.rpc("get_account_type_balances", {
     p_user_id: userId,
   });
-
+  console.log("[DAILY SUMMARY RPC BALANCE RAW]", data);
   if (error) throw error;
 
   const rows = Array.isArray(data) ? data : [];
+  const first = (rows[0] ?? {}) as Record<string, unknown>;
+
+  if (
+    typeof first.cash_balance !== "undefined" ||
+    typeof first.non_cash_balance !== "undefined" ||
+    typeof first.total_balance !== "undefined"
+  ) {
+    const cash = Number(first.cash_balance ?? 0);
+    const nonCash = Number(first.non_cash_balance ?? 0);
+    const total = Number(first.total_balance ?? cash + nonCash);
+    return { cash, nonCash, total };
+  }
+
   let cash = 0;
   let nonCash = 0;
 
   for (const row of rows) {
-    const accountType = String(row.account_type ?? "").toLowerCase();
-    const balance = Number(row.balance ?? 0);
-    if (accountType === "cash") {
-      cash += balance;
+    const accountType = String((row as Record<string, unknown>).type ?? (row as Record<string, unknown>).account_type ?? "").toLowerCase();
+    const amount = Number((row as Record<string, unknown>).balance ?? (row as Record<string, unknown>).total ?? (row as Record<string, unknown>).amount ?? 0);
+    if (accountType.includes("non")) {
+      nonCash += amount;
+    } else if (accountType.includes("cash")) {
+      cash += amount;
     } else {
-      nonCash += balance;
+      cash += amount;
     }
   }
 
@@ -330,19 +346,44 @@ Deno.serve(async (req: Request) => {
           0,
         );
         const totalTransactions = transactions.length;
-        const averageTransaction = totalTransactions > 0
-          ? totalExpense / totalTransactions
-          : 0;
-
         const largestCategory = getLargestCategory(transactions, categoryMap);
         const largestTransaction = getLargestTransaction(transactions, categoryMap);
+        const { data: historyData, error: historyError } = await supabase
+          .from("transactions")
+          .select("id,title,amount,category_id,inserted_at")
+          .eq("user_id", userId)
+          .eq("type", "expense")
+          .eq("date", today)
+          .is("deleted_at", null)
+          .order("inserted_at", { ascending: false })
+          .limit(3);
+        if (historyError) {
+          failed += 1;
+          console.error("[DAILY SUMMARY HISTORY ERROR]", { userId, phone, error: historyError });
+          continue;
+        }
+        const historyRows = (historyData ?? []) as ExpenseTransaction[];
+        console.log("[DAILY SUMMARY HISTORY]", historyRows);
+
+        const historyLines: string[] = [];
+        if (historyRows.length > 0) {
+          historyLines.push("📚 History Terakhir");
+          historyRows.forEach((row, index) => {
+            const categoryName = row.category_id ? (categoryMap.get(row.category_id) ?? "-") : "-";
+            const title = (row.title ?? "").trim() || categoryName;
+            historyLines.push(`${index + 1}. ${categoryName} - ${title}`);
+            historyLines.push(`   ${formatIDR(Number(row.amount ?? 0))}`);
+          });
+        }
+
         console.log("[DAILY SUMMARY STEP] get balance");
         let balanceText = [
           "💰 Saldo Saat Ini",
-          "Gagal mengambil saldo.",
+          "Saldo gagal diambil.",
         ];
         try {
           const balanceSummary = await getBalanceSummary(userId);
+          console.log("[DAILY SUMMARY BALANCE]", balanceSummary);
           balanceText = [
             "💰 Saldo Saat Ini",
             `Cash: ${formatIDR(balanceSummary.cash)}`,
@@ -381,9 +422,8 @@ Deno.serve(async (req: Request) => {
           "🔥 Transaksi Terbesar",
           `${largestTransaction.title} — ${formatIDR(largestTransaction.amount)}`,
           "",
-          "📊 Rata-rata Transaksi",
-          formatIDR(averageTransaction),
-          "",
+          ...historyLines,
+          ...(historyLines.length > 0 ? [""] : []),
           ...balanceText,
           "",
           "💡 Insight",
