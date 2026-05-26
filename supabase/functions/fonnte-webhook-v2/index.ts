@@ -207,6 +207,10 @@ function normalizeText(text: string): string {
   return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function getMessageContextKey(input: { isGroup: boolean; sender: string; chatTarget: string }): string {
+  return input.isGroup ? `${input.sender}|${input.chatTarget}` : input.sender;
+}
+
 function isAISuggestionNumber(text: string): boolean {
   return /^(10|[1-9])$/.test(text.trim());
 }
@@ -760,7 +764,7 @@ async function replyWhatsApp(input: { target: string; message: string; memberlid
   const normalizedSenderLid = senderlid ? String(senderlid).trim() : "";
 
   const targets = isGroup
-    ? [target]
+    ? buildPossibleGroupTargets(target)
     : buildFonnteTargets(target);
   let lastResult = "";
 
@@ -891,6 +895,12 @@ async function hasDeletedAtColumn(table: "categories" | "transactions" | "budget
   const message = String((error as Record<string, JsonValue>)?.message ?? "");
   if (message.toLowerCase().includes("deleted_at")) return false;
   throw error;
+}
+
+async function applyTransactionNotDeleted<T>(query: T): Promise<T> {
+  const txHasDeletedAt = await hasDeletedAtColumn("transactions");
+  if (!txHasDeletedAt) return query;
+  return (query as { is: (col: string, val: null) => T }).is("deleted_at", null);
 }
 
 async function getCategoryList(userId: string): Promise<string> {
@@ -1138,22 +1148,20 @@ function shuffleArray<T>(arr: T[]): T[] {
 }
 
 async function getLastAISuggestionSession(
-  userId: string,
-  phone: string,
-  options?: { isGroup?: boolean; chatTarget?: string },
+  input: { userId: string; contextKey: string; isGroup: boolean; chatTarget: string },
 ): Promise<{ session: AiSuggestionSession | null; isExpired: boolean }> {
   const { data: logs, error } = await supabase
     .from("whatsapp_message_logs")
     .select("id,created_at,phone,user_id,parsed")
-    .eq("user_id", userId)
-    .eq("phone", phone)
+    .eq("user_id", input.userId)
+    .eq("phone", input.contextKey)
     .eq("status", "success")
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) throw error;
 
-  const isGroup = Boolean(options?.isGroup);
-  const groupTarget = String(options?.chatTarget ?? "");
+  const isGroup = Boolean(input.isGroup);
+  const groupTarget = String(input.chatTarget ?? "");
   const parsedLogs = (logs ?? []) as AiSuggestionSession[];
   const session = parsedLogs.find((log) => {
     if (log.parsed?.command !== "ai_suggestion" || log.parsed?.active === false) return false;
@@ -1164,8 +1172,8 @@ async function getLastAISuggestionSession(
   }) ?? null;
   console.log("[AI SESSION SEARCH]", {
     isGroup,
-    userId,
-    phone,
+    userId: input.userId,
+    contextKey: input.contextKey,
     chatTarget: groupTarget,
     logsCount: logs?.length ?? 0,
     found: Boolean(session),
@@ -1180,12 +1188,17 @@ async function getLastAISuggestionSession(
 
 async function handleAISuggestionPick(
   userId: string,
-  phone: string,
+  contextKey: string,
   numberText: string,
   options?: { isGroup?: boolean; chatTarget?: string; participant?: string },
 ): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   const selectedNumber = Number(numberText);
-  const { session, isExpired } = await getLastAISuggestionSession(userId, phone, options);
+  const { session, isExpired } = await getLastAISuggestionSession({
+    userId,
+    contextKey,
+    isGroup: Boolean(options?.isGroup),
+    chatTarget: String(options?.chatTarget ?? ""),
+  });
   if (isExpired) {
     return {
       reply: ["⚠️ Sesi AI sudah habis.", "", "Ketik:", "ai"].join("\n"),
@@ -3070,6 +3083,8 @@ function buildMenuMessage(): string {
     "• history",
     "• history cash",
     "• history 25/05",
+    "• hapus 1",
+    "• edit 1 15000",
     "• history minggu lalu",
     "• history makan bulan lalu",
     "🎯 *Budget*",
@@ -3086,12 +3101,18 @@ function buildMenuMessage(): string {
     "• catat transaksi",
     "• catat natural",
     "• smart akun otomatis",
-    "• transfer",
+    "• tf 50000 cash seabank",
+    "• transaksi natural/smart",
     "• hutang / piutang",
+    "• tambah hutang ...",
+    "• bayar hutang ...",
+    "• tambah piutang ...",
+    "• bayar piutang ...",
     "• edit transaksi",
     "",
     "🤖 *AI Assistant*",
     "• ai",
+    "• ai <pertanyaan>",
     "• 🤖 ai → buka AI Finance Assistant",
     "• pilih nomor pertanyaan",
     "• tanya bebas",
@@ -3232,9 +3253,6 @@ function isPotentialBotCommand(message: string): boolean {
   const isTxPattern = /^(?:[a-zA-Z][\w-]*)(?:\s+[a-zA-Z][\w-]*)*\s+\d[\d.,]*\s+[a-zA-Z][\w-]*$/.test(normalized);
   if (isTxPattern) return true;
 
-  const aiHints = ["berapa", "saldo", "top kategori", "pengeluaran", "pemasukan", "cashflow", "bulan ini", "minggu ini"];
-  if (aiHints.some((h) => normalized.includes(h))) return true;
-
   return false;
 }
 
@@ -3303,7 +3321,7 @@ Deno.serve(async (req: Request) => {
       data: body.data,
     });
 
-    const replyContextKey = isGroup ? `${sender}|${chatTarget}` : sender;
+    const contextKey = getMessageContextKey({ isGroup, sender, chatTarget });
     const validCommand = isPotentialBotCommand(message);
     console.log("[REPLY ROUTE]", {
       isGroup,
@@ -3330,6 +3348,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (isGroup && !validCommand && !body.quoted && !body.context) {
+      console.log("[GROUP SAFE MODE]", { message, validCommand, reason: "non-command-group-message" });
       return json({ ok: true, ignored: true, reason: "group-safe-mode" });
     }
 
@@ -3345,7 +3364,7 @@ Deno.serve(async (req: Request) => {
     if (!waUser) {
       await logMessage({
         wa_message_id: waMessageId,
-        phone: replyContextKey,
+        phone: contextKey,
         user_id: null,
         raw_text: message,
         parsed: { command: "unknown" },
@@ -3363,14 +3382,81 @@ Deno.serve(async (req: Request) => {
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
 
     if (MENU_COMMANDS.has(normalized)) {
+      console.log("[ROUTE MATCH]", { route: "menu", normalized, isGroup, contextKey });
       reply = buildMenuMessage();
     } else if (normalized === "contoh") {
+      console.log("[ROUTE MATCH]", { route: "contoh", normalized, isGroup, contextKey });
       reply = buildExampleMessage();
       parsedLog = { command: "contoh" };
     } else if (normalized === "ping") {
+      console.log("[ROUTE MATCH]", { route: "ping", normalized, isGroup, contextKey });
       reply = "🏓 pong";
+    } else if (normalized === "saldo") {
+      console.log("[ROUTE MATCH]", { route: "saldo", normalized, isGroup, contextKey });
+      const b = await getRealtimeBalanceSummary(userId);
+      reply = ["💰 Saldo HematWoi", "", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`].join("\n");
+    } else if (normalized === "summary") {
+      console.log("[ROUTE MATCH]", { route: "summary", normalized, isGroup, contextKey });
+      const today = getTodayJakarta();
+      let summaryQuery = supabase
+        .from("transactions")
+        .select("amount,type,category_id")
+        .eq("user_id", userId)
+        .eq("date", today);
+      summaryQuery = await applyTransactionNotDeleted(summaryQuery);
+      const { data: txs, error } = await summaryQuery;
+      if (error) throw error;
+      let income = 0;
+      let expense = 0;
+      const catMap = new Map<string, number>();
+      for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
+        const amount = Number(tx.amount ?? 0);
+        const type = String(tx.type ?? "");
+        if (type === "income") income += amount;
+        if (type === "expense") {
+          expense += amount;
+          const cid = String(tx.category_id ?? "");
+          if (cid) catMap.set(cid, (catMap.get(cid) ?? 0) + amount);
+        }
+      }
+      let biggestCategory = "-";
+      if (catMap.size > 0) {
+        const [topId] = [...catMap.entries()].sort((a, b) => b[1] - a[1])[0];
+        const { data: cat } = await supabase.from("categories").select("name").eq("id", topId).maybeSingle();
+        biggestCategory = cat?.name ?? "-";
+      }
+      reply = ["📊 Summary Hari Ini", `Pemasukan: ${formatIDR(income)}`, `Pengeluaran: ${formatIDR(expense)}`, `Kategori terbesar: ${biggestCategory}`].join("\n");
+    } else if (normalized === "info") {
+      console.log("[ROUTE MATCH]", { route: "info", normalized, isGroup, contextKey });
+      const today = getTodayJakarta();
+      let txCountQuery = supabase.from("transactions").select("user_id", { count: "exact", head: true }).eq("user_id", userId).eq("date", today);
+      txCountQuery = await applyTransactionNotDeleted(txCountQuery);
+      const [{ count: accountCount }, { count: categoryCount }, { count: txCount }] = await Promise.all([
+        supabase.from("accounts").select("id", { count: "exact", head: true }).eq("user_id", userId),
+        supabase.from("categories").select("id", { count: "exact", head: true }).eq("user_id", userId),
+        txCountQuery,
+      ]);
+      reply = ["ℹ️ Info HematWoi", `Jumlah akun: ${accountCount ?? 0}`, `Jumlah kategori: ${categoryCount ?? 0}`, `Total transaksi hari ini: ${txCount ?? 0}`].join("\n");
+    } else if (AI_SUGGESTION_COMMANDS.has(normalized)) {
+      console.log("[ROUTE MATCH]", { route: "ai_suggestion", normalized, isGroup, contextKey });
+      console.log("[AI SESSION KEY]", { contextKey, isGroup, chatTarget });
+      const suggestions = await getRandomAISuggestions(userId, 10);
+      reply = buildAISuggestionMessage(suggestions);
+      parsedLog = isGroup
+        ? { command: "ai_suggestion", context: "group", chatTarget, participant, sessionId: crypto.randomUUID(), suggestions, active: true }
+        : { command: "ai_suggestion", context: "personal", sessionId: crypto.randomUUID(), suggestions, active: true };
+    } else if (isAISuggestionNumber(normalized)) {
+      console.log("[ROUTE MATCH]", { route: "ai_pick_number", normalized, isGroup, contextKey });
+      const aiPick = await handleAISuggestionPick(
+        userId,
+        contextKey,
+        normalized,
+        { isGroup, chatTarget, participant },
+      );
+      reply = aiPick.reply;
+      parsedLog = aiPick.parsedLog;
     } else if (/^edit\s+\d+(\s|$)/.test(normalized)) {
-      const editResult = await handleEditTransaction(userId, replyContextKey, message);
+      const editResult = await handleEditTransaction(userId, contextKey, message);
       reply = editResult.reply;
       parsedLog = editResult.parsedLog;
     } else if (normalized.startsWith("edit akun")) {
@@ -3379,6 +3465,7 @@ Deno.serve(async (req: Request) => {
       parsedLog = editResult.parsedLog;
     } else if (
       normalized === "hutang" ||
+      normalized === "piutang" ||
       normalized.startsWith("tambah hutang") ||
       normalized.startsWith("tambah piutang") ||
       normalized.startsWith("bayar hutang") ||
@@ -3387,28 +3474,6 @@ Deno.serve(async (req: Request) => {
       const debtRes = await handleDebtCommand(userId, message, normalized);
       reply = debtRes.reply;
       parsedLog = debtRes.parsedLog;
-    } else if (AI_SUGGESTION_COMMANDS.has(normalized)) {
-      const suggestions = await getRandomAISuggestions(userId, 10);
-      reply = buildAISuggestionMessage(suggestions);
-      parsedLog = isGroup
-        ? { command: "ai_suggestion", context: "group", chatTarget, participant, sessionId: crypto.randomUUID(), suggestions, active: true }
-        : { command: "ai_suggestion", context: "personal", sessionId: crypto.randomUUID(), suggestions, active: true };
-    } else if (isAISuggestionNumber(normalized)) {
-      console.log("[AI GROUP PICK]", {
-        isGroup,
-        sender,
-        participant,
-        chatTarget,
-        selectedNumber: Number(normalized),
-      });
-      const aiPick = await handleAISuggestionPick(
-        userId,
-        sender,
-        normalized,
-        { isGroup, chatTarget, participant },
-      );
-      reply = aiPick.reply;
-      parsedLog = aiPick.parsedLog;
     } else if (normalized.startsWith("ai ")) {
       const question = message.trim().replace(/^ai\s+/i, "").trim();
       const ai = await handleAiQuestion(userId, question);
@@ -3436,51 +3501,10 @@ Deno.serve(async (req: Request) => {
       const previous = await getTransactionSummaryByRange(userId, previousRange.start, previousRange.end);
       reply = buildCashflowReply(current, previous);
       parsedLog = { command: "quick_stats", type: "cashflow" };
-    } else if (normalized === "saldo") {
-      const b = await getRealtimeBalanceSummary(userId);
-      reply = ["💰 Saldo HematWoi", "", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`].join("\n");
-    } else if (normalized === "summary") {
-      const today = getTodayJakarta();
-      const { data: txs, error } = await supabase
-        .from("transactions")
-        .select("amount,type,category_id")
-        .eq("user_id", userId)
-        .is("deleted_at", null)
-        .eq("date", today);
-      if (error) throw error;
-
-      let income = 0;
-      let expense = 0;
-      const catMap = new Map<string, number>();
-
-      for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
-        const amount = Number(tx.amount ?? 0);
-        const type = String(tx.type ?? "");
-        if (type === "income") income += amount;
-        if (type === "expense") {
-          expense += amount;
-          const cid = String(tx.category_id ?? "");
-          if (cid) catMap.set(cid, (catMap.get(cid) ?? 0) + amount);
-        }
-      }
-
-      let biggestCategory = "-";
-      if (catMap.size > 0) {
-        const [topId] = [...catMap.entries()].sort((a, b) => b[1] - a[1])[0];
-        const { data: cat } = await supabase.from("categories").select("name").eq("id", topId).maybeSingle();
-        biggestCategory = cat?.name ?? "-";
-      }
-
-      reply = [
-        "📊 Summary Hari Ini",
-        `Pemasukan: ${formatIDR(income)}`,
-        `Pengeluaran: ${formatIDR(expense)}`,
-        `Kategori terbesar: ${biggestCategory}`,
-      ].join("\n");
     } else if (normalized.startsWith("riwayat")) {
       reply = "⚠️ Command sudah diganti.\n\nGunakan:\nhistory";
     } else if (normalized.startsWith("history")) {
-      console.log("[HISTORY COMMAND]", { normalized, userId, sender: replyContextKey });
+      console.log("[HISTORY COMMAND]", { normalized, userId, sender: contextKey });
       const rawInput = normalized.replace(/^history\s*/, "").trim();
       const parsedRange = parseNaturalDateRange(rawInput);
       const dateRange = parsedRange;
@@ -3562,7 +3586,7 @@ Deno.serve(async (req: Request) => {
       const number = Number(deleteMatch?.[1] ?? 0);
       console.log("[DELETE FROM HISTORY]", {
         userId,
-        phone: replyContextKey,
+        phone: contextKey,
         number,
       });
       parsedLog = { command: "hapus_history", number };
@@ -3570,7 +3594,7 @@ Deno.serve(async (req: Request) => {
       if (!Number.isInteger(number) || number < 1) {
         reply = "⚠️ Nomor history tidak valid.\n\nPilih nomor dari hasil history terakhir.";
       } else {
-        const displayedTransactions = await getLastHistoryTransactions(userId, replyContextKey);
+        const displayedTransactions = await getLastHistoryTransactions(userId, contextKey);
         if (displayedTransactions.length === 0) {
           reply = "⚠️ Belum ada history terakhir.\n\nKirim history dulu, lalu gunakan:\nhapus 3";
         } else {
@@ -3669,29 +3693,15 @@ Deno.serve(async (req: Request) => {
       if (error) throw error;
       const lines = (data ?? []).map((a: Record<string, JsonValue>, i: number) => `${i + 1}. ${String(a.name)} (${String(a.type)})`);
       reply = `🏦 Daftar Akun\n${lines.length > 0 ? lines.join("\n") : "Belum ada akun."}`;
-    } else if (normalized === "info") {
-      const today = getTodayJakarta();
-      const [{ count: accountCount }, { count: categoryCount }, { count: txCount }] = await Promise.all([
-        supabase.from("accounts").select("id", { count: "exact", head: true }).eq("user_id", userId),
-        supabase.from("categories").select("id", { count: "exact", head: true }).eq("user_id", userId),
-        supabase.from("transactions").select("user_id", { count: "exact", head: true }).eq("user_id", userId).is("deleted_at", null).eq("date", today),
-      ]);
-
-      reply = [
-        "ℹ️ Info HematWoi",
-        `Jumlah akun: ${accountCount ?? 0}`,
-        `Jumlah kategori: ${categoryCount ?? 0}`,
-        `Total transaksi hari ini: ${txCount ?? 0}`,
-      ].join("\n");
     } else if (normalized === "hapus" || normalized === "undo") {
-      const { data: lastTx, error } = await supabase
+      let lastTxQuery = supabase
         .from("transactions")
-        .select("amount")
+        .select("id,title,amount,type,date")
         .eq("user_id", userId)
-        .is("deleted_at", null)
         .order("inserted_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1);
+      lastTxQuery = await applyTransactionNotDeleted(lastTxQuery);
+      const { data: lastTx, error } = await lastTxQuery.maybeSingle();
       if (error) throw error;
 
       if (!lastTx) {
@@ -3700,10 +3710,9 @@ Deno.serve(async (req: Request) => {
         const { error: updateError } = await supabase
           .from("transactions")
           .update({ deleted_at: new Date().toISOString() })
+          .eq("id", String((lastTx as Record<string, JsonValue>).id ?? ""))
           .eq("user_id", userId)
-          .is("deleted_at", null)
-          .order("inserted_at", { ascending: false })
-          .limit(1);
+          .is("deleted_at", null);
         if (updateError) throw updateError;
         reply = `🗑️ Transaksi terakhir berhasil dihapus.\nNominal: ${formatIDR(Number((lastTx as Record<string, JsonValue>).amount ?? 0))}`;
       }
@@ -3978,7 +3987,7 @@ Deno.serve(async (req: Request) => {
     }
     await logMessage({
       wa_message_id: waMessageId,
-      phone: replyContextKey,
+      phone: contextKey,
       user_id: userId,
       raw_text: message,
       parsed: parsedLog,
