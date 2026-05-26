@@ -277,6 +277,37 @@ async function getHistoryByAccount(
   return (data ?? []) as Array<Record<string, JsonValue>>;
 }
 
+async function getHistoryByDateRange(
+  userId: string,
+  startDate: string,
+  endDate: string,
+  opts: { categoryId?: string; accountId?: string; limit?: number } = {},
+): Promise<Array<Record<string, JsonValue>>> {
+  let query = supabase.from("transactions")
+    .select("id,title,amount,type,date,category_id,account_id,to_account_id")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .gte("date", startDate)
+    .lt("date", endDate)
+    .order("inserted_at", { ascending: false })
+    .limit(opts.limit ?? 15);
+  if (opts.categoryId) query = query.eq("category_id", opts.categoryId);
+  if (opts.accountId) query = query.eq("account_id", opts.accountId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as Array<Record<string, JsonValue>>;
+}
+
+async function detectHistoryEntity(userId: string, raw: string): Promise<{ entityType: "category" | "account" | null; entityName: string | null; categoryId?: string; accountId?: string }> {
+  const text = normalizeText(raw);
+  if (!text) return { entityType: null, entityName: null };
+  const cat = await findCategory(userId, text);
+  if (cat) return { entityType: "category", entityName: cat.name, categoryId: cat.id };
+  const acc = await findAccount(userId, text);
+  if (acc) return { entityType: "account", entityName: acc.name, accountId: acc.id };
+  return { entityType: null, entityName: null };
+}
+
 function buildHistoryMessage(
   header: string,
   transactions: Array<Record<string, JsonValue>>,
@@ -411,6 +442,111 @@ function getNextWeekStartJakarta(date = new Date()): string {
   const m = String(weekStart.getMonth() + 1).padStart(2, "0");
   const d = String(weekStart.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function buildDateRange(period: "today" | "yesterday" | "this_week" | "last_week" | "this_month" | "last_month"): { startDate: string; endDate: string; label: string } {
+  if (period === "today") {
+    const startDate = getTodayJakarta();
+    const next = new Date(`${startDate}T00:00:00+07:00`);
+    next.setDate(next.getDate() + 1);
+    const endDate = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
+    return { startDate, endDate, label: "hari ini" };
+  }
+  if (period === "yesterday") {
+    const today = new Date(`${getTodayJakarta()}T00:00:00+07:00`);
+    today.setDate(today.getDate() - 1);
+    const startDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const endRef = new Date(`${startDate}T00:00:00+07:00`);
+    endRef.setDate(endRef.getDate() + 1);
+    const endDate = `${endRef.getFullYear()}-${String(endRef.getMonth() + 1).padStart(2, "0")}-${String(endRef.getDate()).padStart(2, "0")}`;
+    return { startDate, endDate, label: "kemarin" };
+  }
+  if (period === "this_week") {
+    const p = getWeekRangeJakarta();
+    return { startDate: p.start, endDate: p.end, label: "minggu ini" };
+  }
+  if (period === "last_week") {
+    const thisWeek = new Date(`${getWeekStartJakarta()}T00:00:00+07:00`);
+    thisWeek.setDate(thisWeek.getDate() - 7);
+    const startDate = `${thisWeek.getFullYear()}-${String(thisWeek.getMonth() + 1).padStart(2, "0")}-${String(thisWeek.getDate()).padStart(2, "0")}`;
+    const endRef = new Date(`${startDate}T00:00:00+07:00`);
+    endRef.setDate(endRef.getDate() + 7);
+    const endDate = `${endRef.getFullYear()}-${String(endRef.getMonth() + 1).padStart(2, "0")}-${String(endRef.getDate()).padStart(2, "0")}`;
+    return { startDate, endDate, label: "minggu lalu" };
+  }
+  if (period === "last_month") {
+    const p = getPreviousMonthRangeJakarta();
+    return { startDate: p.start, endDate: p.end, label: "bulan lalu" };
+  }
+  const p = getMonthRangeJakarta();
+  return { startDate: p.start, endDate: p.end, label: "bulan ini" };
+}
+
+function parseNaturalDateRange(rawInput: string): { startDate: string; endDate: string; label: string; remainingText: string } | null {
+  const input = normalizeText(rawInput);
+  if (!input) return null;
+  const monthMap: Record<string, string> = {
+    januari: "01", februari: "02", maret: "03", april: "04", mei: "05", juni: "06",
+    juli: "07", agustus: "08", september: "09", oktober: "10", november: "11", desember: "12",
+  };
+  const toIsoDate = (dayRaw: string, monthRaw: string): string | null => {
+    const day = Number(dayRaw);
+    const month = Number(monthRaw);
+    if (!Number.isInteger(day) || !Number.isInteger(month) || day < 1 || day > 31 || month < 1 || month > 12) return null;
+    const year = Number(getTodayJakarta().split("-")[0]);
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    if (dt.getUTCFullYear() !== year || dt.getUTCMonth() !== (month - 1) || dt.getUTCDate() !== day) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  };
+  const parseSingleDate = (text: string): string | null => {
+    const slash = text.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (slash) return toIsoDate(slash[1], slash[2]);
+    const dash = text.match(/^(\d{1,2})-(\d{1,2})$/);
+    if (dash) return toIsoDate(dash[1], dash[2]);
+    const monthName = text.match(/^(\d{1,2})\s+([a-z]+)$/);
+    if (monthName) {
+      const m = monthMap[monthName[2]];
+      return m ? toIsoDate(monthName[1], m) : null;
+    }
+    return null;
+  };
+
+  const rangeMatch = input.match(/(.+?)\s*-\s*(.+)/);
+  if (rangeMatch) {
+    const d1 = parseSingleDate(rangeMatch[1].trim());
+    const d2 = parseSingleDate(rangeMatch[2].trim());
+    if (d1 && d2) {
+      const [startDate, endRaw] = d1 <= d2 ? [d1, d2] : [d2, d1];
+      const endRef = new Date(`${endRaw}T00:00:00+07:00`);
+      endRef.setDate(endRef.getDate() + 1);
+      const endDate = `${endRef.getFullYear()}-${String(endRef.getMonth() + 1).padStart(2, "0")}-${String(endRef.getDate()).padStart(2, "0")}`;
+      return { startDate, endDate, label: `${formatHistoryDate(startDate)} - ${formatHistoryDate(endRaw)}`, remainingText: "" };
+    }
+  }
+  const keywordRanges = [
+    { pattern: /\bhari ini\b/, value: buildDateRange("today") },
+    { pattern: /\bkemarin\b/, value: buildDateRange("yesterday") },
+    { pattern: /\bminggu ini\b|\bpekan ini\b/, value: buildDateRange("this_week") },
+    { pattern: /\bminggu lalu\b|\bpekan lalu\b/, value: buildDateRange("last_week") },
+    { pattern: /\bbulan ini\b/, value: buildDateRange("this_month") },
+    { pattern: /\bbulan lalu\b/, value: buildDateRange("last_month") },
+  ];
+  for (const item of keywordRanges) {
+    if (item.pattern.test(input)) {
+      return { ...item.value, remainingText: input.replace(item.pattern, "").trim() };
+    }
+  }
+  const singleDateMatch = input.match(/(\d{1,2}\/\d{1,2}|\d{1,2}-\d{1,2}|\d{1,2}\s+[a-z]+)/);
+  if (singleDateMatch) {
+    const iso = parseSingleDate(singleDateMatch[1].trim());
+    if (iso) {
+      const endRef = new Date(`${iso}T00:00:00+07:00`);
+      endRef.setDate(endRef.getDate() + 1);
+      const endDate = `${endRef.getFullYear()}-${String(endRef.getMonth() + 1).padStart(2, "0")}-${String(endRef.getDate()).padStart(2, "0")}`;
+      return { startDate: iso, endDate, label: formatHistoryDate(iso), remainingText: input.replace(singleDateMatch[1], "").trim() };
+    }
+  }
+  return null;
 }
 
 async function replyWhatsApp(target: string, message: string): Promise<void> {
@@ -992,25 +1128,11 @@ function detectAiIntent(question: string): AiIntent {
   return "UNKNOWN";
 }
 
-function detectPeriodFromQuestion(question: string): { label: "hari ini" | "minggu ini" | "bulan ini" | "bulan lalu"; startDate: string; endDate: string } {
-  const q = normalizeText(question);
-  if (/hari ini/.test(q)) {
-    const today = getTodayJakarta();
-    const next = new Date(`${today}T00:00:00Z`);
-    next.setUTCDate(next.getUTCDate() + 1);
-    const endDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
-    return { label: "hari ini", startDate: today, endDate };
-  }
-  if (/minggu ini|pekan ini/.test(q)) {
-    const p = getWeekRangeJakarta();
-    return { label: "minggu ini", startDate: p.start, endDate: p.end };
-  }
-  if (/bulan lalu/.test(q)) {
-    const p = getPreviousMonthRangeJakarta();
-    return { label: "bulan lalu", startDate: p.start, endDate: p.end };
-  }
-  const p = getMonthRangeJakarta();
-  return { label: "bulan ini", startDate: p.start, endDate: p.end };
+function detectPeriodFromQuestion(question: string): { label: string; startDate: string; endDate: string } {
+  const parsed = parseNaturalDateRange(question);
+  if (parsed) return { label: parsed.label, startDate: parsed.startDate, endDate: parsed.endDate };
+  const p = buildDateRange("this_month");
+  return { label: p.label, startDate: p.startDate, endDate: p.endDate };
 }
 
 async function getDynamicAISuggestions(userId: string): Promise<string[]> {
@@ -1272,7 +1394,7 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
     let k = text.replace(/\?/g, "");
     k = k.replace(/^.*(total|pengeluaran|transaksi|beli)\s+/i, "");
     k = k.replace(/\b(saya|untuk|dari|di|pada)\b/gi, "");
-    k = k.replace(/\b(hari ini|minggu ini|bulan ini|bulan lalu)\b/gi, "");
+    k = k.replace(/\b(hari ini|kemarin|minggu ini|minggu lalu|bulan ini|bulan lalu)\b/gi, "");
     return k.trim();
   };
   const extractTitleKeyword = (text: string): string => {
@@ -1281,7 +1403,7 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
     if (!match) return "";
     return match[1]
       .replace(/\b(saya|untuk|dari|di|pada)\b/gi, "")
-      .replace(/\b(hari ini|minggu ini|bulan ini|bulan lalu)\b/gi, "")
+      .replace(/\b(hari ini|kemarin|minggu ini|minggu lalu|bulan ini|bulan lalu)\b/gi, "")
       .trim();
   };
   const titleFrequencyKeyword = /(seberapa sering|berapa kali|frekuensi)/.test(q) ? extractTitleKeyword(question) : "";
@@ -2614,9 +2736,10 @@ function buildMenuMessage(): string {
     "• saldo",
     "• summary",
     "• history",
-    "• history hari ini",
-    "• history makan",
     "• history cash",
+    "• history 25/05",
+    "• history minggu lalu",
+    "• history makan bulan lalu",
     "🎯 *Budget*",
     "• budget jajan",
     "• budget bulan ini",
@@ -2705,9 +2828,10 @@ function buildExampleMessage(): string {
     "📚 *History*",
     "• history",
     "• history hari ini",
-    "• history 31/05",
-    "• history jajan 31/05",
     "• history cash",
+    "• history 25/05",
+    "• history minggu lalu",
+    "• history makan bulan lalu",
     "• hapus 3",
     "",
     "Setelah menampilkan history, kamu bisa hapus berdasarkan nomor:",
@@ -2933,87 +3057,27 @@ Deno.serve(async (req: Request) => {
     } else if (normalized.startsWith("riwayat")) {
       reply = "⚠️ Command sudah diganti.\n\nGunakan:\nhistory";
     } else if (normalized.startsWith("history")) {
-      const arg = normalized.replace(/^history\s*/, "").trim();
-      const tokens = arg ? arg.split(/\s+/).filter(Boolean) : [];
-      let categoryName = "";
-      let accountName = "";
-      let targetDate: string | null = null;
-      const lastToken = tokens[tokens.length - 1] ?? "";
+      const rawInput = normalized.replace(/^history\s*/, "").trim();
+      const parsedRange = parseNaturalDateRange(rawInput);
+      const dateRange = parsedRange ?? buildDateRange("today");
+      const entityQuery = parsedRange ? parsedRange.remainingText : rawInput;
+      const entity = await detectHistoryEntity(userId, entityQuery);
+      const entityType = entity.entityType;
+      const entityName = entity.entityName;
+      const msDiff = new Date(`${dateRange.endDate}T00:00:00+07:00`).getTime() - new Date(`${dateRange.startDate}T00:00:00+07:00`).getTime();
+      const daySpan = Math.max(1, Math.ceil(msDiff / (24 * 60 * 60 * 1000)));
+      const limit = daySpan > 30 ? 30 : 15;
+      console.log("[DATE RANGE PARSER]", { rawInput, startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName });
 
-      if (lastToken && isDateToken(lastToken)) {
-        const parsedDate = parseCustomDateToken(lastToken);
-        if (!parsedDate) {
-          reply = "⚠️ Format tanggal tidak valid.\n\nGunakan format:\n31/05";
-        } else {
-          targetDate = parsedDate;
-          tokens.pop();
-        }
+      if (!parsedRange && rawInput && !entityType) {
+        reply = "❌ Kategori atau akun tidak ditemukan.";
       }
-
-      const remainingArg = tokens.join(" ").trim();
       if (!reply) {
-        if (remainingArg === "hari ini") {
-          targetDate = getTodayJakarta();
-        } else if (remainingArg) {
-          const cat = await findCategory(userId, remainingArg);
-          if (cat) {
-            categoryName = cat.name;
-          } else {
-            const acc = await findAccount(userId, remainingArg);
-            if (acc) {
-              accountName = acc.name;
-              console.log("[HISTORY ACCOUNT]", {
-                accountName: acc.name,
-                accountId: acc.id,
-              });
-              parsedLog = { command: "history_account", accountName: acc.name };
-            } else {
-              reply = "❌ Kategori atau akun tidak ditemukan.";
-            }
-          }
-        }
-      }
-      if (!parsedLog) {
-        parsedLog = { command: "history", categoryName, targetDate, accountName };
-      }
-
-      let query = supabase.from("transactions")
-        .select("id,title,amount,type,date,category_id,account_id,to_account_id")
-        .eq("user_id", userId)
-        .is("deleted_at", null)
-        .order("inserted_at", { ascending: false })
-        .limit(5);
-
-      let categoryLabel = "";
-      let accountLabel = "";
-      let accountId = "";
-      if (!reply && targetDate) {
-        query = query.eq("date", targetDate);
-      }
-      if (!reply && categoryName) {
-        const cat = await findCategory(userId, categoryName);
-        if (cat) {
-          query = query.eq("category_id", cat.id);
-          categoryLabel = cat.name;
-        }
-      }
-      if (!reply && accountName) {
-        const acc = await findAccount(userId, accountName);
-        if (acc) {
-          accountId = acc.id;
-          accountLabel = acc.name;
-        }
-      }
-
-      if (!reply) {
-        let finalTransactions: Array<Record<string, JsonValue>> = [];
-        if (accountId) {
-          finalTransactions = await getHistoryByAccount(userId, accountId, 10);
-        } else {
-            const { data: txRows, error: txErr } = await query;
-            if (txErr) throw txErr;
-            finalTransactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
-        }
+        const finalTransactions = await getHistoryByDateRange(userId, dateRange.startDate, dateRange.endDate, {
+          categoryId: entity.categoryId,
+          accountId: entity.accountId,
+          limit,
+        });
         if (finalTransactions.length === 0) {
           reply = "📚 Tidak ada history transaksi.";
         } else {
@@ -3040,22 +3104,15 @@ Deno.serve(async (req: Request) => {
               accountMap.set(String(row.id), String(row.name));
             }
           }
-          const headerLines = [accountLabel ? `📚 *History Akun ${accountLabel}*` : "📚 *History Transaksi*"];
-          if (targetDate) {
-            const [year, month, day] = targetDate.split("-");
-            headerLines.push(`Tanggal: ${day}/${month}/${year}`);
-          }
-          if (categoryLabel) {
-            headerLines.push(`Kategori: ${categoryLabel.charAt(0).toUpperCase()}${categoryLabel.slice(1)}`);
-          }
+          const entityLabel = entityName ? `${entityName.charAt(0).toUpperCase()}${entityName.slice(1)} ` : "";
+          const headerLines = [`📚 *History ${entityLabel}${dateRange.label.charAt(0).toUpperCase()}${dateRange.label.slice(1)}*`];
           const { reply: historyReply, displayedTransactions } = buildHistoryMessage(
             headerLines.join("\n"),
             finalTransactions,
             categoryMap,
             accountMap,
           );
-          if (accountLabel) parsedLog = { command: "history_account", accountName: accountLabel, displayedTransactions };
-          else parsedLog = { command: "history", categoryName, targetDate, displayedTransactions };
+          parsedLog = { command: "history_date", startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName, displayedTransactions };
           reply = historyReply;
         }
       }
