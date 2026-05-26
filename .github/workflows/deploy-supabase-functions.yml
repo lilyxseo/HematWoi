@@ -18,7 +18,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.34.3
 
       - run: |
           supabase functions deploy fonnte-webhook-v2 \
