@@ -229,6 +229,25 @@ function buildFonnteTargets(target: string): string[] {
   return [...new Set(targets.filter(Boolean))];
 }
 
+
+const groupIdCache = new Map<string, string>();
+
+function buildPossibleGroupTargets(groupId: string): string[] {
+  const raw = String(groupId || "").trim();
+
+  const clean = raw
+    .replace("@g.us", "")
+    .replace(/[^\d-]/g, "");
+
+  const candidates = [
+    raw,
+    clean,
+    `${clean}@g.us`,
+  ];
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
 function isGroupJid(raw: string): boolean {
   return /@g\.us$/i.test(raw.trim());
 }
@@ -706,13 +725,25 @@ function parseNaturalDateRange(rawInput: string): { startDate: string; endDate: 
 
 async function replyWhatsApp(target: string, message: string): Promise<boolean> {
   if (!FONNTE_TOKEN || !target || !message) return false;
-  const targets = buildFonnteTargets(target);
+  const isGroup = target.includes("@g.us");
+  const cached = groupIdCache.get(target);
+
+  const targets = isGroup
+    ? [...new Set([...(cached ? [cached] : []), ...buildPossibleGroupTargets(target)])]
+    : buildFonnteTargets(target);
   let lastResult = "";
+
+  if (isGroup) {
+    console.log("[GROUP TARGET TRY]", {
+      originalTarget: target,
+      candidates: targets,
+    });
+  }
 
   console.log("[SEND WHATSAPP]", {
     originalTarget: target,
     targets,
-    isGroup: target.includes("@g.us"),
+    isGroup,
   });
 
   for (const finalTarget of targets) {
@@ -743,6 +774,17 @@ async function replyWhatsApp(target: string, message: string): Promise<boolean> 
       }
 
       if (response.ok && parsed?.status === true) {
+        if (isGroup) {
+          groupIdCache.set(target, finalTarget);
+          console.log("[GROUP TARGET SUCCESS]", {
+            originalTarget: target,
+            successTarget: finalTarget,
+          });
+          console.log("[GROUP TARGET CACHED]", {
+            originalGroupId: target,
+            finalTarget,
+          });
+        }
         return true;
       }
     } catch (error) {
@@ -3151,6 +3193,9 @@ Deno.serve(async (req: Request) => {
     canReplyOnError = Boolean(chatTarget || sender);
 
     const isGroup = isGroupMessage(body);
+    if (isGroup && chatTarget) {
+      groupIdCache.set(chatTarget, chatTarget);
+    }
     console.log("[GROUP PAYLOAD KEYS]", Object.keys(body));
     console.log("[GROUP DATA KEYS]", body.data ? Object.keys(body.data) : []);
     console.log("[GROUP PAYLOAD DEBUG]", {
@@ -3758,7 +3803,7 @@ Deno.serve(async (req: Request) => {
     const replyTarget = chatTarget || sender;
     const sent = await replyWhatsApp(replyTarget, reply);
     if (!sent && isGroup && participant) {
-      await replyWhatsApp(participant, "⚠️ Bot belum bisa membalas ke grup ini. Group ID Fonnte tidak valid.");
+      await replyWhatsApp(participant, "⚠️ Bot belum bisa membalas ke grup ini karena Group ID Fonnte belum valid.");
     }
     await logMessage({
       wa_message_id: waMessageId,
