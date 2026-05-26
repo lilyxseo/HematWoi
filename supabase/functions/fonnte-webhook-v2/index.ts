@@ -11,6 +11,13 @@ type WebhookBody = {
   author?: string;
   from?: string;
   group?: string;
+  group_id?: string;
+  groupId?: string;
+  chat?: string;
+  chat_id?: string;
+  chatId?: string;
+  member?: string;
+  pushNameNumber?: string;
   phone?: string;
   number?: string;
   device?: string;
@@ -30,6 +37,13 @@ type WebhookBody = {
     author?: string;
     from?: string;
     group?: string;
+    group_id?: string;
+    groupId?: string;
+    chat?: string;
+    chat_id?: string;
+    chatId?: string;
+    member?: string;
+    pushNameNumber?: string;
     phone?: string;
     number?: string;
     device?: string;
@@ -198,12 +212,72 @@ function isGroupJid(raw: string): boolean {
   return /@g\.us$/i.test(raw.trim());
 }
 
-function extractParticipant(body: WebhookBody): string {
-  const raw = String(body.participant ?? body.author ?? body.data?.participant ?? "");
-  return normalizePhone(raw);
+function normalizeSenderLikeValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  if (isGroupJid(trimmed)) {
+    const beforeAt = trimmed.split("@")[0] ?? "";
+    const participantInGroup = beforeAt.split("-")[0] ?? "";
+    return normalizePhone(participantInGroup);
+  }
+
+  if (/@s\.whatsapp\.net$/i.test(trimmed) || /@c\.us$/i.test(trimmed)) {
+    return normalizePhone(trimmed.split("@")[0] ?? "");
+  }
+
+  return normalizePhone(trimmed);
 }
 
-function extractSender(body: WebhookBody): string {
+function extractRawGroupId(body: WebhookBody): string {
+  const candidates = [
+    body.group,
+    body.group_id,
+    body.groupId,
+    body.chat,
+    body.chat_id,
+    body.chatId,
+    body.from,
+    isGroupJid(String(body.sender ?? "")) ? body.sender : "",
+    body.data?.group,
+    body.data?.group_id,
+    body.data?.groupId,
+    body.data?.chat,
+    body.data?.chat_id,
+    body.data?.chatId,
+    body.data?.from,
+    isGroupJid(String(body.data?.sender ?? "")) ? body.data?.sender : "",
+  ].map((v) => String(v ?? "").trim()).filter(Boolean);
+
+  return candidates.find((raw) => isGroupJid(raw)) ?? "";
+}
+
+function extractRawParticipant(body: WebhookBody): string {
+  const candidates = [
+    body.participant,
+    body.author,
+    body.member,
+    body.pushNameNumber,
+    !isGroupJid(String(body.sender ?? "")) ? body.sender : "",
+    body.phone,
+    body.number,
+    body.data?.participant,
+    body.data?.author,
+    body.data?.member,
+    body.data?.pushNameNumber,
+    !isGroupJid(String(body.data?.sender ?? "")) ? body.data?.sender : "",
+    body.data?.phone,
+    body.data?.number,
+  ].map((v) => String(v ?? "").trim()).filter(Boolean);
+
+  return candidates[0] ?? "";
+}
+
+function extractParticipant(body: WebhookBody): string {
+  return normalizeSenderLikeValue(extractRawParticipant(body));
+}
+
+function extractSenderForLookup(body: WebhookBody): string {
   const participant = extractParticipant(body);
   if (participant) return participant;
 
@@ -218,20 +292,39 @@ function extractSender(body: WebhookBody): string {
   ].map((v) => String(v ?? "").trim()).filter(Boolean);
 
   for (const raw of candidates) {
-    if (!isGroupJid(raw)) return normalizePhone(raw);
+    if (!isGroupJid(raw)) return normalizeSenderLikeValue(raw);
   }
   return "";
 }
 
-function extractChatTarget(body: WebhookBody): string {
-  const candidates = [body.group, body.from, body.sender, body.data?.sender]
-    .map((v) => String(v ?? "").trim())
-    .filter(Boolean);
+function extractSender(body: WebhookBody): string {
+  return extractSenderForLookup(body);
+}
 
-  const groupId = candidates.find((raw) => isGroupJid(raw));
+function isGroupMessage(body: WebhookBody): boolean {
+  const candidates = [
+    body.sender,
+    body.from,
+    body.chat,
+    body.group,
+    body.group_id,
+    body.chat_id,
+    body.data?.sender,
+    body.data?.from,
+    body.data?.chat,
+    body.data?.group,
+    body.data?.group_id,
+    body.data?.chat_id,
+  ].map((v) => String(v ?? "").trim()).filter(Boolean);
+
+  return candidates.some((raw) => isGroupJid(raw));
+}
+
+function extractChatTarget(body: WebhookBody): string {
+  const groupId = extractRawGroupId(body);
   if (groupId) return groupId;
 
-  return extractSender(body);
+  return extractSenderForLookup(body);
 }
 
 function extractMessage(body: WebhookBody): string {
@@ -2994,10 +3087,29 @@ Deno.serve(async (req: Request) => {
 
     canReplyOnError = Boolean(chatTarget || sender);
 
-    const isGroup = /@g\.us$/i.test(chatTarget);
+    const isGroup = isGroupMessage(body);
+    console.log("[GROUP PAYLOAD DEBUG]", {
+      rawSender: body.sender,
+      rawFrom: body.from,
+      rawParticipant: body.participant,
+      rawAuthor: body.author,
+      rawGroup: body.group,
+      rawChat: body.chat,
+      data: body.data,
+    });
+
     const replyContextKey = isGroup ? `${sender}|${chatTarget}` : sender;
     const validCommand = isPotentialBotCommand(message);
     console.log("[GROUP CHAT]", { isGroup, sender, participant, chatTarget, message, validCommand });
+
+    if (isGroup && (!sender || !participant)) {
+      console.log("[GROUP PAYLOAD COMPACT]", JSON.stringify(body));
+      if (chatTarget) {
+        await replyWhatsApp(chatTarget, "⚠️ Bot menerima pesan grup, tapi nomor pengirim tidak terbaca.\n\nCek payload Fonnte: participant/author/sender.");
+        await replyWhatsApp(chatTarget, "⚠️ Tidak bisa membaca pengirim grup. Coba kirim ulang atau cek payload Fonnte.");
+      }
+      return json({ ok: true, handled: true, reason: "group participant not found" });
+    }
 
     if (isGroup && !validCommand && !body.quoted && !body.context) {
       return json({ ok: true, ignored: true, reason: "group-safe-mode" });
