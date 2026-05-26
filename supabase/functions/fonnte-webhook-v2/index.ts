@@ -1096,11 +1096,16 @@ type AiSuggestionItem = { no: number; question: string };
 type AiSuggestionSession = {
   id: string;
   created_at: string;
+  phone?: string;
+  user_id?: string;
   parsed: {
     command?: string;
     sessionId?: string;
     suggestions?: AiSuggestionItem[];
     active?: boolean;
+    context?: "group" | "personal";
+    chatTarget?: string;
+    participant?: string;
   };
 };
 
@@ -1135,20 +1140,36 @@ function shuffleArray<T>(arr: T[]): T[] {
 async function getLastAISuggestionSession(
   userId: string,
   phone: string,
+  options?: { isGroup?: boolean; chatTarget?: string },
 ): Promise<{ session: AiSuggestionSession | null; isExpired: boolean }> {
   const { data: logs, error } = await supabase
     .from("whatsapp_message_logs")
-    .select("id,created_at,parsed")
+    .select("id,created_at,phone,user_id,parsed")
     .eq("user_id", userId)
     .eq("phone", phone)
     .eq("status", "success")
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(50);
   if (error) throw error;
 
-  const session = ((logs ?? []) as AiSuggestionSession[]).find((log) =>
-    log.parsed?.command === "ai_suggestion" && log.parsed?.active !== false
-  ) ?? null;
+  const isGroup = Boolean(options?.isGroup);
+  const groupTarget = String(options?.chatTarget ?? "");
+  const parsedLogs = (logs ?? []) as AiSuggestionSession[];
+  const session = parsedLogs.find((log) => {
+    if (log.parsed?.command !== "ai_suggestion" || log.parsed?.active === false) return false;
+    if (isGroup) {
+      return log.parsed?.context === "group" && String(log.parsed?.chatTarget ?? "") === groupTarget;
+    }
+    return log.parsed?.context === "personal" || !log.parsed?.context;
+  }) ?? null;
+  console.log("[AI SESSION SEARCH]", {
+    isGroup,
+    userId,
+    phone,
+    chatTarget: groupTarget,
+    logsCount: logs?.length ?? 0,
+    found: Boolean(session),
+  });
   if (!session) return { session: null, isExpired: false };
 
   const isExpired = Date.now() - new Date(session.created_at).getTime() > AI_SUGGESTION_SESSION_TTL_MS;
@@ -1161,9 +1182,10 @@ async function handleAISuggestionPick(
   userId: string,
   phone: string,
   numberText: string,
+  options?: { isGroup?: boolean; chatTarget?: string; participant?: string },
 ): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   const selectedNumber = Number(numberText);
-  const { session, isExpired } = await getLastAISuggestionSession(userId, phone);
+  const { session, isExpired } = await getLastAISuggestionSession(userId, phone, options);
   if (isExpired) {
     return {
       reply: ["⚠️ Sesi AI sudah habis.", "", "Ketik:", "ai"].join("\n"),
@@ -1193,6 +1215,9 @@ async function handleAISuggestionPick(
     reply: ai.reply,
     parsedLog: {
       command: "ai_suggestion_pick",
+      context: options?.isGroup ? "group" : "personal",
+      chatTarget: options?.isGroup ? options?.chatTarget ?? null : null,
+      participant: options?.isGroup ? options?.participant ?? null : null,
       number: selectedNumber,
       question: selectedQuestion,
       sourceSessionId: session.parsed?.sessionId ?? null,
@@ -3193,6 +3218,8 @@ function isPotentialBotCommand(message: string): boolean {
   const normalized = normalizeText(message);
   if (!normalized) return false;
 
+  if (/^(10|[1-9])$/.test(message.trim())) return true;
+
   const validCommands = [
     "saldo", "summary", "history", "kategori", "akun", "budget", "ai", "ping", "info",
     "hutang", "piutang", "transfer", "tf", "hapus", "undo", "menu", "help", "bantuan", "contoh",
@@ -3363,9 +3390,23 @@ Deno.serve(async (req: Request) => {
     } else if (AI_SUGGESTION_COMMANDS.has(normalized)) {
       const suggestions = await getRandomAISuggestions(userId, 10);
       reply = buildAISuggestionMessage(suggestions);
-      parsedLog = { command: "ai_suggestion", sessionId: crypto.randomUUID(), suggestions, active: true };
+      parsedLog = isGroup
+        ? { command: "ai_suggestion", context: "group", chatTarget, participant, sessionId: crypto.randomUUID(), suggestions, active: true }
+        : { command: "ai_suggestion", context: "personal", sessionId: crypto.randomUUID(), suggestions, active: true };
     } else if (isAISuggestionNumber(normalized)) {
-      const aiPick = await handleAISuggestionPick(userId, replyContextKey, normalized);
+      console.log("[AI GROUP PICK]", {
+        isGroup,
+        sender,
+        participant,
+        chatTarget,
+        selectedNumber: Number(normalized),
+      });
+      const aiPick = await handleAISuggestionPick(
+        userId,
+        sender,
+        normalized,
+        { isGroup, chatTarget, participant },
+      );
       reply = aiPick.reply;
       parsedLog = aiPick.parsedLog;
     } else if (normalized.startsWith("ai ")) {
