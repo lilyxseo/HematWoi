@@ -17,6 +17,8 @@ type WebhookBody = {
   chat_id?: string;
   chatId?: string;
   member?: string;
+  memberlid?: string;
+  memberNumber?: string;
   pushNameNumber?: string;
   phone?: string;
   number?: string;
@@ -43,6 +45,8 @@ type WebhookBody = {
     chat_id?: string;
     chatId?: string;
     member?: string;
+    memberlid?: string;
+    memberNumber?: string;
     pushNameNumber?: string;
     phone?: string;
     number?: string;
@@ -294,20 +298,24 @@ function extractRawGroupId(body: WebhookBody): string {
 
 function extractRawParticipant(body: WebhookBody): string {
   const candidates = [
+    body.member,
+    body.memberlid,
     body.participant,
     body.author,
-    body.member,
-    body.pushNameNumber,
-    !isGroupJid(String(body.sender ?? "")) ? body.sender : "",
+    body.memberNumber,
     body.phone,
     body.number,
+    body.pushNameNumber,
+    !isGroupJid(String(body.sender ?? "")) ? body.sender : "",
+    body.data?.member,
+    body.data?.memberlid,
     body.data?.participant,
     body.data?.author,
-    body.data?.member,
-    body.data?.pushNameNumber,
-    !isGroupJid(String(body.data?.sender ?? "")) ? body.data?.sender : "",
+    body.data?.memberNumber,
     body.data?.phone,
     body.data?.number,
+    body.data?.pushNameNumber,
+    !isGroupJid(String(body.data?.sender ?? "")) ? body.data?.sender : "",
   ].map((v) => String(v ?? "").trim()).filter(Boolean);
 
   return candidates[0] ?? "";
@@ -3211,6 +3219,13 @@ Deno.serve(async (req: Request) => {
     const replyContextKey = isGroup ? `${sender}|${chatTarget}` : sender;
     const validCommand = isPotentialBotCommand(message);
     console.log("[GROUP CHAT]", { isGroup, sender, participant, chatTarget, message, validCommand });
+    if (isGroup) {
+      console.log("[GROUP MEMBER PARSE]", {
+        member: body.member,
+        memberlid: body.memberlid,
+        parsedParticipant: participant,
+      });
+    }
 
     if (isGroup && (!sender || !participant)) {
       console.log("[GROUP PAYLOAD COMPACT]", JSON.stringify(body));
@@ -3801,6 +3816,13 @@ Deno.serve(async (req: Request) => {
     }
 
     const replyTarget = chatTarget || sender;
+    if (isGroup) {
+      console.log("[GROUP REPLY FLOW]", {
+        groupTarget: chatTarget,
+        participant,
+        sender,
+      });
+    }
     const sent = await replyWhatsApp(replyTarget, reply);
     if (!sent && isGroup && participant) {
       await replyWhatsApp(participant, "⚠️ Bot belum bisa membalas ke grup ini karena Group ID Fonnte belum valid.");
