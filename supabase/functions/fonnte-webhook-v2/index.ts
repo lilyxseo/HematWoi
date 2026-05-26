@@ -254,6 +254,81 @@ function findBestAccountMatch(question: string, accounts: Array<Record<string, J
   return normalized.find((a) => a.name.includes(q))?.row ?? null;
 }
 
+function formatHistoryDate(date: string): string {
+  const [year, month, day] = String(date).split("-");
+  if (!year || !month || !day) return String(date || "-");
+  return `${day}/${month}`;
+}
+
+async function getHistoryByAccount(
+  userId: string,
+  accountId: string,
+  limit = 10,
+): Promise<Array<Record<string, JsonValue>>> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id,title,amount,type,date,category_id,account_id,to_account_id")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .eq("account_id", accountId)
+    .order("inserted_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as Array<Record<string, JsonValue>>;
+}
+
+function buildHistoryMessage(
+  header: string,
+  transactions: Array<Record<string, JsonValue>>,
+  categoryMap: Map<string, string>,
+  accountMap: Map<string, string>,
+): { reply: string; displayedTransactions: JsonValue[] } {
+  const displayedTransactions: JsonValue[] = [];
+  const lines = transactions.map((tx, i) => {
+    const no = i + 1;
+    const type = String(tx.type ?? "expense");
+    const amount = Number(tx.amount ?? 0);
+    const txId = String(tx.id ?? "");
+    const txDate = String(tx.date ?? "");
+    const formattedDate = formatHistoryDate(txDate);
+    const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
+    const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
+    const title = String(tx.title ?? "-");
+    if (type === "transfer") {
+      const fromName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
+      const toName = accountMap.get(String(tx.to_account_id ?? "")) ?? "-";
+      displayedTransactions.push({
+        no,
+        id: txId,
+        title,
+        amount,
+        type,
+        date: txDate,
+        categoryName,
+        accountName,
+        toAccountName: toName,
+      });
+      return `${no}. ${formattedDate}\n   Transfer ${fromName} → ${toName}\n   ↔ ${formatIDR(amount)}`;
+    }
+    const sign = type === "income" ? "+" : "-";
+    displayedTransactions.push({
+      no,
+      id: txId,
+      title,
+      amount,
+      type,
+      date: txDate,
+      categoryName,
+      accountName,
+    });
+    return `${no}. ${formattedDate}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)}`;
+  });
+  return {
+    reply: `${header}\n\n${lines.join("\n\n")}`,
+    displayedTransactions,
+  };
+}
+
 function parseAmount(raw: string): number {
   const cleaned = raw.replace(/[^0-9]/g, "");
   const value = Number(cleaned);
@@ -2539,6 +2614,9 @@ function buildMenuMessage(): string {
     "• saldo",
     "• summary",
     "• history",
+    "• history hari ini",
+    "• history makan",
+    "• history cash",
     "🎯 *Budget*",
     "• budget jajan",
     "• budget bulan ini",
@@ -2626,8 +2704,10 @@ function buildExampleMessage(): string {
     "",
     "📚 *History*",
     "• history",
+    "• history hari ini",
     "• history 31/05",
     "• history jajan 31/05",
+    "• history cash",
     "• hapus 3",
     "",
     "Setelah menampilkan history, kamu bisa hapus berdasarkan nomor:",
@@ -2856,6 +2936,7 @@ Deno.serve(async (req: Request) => {
       const arg = normalized.replace(/^history\s*/, "").trim();
       const tokens = arg ? arg.split(/\s+/).filter(Boolean) : [];
       let categoryName = "";
+      let accountName = "";
       let targetDate: string | null = null;
       const lastToken = tokens[tokens.length - 1] ?? "";
 
@@ -2874,46 +2955,71 @@ Deno.serve(async (req: Request) => {
         if (remainingArg === "hari ini") {
           targetDate = getTodayJakarta();
         } else if (remainingArg) {
-          categoryName = remainingArg;
+          const cat = await findCategory(userId, remainingArg);
+          if (cat) {
+            categoryName = cat.name;
+          } else {
+            const acc = await findAccount(userId, remainingArg);
+            if (acc) {
+              accountName = acc.name;
+              console.log("[HISTORY ACCOUNT]", {
+                accountName: acc.name,
+                accountId: acc.id,
+              });
+              parsedLog = { command: "history_account", accountName: acc.name };
+            } else {
+              reply = "❌ Kategori atau akun tidak ditemukan.";
+            }
+          }
         }
       }
+      if (!parsedLog) {
+        parsedLog = { command: "history", categoryName, targetDate, accountName };
+      }
 
-      parsedLog = { command: "history", categoryName, targetDate };
-
-      let query = supabase
-        .from("transactions")
+      let query = supabase.from("transactions")
         .select("id,title,amount,type,date,category_id,account_id,to_account_id")
         .eq("user_id", userId)
         .is("deleted_at", null)
         .order("inserted_at", { ascending: false })
         .limit(5);
 
-      if (targetDate) {
+      let categoryLabel = "";
+      let accountLabel = "";
+      let accountId = "";
+      if (!reply && targetDate) {
         query = query.eq("date", targetDate);
       }
-
-      let categoryLabel = "";
       if (!reply && categoryName) {
         const cat = await findCategory(userId, categoryName);
-        if (!cat) {
-          reply = `⚠️ Kategori tidak ditemukan: ${categoryName}`;
-        } else {
+        if (cat) {
           query = query.eq("category_id", cat.id);
           categoryLabel = cat.name;
         }
       }
+      if (!reply && accountName) {
+        const acc = await findAccount(userId, accountName);
+        if (acc) {
+          accountId = acc.id;
+          accountLabel = acc.name;
+        }
+      }
 
       if (!reply) {
-        const { data: txRows, error: txErr } = await query;
-        if (txErr) throw txErr;
-
-        const transactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
-        if (transactions.length === 0) {
+        let finalTransactions: Array<Record<string, JsonValue>> = [];
+        if (accountId) {
+          finalTransactions = await getHistoryByAccount(userId, accountId, 10);
+        } else {
+            const { data: txRows, error: txErr } = await query;
+            if (txErr) throw txErr;
+            finalTransactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
+        }
+        if (finalTransactions.length === 0) {
           reply = "📚 Tidak ada history transaksi.";
         } else {
-          const categoryIds = [...new Set(transactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
+          const categoryIds = [...new Set(finalTransactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
           const accountIds = [...new Set(
-            transactions
+            finalTransactions
               .flatMap((tx) => [String(tx.account_id ?? ""), String(tx.to_account_id ?? "")])
               .filter(Boolean),
           )];
@@ -2934,48 +3040,7 @@ Deno.serve(async (req: Request) => {
               accountMap.set(String(row.id), String(row.name));
             }
           }
-
-          const displayedTransactions: JsonValue[] = [];
-          const lines = transactions.map((tx, i) => {
-            const no = i + 1;
-            const type = String(tx.type ?? "expense");
-            const amount = Number(tx.amount ?? 0);
-            const txId = String(tx.id ?? "");
-            const txDate = String(tx.date ?? "");
-            const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
-            const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
-            const title = String(tx.title ?? "-");
-            if (type === "transfer") {
-              const fromName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
-              const toName = accountMap.get(String(tx.to_account_id ?? "")) ?? "-";
-              displayedTransactions.push({
-                no,
-                id: txId,
-                title,
-                amount,
-                type,
-                date: txDate,
-                categoryName,
-                accountName,
-                toAccountName: toName,
-              });
-              return `${no}. ${txDate}\n   Transfer ${fromName} → ${toName}\n   ↔ ${formatIDR(amount)}`;
-            }
-            const sign = type === "income" ? "+" : "-";
-            displayedTransactions.push({
-              no,
-              id: txId,
-              title,
-              amount,
-              type,
-              date: txDate,
-              categoryName,
-              accountName,
-            });
-            return `${no}. ${txDate}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)} via ${accountName}`;
-          });
-
-          const headerLines = ["📚 *History Transaksi*"];
+          const headerLines = [accountLabel ? `📚 *History Akun ${accountLabel}*` : "📚 *History Transaksi*"];
           if (targetDate) {
             const [year, month, day] = targetDate.split("-");
             headerLines.push(`Tanggal: ${day}/${month}/${year}`);
@@ -2983,9 +3048,15 @@ Deno.serve(async (req: Request) => {
           if (categoryLabel) {
             headerLines.push(`Kategori: ${categoryLabel.charAt(0).toUpperCase()}${categoryLabel.slice(1)}`);
           }
-          parsedLog = { command: "history", categoryName, targetDate, displayedTransactions };
-          const header = headerLines.length > 1 ? `${headerLines.join("\n")}\n` : headerLines[0];
-          reply = `${header}\n\n${lines.join("\n\n")}`;
+          const { reply: historyReply, displayedTransactions } = buildHistoryMessage(
+            headerLines.join("\n"),
+            finalTransactions,
+            categoryMap,
+            accountMap,
+          );
+          if (accountLabel) parsedLog = { command: "history_account", accountName: accountLabel, displayedTransactions };
+          else parsedLog = { command: "history", categoryName, targetDate, displayedTransactions };
+          reply = historyReply;
         }
       }
     } else if (/^hapus\s+\d+$/.test(normalized)) {
