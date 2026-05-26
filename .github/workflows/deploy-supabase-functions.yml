@@ -24,3 +24,8 @@ jobs:
           supabase functions deploy fonnte-webhook-v2 \
             --project-ref $PROJECT_ID \
             --no-verify-jwt
+
+      - run: |
+          supabase functions deploy whatsapp-daily-summary \
+            --project-ref $PROJECT_ID \
+            --no-verify-jwt
