@@ -7,6 +7,10 @@ type WebhookBody = {
   message_id?: string | number;
   msg_id?: string | number;
   sender?: string;
+  participant?: string;
+  author?: string;
+  from?: string;
+  group?: string;
   phone?: string;
   number?: string;
   device?: string;
@@ -22,6 +26,10 @@ type WebhookBody = {
     id?: string | number;
     message_id?: string | number;
     sender?: string;
+    participant?: string;
+    author?: string;
+    from?: string;
+    group?: string;
     phone?: string;
     number?: string;
     device?: string;
@@ -186,11 +194,44 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
-function extractSender(body: WebhookBody): string {
-  const raw = String(
-    body.sender ?? body.phone ?? body.number ?? body.data?.sender ?? body.data?.phone ?? body.data?.number ?? "",
-  );
+function isGroupJid(raw: string): boolean {
+  return /@g\.us$/i.test(raw.trim());
+}
+
+function extractParticipant(body: WebhookBody): string {
+  const raw = String(body.participant ?? body.author ?? body.data?.participant ?? "");
   return normalizePhone(raw);
+}
+
+function extractSender(body: WebhookBody): string {
+  const participant = extractParticipant(body);
+  if (participant) return participant;
+
+  const candidates = [
+    body.sender,
+    body.from,
+    body.phone,
+    body.number,
+    body.data?.sender,
+    body.data?.phone,
+    body.data?.number,
+  ].map((v) => String(v ?? "").trim()).filter(Boolean);
+
+  for (const raw of candidates) {
+    if (!isGroupJid(raw)) return normalizePhone(raw);
+  }
+  return "";
+}
+
+function extractChatTarget(body: WebhookBody): string {
+  const candidates = [body.group, body.from, body.sender, body.data?.sender]
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean);
+
+  const groupId = candidates.find((raw) => isGroupJid(raw));
+  if (groupId) return groupId;
+
+  return extractSender(body);
 }
 
 function extractMessage(body: WebhookBody): string {
@@ -2867,6 +2908,7 @@ function buildExampleMessage(): string {
     "• 🤖 ai → buka AI Finance Assistant",
     "• pilih nomor 1-10",
     "• berapa jajan bulan ini",
+    "• Bot support chat grup tanpa prefix.",
     "• saldo cash",
     "• merchant paling sering",
     "",
@@ -2880,10 +2922,34 @@ function buildExampleMessage(): string {
   ].join("\n");
 }
 
-function isBotReply(body: WebhookBody, sender: string, device: string, message: string): boolean {
+
+function isPotentialBotCommand(message: string): boolean {
+  const normalized = normalizeText(message);
+  if (!normalized) return false;
+
+  const validCommands = [
+    "saldo", "summary", "history", "kategori", "akun", "budget", "ai", "ping", "info",
+    "hutang", "piutang", "transfer", "tf", "hapus", "undo", "menu", "help", "bantuan", "contoh",
+  ];
+
+  if (validCommands.some((cmd) => normalized === cmd || normalized.startsWith(`${cmd} `))) return true;
+  if (/^(31\/05|\d{1,2}\/\d{1,2}|\d{1,2}\s+[a-z]+|minggu lalu|bulan ini)$/i.test(normalized)) return true;
+  if (/^(halo|wkwk|oke|gas|siap|mantap)$/.test(normalized)) return false;
+
+  const isTxPattern = /^(?:[a-zA-Z][\w-]*)(?:\s+[a-zA-Z][\w-]*)*\s+\d[\d.,]*\s+[a-zA-Z][\w-]*$/.test(normalized);
+  if (isTxPattern) return true;
+
+  const aiHints = ["berapa", "saldo", "top kategori", "pengeluaran", "pemasukan", "cashflow", "bulan ini", "minggu ini"];
+  if (aiHints.some((h) => normalized.includes(h))) return true;
+
+  return false;
+}
+
+function isBotReply(body: WebhookBody, sender: string, participant: string, device: string, message: string): boolean {
   const statusText = String(body.status ?? "").toLowerCase();
   const text = message.toLowerCase();
   const hasBotPrefix = BOT_PREFIXES.some((prefix) => message.startsWith(prefix));
+  const botNumber = device;
 
   return Boolean(
     body.from_me === true ||
@@ -2896,7 +2962,7 @@ function isBotReply(body: WebhookBody, sender: string, device: string, message: 
       statusText === "sent" ||
       statusText === "delivered" ||
       statusText === "read" ||
-      (sender && device && sender === device) ||
+      (participant && botNumber && participant === botNumber) ||
       text.includes("sent via fonnte.com") ||
       hasBotPrefix,
   );
@@ -2904,6 +2970,8 @@ function isBotReply(body: WebhookBody, sender: string, device: string, message: 
 
 Deno.serve(async (req: Request) => {
   let sender = "";
+  let participant = "";
+  let chatTarget = "";
   let message = "";
   let waMessageId = "";
   let userId: string | null = null;
@@ -2914,15 +2982,26 @@ Deno.serve(async (req: Request) => {
 
     const body = (await req.json()) as WebhookBody;
     sender = extractSender(body);
+    participant = extractParticipant(body);
+    chatTarget = extractChatTarget(body);
     message = extractMessage(body);
     const device = extractDevice(body);
     waMessageId = extractWaMessageId(body, sender, message);
 
-    if (isBotReply(body, sender, device, message)) {
+    if (isBotReply(body, sender, participant, device, message)) {
       return json({ ok: true, ignored: true, reason: "bot/self reply" });
     }
 
-    canReplyOnError = Boolean(sender);
+    canReplyOnError = Boolean(chatTarget || sender);
+
+    const isGroup = /@g\.us$/i.test(chatTarget);
+    const replyContextKey = isGroup ? `${sender}|${chatTarget}` : sender;
+    const validCommand = isPotentialBotCommand(message);
+    console.log("[GROUP CHAT]", { isGroup, sender, participant, chatTarget, message, validCommand });
+
+    if (isGroup && !validCommand && !body.quoted && !body.context) {
+      return json({ ok: true, ignored: true, reason: "group-safe-mode" });
+    }
 
     const { data: duplicate, error: duplicateError } = await supabase
       .from("whatsapp_message_logs")
@@ -2936,14 +3015,14 @@ Deno.serve(async (req: Request) => {
     if (!waUser) {
       await logMessage({
         wa_message_id: waMessageId,
-        phone: sender,
+        phone: replyContextKey,
         user_id: null,
         raw_text: message,
         parsed: { command: "unknown" },
         status: "failed",
         error_message: "WA user not found",
       });
-      await replyWhatsApp(sender, "❌ Nomor belum terdaftar di HematWoi.");
+      await replyWhatsApp(chatTarget || sender, "❌ Nomor belum terdaftar di HematWoi.");
       return json({ ok: true, handled: true, reason: "user not found" });
     }
 
@@ -2961,7 +3040,7 @@ Deno.serve(async (req: Request) => {
     } else if (normalized === "ping") {
       reply = "🏓 pong";
     } else if (/^edit\s+\d+(\s|$)/.test(normalized)) {
-      const editResult = await handleEditTransaction(userId, sender, message);
+      const editResult = await handleEditTransaction(userId, replyContextKey, message);
       reply = editResult.reply;
       parsedLog = editResult.parsedLog;
     } else if (normalized.startsWith("edit akun")) {
@@ -2983,7 +3062,7 @@ Deno.serve(async (req: Request) => {
       reply = buildAISuggestionMessage(suggestions);
       parsedLog = { command: "ai_suggestion", sessionId: crypto.randomUUID(), suggestions, active: true };
     } else if (isAISuggestionNumber(normalized)) {
-      const aiPick = await handleAISuggestionPick(userId, sender, normalized);
+      const aiPick = await handleAISuggestionPick(userId, replyContextKey, normalized);
       reply = aiPick.reply;
       parsedLog = aiPick.parsedLog;
     } else if (normalized.startsWith("ai ")) {
@@ -3123,7 +3202,7 @@ Deno.serve(async (req: Request) => {
       if (!Number.isInteger(number) || number < 1 || number > 5) {
         reply = "⚠️ Nomor history tidak valid.\n\nPilih nomor dari hasil history terakhir.";
       } else {
-        const displayedTransactions = await getLastHistoryTransactions(userId, sender);
+        const displayedTransactions = await getLastHistoryTransactions(userId, replyContextKey);
         if (displayedTransactions.length === 0) {
           reply = "⚠️ Belum ada history terakhir.\n\nKirim *history* dulu, lalu gunakan:\nhapus 3";
         } else {
@@ -3498,10 +3577,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    await replyWhatsApp(sender, reply);
+    await replyWhatsApp(chatTarget || sender, reply);
     await logMessage({
       wa_message_id: waMessageId,
-      phone: sender,
+      phone: replyContextKey,
       user_id: userId,
       raw_text: message,
       parsed: parsedLog,
@@ -3516,8 +3595,8 @@ Deno.serve(async (req: Request) => {
     if (sender && canReplyOnError) {
       try {
         const errorMessage = error instanceof Error ? error.message : String(error ?? "");
-        if (errorMessage.includes("RPC_BALANCE_FAILED")) await replyWhatsApp(sender, "⚠️ Gagal mengambil saldo realtime.");
-        else await replyWhatsApp(sender, "❌ Terjadi error pada sistem. Coba lagi beberapa saat.");
+        if (errorMessage.includes("RPC_BALANCE_FAILED")) await replyWhatsApp(chatTarget || sender, "⚠️ Gagal mengambil saldo realtime.");
+        else await replyWhatsApp(chatTarget || sender, "❌ Terjadi error pada sistem. Coba lagi beberapa saat.");
       } catch (_e) {
       }
     }
@@ -3526,7 +3605,7 @@ Deno.serve(async (req: Request) => {
       if (waMessageId || sender || message) {
         await logMessage({
           wa_message_id: waMessageId || `${sender}-${message || "empty"}-${Date.now()}`,
-          phone: sender || "",
+          phone: (sender && chatTarget && /@g\.us$/i.test(chatTarget) ? `${sender}|${chatTarget}` : sender) || "",
           user_id: userId,
           raw_text: message || "",
           parsed: { fallback: true },
