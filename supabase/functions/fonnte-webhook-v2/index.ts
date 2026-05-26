@@ -153,6 +153,10 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FONNTE_TOKEN = Deno.env.get("FONNTE_TOKEN") ?? "";
 
+function isGroupPrivateDebugEnabled(): boolean {
+  return String(Deno.env.get("GROUP_REPLY_DEBUG_PRIVATE") ?? "false").toLowerCase() === "true";
+}
+
 const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️", "📘"];
 const MENU_COMMANDS = new Set(["menu", "help", "bantuan", ".menu"]);
 
@@ -3253,6 +3257,12 @@ Deno.serve(async (req: Request) => {
 
     const replyContextKey = isGroup ? `${sender}|${chatTarget}` : sender;
     const validCommand = isPotentialBotCommand(message);
+    console.log("[REPLY ROUTE]", {
+      isGroup,
+      chatTarget,
+      participant,
+      willReplyTo: isGroup ? "group" : "personal",
+    });
     console.log("[GROUP CHAT]", { isGroup, sender, participant, chatTarget, message, validCommand });
     if (isGroup) {
       console.log("[GROUP MEMBER PARSE]", {
@@ -3878,8 +3888,21 @@ Deno.serve(async (req: Request) => {
       memberlid: body.memberlid ?? body.data?.memberlid ?? parsedLid,
       senderlid: body.senderlid ?? body.data?.senderlid ?? parsedLid,
     });
-    if (!sent && isGroup && participant) {
-      await replyWhatsApp({ target: participant, message: "⚠️ Bot belum bisa membalas ke grup ini karena Group ID Fonnte belum valid." });
+    if (!sent && isGroup) {
+      console.error("[GROUP REPLY FAILED]", {
+        chatTarget,
+        participant,
+        message,
+      });
+
+      if (isGroupPrivateDebugEnabled() && participant) {
+        await replyWhatsApp({
+          target: participant,
+          message: "⚠️ Debug: bot belum bisa membalas grup ini karena target grup Fonnte tidak valid.",
+        });
+      }
+
+      return json({ ok: true, groupReplyFailed: true });
     }
     await logMessage({
       wa_message_id: waMessageId,
