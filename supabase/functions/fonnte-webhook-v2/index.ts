@@ -152,6 +152,7 @@ type BudgetPeriodItem = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FONNTE_TOKEN = Deno.env.get("FONNTE_TOKEN") ?? "";
+const FONNTE_DEVICE = Deno.env.get("FONNTE_DEVICE") ?? "";
 
 function isGroupPrivateDebugEnabled(): boolean {
   return String(Deno.env.get("GROUP_REPLY_DEBUG_PRIVATE") ?? "false").toLowerCase() === "true";
@@ -755,23 +756,11 @@ async function replyWhatsApp(input: { target: string; message: string; memberlid
   const { target, message, memberlid = null, senderlid = null } = input;
   if (!FONNTE_TOKEN || !target || !message) return false;
   const isGroup = target.includes("@g.us");
-  const cached = groupIdCache.get(target);
   const normalizedMemberLid = memberlid ? String(memberlid).trim() : "";
   const normalizedSenderLid = senderlid ? String(senderlid).trim() : "";
-  const memberLidNoSuffix = normalizedMemberLid.replace(/@lid$/i, "");
-  const senderLidNoSuffix = normalizedSenderLid.replace(/@lid$/i, "");
 
   const targets = isGroup
-    ? [
-      ...new Set([
-        ...(cached ? [cached] : []),
-        ...buildPossibleGroupTargets(target),
-        normalizedMemberLid,
-        memberLidNoSuffix,
-        normalizedSenderLid,
-        senderLidNoSuffix,
-      ].filter(Boolean)),
-    ]
+    ? [target]
     : buildFonnteTargets(target);
   let lastResult = "";
 
@@ -787,6 +776,12 @@ async function replyWhatsApp(input: { target: string; message: string; memberlid
     });
   }
 
+  if (!FONNTE_DEVICE) {
+    console.warn("[FONNTE DEVICE WARNING]", {
+      message: "FONNTE_DEVICE is empty, request will continue without explicit device.",
+    });
+  }
+
   console.log("[SEND WHATSAPP]", {
     originalTarget: target,
     targets,
@@ -797,6 +792,14 @@ async function replyWhatsApp(input: { target: string; message: string; memberlid
     const form = new FormData();
     form.append("target", finalTarget);
     form.append("message", message);
+    if (FONNTE_DEVICE) {
+      form.append("device", FONNTE_DEVICE);
+    }
+
+    console.log("[FONNTE SEND CONFIG]", {
+      target: finalTarget,
+      device: FONNTE_DEVICE,
+    });
 
     try {
       const response = await fetch("https://api.fonnte.com/send", {
