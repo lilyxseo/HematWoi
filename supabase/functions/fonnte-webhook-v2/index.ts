@@ -208,6 +208,24 @@ function normalizePhone(raw: string): string {
   return digits;
 }
 
+function normalizeFonnteTarget(target: string): string {
+  const value = String(target || "").trim();
+
+  if (value.includes("@g.us")) {
+    return value.replace("@g.us", "");
+  }
+
+  if (value.includes("@s.whatsapp.net")) {
+    return value.replace("@s.whatsapp.net", "");
+  }
+
+  if (value.includes("@c.us")) {
+    return value.replace("@c.us", "");
+  }
+
+  return value.replace(/[^\d]/g, "");
+}
+
 function isGroupJid(raw: string): boolean {
   return /@g\.us$/i.test(raw.trim());
 }
@@ -685,12 +703,12 @@ function parseNaturalDateRange(rawInput: string): { startDate: string; endDate: 
 
 async function replyWhatsApp(target: string, message: string): Promise<void> {
   if (!FONNTE_TOKEN || !target || !message) return;
-  const finalTarget = target.includes("@g.us") ? target.trim() : normalizePhone(target);
+  const finalTarget = normalizeFonnteTarget(target);
 
   console.log("[SEND WHATSAPP]", {
     originalTarget: target,
     finalTarget,
-    isGroup: finalTarget.includes("@g.us"),
+    isGroup: target.includes("@g.us"),
   });
 
   const form = new FormData();
