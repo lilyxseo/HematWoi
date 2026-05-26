@@ -385,6 +385,136 @@ async function findCategory(userId: string, name: string): Promise<{ id: string;
   return data;
 }
 
+async function hasDeletedAtColumn(table: "categories" | "transactions" | "budgets" | "debts" | "receivables"): Promise<boolean> {
+  const { error } = await supabase.from(table).select("deleted_at").limit(1);
+  if (!error) return true;
+  const message = String((error as Record<string, JsonValue>)?.message ?? "");
+  if (message.toLowerCase().includes("deleted_at")) return false;
+  throw error;
+}
+
+async function getCategoryList(userId: string): Promise<string> {
+  const categoriesHasDeletedAt = await hasDeletedAtColumn("categories");
+  let query = supabase.from("categories").select("name,type").eq("user_id", userId);
+  if (categoriesHasDeletedAt) query = query.is("deleted_at", null);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  const expenses = rows
+    .filter((c) => String(c.type ?? "").toLowerCase() === "expense")
+    .map((c) => String(c.name ?? "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "id"));
+  const incomes = rows
+    .filter((c) => String(c.type ?? "").toLowerCase() === "income")
+    .map((c) => String(c.name ?? "").trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "id"));
+
+  const lines: string[] = ["🧾 Daftar Kategori", ""];
+  lines.push("📤 Expense");
+  lines.push(expenses.length > 0 ? expenses.map((name, i) => `${i + 1}. ${name}`).join("\n") : "-");
+  lines.push("");
+  lines.push("📥 Income");
+  lines.push(incomes.length > 0 ? incomes.map((name, i) => `${i + 1}. ${name}`).join("\n") : "-");
+  return lines.join("\n");
+}
+
+async function createCategory(userId: string, name: string, type: string): Promise<string> {
+  const cleanName = name.trim();
+  const cleanType = type.trim().toLowerCase();
+  if (!cleanName || (cleanType !== "income" && cleanType !== "expense")) {
+    return "⚠️ Format tidak valid.\n\nGunakan:\nkategori tambah nama tipe\n\nTipe: income / expense";
+  }
+  const existed = await findCategory(userId, cleanName);
+  if (existed) return "❌ Kategori sudah ada.";
+
+  const payload: Record<string, JsonValue> = { user_id: userId, name: cleanName, type: cleanType };
+  const { error } = await supabase.from("categories").insert(payload);
+  if (error) throw error;
+  return `✅ Kategori berhasil ditambahkan\n\nNama: ${cleanName.charAt(0).toUpperCase()}${cleanName.slice(1)}\nTipe: ${cleanType}`;
+}
+
+async function updateCategory(userId: string, oldName: string, newName: string): Promise<string> {
+  const oldTrim = oldName.trim();
+  const newTrim = newName.trim();
+  if (!oldTrim || !newTrim) return "⚠️ Format tidak valid.\n\nGunakan:\nkategori edit nama_lama nama_baru";
+  const current = await findCategory(userId, oldTrim);
+  if (!current) return "❌ Kategori tidak ditemukan.";
+  const duplicate = await findCategory(userId, newTrim);
+  if (duplicate && String(duplicate.id) !== String(current.id)) return "❌ Kategori sudah ada.";
+
+  const { error } = await supabase.from("categories").update({ name: newTrim }).eq("id", current.id).eq("user_id", userId);
+  if (error) throw error;
+  return `✅ Kategori berhasil diubah\n\nSebelum: ${current.name}\nSesudah: ${newTrim.charAt(0).toUpperCase()}${newTrim.slice(1)}`;
+}
+
+async function deleteCategory(userId: string, name: string): Promise<string> {
+  const target = await findCategory(userId, name.trim());
+  if (!target) return "❌ Kategori tidak ditemukan.";
+
+  const tables: Array<"transactions" | "budgets" | "debts" | "receivables"> = ["transactions", "budgets", "debts", "receivables"];
+  for (const table of tables) {
+    const hasDeletedAt = await hasDeletedAtColumn(table);
+    let query = supabase.from(table).select("id", { count: "exact", head: true }).eq("user_id", userId).eq("category_id", target.id);
+    if (hasDeletedAt) query = query.is("deleted_at", null);
+    const { count, error } = await query;
+    if (error) throw error;
+    if ((count ?? 0) > 0) return "❌ Kategori masih digunakan transaksi/budget.";
+  }
+
+  const categoriesHasDeletedAt = await hasDeletedAtColumn("categories");
+  if (categoriesHasDeletedAt) {
+    const { error } = await supabase.from("categories").update({ deleted_at: new Date().toISOString() }).eq("id", target.id).eq("user_id", userId);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase.from("categories").delete().eq("id", target.id).eq("user_id", userId);
+    if (error) throw error;
+  }
+  return `✅ Kategori berhasil dihapus\n\nNama: ${target.name}`;
+}
+
+async function handleCategoryCrud(userId: string, rawMessage: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const action = normalized.startsWith("kategori tambah")
+    ? "tambah"
+    : normalized.startsWith("kategori edit")
+    ? "edit"
+    : normalized.startsWith("kategori hapus")
+    ? "hapus"
+    : normalized === "kategori" || normalized === "list kategori"
+    ? "list"
+    : "unknown";
+  const payload = rawMessage.trim();
+  console.log("[CATEGORY CRUD]", { action, userId, payload });
+
+  if (action === "list") {
+    const reply = await getCategoryList(userId);
+    return { reply, parsedLog: { command: "category_crud", action } };
+  }
+  if (action === "tambah") {
+    const match = rawMessage.trim().match(/^kategori\s+tambah\s+(.+)\s+(income|expense)$/i);
+    if (!match) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nkategori tambah nama tipe", parsedLog: { command: "category_crud", action } };
+    const reply = await createCategory(userId, match[1], match[2]);
+    return { reply, parsedLog: { command: "category_crud", action, categoryName: match[1].trim() } };
+  }
+  if (action === "edit") {
+    const parts = rawMessage.trim().split(/\s+/);
+    if (parts.length < 4) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nkategori edit nama_lama nama_baru", parsedLog: { command: "category_crud", action } };
+    const oldName = parts[2];
+    const newName = parts.slice(3).join(" ");
+    const reply = await updateCategory(userId, oldName, newName);
+    return { reply, parsedLog: { command: "category_crud", action, categoryName: oldName } };
+  }
+  if (action === "hapus") {
+    const name = rawMessage.trim().replace(/^kategori\s+hapus\s+/i, "").trim();
+    if (!name) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nkategori hapus nama", parsedLog: { command: "category_crud", action } };
+    const reply = await deleteCategory(userId, name);
+    return { reply, parsedLog: { command: "category_crud", action, categoryName: name } };
+  }
+  return { reply: "⚠️ Command kategori tidak valid.", parsedLog: { command: "category_crud", action } };
+}
+
 async function findAccount(userId: string, name: string): Promise<{ id: string; name: string; type: string } | null> {
   const { data, error } = await getAccountsBaseQuery(userId, "id,name,type")
     .ilike("name", name.trim())
@@ -2435,6 +2565,9 @@ function buildMenuMessage(): string {
     "",
     "🧾 *Data*",
     "• kategori",
+    "• kategori tambah nama tipe",
+    "• kategori edit lama baru",
+    "• kategori hapus nama",
     "• akun",
     "• info",
     "",
@@ -2946,11 +3079,16 @@ Deno.serve(async (req: Request) => {
           ...budgetLines,
         ].join("\n");
       }
-    } else if (normalized === "kategori") {
-      const { data, error } = await supabase.from("categories").select("name,type").eq("user_id", userId).order("name");
-      if (error) throw error;
-      const lines = (data ?? []).map((c: Record<string, JsonValue>, i: number) => `${i + 1}. ${String(c.name)} (${String(c.type)})`);
-      reply = `🧾 Daftar Kategori\n${lines.length > 0 ? lines.join("\n") : "Belum ada kategori."}`;
+    } else if (
+      normalized === "kategori" ||
+      normalized === "list kategori" ||
+      normalized.startsWith("kategori tambah ") ||
+      normalized.startsWith("kategori edit ") ||
+      normalized.startsWith("kategori hapus ")
+    ) {
+      const categoryRes = await handleCategoryCrud(userId, message, normalized);
+      reply = categoryRes.reply;
+      parsedLog = categoryRes.parsedLog;
     } else if (normalized === "akun") {
       const { data, error } = await supabase.from("accounts").select("name,type").eq("user_id", userId).order("name");
       if (error) throw error;
