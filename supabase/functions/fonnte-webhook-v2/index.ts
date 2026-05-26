@@ -685,15 +685,33 @@ function parseNaturalDateRange(rawInput: string): { startDate: string; endDate: 
 
 async function replyWhatsApp(target: string, message: string): Promise<void> {
   if (!FONNTE_TOKEN || !target || !message) return;
+  const finalTarget = target.includes("@g.us") ? target.trim() : normalizePhone(target);
+
+  console.log("[SEND WHATSAPP]", {
+    originalTarget: target,
+    finalTarget,
+    isGroup: finalTarget.includes("@g.us"),
+  });
+
   const form = new FormData();
-  form.append("target", target);
+  form.append("target", finalTarget);
   form.append("message", message);
 
-  await fetch("https://api.fonnte.com/send", {
-    method: "POST",
-    headers: { Authorization: FONNTE_TOKEN },
-    body: form,
-  });
+  try {
+    const response = await fetch("https://api.fonnte.com/send", {
+      method: "POST",
+      headers: { Authorization: FONNTE_TOKEN },
+      body: form,
+    });
+    const result = await response.text();
+
+    console.log("[FONNTE RESPONSE]", {
+      status: response.status,
+      result,
+    });
+  } catch (error) {
+    console.error("[FONNTE SEND ERROR]", error);
+  }
 }
 
 async function logMessage(input: {
