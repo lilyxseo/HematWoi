@@ -2895,7 +2895,7 @@ async function handleEditLastTransactionAccount(userId: string, normalized: stri
 async function getOpenDebts(userId: string): Promise<Array<Record<string, JsonValue>>> {
   const { data, error } = await supabase
     .from("debts")
-    .select("id,type,party_name,amount,paid_total,status")
+    .select("id,type,party_name,amount,paid_total,status,total_amount,nominal,due_date,due_at,dueDate,jatuh_tempo")
     .eq("user_id", userId)
     .eq("status", "ongoing")
     .order("created_at", { ascending: true });
@@ -2906,7 +2906,7 @@ async function getOpenDebts(userId: string): Promise<Array<Record<string, JsonVa
 async function findOpenDebtByParty(userId: string, debtType: DebtType, partyName: string): Promise<Record<string, JsonValue> | null> {
   const { data, error } = await supabase
     .from("debts")
-    .select("id,type,party_name,amount,paid_total,status")
+    .select("id,type,party_name,amount,paid_total,status,total_amount,nominal,due_date,due_at,dueDate,jatuh_tempo")
     .eq("user_id", userId)
     .eq("type", debtType)
     .eq("status", "ongoing")
@@ -2939,18 +2939,104 @@ async function createDebtPayment(input: {
   if (error) throw error;
 }
 
+function getDebtDueDate(item: Record<string, JsonValue>): string {
+  const due = item.due_date ?? item.due_at ?? item.dueDate ?? item.jatuh_tempo;
+  if (!due) return "-";
+  return formatDateLocal(String(due));
+}
+
+async function findLastDisplayedDebtList(userId: string): Promise<Array<Record<string, JsonValue>> | null> {
+  const { data, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("parsed,created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  for (const row of (data ?? []) as Array<Record<string, JsonValue>>) {
+    const parsed = row.parsed as Record<string, JsonValue> | null;
+    if (!parsed || String(parsed.command ?? "") !== "hutang_list") continue;
+    const displayedDebts = parsed.displayedDebts as JsonValue;
+    if (Array.isArray(displayedDebts)) return displayedDebts as Array<Record<string, JsonValue>>;
+  }
+  return null;
+}
+
+async function updateDebtAmount(userId: string, debtId: string, amount: number): Promise<void> {
+  const candidates: Array<Record<string, number>> = [{ total_amount: amount }, { amount }, { nominal: amount }];
+  for (const payload of candidates) {
+    const { error } = await supabase.from("debts").update(payload).eq("id", debtId).eq("user_id", userId);
+    if (!error) return;
+  }
+  throw new Error("Failed to update debt amount");
+}
+
+async function softDeleteDebt(userId: string, debtId: string): Promise<void> {
+  const candidates: Array<Record<string, JsonValue>> = [
+    { deleted_at: new Date().toISOString() },
+    { inactive: true },
+    { status: "deleted" },
+  ];
+  for (const payload of candidates) {
+    const { error } = await supabase.from("debts").update(payload).eq("id", debtId).eq("user_id", userId);
+    if (!error) return;
+  }
+  throw new Error("Failed to delete debt");
+}
+
 async function handleDebtCommand(userId: string, rawMessage: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   if (normalized === "hutang") {
-    const rows = await getOpenDebts(userId);
-    if (rows.length === 0) return { reply: "💳 Belum ada hutang/piutang aktif.", parsedLog: { command: "debt", action: "list" } };
-    const lines = rows.map((row, i) => {
-      const amount = Number(row.amount ?? 0);
+    const rows = (await getOpenDebts(userId)).filter((row) => String(row.type ?? "debt") !== "receivable");
+    if (rows.length === 0) return { reply: "💳 *Hutang Aktif*\n\n━━━━━━━━━━━━━━\nℹ️ Belum ada hutang aktif.", parsedLog: { command: "hutang_list", displayedDebts: [] } };
+    const displayedDebts = rows.map((row, i) => {
+      const amount = Number(row.total_amount ?? row.amount ?? row.nominal ?? 0);
       const paid = Number(row.paid_total ?? 0);
       const remaining = Math.max(0, amount - paid);
-      const label = String(row.type ?? "debt") === "receivable" ? "Piutang" : "Hutang";
-      return `${i + 1}. ${label} - ${String(row.party_name ?? "-")}\n   Total: ${formatIDR(amount)}\n   Dibayar: ${formatIDR(paid)}\n   Sisa: ${formatIDR(remaining)}`;
+      return { no: i + 1, id: String(row.id ?? ""), name: String(row.party_name ?? "-"), total_amount: amount, remaining_amount: remaining, due_date: getDebtDueDate(row) };
     });
-    return { reply: `💳 *Hutang & Piutang*\n\n${lines.join("\n\n")}`, parsedLog: { command: "debt", action: "list" } };
+    console.log("[DEBT LIST]", displayedDebts);
+    const lines = displayedDebts.map((item) => `${item.no}. *${item.name}*\n💰 Total: *${formatIDR(item.total_amount)}*\n💸 Dibayar: *${formatIDR(item.total_amount - item.remaining_amount)}*\n🧾 Sisa: *${formatIDR(item.remaining_amount)}*\n📅 Jatuh Tempo: *${item.due_date}*`);
+    return { reply: `💳 *Hutang Aktif*\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}\n\n━━━━━━━━━━━━━━\n✏️ Edit:\n• edit hutang 1 200rb\n• edit hutang 2 500000\n\n🗑️ Hapus:\n• hapus hutang 1`, parsedLog: { command: "hutang_list", displayedDebts } };
+  }
+
+  if (normalized === "piutang") {
+    const rows = (await getOpenDebts(userId)).filter((row) => String(row.type ?? "debt") === "receivable");
+    if (rows.length === 0) {
+      return { reply: "📒 *Piutang Aktif*\n\n━━━━━━━━━━━━━━\nℹ️ Belum ada piutang aktif.", parsedLog: { command: "piutang_list", displayedDebts: [] } };
+    }
+    const lines = rows.map((row, i) => {
+      const amount = Number(row.total_amount ?? row.amount ?? row.nominal ?? 0);
+      const paid = Number(row.paid_total ?? 0);
+      const remaining = Math.max(0, amount - paid);
+      return `${i + 1}. *${String(row.party_name ?? "-")}*\n💰 Total: *${formatIDR(amount)}*\n💸 Diterima: *${formatIDR(paid)}*\n🧾 Sisa: *${formatIDR(remaining)}*\n📅 Jatuh Tempo: *${getDebtDueDate(row)}*`;
+    });
+    return { reply: `📒 *Piutang Aktif*\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}`, parsedLog: { command: "piutang_list" } };
+  }
+
+  const editMatch = normalized.match(/^edit\s+hutang\s+(\d+)\s+(.+)$/);
+  if (editMatch) {
+    const number = Number(editMatch[1]);
+    const amount = parseIDRAmount(editMatch[2]);
+    console.log("[EDIT DEBT]", { number, amount });
+    if (!Number.isFinite(amount) || amount <= 0) return { reply: "⚠️ Nominal tidak valid.", parsedLog: { command: "edit_hutang", status: "invalid_amount" } };
+    const displayedDebts = await findLastDisplayedDebtList(userId);
+    if (!displayedDebts) return { reply: "⚠️ *Belum Ada List Hutang*\n\nKetik:\n*hutang*", parsedLog: { command: "edit_hutang", status: "list_not_found" } };
+    const selected = displayedDebts.find((item) => Number((item as Record<string, JsonValue>).no ?? 0) === number) as Record<string, JsonValue> | undefined;
+    if (!selected) return { reply: "❌ *Nomor Hutang Tidak Ditemukan*", parsedLog: { command: "edit_hutang", status: "number_not_found", number } };
+    await updateDebtAmount(userId, String(selected.id ?? ""), amount);
+    return { reply: `✏️ *Hutang Berhasil Diedit*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n💰 Nominal Baru: *${formatIDR(amount)}*\n📅 Jatuh Tempo: *${String(selected.due_date ?? "-")}*`, parsedLog: { command: "edit_hutang", status: "success", number, amount } };
+  }
+
+  const deleteMatch = normalized.match(/^hapus\s+hutang\s+(\d+)$/);
+  if (deleteMatch) {
+    const number = Number(deleteMatch[1]);
+    console.log("[DELETE DEBT]", { number });
+    const displayedDebts = await findLastDisplayedDebtList(userId);
+    if (!displayedDebts) return { reply: "⚠️ *Belum Ada List Hutang*\n\nKetik:\n*hutang*", parsedLog: { command: "hapus_hutang", status: "list_not_found" } };
+    const selected = displayedDebts.find((item) => Number((item as Record<string, JsonValue>).no ?? 0) === number) as Record<string, JsonValue> | undefined;
+    if (!selected) return { reply: "❌ *Nomor Hutang Tidak Ditemukan*", parsedLog: { command: "hapus_hutang", status: "number_not_found", number } };
+    await softDeleteDebt(userId, String(selected.id ?? ""));
+    return { reply: `🗑️ *Hutang Berhasil Dihapus*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n💰 Nominal: *${formatIDR(Number(selected.total_amount ?? 0))}*`, parsedLog: { command: "hapus_hutang", status: "success", number } };
   }
 
   const parsed = parseDebtCommand(rawMessage);
@@ -3425,6 +3511,8 @@ function buildMenuMessage(): string {
     "💳 *Hutang & Piutang*",
     "• hutang",
     "• piutang",
+    "• edit hutang 1 200rb",
+    "• hapus hutang 1",
     "• tambah hutang shopee 100000 seabank",
     "• bayar hutang shopee 50000 seabank",
     "",
@@ -3784,7 +3872,9 @@ Deno.serve(async (req: Request) => {
       normalized.startsWith("tambah hutang") ||
       normalized.startsWith("tambah piutang") ||
       normalized.startsWith("bayar hutang") ||
-      normalized.startsWith("bayar piutang")
+      normalized.startsWith("bayar piutang") ||
+      /^edit\s+hutang\s+\d+\s+.+$/.test(normalized) ||
+      /^hapus\s+hutang\s+\d+$/.test(normalized)
     ) {
       const debtRes = await handleDebtCommand(userId, message, normalized);
       reply = debtRes.reply;
