@@ -849,6 +849,108 @@ function parseNaturalDateRange(rawInput: string): { startDate: string | null; en
   return { startDate: null, endDate: null, label: null, remainingText: input };
 }
 
+type SmartSearchIntent =
+  | "LAST_TRANSACTION"
+  | "ACCOUNT_USAGE"
+  | "FREQUENCY"
+  | "LARGEST_TRANSACTION"
+  | "TOTAL_BY_KEYWORD"
+  | "CATEGORY_PERIOD";
+
+function parseSearchPeriod(question: string): { startDate: string; endDate: string; label: string } {
+  const text = normalizeText(question);
+  const today = getTodayJakarta();
+  const buildLastNDays = (days: number, label: string) => {
+    const end = new Date(`${today}T00:00:00+07:00`);
+    const start = new Date(end);
+    start.setDate(start.getDate() - (days - 1));
+    return {
+      startDate: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`,
+      endDate: today,
+      label,
+    };
+  };
+  if (/\b3 bulan terakhir\b/.test(text)) {
+    const end = new Date(`${today}T00:00:00+07:00`);
+    const start = new Date(end);
+    start.setMonth(start.getMonth() - 3);
+    start.setDate(start.getDate() + 1);
+    return { startDate: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`, endDate: today, label: "3 bulan terakhir" };
+  }
+  if (/\b7 hari terakhir\b/.test(text)) return buildLastNDays(7, "7 hari terakhir");
+  if (/\b30 hari terakhir\b/.test(text)) return buildLastNDays(30, "30 hari terakhir");
+  if (/\bhari ini\b/.test(text)) return buildDateRange("today");
+  if (/\bkemarin\b/.test(text)) return buildDateRange("yesterday");
+  if (/\bminggu ini\b/.test(text)) return buildDateRange("this_week");
+  if (/\bminggu lalu\b/.test(text)) return buildDateRange("last_week");
+  if (/\bbulan lalu\b/.test(text)) return buildDateRange("last_month");
+  return buildDateRange("this_month");
+}
+
+function detectSmartSearchIntent(question: string): SmartSearchIntent | null {
+  const text = normalizeText(question);
+  if (/(kapan terakhir|terakhir beli|terakhir transaksi|terakhir jajan)/.test(text)) return "LAST_TRANSACTION";
+  if (/(dipakai buat apa|dipakai untuk apa|akun .+ buat apa)/.test(text)) return "ACCOUNT_USAGE";
+  if (/(berapa kali|seberapa sering|frekuensi)/.test(text)) return "FREQUENCY";
+  if (/(transaksi terbesar|pengeluaran terbesar|paling besar)/.test(text)) return "LARGEST_TRANSACTION";
+  if (/(total|pengeluaran|beli)/.test(text)) return "TOTAL_BY_KEYWORD";
+  return null;
+}
+
+function extractSearchKeyword(question: string): string {
+  return normalizeText(question)
+    .replace(/\b(kapan|terakhir|beli|transaksi|berapa kali|seberapa sering|frekuensi|dipakai|buat|untuk|apa|akun|total|pengeluaran|terbesar|paling besar|hari ini|kemarin|minggu ini|minggu lalu|bulan ini|bulan lalu|3 bulan terakhir|7 hari terakhir|30 hari terakhir)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function findLastTransactionByKeyword(userId: string, keyword: string): Promise<Record<string, JsonValue> | null> {
+  let q = supabase.from("transactions").select("id,date,title,amount,category_id,account_id").eq("user_id", userId).eq("type", "expense").order("date", { ascending: false }).order("inserted_at", { ascending: false }).limit(5);
+  q = await applyTransactionNotDeleted(q);
+  const { data, error } = await q;
+  if (error) throw error;
+  const row = (data ?? []).find((x) => normalizeText(String((x as Record<string, JsonValue>).title ?? "")).includes(keyword));
+  return (row as Record<string, JsonValue>) ?? null;
+}
+async function getTotalByKeyword(userId: string, keyword: string, period: { startDate: string; endDate: string }): Promise<{ total: number; count: number }> {
+  let q = supabase.from("transactions").select("title,amount").eq("user_id", userId).eq("type", "expense").gte("date", period.startDate).lte("date", period.endDate);
+  q = await applyTransactionNotDeleted(q);
+  const { data, error } = await q;
+  if (error) throw error;
+  const matched = (data ?? []).filter((x) => normalizeText(String((x as Record<string, JsonValue>).title ?? "")).includes(keyword));
+  return { total: matched.reduce((s, r) => s + Number((r as Record<string, JsonValue>).amount ?? 0), 0), count: matched.length };
+}
+async function getAccountUsageByPeriod(userId: string, accountId: string, period: { startDate: string; endDate: string }): Promise<Array<{ name: string; total: number }>> {
+  let q = supabase.from("transactions").select("amount,category_id").eq("user_id", userId).eq("type", "expense").eq("account_id", accountId).gte("date", period.startDate).lte("date", period.endDate);
+  q = await applyTransactionNotDeleted(q);
+  const { data, error } = await q;
+  if (error) throw error;
+  const totals = new Map<string, number>();
+  for (const row of (data ?? []) as Array<Record<string, JsonValue>>) totals.set(String(row.category_id ?? ""), (totals.get(String(row.category_id ?? "")) ?? 0) + Number(row.amount ?? 0));
+  const ids = [...totals.keys()].filter(Boolean);
+  const { data: categories } = ids.length > 0 ? await supabase.from("categories").select("id,name").in("id", ids) : { data: [] as Record<string, JsonValue>[] };
+  const cmap = new Map((categories ?? []).map((c: Record<string, JsonValue>) => [String(c.id), String(c.name)]));
+  return [...totals.entries()].map(([id, total]) => ({ name: cmap.get(id) ?? "Lainnya", total })).sort((a, b) => b.total - a.total).slice(0, 5);
+}
+async function getCategoryExpenseByPeriod(userId: string, categoryId: string, period: { startDate: string; endDate: string }): Promise<{ total: number; count: number }> {
+  let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").eq("category_id", categoryId).gte("date", period.startDate).lte("date", period.endDate);
+  q = await applyTransactionNotDeleted(q);
+  const { data, error } = await q;
+  if (error) throw error;
+  return { total: (data ?? []).reduce((s, r) => s + Number((r as Record<string, JsonValue>).amount ?? 0), 0), count: (data ?? []).length };
+}
+async function getFrequencyByKeyword(userId: string, keyword: string, period: { startDate: string; endDate: string }): Promise<{ count: number; total: number }> {
+  const res = await getTotalByKeyword(userId, keyword, period);
+  return { count: res.count, total: res.total };
+}
+async function getLargestTransactionByPeriod(userId: string, period: { startDate: string; endDate: string }): Promise<Record<string, JsonValue> | null> {
+  let q = supabase.from("transactions").select("id,date,title,amount,category_id").eq("user_id", userId).eq("type", "expense").gte("date", period.startDate).lte("date", period.endDate).order("amount", { ascending: false }).limit(1);
+  q = await applyTransactionNotDeleted(q);
+  const { data, error } = await q;
+  if (error) throw error;
+  return ((data ?? [])[0] as Record<string, JsonValue>) ?? null;
+}
+
 async function replyWhatsApp(input: { target: string; message: string; memberlid?: string | null; senderlid?: string | null }): Promise<boolean> {
   const { target, message, memberlid = null, senderlid = null } = input;
   if (!FONNTE_TOKEN || !target || !message) return false;
@@ -3209,6 +3311,11 @@ function buildMenuMessage(): string {
     "• smart akun otomatis",
     "• tf 50000 cash seabank",
     "• transaksi natural/smart",
+    "🔎 *Smart Search*",
+    "• kapan terakhir beli oli",
+    "• total momoyo bulan ini",
+    "• cash dipakai buat apa minggu ini",
+    "• transaksi terbesar bulan ini",
     "• hutang / piutang",
     "• tambah hutang ...",
     "• bayar hutang ...",
@@ -3330,6 +3437,12 @@ function buildExampleMessage(): string {
     "• saldo cash",
     "• merchant paling sering",
     "",
+    "🔎 *Smart Search*",
+    "• kapan terakhir beli oli",
+    "• total naspad bulan ini",
+    "• berapa kali beli bensin bulan ini",
+    "• seabank dipakai buat apa minggu ini",
+    "",
     "🗓️ *Tanggal Opsional*",
     "Format tanggal:",
     "• DD/MM",
@@ -3338,6 +3451,62 @@ function buildExampleMessage(): string {
     "• 31/05",
     "• 01/06",
   ].join("\n");
+}
+
+async function handleSmartSearch(userId: string, question: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> } | null> {
+  const intent = detectSmartSearchIntent(question);
+  if (!intent) return null;
+  const period = parseSearchPeriod(question);
+  const keyword = extractSearchKeyword(question);
+  console.log("[SMART SEARCH]", { question, intent, keyword, period });
+
+  if (intent === "LARGEST_TRANSACTION") {
+    const largest = await getLargestTransactionByPeriod(userId, period);
+    if (!largest) return { reply: "🔎 Smart Search\n\nBelum ada transaksi di periode ini.", parsedLog: { command: "smart_search", intent, period } };
+    const { data: category } = await supabase.from("categories").select("name").eq("id", String(largest.category_id ?? "")).maybeSingle();
+    return {
+      reply: `🔎 Smart Search\n\nTransaksi terbesar ${period.label}:\n\n📅 ${formatHistoryDate(String(largest.date ?? ""))}\n${String(category?.name ?? "-")} - ${String(largest.title ?? "-")}\n${formatIDR(Number(largest.amount ?? 0))}`,
+      parsedLog: { command: "smart_search", intent, keyword, period },
+    };
+  }
+
+  const account = await findAccount(userId, keyword);
+  if (intent === "ACCOUNT_USAGE" && account) {
+    const rows = await getAccountUsageByPeriod(userId, account.id, period);
+    if (rows.length === 0) return { reply: `🔎 Smart Search\n\nBelum ada transaksi ${account.name} untuk ${period.label}.`, parsedLog: { command: "smart_search", intent, keyword, period } };
+    return {
+      reply: `🔎 Smart Search\n\n${account.name} paling banyak dipakai untuk ${period.label}:\n\n${rows.map((r, i) => `${i + 1}. ${r.name} — ${formatIDR(r.total)}`).join("\n")}`,
+      parsedLog: { command: "smart_search", intent, keyword, period },
+    };
+  }
+
+  const category = await findCategory(userId, keyword);
+  if (intent === "CATEGORY_PERIOD" && category) {
+    const v = await getCategoryExpenseByPeriod(userId, category.id, period);
+    return { reply: `🔎 Smart Search\n\nTotal pengeluaran kategori "${category.name}" ${period.label}:\n${formatIDR(v.total)}\n\nJumlah transaksi:\n${v.count} data`, parsedLog: { command: "smart_search", intent, keyword, period } };
+  }
+
+  if (intent === "LAST_TRANSACTION") {
+    const tx = await findLastTransactionByKeyword(userId, keyword);
+    if (!tx) return { reply: `🔎 Smart Search\n\nBelum ada transaksi "${keyword}" di data kamu.`, parsedLog: { command: "smart_search", intent, keyword, period } };
+    const [{ data: cat }, { data: acc }] = await Promise.all([
+      supabase.from("categories").select("name").eq("id", String(tx.category_id ?? "")).maybeSingle(),
+      supabase.from("accounts").select("name").eq("id", String(tx.account_id ?? "")).maybeSingle(),
+    ]);
+    return { reply: `🔎 Smart Search\n\nTerakhir transaksi "${keyword}":\n\n📅 ${formatHistoryDate(String(tx.date ?? ""))}/${String(tx.date ?? "").slice(0, 4)}\nKategori: ${String(cat?.name ?? "-")}\nJudul: ${String(tx.title ?? "-")}\nNominal: ${formatIDR(Number(tx.amount ?? 0))}\nAkun: ${String(acc?.name ?? "-")}`, parsedLog: { command: "smart_search", intent, keyword, period } };
+  }
+
+  if (intent === "FREQUENCY") {
+    const v = await getFrequencyByKeyword(userId, keyword, period);
+    return { reply: `🔎 Smart Search\n\nTransaksi "${keyword}" ${period.label}:\n${v.count} kali\n\nTotal:\n${formatIDR(v.total)}`, parsedLog: { command: "smart_search", intent, keyword, period } };
+  }
+
+  const byCategory = category ? await getCategoryExpenseByPeriod(userId, category.id, period) : null;
+  if (byCategory) {
+    return { reply: `🔎 Smart Search\n\nTotal pengeluaran "${category!.name}" ${period.label}:\n${formatIDR(byCategory.total)}\n\nJumlah transaksi:\n${byCategory.count} data`, parsedLog: { command: "smart_search", intent: "CATEGORY_PERIOD", keyword, period } };
+  }
+  const total = await getTotalByKeyword(userId, keyword, period);
+  return { reply: `🔎 Smart Search\n\nTotal pengeluaran "${keyword}" ${period.label}:\n${formatIDR(total.total)}\n\nJumlah transaksi:\n${total.count} data`, parsedLog: { command: "smart_search", intent: "TOTAL_BY_KEYWORD", keyword, period } };
 }
 
 
@@ -3566,6 +3735,12 @@ Deno.serve(async (req: Request) => {
       );
       reply = aiPick.reply;
       parsedLog = aiPick.parsedLog;
+    } else if (detectSmartSearchIntent(normalized)) {
+      const smartSearch = await handleSmartSearch(userId, normalized);
+      if (smartSearch) {
+        reply = smartSearch.reply;
+        parsedLog = smartSearch.parsedLog;
+      }
     } else if (/^edit\s+\d+(\s|$)/.test(normalized)) {
       const editResult = await handleEditTransaction(userId, contextKey, message);
       reply = editResult.reply;
