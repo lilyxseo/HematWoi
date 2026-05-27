@@ -50,6 +50,10 @@ function formatIDR(value: number): string {
     maximumFractionDigits: 0,
   }).format(value);
 }
+function bold(text: string): string { return `*${text}*`; }
+function italic(text: string): string { return `_${text}_`; }
+function line(): string { return "━━━━━━━━━━━━━━"; }
+function money(value: number): string { return bold(formatIDR(value)); }
 
 function formatTanggalIndonesia(dateStr: string): string {
   const [year, month, day] = dateStr.split("-").map(Number);
@@ -367,12 +371,12 @@ Deno.serve(async (req: Request) => {
 
         const historyLines: string[] = [];
         if (historyRows.length > 0) {
-          historyLines.push("📚 History Terakhir");
+          historyLines.push("📚 *History Terakhir*");
           historyRows.forEach((row, index) => {
             const categoryName = row.category_id ? (categoryMap.get(row.category_id) ?? "-") : "-";
             const title = (row.title ?? "").trim() || categoryName;
-            historyLines.push(`${index + 1}. ${categoryName} - ${title}`);
-            historyLines.push(`   ${formatIDR(Number(row.amount ?? 0))}`);
+            historyLines.push(`${index + 1}. ${categoryName} — ${title}`);
+            historyLines.push(`   ${money(Number(row.amount ?? 0))}`);
           });
         }
 
@@ -385,10 +389,10 @@ Deno.serve(async (req: Request) => {
           const balanceSummary = await getBalanceSummary(userId);
           console.log("[DAILY SUMMARY BALANCE]", balanceSummary);
           balanceText = [
-            "💰 Saldo Saat Ini",
-            `Cash: ${formatIDR(balanceSummary.cash)}`,
-            `Non Cash: ${formatIDR(balanceSummary.nonCash)}`,
-            `Total: ${formatIDR(balanceSummary.total)}`,
+          "💰 *Saldo Saat Ini*",
+          `• Cash: ${money(balanceSummary.cash)}`,
+          `• Non Cash: ${money(balanceSummary.nonCash)}`,
+          `• Total: ${money(balanceSummary.total)}`,
           ];
         } catch (balanceError) {
           console.error("[DAILY SUMMARY BALANCE ERROR]", {
@@ -408,25 +412,25 @@ Deno.serve(async (req: Request) => {
         const message = [
           "📊 *Summary Pengeluaran Hari Ini*",
           "",
-          `📅 ${formatTanggalIndonesia(today)}`,
-          "",
+          `📅 ${italic(formatTanggalIndonesia(today))}`,
+          line(),
           "💸 Total Pengeluaran",
-          formatIDR(totalExpense),
+          money(totalExpense),
           "",
           "🧾 Total Transaksi",
-          `${totalTransactions} transaksi`,
+          bold(`${totalTransactions} transaksi`),
           "",
           "🏆 Kategori Terbesar",
-          `${largestCategory.name} — ${formatIDR(largestCategory.amount)}`,
+          `${largestCategory.name} — ${money(largestCategory.amount)}`,
           "",
           "🔥 Transaksi Terbesar",
-          `${largestTransaction.title} — ${formatIDR(largestTransaction.amount)}`,
+          `${largestTransaction.title} — ${money(largestTransaction.amount)}`,
           "",
           ...historyLines,
           ...(historyLines.length > 0 ? [""] : []),
           ...balanceText,
           "",
-          "💡 Insight",
+          "💡 *Insight*",
           insight,
         ].join("\n");
 
