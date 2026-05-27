@@ -160,6 +160,9 @@ function isGroupPrivateDebugEnabled(): boolean {
 
 const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️", "📘"];
 const MENU_COMMANDS = new Set(["menu", "help", "bantuan", ".menu"]);
+const LOW_BALANCE_WARNING = 100000;
+const MAX_SMART_WARNINGS = 3;
+const warningCache = new Map<string, number>();
 
 const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "menu",
@@ -195,6 +198,96 @@ const NATURAL_RESERVED_COMMANDS = new Set([
 const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
+
+type SmartWarningContext = {
+  userId: string;
+  date: string;
+  amount: number;
+  categoryName: string;
+};
+
+async function getAverageExpense30Days(userId: string, date: string): Promise<number> {
+  const end = new Date(`${date}T00:00:00Z`);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 29);
+  let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").gte("date", start.toISOString().slice(0, 10)).lte("date", date);
+  q = await applyTransactionNotDeleted(q);
+  const { data } = await q;
+  const vals = (data ?? []).map((r: Record<string, JsonValue>) => Number(r.amount ?? 0)).filter((v) => v > 0);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+}
+async function getTodayExpense(userId: string, date: string): Promise<number> {
+  let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").eq("date", date);
+  q = await applyTransactionNotDeleted(q);
+  const { data } = await q;
+  return (data ?? []).reduce((s: number, r: Record<string, JsonValue>) => s + Number(r.amount ?? 0), 0);
+}
+async function getTodayCategoryExpense(userId: string, categoryName: string, date: string): Promise<number> {
+  const category = await findCategory(userId, categoryName);
+  if (!category) return 0;
+  let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").eq("date", date).eq("category_id", category.id);
+  q = await applyTransactionNotDeleted(q);
+  const { data } = await q;
+  return (data ?? []).reduce((s: number, r: Record<string, JsonValue>) => s + Number(r.amount ?? 0), 0);
+}
+async function getWeeklyAverageExpense(userId: string, date: string): Promise<number> {
+  const end = new Date(`${date}T00:00:00Z`);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - 6);
+  let q = supabase.from("transactions").select("amount,date").eq("user_id", userId).eq("type", "expense").gte("date", start.toISOString().slice(0, 10)).lte("date", date);
+  q = await applyTransactionNotDeleted(q);
+  const { data } = await q;
+  const dayMap = new Map<string, number>();
+  for (const r of (data ?? []) as Array<Record<string, JsonValue>>) {
+    const d = String(r.date ?? "");
+    dayMap.set(d, (dayMap.get(d) ?? 0) + Number(r.amount ?? 0));
+  }
+  const total = [...dayMap.values()].reduce((a, b) => a + b, 0);
+  return dayMap.size > 0 ? total / dayMap.size : 0;
+}
+async function getCurrentBudgetUsage(userId: string, categoryName: string, date: string): Promise<BudgetInfo | null> {
+  return await getMonthlyBudgetInfo(userId, categoryName, date);
+}
+async function getCurrentBalance(userId: string): Promise<number> {
+  const b = await getRealtimeBalanceSummary(userId);
+  return b.total;
+}
+function isRecentWarning(userId: string, date: string, key: string): boolean {
+  const cacheKey = `${userId}|${date}|${key}`;
+  const now = Date.now();
+  const last = warningCache.get(cacheKey) ?? 0;
+  if (now - last < 24 * 60 * 60 * 1000) return true;
+  warningCache.set(cacheKey, now);
+  return false;
+}
+async function buildSmartWarnings(input: SmartWarningContext): Promise<string[]> {
+  const [avg30, todayExpense, todayCategory, weeklyAvg, budget, balance] = await Promise.all([
+    getAverageExpense30Days(input.userId, input.date),
+    getTodayExpense(input.userId, input.date),
+    getTodayCategoryExpense(input.userId, input.categoryName, input.date),
+    getWeeklyAverageExpense(input.userId, input.date),
+    getCurrentBudgetUsage(input.userId, input.categoryName, input.date),
+    getCurrentBalance(input.userId),
+  ]);
+  let txCountQuery = supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", input.userId).eq("type", "expense").eq("date", input.date);
+  txCountQuery = await applyTransactionNotDeleted(txCountQuery);
+  const { count: txCount } = await txCountQuery;
+
+  const prioritized: Array<{ key: string; priority: number; message: string }> = [];
+  if (budget && budget.percentage > 100) prioritized.push({ key: `budget-over-${input.categoryName}`, priority: 1, message: `🚨 Budget ${input.categoryName} sudah melewati limit.` });
+  else if (budget && budget.percentage >= 80) prioritized.push({ key: `budget-near-${input.categoryName}`, priority: 1, message: `⚠️ Budget ${input.categoryName} sudah terpakai ${Math.round(budget.percentage)}%.` });
+  if (balance < LOW_BALANCE_WARNING) prioritized.push({ key: "low-balance", priority: 2, message: "⚠️ Saldo mulai menipis." });
+  if (weeklyAvg > 0 && todayExpense > weeklyAvg * 2) prioritized.push({ key: "spending-spike", priority: 3, message: "⚠️ Pengeluaran hari ini jauh di atas rata-rata mingguan." });
+  if (todayExpense > 0 && todayCategory > todayExpense * 0.5) prioritized.push({ key: `category-dominant-${input.categoryName}`, priority: 4, message: `⚠️ Pengeluaran hari ini didominasi kategori ${input.categoryName}.` });
+  if (avg30 > 0 && input.amount > avg30 * 2) prioritized.push({ key: "large-transaction", priority: 5, message: "⚠️ Pengeluaran ini jauh lebih besar dari rata-rata transaksi kamu." });
+  if ((txCount ?? 0) > 15) prioritized.push({ key: "high-frequency", priority: 6, message: "📌 Aktivitas transaksi hari ini cukup tinggi." });
+
+  return prioritized
+    .sort((a, b) => a.priority - b.priority)
+    .filter((w) => !isRecentWarning(input.userId, input.date, w.key))
+    .slice(0, MAX_SMART_WARNINGS)
+    .map((w) => w.message);
+}
 
 function json(data: unknown): Response {
   return new Response(JSON.stringify(data), {
@@ -3425,7 +3518,12 @@ Deno.serve(async (req: Request) => {
         const { data: cat } = await supabase.from("categories").select("name").eq("id", topId).maybeSingle();
         biggestCategory = cat?.name ?? "-";
       }
-      reply = ["📊 Summary Hari Ini", `Pemasukan: ${formatIDR(income)}`, `Pengeluaran: ${formatIDR(expense)}`, `Kategori terbesar: ${biggestCategory}`].join("\n");
+      const summaryLines = ["📊 Summary Hari Ini", `Pemasukan: ${formatIDR(income)}`, `Pengeluaran: ${formatIDR(expense)}`, `Kategori terbesar: ${biggestCategory}`];
+      if (expense > 0) {
+        const activeWarnings = await buildSmartWarnings({ userId, date: today, amount: 0, categoryName: biggestCategory === "-" ? "Lainnya" : biggestCategory });
+        if (activeWarnings.length > 0) summaryLines.push("", "⚠️ Warning Aktif", ...activeWarnings.map((w) => `• ${w}`));
+      }
+      reply = summaryLines.join("\n");
     } else if (normalized === "info") {
       console.log("[ROUTE MATCH]", { route: "info", normalized, isGroup, contextKey });
       const today = getTodayJakarta();
@@ -3780,6 +3878,9 @@ Deno.serve(async (req: Request) => {
                   else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${smartAccount.name}`);
                   if (smartType === "expense") {
                     lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
+                    const warnings = await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: smartCategory.name });
+                    console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: smartCategory.name });
+                    if (warnings.length > 0) lines.push("", ...warnings);
                   }
                   reply = lines.join("\n");
                 }
@@ -3831,6 +3932,9 @@ Deno.serve(async (req: Request) => {
               if (budgetLines.length > 0) {
                 baseLines.push("", ...budgetLines);
               }
+              const warnings = await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name });
+              console.log("[SMART WARNING]", { warnings, transactionAmount: tx.amount, categoryName: category.name });
+              if (warnings.length > 0) baseLines.push("", ...warnings);
             }
 
             reply = baseLines.join("\n");
@@ -3916,6 +4020,9 @@ Deno.serve(async (req: Request) => {
                     ]);
                     const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
                     if (budgetLines.length > 0) lines.push("", ...budgetLines);
+                    const warnings = await buildSmartWarnings({ userId, date: naturalTx.date, amount: naturalTx.amount, categoryName: category.name });
+                    console.log("[SMART WARNING]", { warnings, transactionAmount: naturalTx.amount, categoryName: category.name });
+                    if (warnings.length > 0) lines.push("", ...warnings);
                   }
                   reply = lines.join("\n");
                 }
@@ -3945,7 +4052,12 @@ Deno.serve(async (req: Request) => {
                 const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`];
                 if (smartTx.accountName) lines.push("", "🤖 Kategori otomatis dari history.");
                 else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${account.name}`);
-                if (type === "expense") lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
+                if (type === "expense") {
+                  lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
+                  const warnings = await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: category.name });
+                  console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: category.name });
+                  if (warnings.length > 0) lines.push("", ...warnings);
+                }
                 reply = lines.join("\n");
               }
             }
