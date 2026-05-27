@@ -1864,7 +1864,7 @@ async function getSubscriptionSummary(userId: string): Promise<{ monthlyCharge: 
 async function getDebtStatus(userId: string): Promise<Array<{ name: string; remaining: number; type: string }>> {
   const { data: debts, error } = await supabase
     .from("debts")
-    .select("id,name,person_name,counterparty_name,type,amount,total_amount,is_paid,status,remaining_amount")
+    .select("*")
     .eq("user_id", userId);
   if (error) throw error;
 
@@ -1872,7 +1872,7 @@ async function getDebtStatus(userId: string): Promise<Array<{ name: string; rema
     .filter((d: Record<string, JsonValue>) => !(d.is_paid === true || String(d.status ?? "").toLowerCase() === "paid"))
     .map((d: Record<string, JsonValue>) => ({
       name: String(d.name ?? d.person_name ?? d.counterparty_name ?? "-"),
-      remaining: Number(d.remaining_amount ?? d.amount ?? d.total_amount ?? 0),
+      remaining: getDebtRemainingAmount(d),
       type: String(d.type ?? "debt"),
     }));
 }
@@ -2895,7 +2895,7 @@ async function handleEditLastTransactionAccount(userId: string, normalized: stri
 async function getOpenDebts(userId: string): Promise<Array<Record<string, JsonValue>>> {
   const { data, error } = await supabase
     .from("debts")
-    .select("id,type,party_name,amount,paid_total,status,total_amount,nominal,due_date,due_at,dueDate,jatuh_tempo")
+    .select("*")
     .eq("user_id", userId)
     .eq("status", "ongoing")
     .order("created_at", { ascending: true });
@@ -2904,18 +2904,22 @@ async function getOpenDebts(userId: string): Promise<Array<Record<string, JsonVa
 }
 
 async function findOpenDebtByParty(userId: string, debtType: DebtType, partyName: string): Promise<Record<string, JsonValue> | null> {
+  const keyword = `%${partyName}%`;
   const { data, error } = await supabase
     .from("debts")
-    .select("id,type,party_name,amount,paid_total,status,total_amount,nominal,due_date,due_at,dueDate,jatuh_tempo")
+    .select("*")
     .eq("user_id", userId)
-    .eq("type", debtType)
     .eq("status", "ongoing")
-    .ilike("party_name", partyName)
+    .or(`party_name.ilike.${keyword},name.ilike.${keyword},title.ilike.${keyword}`)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(20);
   if (error) throw error;
-  return data as Record<string, JsonValue> | null;
+  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  return rows.find((row) => {
+    const kind = getDebtKind(row);
+    if (debtType === "debt") return kind.includes("hutang") || kind.includes("debt");
+    return kind.includes("piutang") || kind.includes("receivable");
+  }) ?? null;
 }
 
 async function createDebtPayment(input: {
@@ -2939,8 +2943,71 @@ async function createDebtPayment(input: {
   if (error) throw error;
 }
 
-function getDebtDueDate(item: Record<string, JsonValue>): string {
-  const due = item.due_date ?? item.due_at ?? item.dueDate ?? item.jatuh_tempo;
+function getDebtTotalAmount(row: any): number {
+  return Number(
+    row.total_amount ??
+    row.amount ??
+    row.nominal ??
+    row.total ??
+    row.value ??
+    0,
+  );
+}
+
+function getDebtPaidAmount(row: any): number {
+  return Number(
+    row.paid_amount ??
+    row.paid ??
+    row.amount_paid ??
+    row.total_paid ??
+    row.paid_total ??
+    0,
+  );
+}
+
+function getDebtRemainingAmount(row: any): number {
+  const explicit = row.remaining_amount ?? row.remaining ?? row.sisa ?? row.balance;
+  if (explicit !== undefined && explicit !== null) return Number(explicit);
+
+  return Math.max(getDebtTotalAmount(row) - getDebtPaidAmount(row), 0);
+}
+
+function getDebtName(row: any): string {
+  return String(
+    row.name ??
+    row.title ??
+    row.label ??
+    row.description ??
+    row.note ??
+    row.party_name ??
+    row.person_name ??
+    row.counterparty_name ??
+    "-",
+  );
+}
+
+function getDebtDueDate(row: any): string | null {
+  return (
+    row.due_date ??
+    row.due_at ??
+    row.dueDate ??
+    row.jatuh_tempo ??
+    row.deadline ??
+    null
+  );
+}
+
+function getDebtKind(row: any): string {
+  return String(
+    row.kind ??
+    row.type ??
+    row.debt_type ??
+    "",
+  ).toLowerCase();
+}
+
+function formatDebtDueDate(row: any): string {
+  const due = getDebtDueDate(row);
   if (!due) return "-";
   return formatDateLocal(String(due));
 }
@@ -2963,54 +3030,93 @@ async function findLastDisplayedDebtList(userId: string): Promise<Array<Record<s
 }
 
 async function updateDebtAmount(userId: string, debtId: string, amount: number): Promise<void> {
-  const candidates: Array<Record<string, number>> = [{ total_amount: amount }, { amount }, { nominal: amount }];
-  for (const payload of candidates) {
-    const { error } = await supabase.from("debts").update(payload).eq("id", debtId).eq("user_id", userId);
-    if (!error) return;
-  }
-  throw new Error("Failed to update debt amount");
+  const { data: row, error: rowError } = await supabase.from("debts").select("*").eq("id", debtId).eq("user_id", userId).maybeSingle();
+  if (rowError) throw rowError;
+  if (!row) throw new Error("Debt not found");
+  const debtRow = row as Record<string, JsonValue>;
+  const field = "total_amount" in debtRow
+    ? "total_amount"
+    : "amount" in debtRow
+    ? "amount"
+    : "nominal" in debtRow
+    ? "nominal"
+    : "total" in debtRow
+    ? "total"
+    : null;
+  if (!field) throw new Error("DEBT_AMOUNT_FIELD_NOT_FOUND");
+  console.log("[DEBT UPDATE FIELD]", { field, value: amount });
+  const { error } = await supabase.from("debts").update({ [field]: amount }).eq("id", debtId).eq("user_id", userId);
+  if (error) throw error;
 }
 
 async function softDeleteDebt(userId: string, debtId: string): Promise<void> {
-  const candidates: Array<Record<string, JsonValue>> = [
-    { deleted_at: new Date().toISOString() },
-    { inactive: true },
-    { status: "deleted" },
-  ];
-  for (const payload of candidates) {
-    const { error } = await supabase.from("debts").update(payload).eq("id", debtId).eq("user_id", userId);
-    if (!error) return;
+  const { data: row, error: rowError } = await supabase.from("debts").select("*").eq("id", debtId).eq("user_id", userId).maybeSingle();
+  if (rowError) throw rowError;
+  if (!row) throw new Error("Debt not found");
+  const debtRow = row as Record<string, JsonValue>;
+  if ("deleted_at" in debtRow) {
+    const { error } = await supabase.from("debts").update({ deleted_at: new Date().toISOString() }).eq("id", debtId).eq("user_id", userId);
+    if (error) throw error;
+    return;
   }
-  throw new Error("Failed to delete debt");
+  if ("status" in debtRow) {
+    const { error } = await supabase.from("debts").update({ status: "deleted" }).eq("id", debtId).eq("user_id", userId);
+    if (error) throw error;
+    return;
+  }
+  if ("is_active" in debtRow) {
+    const { error } = await supabase.from("debts").update({ is_active: false }).eq("id", debtId).eq("user_id", userId);
+    if (error) throw error;
+    return;
+  }
+  throw new Error("DEBT_SAFE_DELETE_NOT_SUPPORTED");
 }
 
 async function handleDebtCommand(userId: string, rawMessage: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   if (normalized === "hutang") {
-    const rows = (await getOpenDebts(userId)).filter((row) => String(row.type ?? "debt") !== "receivable");
-    if (rows.length === 0) return { reply: "💳 *Hutang Aktif*\n\n━━━━━━━━━━━━━━\nℹ️ Belum ada hutang aktif.", parsedLog: { command: "hutang_list", displayedDebts: [] } };
-    const displayedDebts = rows.map((row, i) => {
-      const amount = Number(row.total_amount ?? row.amount ?? row.nominal ?? 0);
-      const paid = Number(row.paid_total ?? 0);
-      const remaining = Math.max(0, amount - paid);
-      return { no: i + 1, id: String(row.id ?? ""), name: String(row.party_name ?? "-"), total_amount: amount, remaining_amount: remaining, due_date: getDebtDueDate(row) };
+    const rows = await getOpenDebts(userId);
+    console.log("[DEBT ROW SAMPLE]", rows?.[0]);
+    const hasTypeField = rows.some((row) => row.type !== undefined || row.kind !== undefined || row.debt_type !== undefined);
+    const filteredRows = hasTypeField
+      ? rows.filter((row) => {
+        const kind = getDebtKind(row);
+        return kind.includes("hutang") || kind.includes("debt");
+      })
+      : rows;
+    if (filteredRows.length === 0) return { reply: "💳 *Hutang Aktif*\n\n━━━━━━━━━━━━━━\nℹ️ Belum ada hutang aktif.", parsedLog: { command: "hutang_list", displayedDebts: [] } };
+    const displayedDebts = filteredRows.map((row, i) => {
+      const totalAmount = getDebtTotalAmount(row);
+      const paidAmount = getDebtPaidAmount(row);
+      const remainingAmount = getDebtRemainingAmount(row);
+      const dueDate = formatDebtDueDate(row);
+      console.log("[DEBT SCHEMA SAFE]", { totalAmount, paidAmount, remainingAmount, dueDate });
+      return { no: i + 1, id: String(row.id ?? ""), name: getDebtName(row), totalAmount, paidAmount, remainingAmount, dueDate };
     });
-    console.log("[DEBT LIST]", displayedDebts);
-    const lines = displayedDebts.map((item) => `${item.no}. *${item.name}*\n💰 Total: *${formatIDR(item.total_amount)}*\n💸 Dibayar: *${formatIDR(item.total_amount - item.remaining_amount)}*\n🧾 Sisa: *${formatIDR(item.remaining_amount)}*\n📅 Jatuh Tempo: *${item.due_date}*`);
+    const lines = displayedDebts.map((item) => `${item.no}. *${item.name}*\n💰 Total: *${formatIDR(item.totalAmount)}*\n💸 Dibayar: *${formatIDR(item.paidAmount)}*\n🧾 Sisa: *${formatIDR(item.remainingAmount)}*\n📅 Jatuh Tempo: *${item.dueDate}*`);
     return { reply: `💳 *Hutang Aktif*\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}\n\n━━━━━━━━━━━━━━\n✏️ Edit:\n• edit hutang 1 200rb\n• edit hutang 2 500000\n\n🗑️ Hapus:\n• hapus hutang 1`, parsedLog: { command: "hutang_list", displayedDebts } };
   }
 
   if (normalized === "piutang") {
-    const rows = (await getOpenDebts(userId)).filter((row) => String(row.type ?? "debt") === "receivable");
-    if (rows.length === 0) {
+    const rows = await getOpenDebts(userId);
+    const hasTypeField = rows.some((row) => row.type !== undefined || row.kind !== undefined || row.debt_type !== undefined);
+    if (!hasTypeField) {
       return { reply: "📒 *Piutang Aktif*\n\n━━━━━━━━━━━━━━\nℹ️ Belum ada piutang aktif.", parsedLog: { command: "piutang_list", displayedDebts: [] } };
     }
-    const lines = rows.map((row, i) => {
-      const amount = Number(row.total_amount ?? row.amount ?? row.nominal ?? 0);
-      const paid = Number(row.paid_total ?? 0);
-      const remaining = Math.max(0, amount - paid);
-      return `${i + 1}. *${String(row.party_name ?? "-")}*\n💰 Total: *${formatIDR(amount)}*\n💸 Diterima: *${formatIDR(paid)}*\n🧾 Sisa: *${formatIDR(remaining)}*\n📅 Jatuh Tempo: *${getDebtDueDate(row)}*`;
+    const filteredRows = rows.filter((row) => {
+      const kind = getDebtKind(row);
+      return kind.includes("piutang") || kind.includes("receivable");
     });
-    return { reply: `📒 *Piutang Aktif*\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}`, parsedLog: { command: "piutang_list" } };
+    if (filteredRows.length === 0) return { reply: "📒 *Piutang Aktif*\n\n━━━━━━━━━━━━━━\nℹ️ Belum ada piutang aktif.", parsedLog: { command: "piutang_list", displayedDebts: [] } };
+    const displayedDebts = filteredRows.map((row, i) => {
+      const totalAmount = getDebtTotalAmount(row);
+      const paidAmount = getDebtPaidAmount(row);
+      const remainingAmount = getDebtRemainingAmount(row);
+      const dueDate = formatDebtDueDate(row);
+      console.log("[DEBT SCHEMA SAFE]", { totalAmount, paidAmount, remainingAmount, dueDate });
+      return { no: i + 1, id: String(row.id ?? ""), name: getDebtName(row), totalAmount, paidAmount, remainingAmount, dueDate };
+    });
+    const lines = displayedDebts.map((item) => `${item.no}. *${item.name}*\n💰 Total: *${formatIDR(item.totalAmount)}*\n💸 Dibayar: *${formatIDR(item.paidAmount)}*\n🧾 Sisa: *${formatIDR(item.remainingAmount)}*\n📅 Jatuh Tempo: *${item.dueDate}*`);
+    return { reply: `📒 *Piutang Aktif*\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}`, parsedLog: { command: "piutang_list", displayedDebts } };
   }
 
   const editMatch = normalized.match(/^edit\s+hutang\s+(\d+)\s+(.+)$/);
@@ -3023,8 +3129,15 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
     if (!displayedDebts) return { reply: "⚠️ *Belum Ada List Hutang*\n\nKetik:\n*hutang*", parsedLog: { command: "edit_hutang", status: "list_not_found" } };
     const selected = displayedDebts.find((item) => Number((item as Record<string, JsonValue>).no ?? 0) === number) as Record<string, JsonValue> | undefined;
     if (!selected) return { reply: "❌ *Nomor Hutang Tidak Ditemukan*", parsedLog: { command: "edit_hutang", status: "number_not_found", number } };
-    await updateDebtAmount(userId, String(selected.id ?? ""), amount);
-    return { reply: `✏️ *Hutang Berhasil Diedit*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n💰 Nominal Baru: *${formatIDR(amount)}*\n📅 Jatuh Tempo: *${String(selected.due_date ?? "-")}*`, parsedLog: { command: "edit_hutang", status: "success", number, amount } };
+    try {
+      await updateDebtAmount(userId, String(selected.id ?? ""), amount);
+    } catch (error) {
+      if (error instanceof Error && error.message === "DEBT_AMOUNT_FIELD_NOT_FOUND") {
+        return { reply: "❌ Kolom nominal hutang tidak ditemukan di schema.", parsedLog: { command: "edit_hutang", status: "field_not_found", number } };
+      }
+      throw error;
+    }
+    return { reply: `✏️ *Hutang Berhasil Diedit*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n💰 Nominal Baru: *${formatIDR(amount)}*\n📅 Jatuh Tempo: *${String(selected.dueDate ?? "-")}*`, parsedLog: { command: "edit_hutang", status: "success", number, amount } };
   }
 
   const deleteMatch = normalized.match(/^hapus\s+hutang\s+(\d+)$/);
@@ -3035,8 +3148,15 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
     if (!displayedDebts) return { reply: "⚠️ *Belum Ada List Hutang*\n\nKetik:\n*hutang*", parsedLog: { command: "hapus_hutang", status: "list_not_found" } };
     const selected = displayedDebts.find((item) => Number((item as Record<string, JsonValue>).no ?? 0) === number) as Record<string, JsonValue> | undefined;
     if (!selected) return { reply: "❌ *Nomor Hutang Tidak Ditemukan*", parsedLog: { command: "hapus_hutang", status: "number_not_found", number } };
-    await softDeleteDebt(userId, String(selected.id ?? ""));
-    return { reply: `🗑️ *Hutang Berhasil Dihapus*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n💰 Nominal: *${formatIDR(Number(selected.total_amount ?? 0))}*`, parsedLog: { command: "hapus_hutang", status: "success", number } };
+    try {
+      await softDeleteDebt(userId, String(selected.id ?? ""));
+    } catch (error) {
+      if (error instanceof Error && error.message === "DEBT_SAFE_DELETE_NOT_SUPPORTED") {
+        return { reply: "❌ Schema hutang belum mendukung hapus aman.", parsedLog: { command: "hapus_hutang", status: "schema_not_supported", number } };
+      }
+      throw error;
+    }
+    return { reply: `🗑️ *Hutang Berhasil Dihapus*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n💰 Nominal: *${formatIDR(Number(selected.totalAmount ?? 0))}*`, parsedLog: { command: "hapus_hutang", status: "success", number } };
   }
 
   const parsed = parseDebtCommand(rawMessage);
@@ -3094,8 +3214,8 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
     };
   }
 
-  const totalAmount = Number(debt.amount ?? 0);
-  const paidTotal = Number(debt.paid_total ?? 0);
+  const totalAmount = getDebtTotalAmount(debt);
+  const paidTotal = getDebtPaidAmount(debt);
   const remaining = Math.max(0, totalAmount - paidTotal);
   if (parsed.amount > remaining) {
     return {
@@ -3129,7 +3249,22 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
   const newPaidTotal = paidTotal + parsed.amount;
   const newRemaining = Math.max(0, totalAmount - newPaidTotal);
   const nextStatus = newRemaining === 0 ? "paid" : "ongoing";
-  const { error: updateDebtErr } = await supabase.from("debts").update({ paid_total: newPaidTotal, status: nextStatus }).eq("id", String(debt.id)).eq("user_id", userId);
+  const paidField = "paid_amount" in debt
+    ? "paid_amount"
+    : "paid" in debt
+    ? "paid"
+    : "amount_paid" in debt
+    ? "amount_paid"
+    : "total_paid" in debt
+    ? "total_paid"
+    : "paid_total" in debt
+    ? "paid_total"
+    : null;
+  if (!paidField) {
+    return { reply: "❌ Kolom pembayaran hutang tidak ditemukan di schema.", parsedLog: { command: "debt", action: "bayar", status: "payment_field_not_found" } };
+  }
+  console.log("[DEBT UPDATE FIELD]", { field: paidField, value: newPaidTotal });
+  const { error: updateDebtErr } = await supabase.from("debts").update({ [paidField]: newPaidTotal, status: nextStatus }).eq("id", String(debt.id)).eq("user_id", userId);
   if (updateDebtErr) throw updateDebtErr;
 
   const isDebt = parsed.debtType === "debt";
