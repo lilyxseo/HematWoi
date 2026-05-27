@@ -2126,10 +2126,12 @@ function parseSmartTransactionMessage(message: string): ParsedSmartTransaction |
   const amount = parseAmount(workParts[amountIndex]);
   if (amount <= 0) return null;
 
-  const title = workParts.slice(0, amountIndex).join(" ").trim();
-  if (!title) return null;
+  const originalTitle = workParts.slice(0, amountIndex).join(" ").trim();
+  if (!originalTitle) return null;
   const trailingTokens = workParts.slice(amountIndex + 1);
   const accountName = trailingTokens.length > 0 ? trailingTokens.join(" ") : null;
+  const title = cleanTransactionTitle(originalTitle, accountName ? [accountName] : []);
+  console.log("[TITLE CLEAN]", { originalTitle, cleanedTitle: title });
   return { title, amount, accountName, date: txDate };
 }
 
@@ -2214,28 +2216,35 @@ const NATURAL_NOISE_WORDS = [
   "nih",
 ];
 
-function cleanNaturalTitle(message: string, amount: number, accountNames: string[]): string {
-  const fallbackTitle = message.toLowerCase().replace(/\s+/g, " ").trim();
+function normalizeTitleText(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s/]/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+function isAmountToken(token: string): boolean {
+  const normalized = token.toLowerCase().replace(/[()]/g, "").trim();
+  if (!normalized) return false;
+  return parseAmount(normalized) > 0 || /^rp?\s?\d[\d.,]*$/i.test(normalized);
+}
+
+function cleanTransactionTitle(originalTitle: string, accountNames: string[]): string {
+  const fallbackTitle = normalizeTitleText(originalTitle);
+  if (!fallbackTitle) return "";
   let title = ` ${fallbackTitle} `;
 
-  for (const accountName of accountNames) {
-    title = title.replace(new RegExp(`\\b${accountName.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "gi"), " ");
-  }
-  if (amount > 0) {
-    const amountStr = String(amount);
-    title = title.replace(new RegExp(`\\b${amountStr}\\b`, "g"), " ");
-  }
-
-  title = title
-    .replace(/rp\s?\d[\d.,]*/gi, " ")
-    .replace(/\b\d+[.,]?\d*\s?(rb|ribu|k|jt|juta)\b/gi, " ")
-    .replace(/\b\d{1,2}\/\d{1,2}\b/g, " ");
-
-  for (const noiseWord of NATURAL_NOISE_WORDS) {
-    title = title.replace(new RegExp(`\\b${noiseWord}\\b`, "gi"), " ");
+  for (const accountName of accountNames.sort((a, b) => b.length - a.length)) {
+    const normalizedAccount = normalizeTitleText(accountName);
+    if (!normalizedAccount) continue;
+    const escaped = normalizedAccount.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    title = title.replace(new RegExp(`\\b${escaped}\\b`, "gi"), " ");
   }
 
-  const cleanedTitle = title.replace(/\s+/g, " ").trim();
+  const tokens = title.split(/\s+/).filter(Boolean);
+  const keptTokens = tokens.filter((token) => !isAmountToken(token) && !isDateToken(token) && !NATURAL_NOISE_WORDS.includes(token));
+  const cleanedTitle = keptTokens.join(" ")
+    .replace(/\b\d{1,2}\/\d{1,2}\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
   return cleanedTitle || fallbackTitle;
 }
 
@@ -2270,7 +2279,9 @@ function parseNaturalTransactionMessage(
   if (amount <= 0) return null;
   const account = extractAccountFromNaturalText(message, accounts);
   const accountNames = accounts.map((a) => a.name);
-  const title = cleanNaturalTitle(message, amount, accountNames);
+  const originalTitle = message;
+  const title = cleanTransactionTitle(originalTitle, accountNames);
+  console.log("[TITLE CLEAN]", { originalTitle, cleanedTitle: title });
   if (!title) return null;
   return { type, accountName: account?.name ?? null, amount, title, date };
 }
@@ -2435,7 +2446,9 @@ function parseTransactionMessage(message: string): ParsedTransaction | ParsedTra
   if (amount <= 0) return null;
 
   const titleParts = workParts.slice(1, amountIndex);
-  const title = titleParts.length > 0 ? titleParts.join(" ") : categoryName;
+  const originalTitle = titleParts.length > 0 ? titleParts.join(" ") : categoryName;
+  const title = cleanTransactionTitle(originalTitle, [accountName]);
+  console.log("[TITLE CLEAN]", { originalTitle, cleanedTitle: title });
 
   return { categoryName, accountName, amount, title, date: txDate };
 }
