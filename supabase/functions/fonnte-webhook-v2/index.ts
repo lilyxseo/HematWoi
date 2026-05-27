@@ -2447,6 +2447,50 @@ async function findCategoryByTransactionHistory(userId: string, title: string): 
   return category;
 }
 
+async function findCategoryByKeyword(userId: string, keyword: string): Promise<{ id: string; name: string; type: string } | null> {
+  const normalizedKeyword = normalizeText(keyword).trim();
+  if (!normalizedKeyword) return null;
+
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id,name,type")
+    .eq("user_id", userId)
+    .order("name", { ascending: true });
+  if (error) throw error;
+
+  const categories = (data ?? []) as Array<Record<string, JsonValue>>;
+  let match: { id: string; name: string; type: string } | null = null;
+
+  for (const category of categories) {
+    const categoryName = String(category.name ?? "").trim();
+    const normalizedName = normalizeText(categoryName);
+    if (!normalizedName) continue;
+    if (normalizedName === normalizedKeyword) {
+      match = { id: String(category.id), name: categoryName, type: String(category.type ?? "expense") };
+      break;
+    }
+  }
+
+  if (!match) {
+    for (const category of categories) {
+      const categoryName = String(category.name ?? "").trim();
+      const normalizedName = normalizeText(categoryName);
+      if (!normalizedName) continue;
+      if (normalizedName.includes(normalizedKeyword) || normalizedKeyword.includes(normalizedName)) {
+        match = { id: String(category.id), name: categoryName, type: String(category.type ?? "expense") };
+        break;
+      }
+    }
+  }
+
+  console.log("[SMART CATEGORY KEYWORD]", {
+    keyword: normalizedKeyword,
+    matchedCategory: match ? { id: match.id, name: match.name, type: match.type } : null,
+  });
+
+  return match;
+}
+
 async function getUserRecentTransactionsForLearning(userId: string): Promise<Array<Record<string, JsonValue>>> {
   const { data, error } = await supabase
     .from("transactions")
@@ -2513,6 +2557,55 @@ async function findAccountByTransactionHistory(
   if (error) throw error;
   if (!data) return null;
   return { id: String(data.id), name: String(data.name), type: String(data.type ?? "") };
+}
+
+async function findBestAccountByCategoryHistory(userId: string, categoryId: string): Promise<{ id: string; name: string; type: string } | null> {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("account_id,inserted_at")
+    .eq("user_id", userId)
+    .eq("category_id", categoryId)
+    .not("account_id", "is", null)
+    .is("deleted_at", null)
+    .in("type", ["income", "expense"])
+    .order("inserted_at", { ascending: false })
+    .limit(100);
+  if (error) throw error;
+
+  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  const scoreByAccount = new Map<string, number>();
+  for (let i = 0; i < rows.length; i++) {
+    const accountId = String(rows[i].account_id ?? "").trim();
+    if (!accountId) continue;
+    const recencyScore = Math.max(0, 20 - i * 0.2);
+    const score = (scoreByAccount.get(accountId) ?? 0) + 100 + recencyScore;
+    scoreByAccount.set(accountId, score);
+  }
+
+  let selectedAccountId: string | null = null;
+  let bestScore = -1;
+  for (const [accountId, score] of scoreByAccount.entries()) {
+    if (score > bestScore) {
+      bestScore = score;
+      selectedAccountId = accountId;
+    }
+  }
+
+  if (!selectedAccountId) {
+    console.log("[SMART ACCOUNT CATEGORY HISTORY]", { categoryId, selectedAccount: null });
+    return null;
+  }
+
+  const { data: account, error: accountError } = await getAccountsBaseQuery(userId, "id,name,type,user_id")
+    .eq("id", selectedAccountId)
+    .maybeSingle();
+  if (accountError) throw accountError;
+  const selectedAccount = account
+    ? { id: String(account.id), name: String(account.name), type: String(account.type ?? "") }
+    : null;
+
+  console.log("[SMART ACCOUNT CATEGORY HISTORY]", { categoryId, selectedAccount });
+  return selectedAccount;
 }
 
 function parseTransactionMessage(message: string): ParsedTransaction | ParsedTransactionError | null {
@@ -3362,7 +3455,9 @@ function buildExampleMessage(): string {
     "• bensin 20000 cash 31/05",
     "",
     "🤖 *Smart Auto Account*",
+    "• beli bensin 20rb",
     "• kopi 20rb",
+    "• makan naspad 15000",
     "• momoyo 20000",
     "• tadi beli momoyo 20rb",
     "• edit akun cash",
@@ -3383,6 +3478,7 @@ function buildExampleMessage(): string {
     "",
     "Catatan:",
     "Bot akan menebak kategori dari histori transaksi.",
+    "Jika kata cocok dengan nama kategori, bot otomatis pakai kategori itu.",
     "Jika akun tidak ditulis, bot akan menebak akun dari history transaksi.",
     "Kalau salah, gunakan: edit akun namaAkun",
     "Jika belum ada histori yang cocok, gunakan format lengkap:",
@@ -4043,15 +4139,18 @@ Deno.serve(async (req: Request) => {
           if (!category) {
             const smartTx = parseSmartTransactionMessage(normalized);
             if (smartTx && !("error" in smartTx)) {
+              const keywordCategory = await findCategoryByKeyword(userId, smartTx.title);
+              const smartCategory = keywordCategory ?? await findCategoryByTransactionHistory(userId, smartTx.title);
               const smartAccount = smartTx.accountName
                 ? await findAccount(userId, smartTx.accountName)
-                : await findAccountByTransactionHistory(userId, smartTx.title, null, null);
+                : smartCategory
+                  ? await findBestAccountByCategoryHistory(userId, smartCategory.id) ?? await findAccountByTransactionHistory(userId, smartTx.title, smartCategory.id, null)
+                  : await findAccountByTransactionHistory(userId, smartTx.title, null, null);
               if (smartTx.accountName && !smartAccount) {
                 reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
               } else if (!smartAccount) {
                 reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
               } else {
-                const smartCategory = await findCategoryByTransactionHistory(userId, smartTx.title);
                 if (!smartCategory) {
                   parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
                   reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
@@ -4062,7 +4161,8 @@ Deno.serve(async (req: Request) => {
                   if (error) throw error;
                   const b = await getRealtimeBalanceSummary(userId);
                   const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`];
-                  if (smartTx.accountName) lines.push("", "🤖 Kategori otomatis dari history.");
+                  if (smartTx.accountName) lines.push("", keywordCategory ? "🤖 Kategori dikenali dari nama kategori." : "🤖 Kategori otomatis dari history.");
+                  else if (keywordCategory) lines.push("", "🤖 Kategori dikenali dari nama kategori.", "🤖 Akun otomatis dari history kategori.", "Kalau akun salah, ketik:", `edit akun ${smartAccount.name}`);
                   else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${smartAccount.name}`);
                   if (smartType === "expense") {
                     lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
@@ -4139,7 +4239,8 @@ Deno.serve(async (req: Request) => {
             } else if ("error" in naturalTx && naturalTx.error === "INVALID_DATE") {
               reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
             } else {
-              const category = await findCategoryByTransactionHistory(userId, naturalTx.title);
+              const keywordCategory = await findCategoryByKeyword(userId, naturalTx.title);
+              const category = keywordCategory ?? await findCategoryByTransactionHistory(userId, naturalTx.title);
               if (!category) {
                 parsedLog = { command: "natural_transaction_failed", reason: "category_not_found", title: naturalTx.title, amount: naturalTx.amount, accountName: naturalTx.accountName };
                 reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 20000 cash", "", "Setelah itu sistem bisa belajar dari histori."].join("\n");
@@ -4163,7 +4264,9 @@ Deno.serve(async (req: Request) => {
                 }
                 const account = naturalTx.accountName
                   ? accounts.find((a) => a.name.toLowerCase() === naturalTx.accountName!.toLowerCase()) ?? null
-                  : await findAccountByTransactionHistory(userId, naturalTx.title, category.id, finalType);
+                  : keywordCategory
+                    ? await findBestAccountByCategoryHistory(userId, category.id) ?? await findAccountByTransactionHistory(userId, naturalTx.title, category.id, finalType)
+                    : await findAccountByTransactionHistory(userId, naturalTx.title, category.id, finalType);
                 if (naturalTx.accountName && !account) {
                   reply = ["⚠️ Akun tidak ditemukan.", "", "Sebutkan akun di pesan.", "Contoh:", "beli kopi 20rb cash"].join("\n");
                 } else if (!account) {
@@ -4194,7 +4297,9 @@ Deno.serve(async (req: Request) => {
                     "🤖 Diproses dari bahasa natural.",
                     ...(naturalTx.accountName
                       ? []
-                      : ["", "🤖 Akun otomatis dari history.", "Kalau salah, ketik:", `edit akun ${account.name}`]),
+                      : keywordCategory
+                        ? ["", "🤖 Kategori dikenali dari nama kategori.", "🤖 Akun otomatis dari history kategori.", "Kalau salah, ketik:", `edit akun ${account.name}`]
+                        : ["", "🤖 Akun otomatis dari history.", "Kalau salah, ketik:", `edit akun ${account.name}`]),
                     "",
                     "💰 Saldo Saat Ini",
                     `Cash: ${formatIDR(b.cash)}`,
@@ -4219,15 +4324,18 @@ Deno.serve(async (req: Request) => {
           } else if ("error" in smartTx && smartTx.error === "INVALID_DATE") {
             reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
           } else {
+            const keywordCategory = await findCategoryByKeyword(userId, smartTx.title);
+            const category = keywordCategory ?? await findCategoryByTransactionHistory(userId, smartTx.title);
             const account = smartTx.accountName
               ? await findAccount(userId, smartTx.accountName)
-              : await findAccountByTransactionHistory(userId, smartTx.title, null, null);
+              : category
+                ? await findBestAccountByCategoryHistory(userId, category.id) ?? await findAccountByTransactionHistory(userId, smartTx.title, category.id, null)
+                : await findAccountByTransactionHistory(userId, smartTx.title, null, null);
             if (smartTx.accountName && !account) {
               reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
             } else if (!account) {
               reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
             } else {
-              const category = await findCategoryByTransactionHistory(userId, smartTx.title);
               if (!category) {
                 parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
                 reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
@@ -4238,7 +4346,8 @@ Deno.serve(async (req: Request) => {
                 if (error) throw error;
                 const b = await getRealtimeBalanceSummary(userId);
                 const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${smartTx.title}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`];
-                if (smartTx.accountName) lines.push("", "🤖 Kategori otomatis dari history.");
+                if (smartTx.accountName) lines.push("", keywordCategory ? "🤖 Kategori dikenali dari nama kategori." : "🤖 Kategori otomatis dari history.");
+                else if (keywordCategory) lines.push("", "🤖 Kategori dikenali dari nama kategori.", "🤖 Akun otomatis dari history kategori.", "Kalau akun salah, ketik:", `edit akun ${account.name}`);
                 else lines.push("", "🤖 Kategori & akun otomatis dari history.", "Kalau akun salah, ketik:", `edit akun ${account.name}`);
                 if (type === "expense") {
                   lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
