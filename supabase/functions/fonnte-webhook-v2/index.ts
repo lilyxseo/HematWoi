@@ -520,6 +520,16 @@ function formatIDR(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount || 0);
 }
+function bold(text: string): string { return `*${text}*`; }
+function italic(text: string): string { return `_${text}_`; }
+function line(): string { return "━━━━━━━━━━━━━━"; }
+function money(value: number): string { return bold(formatIDR(value)); }
+function section(title: string): string { return `${title}\n${line()}`; }
+function item(label: string, value: string): string { return `• ${label}: ${bold(value)}`; }
+function successTitle(text: string): string { return `✅ ${bold(text)}`; }
+function errorTitle(text: string): string { return `❌ ${bold(text)}`; }
+function warningTitle(text: string): string { return `⚠️ ${bold(text)}`; }
+function infoTitle(text: string): string { return `ℹ️ ${bold(text)}`; }
 
 function formatSignedIDR(amount: number): string {
   if (amount < 0) return `Minus ${formatIDR(Math.abs(amount))}`;
@@ -655,8 +665,8 @@ function buildHistoryMessage(
     return `${no}. ${formattedDate}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)}`;
   });
   return {
-    reply: `${header}\n\n${lines.join("\n\n")}`,
-    displayedTransactions,
+    reply: `${header}\n\n${line()}\n${lines.slice(0, 10).join("\n\n")}\n\n${line()}\nKetik *hapus 1* untuk menghapus nomor history.`,
+    displayedTransactions: displayedTransactions.slice(0, 10),
   };
 }
 
@@ -1719,16 +1729,16 @@ function buildAISuggestionMessage(suggestions: AiSuggestionItem[]): string {
   const lines = suggestions.map((s) => `${s.no}. ${s.question.charAt(0).toUpperCase()}${s.question.slice(1)}${/[?!.]$/.test(s.question) ? "" : "?"}`);
   return [
     "🤖 *AI Finance Assistant*",
+    "_Pilih pertanyaan atau ketik bebas._",
     "",
-    "Pilih pertanyaan atau ketik bebas:",
-    "",
+    line(),
     ...lines,
     "",
-    "Balas angka:",
-    "1",
+    line(),
+    `Balas angka: ${bold("1")}`,
     "",
     "Atau tanya langsung:",
-    "berapa jajan bulan ini",
+    italic("ai pengeluaran cash minggu ini"),
   ].join("\n");
 }
 
@@ -3356,17 +3366,17 @@ async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRang
 }
 
 function buildBudgetPeriodMessage(command: BudgetPeriodCommand, monthly: BudgetPeriodItem[]): string {
-  if (monthly.length === 0) return "📊 Belum ada budget bulanan untuk periode ini.";
+  if (monthly.length === 0) return `${infoTitle("Data Kosong")}\n\nBelum ada budget bulanan untuk periode ini.`;
   const titleMap: Record<BudgetPeriodType, Record<BudgetPeriodKey, string>> = {
     monthly: { current: "📊 *Budget Bulan Ini*", previous: "📊 *Budget Bulan Lalu*", next: "📊 *Budget Bulan Besok*" },
   };
-  const lines: string[] = [titleMap[command.periodType][command.period], ""];
+  const lines: string[] = [titleMap[command.periodType][command.period], "", line()];
   monthly.forEach((b, i) => {
-    lines.push(`${i + 1}. ${b.categoryNames.join(", ")}`);
-    lines.push(`💰 Budget: ${formatIDR(b.planned)}`);
-    lines.push(`📉 Terpakai: ${formatIDR(b.used)}`);
-    lines.push(`💵 Sisa: ${formatIDR(b.remaining)}`);
-    lines.push(`📈 Progress: ${b.percentage}%`);
+    lines.push(`${i + 1}. ${bold(b.categoryNames.join(", "))}`);
+    lines.push(`   Budget: ${money(b.planned)}`);
+    lines.push(`   Terpakai: ${money(b.used)}`);
+    lines.push(`   Sisa: ${money(b.remaining)}`);
+    lines.push(`   Progress: ${bold(`${b.percentage}%`)}`);
     if (b.percentage >= 100) lines.push("🚨 Budget terlampaui");
     else if (b.percentage >= 80) lines.push("⚠️ Hampir habis");
     lines.push("");
@@ -3377,175 +3387,85 @@ function buildBudgetPeriodMessage(command: BudgetPeriodCommand, monthly: BudgetP
 function buildMenuMessage(): string {
   return [
     "📋 *Menu HematWoi*",
+    "_Asisten keuangan pribadi via WhatsApp_",
     "",
+    line(),
     "💰 *Keuangan*",
     "• saldo",
     "• summary",
+    "• history",
+    "• budget bulan ini",
+    "",
+    "📚 *History*",
     "• history",
     "• history cash",
     "• history 25/05",
     "• hapus 1",
     "• edit 1 15000",
-    "• history minggu lalu",
-    "• history makan bulan lalu",
+    "",
+    "🤖 *AI Assistant*",
+    "• ai",
+    "• ai pengeluaran cash minggu ini",
+    "",
+    "➕ *Catat Transaksi*",
+    "• beli bensin 20rb",
+    "• jajan kopi 15000 cash",
+    "• tf 50000 cash seabank",
+    "",
     "🎯 *Budget*",
     "• budget jajan",
     "• budget bulan ini",
     "• budget bulan lalu",
-    "• budget bulan besok",
-    "• minggu ini",
-    "• bulan ini",
-    "• top kategori",
-    "• cashflow",
     "",
-    "➕ *Transaksi*",
-    "• catat transaksi",
-    "• catat natural",
-    "• smart akun otomatis",
-    "• tf 50000 cash seabank",
-    "• transaksi natural/smart",
-    "🔎 *Smart Search*",
-    "• kapan terakhir beli oli",
-    "• total momoyo bulan ini",
-    "• cash dipakai buat apa minggu ini",
-    "• transaksi terbesar bulan ini",
-    "• hutang / piutang",
-    "• tambah hutang ...",
-    "• bayar hutang ...",
-    "• tambah piutang ...",
-    "• bayar piutang ...",
-    "• edit transaksi",
-    "",
-    "🤖 *AI Assistant*",
-    "• ai",
-    "• ai <pertanyaan>",
-    "• 🤖 ai → buka AI Finance Assistant",
-    "• pilih nomor pertanyaan",
-    "• tanya bebas",
-    "",
-    "🧾 *Data*",
+    "🧾 *Master Data*",
     "• kategori",
-    "• kategori tambah nama tipe",
-    "• kategori edit lama baru",
-    "• kategori hapus nama",
+    "• kategori tambah motor expense",
     "• akun",
-    "• info",
     "",
-    "⚙️ *Lainnya*",
-    "• hapus",
-    "• ping",
-    "• contoh",
+    "💳 *Hutang & Piutang*",
+    "• hutang",
+    "• piutang",
+    "• tambah hutang shopee 100000 seabank",
+    "• bayar hutang shopee 50000 seabank",
     "",
-    "Ketik *contoh* untuk melihat cara penggunaan.",
+    line(),
+    "Ketik *contoh* untuk format lengkap.",
   ].join("\n");
 }
 
 function buildExampleMessage(): string {
   return [
-    "📘 *Contoh Penggunaan HematWoi*",
+    "🧪 *Contoh Penggunaan HematWoi*",
     "",
-    "➕ *Catat Transaksi*",
-    "• jajan 10000 cash",
-    "• jajan kopi 10000 cash",
-    "• jajan kopi 10000 cash 31/05",
-    "",
-    "🤖 *Smart Auto Category*",
-    "• kopi 10000 cash",
-    "• mixue 25000 cash",
-    "• bensin 20000 cash 31/05",
-    "",
-    "🤖 *Smart Auto Account*",
+    line(),
+    "➕ *Transaksi*",
     "• beli bensin 20rb",
-    "• kopi 20rb",
-    "• makan naspad 15000",
-    "• momoyo 20000",
-    "• tadi beli momoyo 20rb",
-    "• edit akun cash",
-    "• edit 3 15000",
-    "",
-    "🎯 *Budget*",
-    "• budget jajan",
-    "• budget bulan ini",
-    "• budget bulan lalu",
-    "• budget bulan besok",
-    "",
-    "🗣️ *Bahasa Natural*",
-    "• tadi beli kopi 20rb pake cash",
-    "• beli bensin 50rb cash",
-    "• dibayar freelance 500rb ke seabank",
-    "• gajian 3000000 masuk seabank",
-    "• tadi beli kopi 20rb cash 31/05",
-    "",
-    "Catatan:",
-    "Bot akan menebak kategori dari histori transaksi.",
-    "Jika kata cocok dengan nama kategori, bot otomatis pakai kategori itu.",
-    "Jika akun tidak ditulis, bot akan menebak akun dari history transaksi.",
-    "Kalau salah, gunakan: edit akun namaAkun",
-    "Jika belum ada histori yang cocok, gunakan format lengkap:",
-    "• jajan kopi 10000 cash",
+    "• jajan kopi 15000 cash",
+    "• makan naspad 13000 seabank 25/05",
     "",
     "🔁 *Transfer*",
     "• tf 50000 cash seabank",
     "",
     "📚 *History*",
     "• history",
-    "• history hari ini",
     "• history cash",
-    "• history 25/05",
-    "• history minggu lalu",
-    "• history makan bulan lalu",
-    "• hapus 3",
+    "• history makan 25/05",
+    "• hapus 1",
+    "• edit 1 15000",
     "",
-    "Setelah menampilkan history, kamu bisa hapus berdasarkan nomor:",
-    "hapus 3",
-    "",
-    "✏️ *Edit Transaksi*",
-    "• edit 3 15000",
-    "• edit 3 judul kopi susu",
-    "• edit 3 kategori makan",
-    "• edit 3 akun cash",
-    "• edit 3 tanggal 31/05",
-    "",
-    "Catatan: Gunakan nomor dari history terakhir.",
+    "🤖 *AI*",
+    "• ai",
+    "• ai top kategori bulan ini",
+    "• saldo cash",
+    "• ai pengeluaran jajan minggu ini",
     "",
     "🎯 *Budget*",
     "• budget jajan",
+    "• budget bulan ini",
     "",
     "💳 *Hutang / Piutang*",
-    "• hutang",
     "• tambah hutang shopee 100000 seabank",
-    "• bayar hutang shopee 25000 seabank",
-    "• tambah piutang andi 50000 cash",
-    "• bayar piutang andi 50000 cash",
-    "",
-    "📊 *Statistik Cepat*",
-    "• minggu ini",
-    "• bulan ini",
-    "• top kategori",
-    "• cashflow",
-    "",
-    "🤖 *AI Query*",
-    "• ai",
-    "• 🤖 ai → buka AI Finance Assistant",
-    "• pilih nomor 1-10",
-    "• berapa jajan bulan ini",
-    "• Bot support chat grup tanpa prefix.",
-    "• saldo cash",
-    "• merchant paling sering",
-    "",
-    "🔎 *Smart Search*",
-    "• kapan terakhir beli oli",
-    "• total naspad bulan ini",
-    "• berapa kali beli bensin bulan ini",
-    "• seabank dipakai buat apa minggu ini",
-    "",
-    "🗓️ *Tanggal Opsional*",
-    "Format tanggal:",
-    "• DD/MM",
-    "",
-    "Contoh:",
-    "• 31/05",
-    "• 01/06",
+    "• bayar hutang shopee 50000 seabank",
   ].join("\n");
 }
 
@@ -3765,7 +3685,7 @@ Deno.serve(async (req: Request) => {
     } else if (normalized === "saldo") {
       console.log("[ROUTE MATCH]", { route: "saldo", normalized, isGroup, contextKey });
       const b = await getRealtimeBalanceSummary(userId);
-      reply = ["💰 Saldo HematWoi", "", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`].join("\n");
+      reply = ["💰 *Saldo HematWoi*", "", line(), `• Cash: ${money(b.cash)}`, `• Non Cash: ${money(b.nonCash)}`, `• Total: ${money(b.total)}`, "", italic("Updated realtime dari RPC.")].join("\n");
     } else if (normalized === "summary") {
       console.log("[ROUTE MATCH]", { route: "summary", normalized, isGroup, contextKey });
       const today = getTodayJakarta();
@@ -3796,7 +3716,20 @@ Deno.serve(async (req: Request) => {
         const { data: cat } = await supabase.from("categories").select("name").eq("id", topId).maybeSingle();
         biggestCategory = cat?.name ?? "-";
       }
-      const summaryLines = ["📊 Summary Hari Ini", `Pemasukan: ${formatIDR(income)}`, `Pengeluaran: ${formatIDR(expense)}`, `Kategori terbesar: ${biggestCategory}`];
+      const summaryLines = [
+        "📊 *Summary Hari Ini*",
+        "",
+        line(),
+        `💸 Pengeluaran: ${money(expense)}`,
+        `💵 Pemasukan: ${money(income)}`,
+        `🧾 Transaksi: ${bold(`${(txs ?? []).length} data`)}`,
+        "",
+        "🏆 *Kategori Terbesar*",
+        `${biggestCategory} — ${money(catMap.size > 0 ? Math.max(...catMap.values()) : 0)}`,
+        "",
+        "💡 *Insight*",
+        expense > income ? "Pengeluaran hari ini perlu dijaga." : "Pengeluaran hari ini masih terkontrol.",
+      ];
       if (expense > 0) {
         const activeWarnings = await buildSmartWarnings({ userId, date: today, amount: 0, categoryName: biggestCategory === "-" ? "Lainnya" : biggestCategory });
         if (activeWarnings.length > 0) summaryLines.push("", "⚠️ Warning Aktif", ...activeWarnings.map((w) => `• ${w}`));
@@ -4073,8 +4006,8 @@ Deno.serve(async (req: Request) => {
     } else if (normalized === "akun") {
       const { data, error } = await supabase.from("accounts").select("name,type").eq("user_id", userId).order("name");
       if (error) throw error;
-      const lines = (data ?? []).map((a: Record<string, JsonValue>, i: number) => `${i + 1}. ${String(a.name)} (${String(a.type)})`);
-      reply = `🏦 Daftar Akun\n${lines.length > 0 ? lines.join("\n") : "Belum ada akun."}`;
+      const lines = (data ?? []).map((a: Record<string, JsonValue>, i: number) => `${i + 1}. ${String(a.name)} — ${String(a.type)}`);
+      reply = `🏦 *Daftar Akun*\n\n${line()}\n${lines.length > 0 ? lines.join("\n") : `${infoTitle("Data Kosong")}\n\nBelum ada akun.`}`;
     } else if (normalized === "hapus" || normalized === "undo") {
       let lastTxQuery = supabase
         .from("transactions")
