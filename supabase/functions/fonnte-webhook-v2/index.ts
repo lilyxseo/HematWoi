@@ -2709,39 +2709,91 @@ function parseDebtCommand(message: string): ParsedDebtCommand | null {
   return { action: action as DebtAction, debtType, partyName, amount, accountName, date };
 }
 
-function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionCommand | null {
-  const parts = rawMessage.trim().split(/\s+/);
-  if (parts.length < 3 || normalizeText(parts[0]) !== "edit") return null;
-  const number = Number(parts[1]);
-  if (!Number.isInteger(number) || number < 1) return null;
-  const rest = parts.slice(2);
-  if (rest.length === 0) return null;
+function parseEditDateToken(raw: string): string | null {
+  const input = raw.trim();
+  if (!input) return null;
 
-  const firstToken = normalizeText(rest[0]);
+  const now = new Date();
+  const jakartaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const currentYear = jakartaNow.getFullYear();
+
+  let day = 0;
+  let month = 0;
+  let year = currentYear;
+
+  const isoMatch = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    year = Number(isoMatch[1]);
+    month = Number(isoMatch[2]);
+    day = Number(isoMatch[3]);
+  } else {
+    const slashMatch = input.match(/^(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{4}))?$/);
+    if (!slashMatch) return null;
+    day = Number(slashMatch[1]);
+    month = Number(slashMatch[2]);
+    year = slashMatch[3] ? Number(slashMatch[3]) : currentYear;
+  }
+
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return null;
+  if (year < 1900 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== (month - 1) ||
+    candidate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function formatEditDateForReply(date: string): string {
+  const [year, month, day] = String(date).split("-");
+  if (!year || !month || !day) return String(date || "-");
+  return `${day}/${month}/${year}`;
+}
+
+function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionCommand | null {
+  const match = rawMessage.trim().match(/^edit\s+(\d+)\s+(.+)$/i);
+  if (!match) return null;
+
+  const number = Number(match[1]);
+  if (!Number.isInteger(number) || number < 1) return null;
+
+  const rawValue = match[2].trim();
+  if (!rawValue) return null;
+
+  const parts = rawValue.split(/\s+/);
+  const firstToken = normalizeText(parts[0] ?? "");
   if (firstToken === "judul" || firstToken === "title") {
-    const titleValue = rest.slice(1).join(" ").trim();
+    const titleValue = parts.slice(1).join(" ").trim();
     if (!titleValue) return null;
     return { number, field: "title", value: titleValue };
   }
   if (firstToken === "kategori") {
-    const categoryValue = rest.slice(1).join(" ").trim();
+    const categoryValue = parts.slice(1).join(" ").trim();
     if (!categoryValue) return null;
     return { number, field: "category", value: categoryValue };
   }
   if (firstToken === "akun") {
-    const accountValue = rest.slice(1).join(" ").trim();
+    const accountValue = parts.slice(1).join(" ").trim();
     if (!accountValue) return null;
     return { number, field: "account", value: accountValue };
   }
   if (firstToken === "tanggal") {
-    const dateValue = rest[1] ?? "";
+    const dateValue = parts.slice(1).join(" ").trim();
     if (!dateValue) return null;
     return { number, field: "date", value: dateValue };
   }
 
-  const amount = parseAmount(rest.join(" "));
-  if (amount <= 0) return null;
-  return { number, field: "amount", value: amount };
+  if (parseEditDateToken(rawValue)) return { number, field: "date", value: rawValue };
+
+  const amount = extractNaturalAmountFromText(rawValue);
+  if (amount > 0) return { number, field: "amount", value: amount };
+
+  return { number, field: "account", value: rawValue };
 }
 
 async function getLastHistoryLog(userId: string, phone: string): Promise<Record<string, JsonValue> | null> {
@@ -2782,24 +2834,55 @@ function findDisplayedTransactionByNumber(displayedTransactions: Array<Record<st
   return displayedTransactions.find((item) => Number(item.no ?? 0) === number) ?? null;
 }
 
+function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const message = String(error.message ?? "").toLowerCase();
+  return error.code === "42703" || error.code === "PGRST204" || message.includes("column") || message.includes("schema cache");
+}
+
+async function updateTransactionDateField(transactionId: string, userId: string, newDate: string): Promise<string> {
+  const dateFields = ["transaction_date", "date", "trx_date", "created_date"];
+  let lastError: { message?: string } | null = null;
+
+  for (const field of dateFields) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ [field]: newDate })
+      .eq("id", transactionId)
+      .eq("user_id", userId);
+    if (!error) return field;
+    lastError = error;
+    if (!isMissingColumnError(error)) throw error;
+  }
+
+  throw new Error(`TRANSACTION_DATE_FIELD_NOT_FOUND: ${lastError?.message ?? "No supported date field found"}`);
+}
+
 async function handleEditTransaction(userId: string, phone: string, rawMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   const parsedEdit = parseEditTransactionCommand(rawMessage);
   if (!parsedEdit) {
-    return { reply: "⚠️ Format edit tidak valid.\n\nContoh:\nedit 3 15000", parsedLog: { command: "edit_transaction_failed", reason: "invalid_format" } };
+    return { reply: "⚠️ Format edit tidak valid.\n\nContoh:\nedit 1 15000", parsedLog: { command: "edit_transaction_failed", reason: "invalid_format" } };
   }
+
+  console.log("[EDIT HISTORY]", {
+    number: parsedEdit.number,
+    value: parsedEdit.value,
+    detectedType: parsedEdit.field,
+  });
+
   const displayedTransactions = await getLastHistoryTransactions(userId, phone);
   if (displayedTransactions.length === 0) {
-    return { reply: "⚠️ Belum ada history terakhir.\n\nKirim *history* dulu lalu pilih nomor transaksi.\nContoh:\nedit 3 15000", parsedLog: { command: "edit_transaction_failed", reason: "history_not_found" } };
+    return { reply: "⚠️ Belum ada history terakhir.\n\nKetik:\nhistory", parsedLog: { command: "edit_transaction_failed", reason: "history_not_found" } };
   }
   const selectedTransaction = findDisplayedTransactionByNumber(displayedTransactions, parsedEdit.number);
   if (!selectedTransaction) {
-    return { reply: "⚠️ Nomor history tidak ditemukan.\n\nKirim *history* dulu lalu pilih nomor transaksi.\nContoh:\nedit 3 15000", parsedLog: { command: "edit_transaction_failed", reason: "number_not_found", number: parsedEdit.number } };
+    return { reply: "⚠️ Nomor history tidak ditemukan.\n\nKetik:\nhistory", parsedLog: { command: "edit_transaction_failed", reason: "number_not_found", number: parsedEdit.number } };
   }
 
   const transactionId = String(selectedTransaction.id ?? "");
   const { data: txRow, error: txError } = await supabase
     .from("transactions")
-    .select("id,title,amount,type,date,category_id,account_id,to_account_id")
+    .select("id,title,amount,type,category_id,account_id,to_account_id")
     .eq("id", transactionId)
     .eq("user_id", userId)
     .is("deleted_at", null)
@@ -2817,7 +2900,17 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     const newValue = Number(parsedEdit.value);
     const { error } = await supabase.from("transactions").update({ amount: newValue }).eq("id", transactionId).eq("user_id", userId);
     if (error) throw error;
-    return { reply: [`✅ Nominal transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Judul: ${String(txRow.title ?? "-")}`, `Nominal lama: ${formatIDR(oldValue)}`, `Nominal baru: ${formatIDR(newValue)}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "amount", oldValue, newValue } };
+    return {
+      reply: [
+        "✏️ Transaksi Berhasil Diedit",
+        "",
+        "━━━━━━━━━━━━━━",
+        `No: ${parsedEdit.number}`,
+        "Nominal Baru:",
+        formatIDR(newValue),
+      ].join("\n"),
+      parsedLog: { command: "edit_transaction", transactionId, field: "amount", oldValue, newValue },
+    };
   }
   if (parsedEdit.field === "title") {
     const oldValue = String(txRow.title ?? "-");
@@ -2842,15 +2935,41 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     const oldValue = String(selectedTransaction.accountName ?? "-");
     const { error } = await supabase.from("transactions").update({ account_id: account.id }).eq("id", transactionId).eq("user_id", userId);
     if (error) throw error;
-    return { reply: [`✅ Akun transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Akun lama: ${oldValue}`, `Akun baru: ${account.name}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "account", oldValue, newValue: account.name } };
+    return {
+      reply: [
+        "✏️ Transaksi Berhasil Diedit",
+        "",
+        "━━━━━━━━━━━━━━",
+        `No: ${parsedEdit.number}`,
+        "Akun Baru:",
+        account.name,
+      ].join("\n"),
+      parsedLog: { command: "edit_transaction", transactionId, field: "account", oldValue, newValue: account.name },
+    };
   }
   const dateInput = String(parsedEdit.value);
-  const newDate = parseCustomDateToken(dateInput);
-  if (!newDate) return { reply: "⚠️ Format tanggal tidak valid.\n\nGunakan format:\n31/05", parsedLog: { command: "edit_transaction_failed", reason: "invalid_date", transactionId, value: dateInput } };
-  const oldValue = String(txRow.date ?? "-");
-  const { error } = await supabase.from("transactions").update({ date: newDate }).eq("id", transactionId).eq("user_id", userId);
-  if (error) throw error;
-  return { reply: [`✅ Tanggal transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Tanggal lama: ${oldValue}`, `Tanggal baru: ${newDate}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "date", oldValue, newValue: newDate } };
+  const newDate = parseEditDateToken(dateInput);
+  console.log("[EDIT DATE PARSED]", {
+    input: dateInput,
+    parsedDate: newDate,
+  });
+  if (!newDate) return { reply: "⚠️ Format tanggal tidak valid.\n\nGunakan format:\n01/06\n01/06/2026\n2026-06-01", parsedLog: { command: "edit_transaction_failed", reason: "invalid_date", transactionId, value: dateInput } };
+  const oldValue = String(selectedTransaction.date ?? "-");
+  const updatedField = await updateTransactionDateField(transactionId, userId, newDate);
+  return {
+    reply: [
+      "✏️ Transaksi Berhasil Diedit",
+      "",
+      "━━━━━━━━━━━━━━",
+      `No: ${parsedEdit.number}`,
+      `Kategori: ${String(selectedTransaction.categoryName ?? "-")}`,
+      `Judul: ${String(txRow.title ?? selectedTransaction.title ?? "-")}`,
+      "",
+      "📅 Tanggal Baru:",
+      formatEditDateForReply(newDate),
+    ].join("\n"),
+    parsedLog: { command: "edit_transaction", transactionId, field: "date", updatedField, oldValue, newValue: newDate },
+  };
 }
 
 async function handleEditLastTransactionAccount(userId: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
@@ -4014,6 +4133,13 @@ Deno.serve(async (req: Request) => {
         txCountQuery,
       ]);
       reply = ["ℹ️ Info HematWoi", `Jumlah akun: ${accountCount ?? 0}`, `Jumlah kategori: ${categoryCount ?? 0}`, `Total transaksi hari ini: ${txCount ?? 0}`].join("\n");
+    } else if (/^edit\s+(\d+)\s+(.+)$/i.test(message.trim())) {
+      console.log("[EDIT COMMAND DETECTED]", {
+        message,
+      });
+      const editResult = await handleEditTransaction(userId, contextKey, message);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
     } else if (AI_SUGGESTION_COMMANDS.has(normalized)) {
       console.log("[ROUTE MATCH]", { route: "ai_suggestion", normalized, isGroup, contextKey });
       console.log("[AI SESSION KEY]", { contextKey, isGroup, chatTarget });
@@ -4038,10 +4164,6 @@ Deno.serve(async (req: Request) => {
         reply = smartSearch.reply;
         parsedLog = smartSearch.parsedLog;
       }
-    } else if (/^edit\s+\d+(\s|$)/.test(normalized)) {
-      const editResult = await handleEditTransaction(userId, contextKey, message);
-      reply = editResult.reply;
-      parsedLog = editResult.parsedLog;
     } else if (normalized.startsWith("edit akun")) {
       const editResult = await handleEditLastTransactionAccount(userId, normalized);
       reply = editResult.reply;
