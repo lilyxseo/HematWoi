@@ -141,11 +141,14 @@ type BudgetPeriodRange = {
   period: BudgetPeriodKey;
 };
 type BudgetPeriodItem = {
+  id: string;
+  categoryId: string | null;
   categoryNames: string[];
   planned: number;
   used: number;
   remaining: number;
   percentage: number;
+  periodMonth: string;
   createdAt: string;
 };
 
@@ -174,6 +177,8 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "summary",
   "history",
   "budget",
+  "tambah",
+  "edit",
   "hutang",
   "piutang",
   "tf",
@@ -189,7 +194,7 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "ping",
 ]);
 const NATURAL_RESERVED_COMMANDS = new Set([
-  "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "history", "riwayat", "budget", "hutang",
+  "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "history", "riwayat", "budget", "tambah budget", "edit budget", "hapus budget", "hutang",
   "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
   "top kategori", "cashflow", "kategori", "akun", "info", "ping", "hapus", "undo",
 ]);
@@ -3699,7 +3704,7 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?:
 
   const { data: directBudgets, error: directErr } = await supabase
     .from("budgets")
-    .select("id,amount_planned,planned,category_id")
+    .select("*")
     .eq("user_id", userId)
     .eq("category_id", category.id)
     .or(`period_month.eq.${monthStart},month.eq.${monthStart}`);
@@ -3712,7 +3717,7 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?:
   if (directBudgets && directBudgets.length > 0) {
     const b = directBudgets[0] as Record<string, JsonValue>;
     budgetId = String(b.id);
-    planned = Number(b.amount_planned ?? b.planned ?? 0);
+    planned = getBudgetAmount(b);
   } else {
     const { data: links, error: linkErr } = await supabase
       .from("budget_categories")
@@ -3724,7 +3729,7 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?:
 
     const { data: budgets, error: budgetErr } = await supabase
       .from("budgets")
-      .select("id,amount_planned,planned")
+      .select("*")
       .eq("user_id", userId)
       .in("id", budgetIds)
       .or(`period_month.eq.${monthStart},month.eq.${monthStart}`)
@@ -3734,7 +3739,7 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?:
 
     const b = budgets[0] as Record<string, JsonValue>;
     budgetId = String(b.id);
-    planned = Number(b.amount_planned ?? b.planned ?? 0);
+    planned = getBudgetAmount(b);
   }
 
   if (!budgetId) return null;
@@ -3901,23 +3906,67 @@ function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget
   return lines;
 }
 
+function getBudgetAmount(row: Record<string, JsonValue>): number {
+  return Number(row.amount_planned ?? row.planned ?? row.amount ?? row.total ?? 0);
+}
+
+function getBudgetPeriod(row: Record<string, JsonValue>): string {
+  return String(row.period_month ?? row.month ?? "");
+}
+
+function getBudgetName(row: Record<string, JsonValue>): string {
+  return String(row.name ?? row.label ?? "-");
+}
+
+function parseBudgetPeriodKey(text: string): BudgetPeriodKey | null {
+  const normalized = normalizeText(text);
+  if (["bulan ini", "bulan sekarang", "sekarang", "now"].includes(normalized)) return "current";
+  if (["bulan lalu", "bulan kemarin", "kemarin", "prev", "previous"].includes(normalized)) return "previous";
+  if (["bulan depan", "bulan besok", "bulan berikutnya", "besok", "berikutnya", "next"].includes(normalized)) return "next";
+  return null;
+}
+
 function parseBudgetPeriodCommand(text: string): BudgetPeriodCommand | null {
   const normalized = normalizeText(text);
-  const map: Record<string, BudgetPeriodCommand> = {
-    "budget bulan ini": { periodType: "monthly", period: "current" },
-    "budget bulan sekarang": { periodType: "monthly", period: "current" },
-    "budget sekarang": { periodType: "monthly", period: "current" },
-    "budget now": { periodType: "monthly", period: "current" },
-    "budget bulan lalu": { periodType: "monthly", period: "previous" },
-    "budget bulan kemarin": { periodType: "monthly", period: "previous" },
-    "budget prev": { periodType: "monthly", period: "previous" },
-    "budget previous": { periodType: "monthly", period: "previous" },
-    "budget bulan depan": { periodType: "monthly", period: "next" },
-    "budget bulan besok": { periodType: "monthly", period: "next" },
-    "budget bulan berikutnya": { periodType: "monthly", period: "next" },
-    "budget next": { periodType: "monthly", period: "next" },
-  };
-  return map[normalized] ?? null;
+  if (normalized === "budget") return { periodType: "monthly", period: "current" };
+  const periodText = normalized.replace(/^budget\s+/, "").trim();
+  const period = parseBudgetPeriodKey(periodText);
+  return period ? { periodType: "monthly", period } : null;
+}
+
+function getBudgetPeriodSource(text: string): "shortcut" | "explicit" {
+  return normalizeText(text) === "budget" ? "shortcut" : "explicit";
+}
+
+function getBudgetPeriodDisplayName(period: BudgetPeriodKey): string {
+  const labels: Record<BudgetPeriodKey, string> = { current: "Bulan Ini", previous: "Bulan Lalu", next: "Bulan Depan" };
+  return labels[period];
+}
+
+function extractBudgetPeriodFromText(text: string): { period: BudgetPeriodKey; rest: string } {
+  const normalized = normalizeText(text);
+  const aliases: Array<{ phrase: string; period: BudgetPeriodKey }> = [
+    { phrase: "bulan berikutnya", period: "next" },
+    { phrase: "bulan sekarang", period: "current" },
+    { phrase: "bulan kemarin", period: "previous" },
+    { phrase: "bulan besok", period: "next" },
+    { phrase: "bulan depan", period: "next" },
+    { phrase: "bulan lalu", period: "previous" },
+    { phrase: "bulan ini", period: "current" },
+    { phrase: "berikutnya", period: "next" },
+    { phrase: "sekarang", period: "current" },
+    { phrase: "kemarin", period: "previous" },
+    { phrase: "besok", period: "next" },
+    { phrase: "next", period: "next" },
+    { phrase: "prev", period: "previous" },
+  ];
+  for (const alias of aliases) {
+    const re = new RegExp(`(?:^|\\s)${alias.phrase.replace(/ /g, "\\s+")}(?:$|\\s)`, "i");
+    if (re.test(normalized)) {
+      return { period: alias.period, rest: normalized.replace(re, " ").replace(/\s+/g, " ").trim() };
+    }
+  }
+  return { period: "current", rest: normalized };
 }
 
 function getBudgetPeriodRange(periodType: BudgetPeriodType, period: BudgetPeriodKey): BudgetPeriodRange {
@@ -3930,13 +3979,18 @@ function getBudgetPeriodRange(periodType: BudgetPeriodType, period: BudgetPeriod
   return { start, end, periodMonth: start, periodType, period };
 }
 
-async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRange): Promise<BudgetPeriodItem[]> {
+async function getMonthlyBudgetRowsForPeriod(userId: string, periodMonth: string): Promise<Array<Record<string, JsonValue>>> {
   const { data, error } = await supabase.from("budgets")
-    .select("id,user_id,name,amount_planned,planned,category_id,period_month,month,created_at")
-    .eq("user_id", userId)
-    .or(`period_month.eq.${range.periodMonth},month.eq.${range.periodMonth}`);
+    .select("*")
+    .eq("user_id", userId);
   if (error) throw error;
-  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  return ((data ?? []) as Array<Record<string, JsonValue>>)
+    .filter((row) => !row.deleted_at)
+    .filter((row) => getBudgetPeriod(row) === periodMonth);
+}
+
+async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRange): Promise<BudgetPeriodItem[]> {
+  const rows = await getMonthlyBudgetRowsForPeriod(userId, range.periodMonth);
   if (rows.length === 0) return [];
 
   const budgetIds = rows.map((r) => String(r.id ?? "")).filter(Boolean);
@@ -3981,17 +4035,20 @@ async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRang
 
   return rows
     .map((row) => {
-      const planned = Number(row.amount_planned ?? row.planned ?? 0);
+      const planned = getBudgetAmount(row);
       if (planned <= 0) return null;
       const bid = String(row.id ?? "");
       const categoryIds = budgetCategoryMap.get(bid) ?? [];
       const used = categoryIds.reduce((sum, cid) => sum + (txSumByCategory.get(cid) ?? 0), 0);
       return {
-        categoryNames: categoryIds.map((cid) => categoryNameMap.get(cid) ?? "-").filter(Boolean),
+        id: bid,
+        categoryId: categoryIds[0] ?? null,
+        categoryNames: categoryIds.length > 0 ? categoryIds.map((cid) => categoryNameMap.get(cid) ?? "-").filter(Boolean) : [getBudgetName(row)],
         planned,
         used,
         remaining: planned - used,
         percentage: planned > 0 ? Math.round((used / planned) * 100) : 0,
+        periodMonth: getBudgetPeriod(row),
         createdAt: String(row.created_at ?? ""),
       };
     })
@@ -4044,6 +4101,216 @@ function buildBudgetPeriodMessage(command: BudgetPeriodCommand, monthly: BudgetP
   return lines.join("\n").trim();
 }
 
+function budgetDisplayItems(items: BudgetPeriodItem[]): JsonValue[] {
+  return items.map((b, i) => ({
+    no: i + 1,
+    id: b.id,
+    categoryId: b.categoryId,
+    categoryName: b.categoryNames[0] ?? getBudgetName({}),
+    categoryNames: b.categoryNames,
+    planned: b.planned,
+    used: b.used,
+    remaining: b.remaining,
+    percentage: b.percentage,
+    periodMonth: b.periodMonth,
+  }));
+}
+
+async function getLastBudgetLog(userId: string, phone: string): Promise<Record<string, JsonValue> | null> {
+  const { data: logs, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("id,created_at,parsed")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (error) throw error;
+
+  return ((logs ?? []) as Array<Record<string, JsonValue>>).find((log) => {
+    const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
+    return parsed?.command === "budget_period" && Array.isArray(parsed?.displayedBudgets) && parsed.displayedBudgets.length > 0;
+  }) ?? null;
+}
+
+async function getLastDisplayedBudgets(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
+  const log = await getLastBudgetLog(userId, phone);
+  const parsed = (log?.parsed ?? null) as Record<string, JsonValue> | null;
+  return (parsed?.displayedBudgets ?? []) as Array<Record<string, JsonValue>>;
+}
+
+function findDisplayedBudgetByNumber(displayedBudgets: Array<Record<string, JsonValue>>, number: number): Record<string, JsonValue> | null {
+  return displayedBudgets.find((item) => Number(item.no ?? 0) === number) ?? null;
+}
+
+function parseAddBudgetCommand(normalized: string): { categoryName: string; amount: number; period: BudgetPeriodKey } | null {
+  if (!normalized.startsWith("tambah budget ")) return null;
+  const body = normalized.replace(/^tambah\s+budget\s+/, "").trim();
+  const extracted = extractBudgetPeriodFromText(body);
+  const parts = extracted.rest.split(/\s+/).filter(Boolean);
+  const amountIndex = parts.findIndex((part) => parseAmount(part) > 0);
+  if (amountIndex <= 0) return { categoryName: parts.filter((_, i) => i !== amountIndex).join(" ").trim(), amount: 0, period: extracted.period };
+  return { categoryName: parts.slice(0, amountIndex).join(" ").trim(), amount: parseAmount(parts[amountIndex]), period: extracted.period };
+}
+
+function parseEditBudgetCommand(normalized: string): { number: number | null; categoryName: string | null; amount: number } | null {
+  if (!normalized.startsWith("edit budget ")) return null;
+  const body = normalized.replace(/^edit\s+budget\s+/, "").trim();
+  const parts = body.split(/\s+/).filter(Boolean);
+  const amountIndex = parts.findIndex((part) => parseAmount(part) > 0);
+  if (amountIndex < 0) return { number: null, categoryName: parts.join(" ").trim() || null, amount: 0 };
+  const amount = parseAmount(parts[amountIndex]);
+  const target = parts.slice(0, amountIndex).join(" ").trim();
+  const number = /^\d+$/.test(target) ? Number(target) : null;
+  return { number, categoryName: number ? null : target, amount };
+}
+
+function parseDeleteBudgetCommand(normalized: string): { number: number | null; categoryName: string | null } | null {
+  if (!normalized.startsWith("hapus budget ")) return null;
+  const target = normalized.replace(/^hapus\s+budget\s+/, "").trim();
+  if (!target) return { number: null, categoryName: null };
+  return /^\d+$/.test(target) ? { number: Number(target), categoryName: null } : { number: null, categoryName: target };
+}
+
+async function findBudgetByCategoryAndPeriod(userId: string, categoryId: string, periodMonth: string): Promise<Record<string, JsonValue> | null> {
+  const rows = await getMonthlyBudgetRowsForPeriod(userId, periodMonth);
+  const direct = rows.find((row) => String(row.category_id ?? "") === categoryId);
+  if (direct) return direct;
+
+  const budgetIds = rows.map((row) => String(row.id ?? "")).filter(Boolean);
+  if (budgetIds.length === 0) return null;
+  const { data: links, error } = await supabase
+    .from("budget_categories")
+    .select("budget_id")
+    .eq("category_id", categoryId)
+    .in("budget_id", budgetIds);
+  if (error) throw error;
+  const linkedBudgetId = String(((links ?? []) as Array<Record<string, JsonValue>>)[0]?.budget_id ?? "");
+  return linkedBudgetId ? rows.find((row) => String(row.id ?? "") === linkedBudgetId) ?? null : null;
+}
+
+async function insertBudgetSafe(input: { userId: string; categoryId: string; categoryName: string; amount: number; periodMonth: string }): Promise<Record<string, JsonValue>> {
+  const amountFields = ["amount_planned", "planned", "amount", "total"];
+  const periodFields = ["period_month", "month"];
+  let lastError: { message?: string } | null = null;
+  for (const amountField of amountFields) {
+    for (const periodField of periodFields) {
+      for (const includeName of [true, false]) {
+        const payload: Record<string, JsonValue> = { user_id: input.userId, category_id: input.categoryId, [amountField]: input.amount, [periodField]: input.periodMonth };
+        if (includeName) payload.name = input.categoryName;
+        const { data, error } = await supabase.from("budgets").insert(payload).select("*").single();
+        if (!error && data) return data as Record<string, JsonValue>;
+        lastError = error;
+        if (!isMissingColumnError(error)) throw error;
+      }
+    }
+  }
+  throw new Error(`BUDGET_INSERT_FIELD_NOT_FOUND: ${lastError?.message ?? "No supported budget field found"}`);
+}
+
+async function updateBudgetAmountSafe(userId: string, budgetId: string, amount: number): Promise<string> {
+  const amountFields = ["amount_planned", "planned", "amount", "total"];
+  let lastError: { message?: string } | null = null;
+  for (const amountField of amountFields) {
+    const { error } = await supabase.from("budgets").update({ [amountField]: amount }).eq("id", budgetId).eq("user_id", userId);
+    if (!error) return amountField;
+    lastError = error;
+    if (!isMissingColumnError(error)) throw error;
+  }
+  throw new Error(`BUDGET_UPDATE_FIELD_NOT_FOUND: ${lastError?.message ?? "No supported budget amount field found"}`);
+}
+
+async function deleteBudgetSafe(userId: string, budgetId: string): Promise<"soft" | "hard"> {
+  if (await hasDeletedAtColumn("budgets")) {
+    const { error } = await supabase.from("budgets").update({ deleted_at: new Date().toISOString() }).eq("id", budgetId).eq("user_id", userId);
+    if (!error) return "soft";
+    if (!isMissingColumnError(error)) throw error;
+  }
+  const { error: hardError } = await supabase.from("budgets").delete().eq("id", budgetId).eq("user_id", userId);
+  if (hardError) throw hardError;
+  return "hard";
+}
+
+async function handleAddBudgetCommand(userId: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const parsed = parseAddBudgetCommand(normalized);
+  const categoryName = parsed?.categoryName ?? "";
+  const amount = parsed?.amount ?? 0;
+  const period = parsed?.period ?? "current";
+  const periodMonth = getBudgetPeriodRange("monthly", period).periodMonth;
+  console.log("[BUDGET CRUD]", { action: "add", categoryName, amount, periodMonth });
+
+  if (!categoryName) return { reply: "⚠️ Format budget tidak valid.\n\nContoh:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "add", status: "invalid_format" } };
+  if (amount <= 0) return { reply: "⚠️ *Nominal Budget Tidak Valid*\n\nContoh:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "add", status: "invalid_amount", categoryName } };
+  const category = await findCategory(userId, categoryName);
+  if (!category) return { reply: `❌ *Kategori Tidak Ditemukan*\n\nKategori: *${categoryName}*`, parsedLog: { command: "budget_crud", action: "add", status: "category_not_found", categoryName, amount, periodMonth } };
+  const existing = await findBudgetByCategoryAndPeriod(userId, category.id, periodMonth);
+  if (existing) return { reply: "⚠️ *Budget Sudah Ada*\n\nGunakan:\n*edit budget jajan 600rb*", parsedLog: { command: "budget_crud", action: "add", status: "already_exists", categoryName: category.name, amount, periodMonth } };
+  await insertBudgetSafe({ userId, categoryId: category.id, categoryName: category.name, amount, periodMonth });
+  return {
+    reply: [`✅ *Budget Berhasil Ditambahkan*`, "", line(), `Kategori: *${category.name}*`, `Periode: *${getBudgetPeriodDisplayName(period)}*`, `Nominal: *${formatIDR(amount)}*`].join("\n"),
+    parsedLog: { command: "budget_crud", action: "add", status: "success", categoryName: category.name, amount, periodMonth },
+  };
+}
+
+async function resolveBudgetTarget(userId: string, phone: string, parsed: { number: number | null; categoryName: string | null }): Promise<{ budget: Record<string, JsonValue>; categoryName: string; period: BudgetPeriodKey; periodMonth: string } | null> {
+  if (parsed.number) {
+    const displayed = await getLastDisplayedBudgets(userId, phone);
+    const selected = findDisplayedBudgetByNumber(displayed, parsed.number);
+    if (!selected) return null;
+    const budgetId = String(selected.id ?? "");
+    const { data, error } = await supabase.from("budgets").select("*").eq("id", budgetId).eq("user_id", userId).maybeSingle();
+    if (error) throw error;
+    if (!data || (data as Record<string, JsonValue>).deleted_at) return null;
+    const budgetRow = data as Record<string, JsonValue>;
+    const periodMonth = String(selected.periodMonth ?? getBudgetPeriod(budgetRow));
+    const period = periodMonth === getBudgetPeriodRange("monthly", "previous").periodMonth
+      ? "previous"
+      : periodMonth === getBudgetPeriodRange("monthly", "next").periodMonth
+      ? "next"
+      : "current";
+    return { budget: budgetRow, categoryName: String(selected.categoryName ?? "-"), period, periodMonth };
+  }
+  const categoryName = parsed.categoryName ?? "";
+  const category = categoryName ? await findCategory(userId, categoryName) : null;
+  if (!category) return null;
+  const period = "current";
+  const periodMonth = getBudgetPeriodRange("monthly", period).periodMonth;
+  const budget = await findBudgetByCategoryAndPeriod(userId, category.id, periodMonth);
+  return budget ? { budget, categoryName: category.name, period, periodMonth } : null;
+}
+
+async function handleEditBudgetCommand(userId: string, phone: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const parsed = parseEditBudgetCommand(normalized);
+  const categoryName = parsed?.categoryName ?? "";
+  const amount = parsed?.amount ?? 0;
+  const periodMonth = getBudgetPeriodRange("monthly", "current").periodMonth;
+  console.log("[BUDGET CRUD]", { action: "edit", categoryName, amount, periodMonth });
+  if (!parsed || amount <= 0) return { reply: "⚠️ *Nominal Budget Tidak Valid*\n\nContoh:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "edit", status: "invalid_amount", categoryName } };
+  const resolved = await resolveBudgetTarget(userId, phone, parsed);
+  if (!resolved) return { reply: "ℹ️ *Budget Tidak Ditemukan*\n\nGunakan:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "edit", status: "not_found", categoryName, amount, periodMonth } };
+  await updateBudgetAmountSafe(userId, String(resolved.budget.id ?? ""), amount);
+  return {
+    reply: [`✏️ *Budget Berhasil Diubah*`, "", line(), `Kategori: *${resolved.categoryName}*`, `Nominal Baru: *${formatIDR(amount)}*`].join("\n"),
+    parsedLog: { command: "budget_crud", action: "edit", status: "success", categoryName: resolved.categoryName, amount, periodMonth: resolved.periodMonth },
+  };
+}
+
+async function handleDeleteBudgetCommand(userId: string, phone: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const parsed = parseDeleteBudgetCommand(normalized);
+  const categoryName = parsed?.categoryName ?? "";
+  const periodMonth = getBudgetPeriodRange("monthly", "current").periodMonth;
+  console.log("[BUDGET CRUD]", { action: "delete", categoryName, amount: 0, periodMonth });
+  if (!parsed) return { reply: "ℹ️ *Budget Tidak Ditemukan*\n\nGunakan:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "delete", status: "invalid_format" } };
+  const resolved = await resolveBudgetTarget(userId, phone, parsed);
+  if (!resolved) return { reply: "ℹ️ *Budget Tidak Ditemukan*\n\nGunakan:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "delete", status: "not_found", categoryName, periodMonth } };
+  await deleteBudgetSafe(userId, String(resolved.budget.id ?? ""));
+  return {
+    reply: [`🗑️ *Budget Berhasil Dihapus*`, "", line(), `Kategori: *${resolved.categoryName}*`, `Periode: *${getBudgetPeriodDisplayName(resolved.period)}*`].join("\n"),
+    parsedLog: { command: "budget_crud", action: "delete", status: "success", categoryName: resolved.categoryName, periodMonth: resolved.periodMonth },
+  };
+}
+
+
 function buildMenuMessage(): string {
   return [
     "📋 *Menu HematWoi*",
@@ -4082,10 +4349,14 @@ function buildMenuMessage(): string {
     "• tf 50000 cash seabank",
     "",
     "🎯 *Budget*",
-    "• budget jajan",
+    "• budget",
     "• budget bulan ini",
     "• budget bulan lalu",
     "• budget bulan depan",
+    "• budget jajan",
+    "• tambah budget jajan 500rb bulan ini",
+    "• edit budget 1 600rb",
+    "• hapus budget 1",
     "",
     "🧾 *Master Data*",
     "• kategori",
@@ -4132,10 +4403,15 @@ function buildExampleMessage(): string {
     "• ai pengeluaran jajan minggu ini",
     "",
     "🎯 *Budget*",
-    "• budget jajan",
+    "• budget",
     "• budget bulan ini",
     "• budget bulan lalu",
     "• budget bulan depan",
+    "• budget jajan",
+    "• tambah budget jajan 500rb bulan ini",
+    "• tambah budget makan 1jt bulan depan",
+    "• edit budget 1 600rb",
+    "• hapus budget 1",
     "",
     "🧮 *Kalkulator*",
     "• hitung 20rb + 15rb",
@@ -4214,7 +4490,7 @@ function isPotentialBotCommand(message: string): boolean {
 
   const validCommands = [
     "saldo", "summary", "history", "kategori", "akun", "budget", "ai", "ping", "info",
-    "hutang", "piutang", "transfer", "tf", "hapus", "undo", "menu", "help", "bantuan", "contoh",
+    "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
   if (validCommands.some((cmd) => normalized === cmd || normalized.startsWith(`${cmd} `))) return true;
@@ -4451,6 +4727,56 @@ Deno.serve(async (req: Request) => {
         txCountQuery,
       ]);
       reply = ["ℹ️ Info HematWoi", `Jumlah akun: ${accountCount ?? 0}`, `Jumlah kategori: ${categoryCount ?? 0}`, `Total transaksi hari ini: ${txCount ?? 0}`].join("\n");
+    } else if (normalized.startsWith("tambah budget ")) {
+      const budgetRes = await handleAddBudgetCommand(userId, normalized);
+      reply = budgetRes.reply;
+      parsedLog = budgetRes.parsedLog;
+    } else if (normalized.startsWith("edit budget ")) {
+      const budgetRes = await handleEditBudgetCommand(userId, contextKey, normalized);
+      reply = budgetRes.reply;
+      parsedLog = budgetRes.parsedLog;
+    } else if (normalized.startsWith("hapus budget ")) {
+      const budgetRes = await handleDeleteBudgetCommand(userId, contextKey, normalized);
+      reply = budgetRes.reply;
+      parsedLog = budgetRes.parsedLog;
+    } else if (parseBudgetPeriodCommand(normalized)) {
+      const periodCommand = parseBudgetPeriodCommand(normalized) as BudgetPeriodCommand;
+      const label = getBudgetPeriodLabel(periodCommand);
+      console.log("[BUDGET PERIOD COMMAND]", {
+        normalized,
+        period: periodCommand.period,
+        label,
+      });
+      const range = getBudgetPeriodRange(periodCommand.periodType, periodCommand.period);
+      const monthlyBudgets = await getMonthlyBudgetsByPeriod(userId, range);
+      const displayedBudgets = budgetDisplayItems(monthlyBudgets);
+      console.log("[BUDGET DISPLAYED]", displayedBudgets);
+      reply = buildBudgetPeriodMessage(periodCommand, monthlyBudgets);
+      parsedLog = { command: "budget_period", period: periodCommand.period, source: getBudgetPeriodSource(normalized), displayedBudgets };
+    } else if (normalized.startsWith("budget ")) {
+      const categoryName = normalized.replace(/^budget\s+/, "").trim();
+      const [monthlyBudget, weeklyBudget] = await Promise.all([
+        getMonthlyBudgetInfo(userId, categoryName),
+        getWeeklyBudgetInfo(userId, categoryName),
+      ]);
+
+      if (!monthlyBudget && !weeklyBudget) {
+        reply = `📊 Budget untuk kategori *${categoryName}* belum ada.`;
+      } else {
+        const categoryLabel =
+          monthlyBudget?.categoryNames?.[0] ??
+          weeklyBudget?.categoryNames?.[0] ??
+          categoryName;
+
+        const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
+
+        reply = [
+          "📊 *Info Budget*",
+          `Kategori: ${categoryLabel}`,
+          "",
+          ...budgetLines,
+        ].join("\n");
+      }
     } else if (/^edit\s+(\d+)\s+(.+)$/i.test(message.trim())) {
       console.log("[EDIT COMMAND DETECTED]", {
         message,
@@ -4740,42 +5066,6 @@ Deno.serve(async (req: Request) => {
             }
           }
         }
-      }
-    } else if (parseBudgetPeriodCommand(normalized)) {
-      const periodCommand = parseBudgetPeriodCommand(normalized) as BudgetPeriodCommand;
-      const label = getBudgetPeriodLabel(periodCommand);
-      console.log("[BUDGET PERIOD COMMAND]", {
-        normalized,
-        period: periodCommand.period,
-        label,
-      });
-      const range = getBudgetPeriodRange(periodCommand.periodType, periodCommand.period);
-      const monthlyBudgets = await getMonthlyBudgetsByPeriod(userId, range);
-      reply = buildBudgetPeriodMessage(periodCommand, monthlyBudgets);
-      parsedLog = { command: "budget_period", periodType: "monthly", period: periodCommand.period };
-    } else if (normalized.startsWith("budget ")) {
-      const categoryName = normalized.replace(/^budget\s+/, "").trim();
-      const [monthlyBudget, weeklyBudget] = await Promise.all([
-        getMonthlyBudgetInfo(userId, categoryName),
-        getWeeklyBudgetInfo(userId, categoryName),
-      ]);
-
-      if (!monthlyBudget && !weeklyBudget) {
-        reply = `📊 Budget untuk kategori *${categoryName}* belum ada.`;
-      } else {
-        const categoryLabel =
-          monthlyBudget?.categoryNames?.[0] ??
-          weeklyBudget?.categoryNames?.[0] ??
-          categoryName;
-
-        const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
-
-        reply = [
-          "📊 *Info Budget*",
-          `Kategori: ${categoryLabel}`,
-          "",
-          ...budgetLines,
-        ].join("\n");
       }
     } else if (
       normalized === "kategori" ||
