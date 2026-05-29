@@ -153,6 +153,13 @@ type BudgetPeriodItem = {
   periodMonth: string;
   createdAt: string;
 };
+type BudgetSchema = {
+  keys: string[];
+  amountField: string | null;
+  periodField: string | null;
+  nameField: string | null;
+  categoryField: string | null;
+};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -4000,16 +4007,91 @@ function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget
   return lines;
 }
 
+const BUDGET_AMOUNT_FIELDS = ["limit_amount", "budget_limit", "budget_amount", "target_amount", "planned_amount", "amount_planned", "planned", "amount", "total", "value"];
+const BUDGET_PERIOD_FIELDS = ["period_month", "month", "period", "budget_month"];
+const BUDGET_NAME_FIELDS = ["name", "title", "label"];
+const BUDGET_CATEGORY_FIELDS = ["category_id"];
+
 function getBudgetAmount(row: Record<string, JsonValue>): number {
-  return Number(row.amount_planned ?? row.planned ?? row.amount ?? row.total ?? row.value ?? 0);
+  return Number(
+    row.limit_amount ??
+    row.budget_limit ??
+    row.budget_amount ??
+    row.target_amount ??
+    row.planned_amount ??
+    row.amount_planned ??
+    row.planned ??
+    row.amount ??
+    row.total ??
+    row.value ??
+    0
+  );
 }
 
 function getBudgetPeriod(row: Record<string, JsonValue>): string {
-  return String(row.period_month ?? row.month ?? "");
+  return String(row.period_month ?? row.month ?? row.period ?? row.budget_month ?? "");
 }
 
 function getBudgetName(row: Record<string, JsonValue>): string {
-  return String(row.name ?? row.label ?? "-");
+  return String(row.name ?? row.title ?? row.label ?? "-");
+}
+
+function detectField(row: Record<string, JsonValue> | null, candidates: string[]): string | null {
+  if (!row) return null;
+  return candidates.find((field) => Object.prototype.hasOwnProperty.call(row, field)) ?? null;
+}
+
+async function detectBudgetSchema(userId: string): Promise<BudgetSchema> {
+  const { data: row, error } = await supabase
+    .from("budgets")
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+
+  const sample = (row ?? null) as Record<string, JsonValue> | null;
+  const keys = Object.keys(sample ?? {});
+  const amountField = detectField(sample, BUDGET_AMOUNT_FIELDS);
+  const periodField = detectField(sample, BUDGET_PERIOD_FIELDS);
+  const nameField = detectField(sample, BUDGET_NAME_FIELDS);
+  const categoryField = detectField(sample, BUDGET_CATEGORY_FIELDS);
+
+  console.log("[BUDGET SCHEMA DETECT]", {
+    keys,
+    amountField,
+    periodField,
+    nameField,
+    categoryField,
+  });
+
+  return { keys, amountField, periodField, nameField, categoryField };
+}
+
+function budgetSchemaUndetectedMessage(): string {
+  return [
+    "❌ *Budget Gagal Ditambahkan*",
+    "",
+    "Kolom nominal budget tidak bisa dideteksi.",
+    "",
+    "Kirim ke saya hasil:",
+    "*budget debug schema*",
+  ].join("\n");
+}
+
+function buildBudgetSchemaDebugMessage(schema: BudgetSchema): string {
+  return [
+    "🛠️ *Budget Schema Debug*",
+    "",
+    "Keys:",
+    schema.keys.length > 0 ? schema.keys.join(", ") : "-",
+    "",
+    "Detected:",
+    `Amount: ${schema.amountField ?? "-"}`,
+    `Period: ${schema.periodField ?? "-"}`,
+    `Name: ${schema.nameField ?? "-"}`,
+    `Category: ${schema.categoryField ?? "-"}`,
+  ].join("\n");
 }
 
 function parseBudgetPeriodKey(text: string): BudgetPeriodKey | null {
@@ -4283,63 +4365,60 @@ async function findBudgetByCategoryAndPeriod(userId: string, categoryId: string,
   return linkedBudgetId ? rows.find((row) => String(row.id ?? "") === linkedBudgetId) ?? null : null;
 }
 
+async function insertBudgetCategoryMappingSafe(userId: string, budgetId: string, categoryId: string): Promise<void> {
+  const withUser: Record<string, JsonValue> = { budget_id: budgetId, category_id: categoryId, user_id: userId };
+  const { error } = await supabase.from("budget_categories").insert(withUser);
+  if (!error) return;
+  if (!isSchemaColumnError(error)) throw error;
+
+  const withoutUser: Record<string, JsonValue> = { budget_id: budgetId, category_id: categoryId };
+  const { error: fallbackError } = await supabase.from("budget_categories").insert(withoutUser);
+  if (fallbackError) throw fallbackError;
+}
+
 async function insertBudgetSafe(input: { userId: string; categoryId: string; categoryName: string; amount: number; periodMonth: string }): Promise<Record<string, JsonValue>> {
   const { userId, categoryId, categoryName, amount, periodMonth } = input;
-  const candidates: Array<Record<string, JsonValue>> = [
-    { user_id: userId, category_id: categoryId, amount_planned: amount, period_month: periodMonth, name: categoryName },
-    { user_id: userId, category_id: categoryId, amount_planned: amount, month: periodMonth, name: categoryName },
-    { user_id: userId, category_id: categoryId, amount_planned: amount, period_month: periodMonth },
-    { user_id: userId, category_id: categoryId, amount_planned: amount, month: periodMonth },
+  const schema = await detectBudgetSchema(userId);
+  if (!schema.amountField) throw new Error("BUDGET_SCHEMA_AMOUNT_NOT_DETECTED");
 
-    { user_id: userId, category_id: categoryId, planned: amount, period_month: periodMonth, name: categoryName },
-    { user_id: userId, category_id: categoryId, planned: amount, month: periodMonth, name: categoryName },
-    { user_id: userId, category_id: categoryId, planned: amount, period_month: periodMonth },
-    { user_id: userId, category_id: categoryId, planned: amount, month: periodMonth },
+  const payload: Record<string, JsonValue> = {
+    user_id: userId,
+    [schema.amountField]: amount,
+  };
+  if (schema.categoryField) payload[schema.categoryField] = categoryId;
+  if (schema.periodField) payload[schema.periodField] = periodMonth;
+  if (schema.nameField) payload[schema.nameField] = categoryName;
 
-    { user_id: userId, category_id: categoryId, amount: amount, period_month: periodMonth, name: categoryName },
-    { user_id: userId, category_id: categoryId, amount: amount, month: periodMonth, name: categoryName },
-    { user_id: userId, category_id: categoryId, amount: amount, period_month: periodMonth },
-    { user_id: userId, category_id: categoryId, amount: amount, month: periodMonth },
-  ];
-  let lastError: any = null;
+  console.log("[BUDGET INSERT TRY]", {
+    keys: Object.keys(payload),
+    periodMonth,
+    amount,
+  });
 
-  for (const payload of candidates) {
-    console.log("[BUDGET INSERT TRY]", {
-      keys: Object.keys(payload),
-      periodMonth,
-      amount,
-    });
-
-    const { data, error } = await supabase.from("budgets").insert(payload).select("*").single();
-    if (!error && data) {
-      console.log("[BUDGET INSERT SUCCESS]", {
-        keys: Object.keys(payload),
-      });
-      return data as Record<string, JsonValue>;
-    }
-
-    lastError = error;
+  const { data, error } = await supabase.from("budgets").insert(payload).select("*").single();
+  if (error) {
     console.error("[BUDGET INSERT ERROR]", {
       keys: Object.keys(payload),
       message: error?.message,
     });
-
-    if (!isSchemaColumnError(error)) throw error;
+    throw error;
   }
 
-  throw new Error(`BUDGET_INSERT_FAILED: ${lastError?.message ?? "No supported budget insert payload found"}`);
+  const budget = data as Record<string, JsonValue>;
+  if (!schema.categoryField) await insertBudgetCategoryMappingSafe(userId, String(budget.id ?? ""), categoryId);
+
+  console.log("[BUDGET INSERT SUCCESS]", {
+    keys: Object.keys(payload),
+  });
+  return budget;
 }
 
 async function updateBudgetAmountSafe(userId: string, budgetId: string, amount: number): Promise<string> {
-  const amountFields = ["amount_planned", "planned", "amount"];
-  let lastError: any = null;
-  for (const amountField of amountFields) {
-    const { error } = await supabase.from("budgets").update({ [amountField]: amount }).eq("id", budgetId).eq("user_id", userId);
-    if (!error) return amountField;
-    lastError = error;
-    if (!isSchemaColumnError(error)) throw error;
-  }
-  throw new Error(`BUDGET_UPDATE_FIELD_NOT_FOUND: ${lastError?.message ?? "No supported budget amount field found"}`);
+  const schema = await detectBudgetSchema(userId);
+  if (!schema.amountField) throw new Error("BUDGET_SCHEMA_AMOUNT_NOT_DETECTED");
+  const { error } = await supabase.from("budgets").update({ [schema.amountField]: amount }).eq("id", budgetId).eq("user_id", userId);
+  if (error) throw error;
+  return schema.amountField;
 }
 
 async function deleteBudgetSafe(userId: string, budgetId: string): Promise<"soft" | "hard"> {
@@ -4370,9 +4449,12 @@ async function handleAddBudgetCommand(userId: string, normalized: string): Promi
   try {
     await insertBudgetSafe({ userId, categoryId: category.id, categoryName: category.name, amount, periodMonth });
   } catch (error: any) {
+    const message = String(error?.message ?? error);
     return {
-      reply: [`❌ *Budget Gagal Ditambahkan*`, "", `Detail:`, String(error?.message ?? error)].join("\n"),
-      parsedLog: { command: "budget_crud", action: "add", status: "insert_failed", categoryName: category.name, amount, periodMonth, error: String(error?.message ?? error) },
+      reply: message === "BUDGET_SCHEMA_AMOUNT_NOT_DETECTED"
+        ? budgetSchemaUndetectedMessage()
+        : [`❌ *Budget Gagal Ditambahkan*`, "", `Detail:`, message].join("\n"),
+      parsedLog: { command: "budget_crud", action: "add", status: "insert_failed", categoryName: category.name, amount, periodMonth, error: message },
     };
   }
   return {
@@ -4417,7 +4499,17 @@ async function handleEditBudgetCommand(userId: string, phone: string, normalized
   if (!parsed || amount <= 0) return { reply: "⚠️ *Nominal Budget Tidak Valid*\n\nContoh:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "edit", status: "invalid_amount", categoryName } };
   const resolved = await resolveBudgetTarget(userId, phone, parsed);
   if (!resolved) return { reply: "ℹ️ *Budget Tidak Ditemukan*\n\nGunakan:\n*tambah budget jajan 500rb bulan ini*", parsedLog: { command: "budget_crud", action: "edit", status: "not_found", categoryName, amount, periodMonth } };
-  await updateBudgetAmountSafe(userId, String(resolved.budget.id ?? ""), amount);
+  try {
+    await updateBudgetAmountSafe(userId, String(resolved.budget.id ?? ""), amount);
+  } catch (error: any) {
+    const message = String(error?.message ?? error);
+    return {
+      reply: message === "BUDGET_SCHEMA_AMOUNT_NOT_DETECTED"
+        ? budgetSchemaUndetectedMessage()
+        : [`❌ *Budget Gagal Diubah*`, "", `Detail:`, message].join("\n"),
+      parsedLog: { command: "budget_crud", action: "edit", status: "update_failed", categoryName: resolved.categoryName, amount, periodMonth: resolved.periodMonth, error: message },
+    };
+  }
   return {
     reply: [`✏️ *Budget Berhasil Diubah*`, "", line(), `Kategori: *${resolved.categoryName}*`, `Nominal Baru: *${formatIDR(amount)}*`].join("\n"),
     parsedLog: { command: "budget_crud", action: "edit", status: "success", categoryName: resolved.categoryName, amount, periodMonth: resolved.periodMonth },
@@ -4863,6 +4955,10 @@ Deno.serve(async (req: Request) => {
         txCountQuery,
       ]);
       reply = ["ℹ️ Info HematWoi", `Jumlah akun: ${accountCount ?? 0}`, `Jumlah kategori: ${categoryCount ?? 0}`, `Total transaksi hari ini: ${txCount ?? 0}`].join("\n");
+    } else if (normalized === "budget debug schema") {
+      const schema = await detectBudgetSchema(userId);
+      reply = buildBudgetSchemaDebugMessage(schema);
+      parsedLog = { command: "budget_debug_schema", ...schema };
     } else if (normalized.startsWith("tambah budget ")) {
       const budgetRes = await handleAddBudgetCommand(userId, normalized);
       reply = budgetRes.reply;
