@@ -765,12 +765,30 @@ function getCalculatorExpressionText(text: string): string {
   return String(text ?? "").trim().replace(/^(calc|hitung)\s+/i, "").trim();
 }
 
+function containsDateOnlyPattern(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+
+  const datePattern = /\b\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?\b/g;
+  if (!datePattern.test(raw)) return false;
+
+  const withoutDates = raw.replace(datePattern, " ");
+  return !/[+*x×/:]/i.test(withoutDates) && !/(^|\s)-(?!\s*$)/.test(withoutDates);
+}
+
 function isCalculatorExpression(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
   if (/^(calc|hitung)(\s+|$)/i.test(raw)) return true;
-  if (isDateToken(raw)) return false;
-  return /\d/.test(raw) && /[+\-*x×/:]/i.test(raw);
+
+  const nominalAmountPattern = /\d+(?:[.,]\d+)?\s*(?:rb|rbu|ribu|k|jt|juta|m)\b/gi;
+  const withoutNominalAmounts = raw.replace(nominalAmountPattern, "1");
+  if (/[a-zA-Z]{2,}/.test(withoutNominalAmounts)) return false;
+  if (containsDateOnlyPattern(raw)) return false;
+  if (!/[+\-*x×/:]/i.test(raw)) return false;
+
+  const normalizedAmounts = raw.replace(nominalAmountPattern, "1");
+  return /^[0-9\s+\-*x×/:().,]+$/i.test(normalizedAmounts);
 }
 
 function normalizeCalculatorExpression(text: string): string | null {
