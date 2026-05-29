@@ -3905,10 +3905,16 @@ function parseBudgetPeriodCommand(text: string): BudgetPeriodCommand | null {
   const normalized = normalizeText(text);
   const map: Record<string, BudgetPeriodCommand> = {
     "budget bulan ini": { periodType: "monthly", period: "current" },
-    "budget bulan lalu": { periodType: "monthly", period: "previous" },
-    "budget bulan besok": { periodType: "monthly", period: "next" },
+    "budget bulan sekarang": { periodType: "monthly", period: "current" },
+    "budget sekarang": { periodType: "monthly", period: "current" },
     "budget now": { periodType: "monthly", period: "current" },
+    "budget bulan lalu": { periodType: "monthly", period: "previous" },
+    "budget bulan kemarin": { periodType: "monthly", period: "previous" },
     "budget prev": { periodType: "monthly", period: "previous" },
+    "budget previous": { periodType: "monthly", period: "previous" },
+    "budget bulan depan": { periodType: "monthly", period: "next" },
+    "budget bulan besok": { periodType: "monthly", period: "next" },
+    "budget bulan berikutnya": { periodType: "monthly", period: "next" },
     "budget next": { periodType: "monthly", period: "next" },
   };
   return map[normalized] ?? null;
@@ -3993,12 +3999,38 @@ async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRang
     .sort((a, b) => (b.planned - a.planned) || (new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
 }
 
-function buildBudgetPeriodMessage(command: BudgetPeriodCommand, monthly: BudgetPeriodItem[]): string {
-  if (monthly.length === 0) return `${infoTitle("Data Kosong")}\n\nBelum ada budget bulanan untuk periode ini.`;
+function getBudgetPeriodLabel(command: BudgetPeriodCommand): string {
   const titleMap: Record<BudgetPeriodType, Record<BudgetPeriodKey, string>> = {
-    monthly: { current: "📊 *Budget Bulan Ini*", previous: "📊 *Budget Bulan Lalu*", next: "📊 *Budget Bulan Besok*" },
+    monthly: { current: "📊 *Budget Bulan Ini*", previous: "📊 *Budget Bulan Lalu*", next: "📊 *Budget Bulan Depan*" },
   };
-  const lines: string[] = [titleMap[command.periodType][command.period], "", line()];
+  return titleMap[command.periodType][command.period];
+}
+
+function buildBudgetPeriodMessage(command: BudgetPeriodCommand, monthly: BudgetPeriodItem[]): string {
+  const label = getBudgetPeriodLabel(command);
+  if (monthly.length === 0) return [label, "", line(), "ℹ️ Belum ada budget untuk periode ini."].join("\n");
+
+  const totalBudget = monthly.reduce((sum, b) => sum + b.planned, 0);
+  const totalUsed = monthly.reduce((sum, b) => sum + b.used, 0);
+  const totalRemaining = monthly.reduce((sum, b) => sum + b.remaining, 0);
+
+  console.log("[BUDGET PERIOD SUMMARY]", {
+    totalBudget,
+    totalUsed,
+    totalRemaining,
+  });
+
+  const lines: string[] = [
+    label,
+    "",
+    line(),
+    "💰 *Ringkasan*",
+    `• Total Budget: ${money(totalBudget)}`,
+    `• Terpakai: ${money(totalUsed)}`,
+    `• Sisa: ${money(totalRemaining)}`,
+    "",
+    line(),
+  ];
   monthly.forEach((b, i) => {
     lines.push(`${i + 1}. ${bold(b.categoryNames.join(", "))}`);
     lines.push(`   Budget: ${money(b.planned)}`);
@@ -4053,6 +4085,7 @@ function buildMenuMessage(): string {
     "• budget jajan",
     "• budget bulan ini",
     "• budget bulan lalu",
+    "• budget bulan depan",
     "",
     "🧾 *Master Data*",
     "• kategori",
@@ -4101,6 +4134,8 @@ function buildExampleMessage(): string {
     "🎯 *Budget*",
     "• budget jajan",
     "• budget bulan ini",
+    "• budget bulan lalu",
+    "• budget bulan depan",
     "",
     "🧮 *Kalkulator*",
     "• hitung 20rb + 15rb",
@@ -4708,6 +4743,12 @@ Deno.serve(async (req: Request) => {
       }
     } else if (parseBudgetPeriodCommand(normalized)) {
       const periodCommand = parseBudgetPeriodCommand(normalized) as BudgetPeriodCommand;
+      const label = getBudgetPeriodLabel(periodCommand);
+      console.log("[BUDGET PERIOD COMMAND]", {
+        normalized,
+        period: periodCommand.period,
+        label,
+      });
       const range = getBudgetPeriodRange(periodCommand.periodType, periodCommand.period);
       const monthlyBudgets = await getMonthlyBudgetsByPeriod(userId, range);
       reply = buildBudgetPeriodMessage(periodCommand, monthlyBudgets);
