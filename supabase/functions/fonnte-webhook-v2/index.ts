@@ -191,7 +191,7 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
 const NATURAL_RESERVED_COMMANDS = new Set([
   "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "history", "riwayat", "budget", "hutang",
   "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
-  "top kategori", "cashflow", "kategori", "akun", "info", "ping", "hapus", "undo",
+  "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "hapus", "undo",
 ]);
 
 
@@ -1392,38 +1392,64 @@ async function getCategoryList(userId: string): Promise<string> {
   return lines.join("\n");
 }
 
+function formatCategoryName(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+}
+
+function invalidCategoryTypeReply(): string {
+  return [
+    "⚠️ *Tipe Kategori Tidak Valid*",
+    "",
+    "Gunakan:",
+    "• income",
+    "• expense",
+  ].join("\n");
+}
+
 async function createCategory(userId: string, name: string, type: string): Promise<string> {
   const cleanName = name.trim();
   const cleanType = type.trim().toLowerCase();
-  if (!cleanName || (cleanType !== "income" && cleanType !== "expense")) {
-    return "⚠️ Format tidak valid.\n\nGunakan:\nkategori tambah nama tipe\n\nTipe: income / expense";
-  }
+  if (!cleanName) return "⚠️ Format tidak valid.\n\nGunakan:\ntambah kategori nama tipe";
+  if (cleanType !== "income" && cleanType !== "expense") return invalidCategoryTypeReply();
+
   const existed = await findCategory(userId, cleanName);
-  if (existed) return "❌ Kategori sudah ada.";
+  if (existed) return "❌ *Kategori Sudah Ada*";
 
   const payload: Record<string, JsonValue> = { user_id: userId, name: cleanName, type: cleanType };
   const { error } = await supabase.from("categories").insert(payload);
   if (error) throw error;
-  return `✅ Kategori berhasil ditambahkan\n\nNama: ${cleanName.charAt(0).toUpperCase()}${cleanName.slice(1)}\nTipe: ${cleanType}`;
+  return [
+    "✅ *Kategori Berhasil Ditambahkan*",
+    "",
+    line(),
+    `Nama: *${formatCategoryName(cleanName)}*`,
+    `Tipe: *${cleanType}*`,
+  ].join("\n");
 }
 
 async function updateCategory(userId: string, oldName: string, newName: string): Promise<string> {
   const oldTrim = oldName.trim();
   const newTrim = newName.trim();
-  if (!oldTrim || !newTrim) return "⚠️ Format tidak valid.\n\nGunakan:\nkategori edit nama_lama nama_baru";
+  if (!oldTrim || !newTrim) return "⚠️ Format tidak valid.\n\nGunakan:\nedit kategori nama_lama nama_baru";
   const current = await findCategory(userId, oldTrim);
-  if (!current) return "❌ Kategori tidak ditemukan.";
+  if (!current) return "❌ *Kategori Tidak Ditemukan*";
   const duplicate = await findCategory(userId, newTrim);
-  if (duplicate && String(duplicate.id) !== String(current.id)) return "❌ Kategori sudah ada.";
+  if (duplicate && String(duplicate.id) !== String(current.id)) return "❌ *Kategori Sudah Ada*";
 
   const { error } = await supabase.from("categories").update({ name: newTrim }).eq("id", current.id).eq("user_id", userId);
   if (error) throw error;
-  return `✅ Kategori berhasil diubah\n\nSebelum: ${current.name}\nSesudah: ${newTrim.charAt(0).toUpperCase()}${newTrim.slice(1)}`;
+  return [
+    "✏️ *Kategori Berhasil Diubah*",
+    "",
+    line(),
+    `Sebelum: *${formatCategoryName(current.name)}*`,
+    `Sesudah: *${formatCategoryName(newTrim)}*`,
+  ].join("\n");
 }
 
 async function deleteCategory(userId: string, name: string): Promise<string> {
   const target = await findCategory(userId, name.trim());
-  if (!target) return "❌ Kategori tidak ditemukan.";
+  if (!target) return "❌ *Kategori Tidak Ditemukan*";
 
   const tables: Array<"transactions" | "budgets" | "debts" | "receivables"> = ["transactions", "budgets", "debts", "receivables"];
   for (const table of tables) {
@@ -1443,19 +1469,26 @@ async function deleteCategory(userId: string, name: string): Promise<string> {
     const { error } = await supabase.from("categories").delete().eq("id", target.id).eq("user_id", userId);
     if (error) throw error;
   }
-  return `✅ Kategori berhasil dihapus\n\nNama: ${target.name}`;
+  return [
+    "🗑️ *Kategori Berhasil Dihapus*",
+    "",
+    line(),
+    `Nama: *${formatCategoryName(target.name)}*`,
+  ].join("\n");
+}
+
+type CategoryCrudAction = "create" | "edit" | "delete" | "list" | "unknown";
+
+function detectCategoryCrudAction(normalized: string): CategoryCrudAction {
+  if (normalized.startsWith("tambah kategori ") || normalized.startsWith("kategori tambah ")) return "create";
+  if (normalized.startsWith("edit kategori ") || normalized.startsWith("kategori edit ")) return "edit";
+  if (normalized.startsWith("hapus kategori ") || normalized.startsWith("kategori hapus ")) return "delete";
+  if (normalized === "kategori" || normalized === "list kategori") return "list";
+  return "unknown";
 }
 
 async function handleCategoryCrud(userId: string, rawMessage: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
-  const action = normalized.startsWith("kategori tambah")
-    ? "tambah"
-    : normalized.startsWith("kategori edit")
-    ? "edit"
-    : normalized.startsWith("kategori hapus")
-    ? "hapus"
-    : normalized === "kategori" || normalized === "list kategori"
-    ? "list"
-    : "unknown";
+  const action = detectCategoryCrudAction(normalized);
   const payload = rawMessage.trim();
   console.log("[CATEGORY CRUD]", { action, userId, payload });
 
@@ -1463,27 +1496,29 @@ async function handleCategoryCrud(userId: string, rawMessage: string, normalized
     const reply = await getCategoryList(userId);
     return { reply, parsedLog: { command: "category_crud", action } };
   }
-  if (action === "tambah") {
-    const match = rawMessage.trim().match(/^kategori\s+tambah\s+(.+)\s+(income|expense)$/i);
-    if (!match) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nkategori tambah nama tipe", parsedLog: { command: "category_crud", action } };
-    const reply = await createCategory(userId, match[1], match[2]);
-    return { reply, parsedLog: { command: "category_crud", action, categoryName: match[1].trim() } };
+  if (action === "create") {
+    const match = rawMessage.trim().match(/^(?:tambah\s+kategori|kategori\s+tambah)\s+(.+?)\s+(\S+)$/i);
+    if (!match) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\ntambah kategori nama tipe", parsedLog: { command: "category_crud", action, categoryName: null, categoryType: null } };
+    const categoryName = match[1].trim();
+    const categoryType = match[2].trim().toLowerCase();
+    const reply = await createCategory(userId, categoryName, categoryType);
+    return { reply, parsedLog: { command: "category_crud", action, categoryName, categoryType } };
   }
   if (action === "edit") {
     const parts = rawMessage.trim().split(/\s+/);
-    if (parts.length < 4) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nkategori edit nama_lama nama_baru", parsedLog: { command: "category_crud", action } };
+    if (parts.length < 4) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nedit kategori nama_lama nama_baru", parsedLog: { command: "category_crud", action, categoryName: null, categoryType: null } };
     const oldName = parts[2];
     const newName = parts.slice(3).join(" ");
     const reply = await updateCategory(userId, oldName, newName);
-    return { reply, parsedLog: { command: "category_crud", action, categoryName: oldName } };
+    return { reply, parsedLog: { command: "category_crud", action, categoryName: oldName, categoryType: null } };
   }
-  if (action === "hapus") {
-    const name = rawMessage.trim().replace(/^kategori\s+hapus\s+/i, "").trim();
-    if (!name) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nkategori hapus nama", parsedLog: { command: "category_crud", action } };
+  if (action === "delete") {
+    const name = rawMessage.trim().replace(/^(?:hapus\s+kategori|kategori\s+hapus)\s+/i, "").trim();
+    if (!name) return { reply: "⚠️ Format tidak valid.\n\nGunakan:\nhapus kategori nama", parsedLog: { command: "category_crud", action, categoryName: null, categoryType: null } };
     const reply = await deleteCategory(userId, name);
-    return { reply, parsedLog: { command: "category_crud", action, categoryName: name } };
+    return { reply, parsedLog: { command: "category_crud", action, categoryName: name, categoryType: null } };
   }
-  return { reply: "⚠️ Command kategori tidak valid.", parsedLog: { command: "category_crud", action } };
+  return { reply: "⚠️ Command kategori tidak valid.", parsedLog: { command: "category_crud", action, categoryName: null, categoryType: null } };
 }
 
 async function findAccount(userId: string, name: string): Promise<{ id: string; name: string; type: string } | null> {
@@ -4089,7 +4124,9 @@ function buildMenuMessage(): string {
     "",
     "🧾 *Master Data*",
     "• kategori",
-    "• kategori tambah motor expense",
+    "• tambah kategori motor expense",
+    "• edit kategori motor kendaraan",
+    "• hapus kategori motor",
     "• akun",
     "",
     "💳 *Hutang & Piutang*",
@@ -4136,6 +4173,11 @@ function buildExampleMessage(): string {
     "• budget bulan ini",
     "• budget bulan lalu",
     "• budget bulan depan",
+    "",
+    "🧾 *Kategori*",
+    "• tambah kategori motor expense",
+    "• edit kategori motor kendaraan",
+    "• hapus kategori motor",
     "",
     "🧮 *Kalkulator*",
     "• hitung 20rb + 15rb",
@@ -4214,7 +4256,7 @@ function isPotentialBotCommand(message: string): boolean {
 
   const validCommands = [
     "saldo", "summary", "history", "kategori", "akun", "budget", "ai", "ping", "info",
-    "hutang", "piutang", "transfer", "tf", "hapus", "undo", "menu", "help", "bantuan", "contoh",
+    "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
   if (validCommands.some((cmd) => normalized === cmd || normalized.startsWith(`${cmd} `))) return true;
@@ -4780,6 +4822,9 @@ Deno.serve(async (req: Request) => {
     } else if (
       normalized === "kategori" ||
       normalized === "list kategori" ||
+      normalized.startsWith("tambah kategori ") ||
+      normalized.startsWith("edit kategori ") ||
+      normalized.startsWith("hapus kategori ") ||
       normalized.startsWith("kategori tambah ") ||
       normalized.startsWith("kategori edit ") ||
       normalized.startsWith("kategori hapus ")
