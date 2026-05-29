@@ -758,6 +758,144 @@ function parseAmount(raw: string): number {
   return amount;
 }
 
+
+type CalculatorToken = { type: "number"; value: number } | { type: "operator" | "paren"; value: string };
+
+function getCalculatorExpressionText(text: string): string {
+  return String(text ?? "").trim().replace(/^(calc|hitung)\s+/i, "").trim();
+}
+
+function isCalculatorExpression(text: string): boolean {
+  const raw = String(text ?? "").trim();
+  if (!raw) return false;
+  if (/^(calc|hitung)(\s+|$)/i.test(raw)) return true;
+  if (isDateToken(raw)) return false;
+  return /\d/.test(raw) && /[+\-*x×/:]/i.test(raw);
+}
+
+function normalizeCalculatorExpression(text: string): string | null {
+  const expression = getCalculatorExpressionText(text);
+  if (!expression) return null;
+
+  const normalizedAmounts = expression.replace(/\d+(?:[.,]\d+)?\s*(?:rb|rbu|ribu|k|jt|juta|m)\b/gi, (match) => {
+    const amount = parseAmount(match);
+    return amount > 0 ? String(amount) : "INVALID_AMOUNT";
+  });
+
+  const normalizedOperators = normalizedAmounts
+    .replace(/[x×]/gi, "*")
+    .replace(/:/g, "/");
+
+  if (!/^[0-9+\-*/().\s]+$/.test(normalizedOperators)) return null;
+  if (!/[+\-*/]/.test(normalizedOperators)) return null;
+  return normalizedOperators.replace(/\s+/g, " ").trim();
+}
+
+function tokenizeCalculatorExpression(expression: string): CalculatorToken[] | null {
+  const compact = expression.replace(/\s+/g, "");
+  const matches = compact.match(/\d+(?:\.\d+)?|[+\-*/()]/g);
+  if (!matches || matches.join("") !== compact) return null;
+  return matches.map((token) => {
+    if (/^\d+(?:\.\d+)?$/.test(token)) return { type: "number", value: Number(token) };
+    return { type: token === "(" || token === ")" ? "paren" : "operator", value: token };
+  });
+}
+
+function calculateExpressionSafe(expression: string): number | null {
+  const tokens = tokenizeCalculatorExpression(expression);
+  if (!tokens) return null;
+  let index = 0;
+
+  const peek = () => tokens[index];
+  const consume = () => tokens[index++];
+
+  const parseFactor = (): number | null => {
+    const token = peek();
+    if (!token) return null;
+
+    if (token.type === "operator" && (token.value === "+" || token.value === "-")) {
+      consume();
+      const value = parseFactor();
+      if (value === null) return null;
+      return token.value === "-" ? -value : value;
+    }
+
+    if (token.type === "number") {
+      consume();
+      return Number.isFinite(token.value) ? token.value : null;
+    }
+
+    if (token.type === "paren" && token.value === "(") {
+      consume();
+      const value = parseExpression();
+      const close = consume();
+      if (value === null || !close || close.type !== "paren" || close.value !== ")") return null;
+      return value;
+    }
+
+    return null;
+  };
+
+  const parseTerm = (): number | null => {
+    let value = parseFactor();
+    if (value === null) return null;
+
+    while (peek()?.type === "operator" && (peek()?.value === "*" || peek()?.value === "/")) {
+      const operator = consume().value;
+      const right = parseFactor();
+      if (right === null) return null;
+      if (operator === "/") {
+        if (right === 0) throw new Error("DIVISION_BY_ZERO");
+        value /= right;
+      } else {
+        value *= right;
+      }
+    }
+
+    return value;
+  };
+
+  function parseExpression(): number | null {
+    let value = parseTerm();
+    if (value === null) return null;
+
+    while (peek()?.type === "operator" && (peek()?.value === "+" || peek()?.value === "-")) {
+      const operator = consume().value;
+      const right = parseTerm();
+      if (right === null) return null;
+      value = operator === "+" ? value + right : value - right;
+    }
+
+    return value;
+  }
+
+  const result = parseExpression();
+  if (result === null || index !== tokens.length || !Number.isFinite(result)) return null;
+  return result;
+}
+
+function buildCalculatorReply(expression: string, result: number): string {
+  return [
+    "🧮 *Kalkulator HematWoi*",
+    "",
+    line(),
+    getCalculatorExpressionText(expression),
+    `= *${formatIDR(result)}*`,
+  ].join("\n");
+}
+
+function buildCalculatorInvalidReply(): string {
+  return [
+    "⚠️ *Format Hitungan Tidak Valid*",
+    "",
+    "Contoh:",
+    "• 20rb + 15rb",
+    "• 100rb - 25rb",
+    "• 50rb x 3",
+    "• 1jt / 4",
+  ].join("\n");
+}
+
 function parseOptionalDateToken(raw: string): string | null {
   const match = raw.match(/^(\d{1,2})\/(\d{1,2})$/);
   if (!match) return null;
@@ -3863,6 +4001,12 @@ function buildMenuMessage(): string {
     "• ai",
     "• ai pengeluaran cash minggu ini",
     "",
+    "🧮 *Kalkulator*",
+    "• 20rb + 15rb",
+    "• 100rb - 25rb",
+    "• 50rb x 3",
+    "• 1jt / 4",
+    "",
     "➕ *Catat Transaksi*",
     "• beli bensin 20rb",
     "• jajan kopi 15000 cash",
@@ -3920,6 +4064,11 @@ function buildExampleMessage(): string {
     "🎯 *Budget*",
     "• budget jajan",
     "• budget bulan ini",
+    "",
+    "🧮 *Kalkulator*",
+    "• hitung 20rb + 15rb",
+    "• calc 100rb - 25rb",
+    "• 50rb x 3",
     "",
     "💳 *Hutang / Piutang*",
     "• tambah hutang shopee 100000 seabank",
@@ -3989,6 +4138,7 @@ function isPotentialBotCommand(message: string): boolean {
   if (!normalized) return false;
 
   if (/^(10|[1-9])$/.test(message.trim())) return true;
+  if (isCalculatorExpression(message)) return true;
 
   const validCommands = [
     "saldo", "summary", "history", "kategori", "akun", "budget", "ai", "ping", "info",
@@ -4130,7 +4280,32 @@ Deno.serve(async (req: Request) => {
     let reply = "";
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
 
-    if (MENU_COMMANDS.has(normalized)) {
+    if (isCalculatorExpression(message)) {
+      console.log("[ROUTE MATCH]", { route: "calculator", normalized, isGroup, contextKey });
+      const expression = normalizeCalculatorExpression(message);
+      if (!expression) {
+        reply = buildCalculatorInvalidReply();
+        parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "invalid" };
+      } else {
+        try {
+          const result = calculateExpressionSafe(expression);
+          if (result === null) {
+            reply = buildCalculatorInvalidReply();
+            parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "invalid" };
+          } else {
+            reply = buildCalculatorReply(message, result);
+            parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result };
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message === "DIVISION_BY_ZERO") {
+            reply = "❌ *Tidak Bisa Dibagi 0*";
+            parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "division_by_zero" };
+          } else {
+            throw error;
+          }
+        }
+      }
+    } else if (MENU_COMMANDS.has(normalized)) {
       console.log("[ROUTE MATCH]", { route: "menu", normalized, isGroup, contextKey });
       reply = buildMenuMessage();
     } else if (normalized === "contoh") {
