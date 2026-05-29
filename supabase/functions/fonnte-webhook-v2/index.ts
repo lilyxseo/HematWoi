@@ -3123,6 +3123,16 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
   return error.code === "42703" || error.code === "PGRST204" || message.includes("column") || message.includes("schema cache");
 }
 
+function isSchemaColumnError(error: any) {
+  const message = String(error?.message ?? error ?? "").toLowerCase();
+  return (
+    message.includes("could not find") ||
+    message.includes("schema cache") ||
+    message.includes("column") ||
+    message.includes("does not exist")
+  );
+}
+
 async function updateTransactionDateField(transactionId: string, userId: string, newDate: string): Promise<string> {
   const dateFields = ["transaction_date", "date", "trx_date", "created_date"];
   let lastError: { message?: string } | null = null;
@@ -3942,7 +3952,7 @@ function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget
 }
 
 function getBudgetAmount(row: Record<string, JsonValue>): number {
-  return Number(row.amount_planned ?? row.planned ?? row.amount ?? row.total ?? 0);
+  return Number(row.amount_planned ?? row.planned ?? row.amount ?? row.total ?? row.value ?? 0);
 }
 
 function getBudgetPeriod(row: Record<string, JsonValue>): string {
@@ -4225,32 +4235,60 @@ async function findBudgetByCategoryAndPeriod(userId: string, categoryId: string,
 }
 
 async function insertBudgetSafe(input: { userId: string; categoryId: string; categoryName: string; amount: number; periodMonth: string }): Promise<Record<string, JsonValue>> {
-  const amountFields = ["amount_planned", "planned", "amount", "total"];
-  const periodFields = ["period_month", "month"];
-  let lastError: { message?: string } | null = null;
-  for (const amountField of amountFields) {
-    for (const periodField of periodFields) {
-      for (const includeName of [true, false]) {
-        const payload: Record<string, JsonValue> = { user_id: input.userId, category_id: input.categoryId, [amountField]: input.amount, [periodField]: input.periodMonth };
-        if (includeName) payload.name = input.categoryName;
-        const { data, error } = await supabase.from("budgets").insert(payload).select("*").single();
-        if (!error && data) return data as Record<string, JsonValue>;
-        lastError = error;
-        if (!isMissingColumnError(error)) throw error;
-      }
+  const { userId, categoryId, categoryName, amount, periodMonth } = input;
+  const candidates: Array<Record<string, JsonValue>> = [
+    { user_id: userId, category_id: categoryId, amount_planned: amount, period_month: periodMonth, name: categoryName },
+    { user_id: userId, category_id: categoryId, amount_planned: amount, month: periodMonth, name: categoryName },
+    { user_id: userId, category_id: categoryId, amount_planned: amount, period_month: periodMonth },
+    { user_id: userId, category_id: categoryId, amount_planned: amount, month: periodMonth },
+
+    { user_id: userId, category_id: categoryId, planned: amount, period_month: periodMonth, name: categoryName },
+    { user_id: userId, category_id: categoryId, planned: amount, month: periodMonth, name: categoryName },
+    { user_id: userId, category_id: categoryId, planned: amount, period_month: periodMonth },
+    { user_id: userId, category_id: categoryId, planned: amount, month: periodMonth },
+
+    { user_id: userId, category_id: categoryId, amount: amount, period_month: periodMonth, name: categoryName },
+    { user_id: userId, category_id: categoryId, amount: amount, month: periodMonth, name: categoryName },
+    { user_id: userId, category_id: categoryId, amount: amount, period_month: periodMonth },
+    { user_id: userId, category_id: categoryId, amount: amount, month: periodMonth },
+  ];
+  let lastError: any = null;
+
+  for (const payload of candidates) {
+    console.log("[BUDGET INSERT TRY]", {
+      keys: Object.keys(payload),
+      periodMonth,
+      amount,
+    });
+
+    const { data, error } = await supabase.from("budgets").insert(payload).select("*").single();
+    if (!error && data) {
+      console.log("[BUDGET INSERT SUCCESS]", {
+        keys: Object.keys(payload),
+      });
+      return data as Record<string, JsonValue>;
     }
+
+    lastError = error;
+    console.error("[BUDGET INSERT ERROR]", {
+      keys: Object.keys(payload),
+      message: error?.message,
+    });
+
+    if (!isSchemaColumnError(error)) throw error;
   }
-  throw new Error(`BUDGET_INSERT_FIELD_NOT_FOUND: ${lastError?.message ?? "No supported budget field found"}`);
+
+  throw new Error(`BUDGET_INSERT_FAILED: ${lastError?.message ?? "No supported budget insert payload found"}`);
 }
 
 async function updateBudgetAmountSafe(userId: string, budgetId: string, amount: number): Promise<string> {
-  const amountFields = ["amount_planned", "planned", "amount", "total"];
-  let lastError: { message?: string } | null = null;
+  const amountFields = ["amount_planned", "planned", "amount"];
+  let lastError: any = null;
   for (const amountField of amountFields) {
     const { error } = await supabase.from("budgets").update({ [amountField]: amount }).eq("id", budgetId).eq("user_id", userId);
     if (!error) return amountField;
     lastError = error;
-    if (!isMissingColumnError(error)) throw error;
+    if (!isSchemaColumnError(error)) throw error;
   }
   throw new Error(`BUDGET_UPDATE_FIELD_NOT_FOUND: ${lastError?.message ?? "No supported budget amount field found"}`);
 }
@@ -4280,7 +4318,14 @@ async function handleAddBudgetCommand(userId: string, normalized: string): Promi
   if (!category) return { reply: `❌ *Kategori Tidak Ditemukan*\n\nKategori: *${categoryName}*`, parsedLog: { command: "budget_crud", action: "add", status: "category_not_found", categoryName, amount, periodMonth } };
   const existing = await findBudgetByCategoryAndPeriod(userId, category.id, periodMonth);
   if (existing) return { reply: "⚠️ *Budget Sudah Ada*\n\nGunakan:\n*edit budget jajan 600rb*", parsedLog: { command: "budget_crud", action: "add", status: "already_exists", categoryName: category.name, amount, periodMonth } };
-  await insertBudgetSafe({ userId, categoryId: category.id, categoryName: category.name, amount, periodMonth });
+  try {
+    await insertBudgetSafe({ userId, categoryId: category.id, categoryName: category.name, amount, periodMonth });
+  } catch (error: any) {
+    return {
+      reply: [`❌ *Budget Gagal Ditambahkan*`, "", `Detail:`, String(error?.message ?? error)].join("\n"),
+      parsedLog: { command: "budget_crud", action: "add", status: "insert_failed", categoryName: category.name, amount, periodMonth, error: String(error?.message ?? error) },
+    };
+  }
   return {
     reply: [`✅ *Budget Berhasil Ditambahkan*`, "", line(), `Kategori: *${category.name}*`, `Periode: *${getBudgetPeriodDisplayName(period)}*`, `Nominal: *${formatIDR(amount)}*`].join("\n"),
     parsedLog: { command: "budget_crud", action: "add", status: "success", categoryName: category.name, amount, periodMonth },
