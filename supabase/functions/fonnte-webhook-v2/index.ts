@@ -611,11 +611,38 @@ async function getHistoryByDateRange(
 async function detectHistoryEntity(userId: string, raw: string): Promise<{ entityType: "category" | "account" | null; entityName: string | null; categoryId?: string; accountId?: string }> {
   const text = normalizeText(raw);
   if (!text) return { entityType: null, entityName: null };
-  const cat = await findCategory(userId, text);
-  if (cat) return { entityType: "category", entityName: cat.name, categoryId: cat.id };
   const acc = await findAccount(userId, text);
   if (acc) return { entityType: "account", entityName: acc.name, accountId: acc.id };
+  const cat = await findCategory(userId, text);
+  if (cat) return { entityType: "category", entityName: cat.name, categoryId: cat.id };
   return { entityType: null, entityName: null };
+}
+
+async function getHistoryByTitle(
+  userId: string,
+  keyword: string,
+  startDate: string | null,
+  endDate: string | null,
+  limit = 10,
+): Promise<Array<Record<string, JsonValue>>> {
+  console.log("[HISTORY TITLE SEARCH]", {
+    keyword,
+    startDate,
+    endDate,
+  });
+  let query = supabase.from("transactions")
+    .select("id,title,amount,type,date,category_id,account_id,to_account_id,inserted_at")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .ilike("title", `%${keyword}%`)
+    .order("inserted_at", { ascending: false })
+    .limit(limit);
+  if (startDate && endDate) {
+    query = query.gte("date", startDate).lte("date", endDate);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as Array<Record<string, JsonValue>>;
 }
 
 function buildHistoryMessage(
@@ -667,6 +694,47 @@ function buildHistoryMessage(
   return {
     reply: `${header}\n\n${line()}\n${lines.slice(0, 10).join("\n\n")}\n\n${line()}\nKetik *hapus 1* untuk menghapus nomor history.`,
     displayedTransactions: displayedTransactions.slice(0, 10),
+  };
+}
+
+function buildHistoryTitleMessage(
+  keyword: string,
+  transactions: Array<Record<string, JsonValue>>,
+  categoryMap: Map<string, string>,
+  accountMap: Map<string, string>,
+): { reply: string; displayedTransactions: JsonValue[] } {
+  const displayedTransactions: JsonValue[] = [];
+  const lines = transactions.slice(0, 10).map((tx, i) => {
+    const no = i + 1;
+    const type = String(tx.type ?? "expense");
+    const amount = Number(tx.amount ?? 0);
+    const txId = String(tx.id ?? "");
+    const txDate = String(tx.date ?? "");
+    const formattedDate = formatHistoryDate(txDate);
+    const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
+    const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
+    const toAccountName = accountMap.get(String(tx.to_account_id ?? "")) ?? "-";
+    const title = String(tx.title ?? "-");
+    const sign = type === "income" ? "+" : type === "transfer" ? "↔" : "-";
+    displayedTransactions.push({
+      no,
+      id: txId,
+      title,
+      amount,
+      type,
+      date: txDate,
+      categoryName,
+      accountName,
+      toAccountName,
+    });
+    if (type === "transfer") {
+      return `${no}. *${formattedDate}*\n   Transfer ${accountName} → ${toAccountName} — ${title}\n   ${sign} *${formatIDR(amount)}*`;
+    }
+    return `${no}. *${formattedDate}*\n   ${categoryName} — ${title}\n   ${sign} *${formatIDR(amount)}*`;
+  });
+  return {
+    reply: `📚 *History Judul: ${keyword}*\n\n${line()}\n${lines.join("\n\n")}\n\n${line()}\nKetik *hapus 1* untuk menghapus nomor history.\nKetik *edit 1 01/06* untuk edit transaksi.`,
+    displayedTransactions,
   };
 }
 
@@ -3784,7 +3852,10 @@ function buildMenuMessage(): string {
     "📚 *History*",
     "• history",
     "• history cash",
+    "• history jajan",
+    "• history es budeh",
     "• history 25/05",
+    "• history cash 25/05",
     "• hapus 1",
     "• edit 1 15000",
     "",
@@ -3834,9 +3905,9 @@ function buildExampleMessage(): string {
     "• tf 50000 cash seabank",
     "",
     "📚 *History*",
-    "• history",
-    "• history cash",
-    "• history makan 25/05",
+    "• history es budeh",
+    "• history beli oli",
+    "• history momoyo bulan ini",
     "• hapus 1",
     "• edit 1 15000",
     "",
@@ -4220,19 +4291,87 @@ Deno.serve(async (req: Request) => {
       const entityType = entity.entityType;
       const entityName = entity.entityName;
       const hasDateFilter = Boolean(dateRange.startDate && dateRange.endDate);
+      const titleKeyword = entityQuery && !entityType ? entityQuery : "";
+      const filterType = entityType ?? (titleKeyword ? "title" : hasDateFilter ? "date" : "all");
       const limit = 10;
       console.log("[DATE RANGE PARSER]", { rawInput, startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName });
+      console.log("[HISTORY DETECTION]", {
+        rawInput,
+        entityType,
+        entityName,
+        filterType,
+      });
       console.log("[HISTORY FILTER]", {
         rawInput,
         entityType,
         entityName,
+        filterType,
         startDate: dateRange.startDate,
         endDate: dateRange.endDate,
         hasDateFilter,
       });
 
-      if (rawInput && !entityType && !hasDateFilter) {
-        reply = "❌ Kategori atau akun tidak ditemukan.";
+      if (titleKeyword) {
+        const finalTransactions = await getHistoryByTitle(userId, titleKeyword, dateRange.startDate, dateRange.endDate, limit);
+        console.log("[HISTORY RESULT]", { count: finalTransactions.length, filterType });
+        if (finalTransactions.length === 0) {
+          parsedLog = {
+            command: "history",
+            filterType: "title",
+            filterValue: titleKeyword,
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate,
+            entityType,
+            entityName,
+            displayedTransactions: [],
+          };
+          reply = `ℹ️ *Data Kosong*\n\nTidak ada history dengan judul:\n*${titleKeyword}*`;
+        } else {
+          const categoryIds = [...new Set(finalTransactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
+          const accountIds = [...new Set(
+            finalTransactions
+              .flatMap((tx) => [String(tx.account_id ?? ""), String(tx.to_account_id ?? "")])
+              .filter(Boolean),
+          )];
+
+          const categoryMap = new Map<string, string>();
+          const accountMap = new Map<string, string>();
+
+          if (categoryIds.length > 0) {
+            const { data: categoryRows } = await supabase.from("categories").select("id,name").in("id", categoryIds);
+            for (const row of (categoryRows ?? []) as Array<Record<string, JsonValue>>) {
+              categoryMap.set(String(row.id), String(row.name));
+            }
+          }
+
+          if (accountIds.length > 0) {
+            const { data: accountRows } = await supabase.from("accounts").select("id,name").in("id", accountIds);
+            for (const row of (accountRows ?? []) as Array<Record<string, JsonValue>>) {
+              accountMap.set(String(row.id), String(row.name));
+            }
+          }
+          const { reply: historyReply, displayedTransactions } = buildHistoryTitleMessage(
+            titleKeyword,
+            finalTransactions,
+            categoryMap,
+            accountMap,
+          );
+          console.log("[HISTORY DISPLAYED TRANSACTIONS]", {
+            count: displayedTransactions.length,
+            ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
+          });
+          parsedLog = {
+            command: "history",
+            filterType: "title",
+            filterValue: titleKeyword,
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate,
+            entityType,
+            entityName,
+            displayedTransactions,
+          };
+          reply = historyReply;
+        }
       }
       if (!reply) {
         const finalTransactions = await getHistoryByDateRange(userId, dateRange.startDate, dateRange.endDate, {
@@ -4240,7 +4379,7 @@ Deno.serve(async (req: Request) => {
           accountId: entity.accountId,
           limit,
         });
-        console.log("[HISTORY RESULT]", { count: finalTransactions.length });
+        console.log("[HISTORY RESULT]", { count: finalTransactions.length, filterType });
         if (finalTransactions.length === 0) {
           reply = "📚 Tidak ada history transaksi.";
         } else {
@@ -4284,7 +4423,7 @@ Deno.serve(async (req: Request) => {
             count: displayedTransactions.length,
             ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
           });
-          parsedLog = { command: "history", startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName, displayedTransactions };
+          parsedLog = { command: "history", filterType, startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName, displayedTransactions };
           reply = historyReply;
         }
       }
