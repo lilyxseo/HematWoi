@@ -791,16 +791,35 @@ function isCalculatorExpression(text: string): boolean {
   return /^[0-9\s+\-*x×/:().,]+$/i.test(normalizedAmounts);
 }
 
+function normalizeNumberToken(token: string): string {
+  const input = String(token ?? "").toLowerCase().trim();
+  if (!input) return input;
+
+  if (/^\d{1,3}([.,]\d{3})+$/.test(input)) {
+    return input.replace(/[.,]/g, "");
+  }
+
+  if (/^\d+(?:[.,]\d+)?\s*(?:rb|rbu|ribu|k|jt|juta|m)\b$/i.test(input)) {
+    const amount = parseAmount(input);
+    return amount > 0 ? String(amount) : input;
+  }
+
+  if (/^\d+(?:[.,]\d+)*$/.test(input)) {
+    return input.replace(/\d{1,3}([.,]\d{3})+/g, (match) => match.replace(/[.,]/g, ""));
+  }
+
+  return input;
+}
+
 function normalizeCalculatorExpression(text: string): string | null {
   const expression = getCalculatorExpressionText(text);
   if (!expression) return null;
 
-  const normalizedAmounts = expression.replace(/\d+(?:[.,]\d+)?\s*(?:rb|rbu|ribu|k|jt|juta|m)\b/gi, (match) => {
-    const amount = parseAmount(match);
-    return amount > 0 ? String(amount) : "INVALID_AMOUNT";
+  const normalizedNumbers = expression.replace(/\d+(?:[.,]\d+)*(?:\s*(?:rb|rbu|ribu|k|jt|juta|m)\b)?/gi, (match) => {
+    return normalizeNumberToken(match);
   });
 
-  const normalizedOperators = normalizedAmounts
+  const normalizedOperators = normalizedNumbers
     .replace(/[x×]/gi, "*")
     .replace(/:/g, "/");
 
