@@ -134,7 +134,7 @@ type BudgetInfo = {
 };
 type BudgetPeriodType = "monthly";
 type BudgetPeriodKey = "current" | "previous" | "next";
-type BudgetPeriodCommand = { periodType: BudgetPeriodType; period: BudgetPeriodKey };
+type BudgetPeriodCommand = { type: BudgetPeriodKey; label: string; monthStart: string };
 type BudgetPeriodRange = {
   start: string;
   end: string;
@@ -3277,6 +3277,12 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
   return error.code === "42703" || error.code === "PGRST204" || message.includes("column") || message.includes("schema cache");
 }
 
+function isMissingTableError(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  const message = String(error.message ?? "").toLowerCase();
+  return error.code === "42P01" || message.includes("relation") || message.includes("table") || message.includes("does not exist");
+}
+
 function isSchemaColumnError(error: any) {
   const message = String(error?.message ?? error ?? "").toLowerCase();
   return (
@@ -3900,45 +3906,36 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?:
   const dateRef = date ? new Date(`${date}T00:00:00+07:00`) : new Date();
   const monthStart = getMonthStart(dateRef);
   const nextMonthStart = getNextMonthStart(dateRef);
-
-  const { data: directBudgets, error: directErr } = await supabase
-    .from("budgets")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("category_id", category.id)
-    .or(`period_month.eq.${monthStart},month.eq.${monthStart}`);
-  if (directErr) throw directErr;
+  const periodRows = await getMonthlyBudgetRowsForPeriod(userId, monthStart);
 
   let budgetId: string | null = null;
   let planned = 0;
   let categoryIds: string[] = [category.id];
 
-  if (directBudgets && directBudgets.length > 0) {
-    const b = directBudgets[0] as Record<string, JsonValue>;
-    budgetId = String(b.id);
-    planned = getBudgetAmount(b);
+  const directBudget = periodRows.find((row) => String(row.category_id ?? "") === category.id) ?? null;
+  if (directBudget) {
+    budgetId = String(directBudget.id ?? "");
+    planned = getBudgetAmount(directBudget);
   } else {
+    const periodBudgetIds = periodRows.map((row) => String(row.id ?? "")).filter(Boolean);
+    if (periodBudgetIds.length === 0) return null;
+
     const { data: links, error: linkErr } = await supabase
       .from("budget_categories")
       .select("budget_id")
-      .eq("category_id", category.id);
-    if (linkErr) throw linkErr;
-    const budgetIds = (links ?? []).map((v: Record<string, JsonValue>) => String(v.budget_id));
-    if (budgetIds.length === 0) return null;
+      .eq("category_id", category.id)
+      .in("budget_id", periodBudgetIds);
+    if (linkErr) {
+      if (isMissingTableError(linkErr)) return null;
+      throw linkErr;
+    }
 
-    const { data: budgets, error: budgetErr } = await supabase
-      .from("budgets")
-      .select("*")
-      .eq("user_id", userId)
-      .in("id", budgetIds)
-      .or(`period_month.eq.${monthStart},month.eq.${monthStart}`)
-      .limit(1);
-    if (budgetErr) throw budgetErr;
-    if (!budgets || budgets.length === 0) return null;
+    const linkedBudgetId = String(((links ?? []) as Array<Record<string, JsonValue>>)[0]?.budget_id ?? "");
+    const mappedBudget = linkedBudgetId ? periodRows.find((row) => String(row.id ?? "") === linkedBudgetId) ?? null : null;
+    if (!mappedBudget) return null;
 
-    const b = budgets[0] as Record<string, JsonValue>;
-    budgetId = String(b.id);
-    planned = getBudgetAmount(b);
+    budgetId = String(mappedBudget.id ?? "");
+    planned = getBudgetAmount(mappedBudget);
   }
 
   if (!budgetId) return null;
@@ -3947,9 +3944,9 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?:
     .from("budget_categories")
     .select("category_id")
     .eq("budget_id", budgetId);
-  if (multiErr) throw multiErr;
+  if (multiErr && !isMissingTableError(multiErr)) throw multiErr;
 
-  const linked = (multiCats ?? []).map((v: Record<string, JsonValue>) => String(v.category_id));
+  const linked = (!multiErr ? (multiCats ?? []) : []).map((v: Record<string, JsonValue>) => String(v.category_id));
   if (linked.length > 0) categoryIds = [...new Set([...categoryIds, ...linked])];
 
   const { data: catNamesData } = await supabase.from("categories").select("name").in("id", categoryIds);
@@ -4130,6 +4127,26 @@ function getBudgetPeriod(row: Record<string, JsonValue>): string {
   return String(row.period_month ?? row.month ?? row.period ?? row.budget_month ?? "");
 }
 
+function normalizeBudgetPeriodValue(value: JsonValue | string | undefined): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+
+  const ymd = raw.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+  if (ymd) return `${ymd[1]}-${ymd[2]}-01`;
+
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) return getMonthStart(parsed);
+
+  return raw;
+}
+
+function getRelativeMonthStartJakarta(offset: -1 | 0 | 1 | 2, date = new Date()): string {
+  const currentMonthStart = getMonthStart(date);
+  const [year, month] = currentMonthStart.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return `${target.getUTCFullYear()}-${String(target.getUTCMonth() + 1).padStart(2, "0")}-01`;
+}
+
 function getBudgetName(row: Record<string, JsonValue>): string {
   return String(row.name ?? row.title ?? row.label ?? "-");
 }
@@ -4202,10 +4219,19 @@ function parseBudgetPeriodKey(text: string): BudgetPeriodKey | null {
 
 function parseBudgetPeriodCommand(text: string): BudgetPeriodCommand | null {
   const normalized = normalizeText(text);
-  if (normalized === "budget") return { periodType: "monthly", period: "current" };
-  const periodText = normalized.replace(/^budget\s+/, "").trim();
-  const period = parseBudgetPeriodKey(periodText);
-  return period ? { periodType: "monthly", period } : null;
+  const type = normalized === "budget" ? "current" : parseBudgetPeriodKey(normalized.replace(/^budget\s+/, "").trim());
+  if (!type) return null;
+
+  const label = getBudgetPeriodDisplayName(type);
+  const monthStart = getRelativeMonthStartJakarta(type === "previous" ? -1 : type === "next" ? 1 : 0);
+  console.log("[BUDGET PERIOD PARSE]", {
+    normalized,
+    type,
+    label,
+    monthStart,
+  });
+
+  return { type, label, monthStart };
 }
 
 function getBudgetPeriodSource(text: string): "shortcut" | "explicit" {
@@ -4244,12 +4270,8 @@ function extractBudgetPeriodFromText(text: string): { period: BudgetPeriodKey; r
 }
 
 function getBudgetPeriodRange(periodType: BudgetPeriodType, period: BudgetPeriodKey): BudgetPeriodRange {
-  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
-  const target = new Date(now);
-  target.setMonth(target.getMonth() + (period === "previous" ? -1 : period === "next" ? 1 : 0));
-
-  const start = getMonthStart(target);
-  const end = getNextMonthStart(target);
+  const start = getRelativeMonthStartJakarta(period === "previous" ? -1 : period === "next" ? 1 : 0);
+  const end = getRelativeMonthStartJakarta(period === "previous" ? 0 : period === "next" ? 2 : 1);
   return { start, end, periodMonth: start, periodType, period };
 }
 
@@ -4258,9 +4280,20 @@ async function getMonthlyBudgetRowsForPeriod(userId: string, periodMonth: string
     .select("*")
     .eq("user_id", userId);
   if (error) throw error;
-  return ((data ?? []) as Array<Record<string, JsonValue>>)
-    .filter((row) => !row.deleted_at)
-    .filter((row) => getBudgetPeriod(row) === periodMonth);
+
+  const rows = ((data ?? []) as Array<Record<string, JsonValue>>).filter((row) => !row.deleted_at);
+  console.log("[BUDGET RAW ROWS]", {
+    count: rows.length,
+    periods: rows.map((row) => getBudgetPeriod(row)),
+  });
+
+  const filtered = rows.filter((row) => normalizeBudgetPeriodValue(getBudgetPeriod(row)) === periodMonth);
+  console.log("[BUDGET FILTERED ROWS]", {
+    monthStart: periodMonth,
+    count: filtered.length,
+  });
+
+  return filtered;
 }
 
 async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRange): Promise<BudgetPeriodItem[]> {
@@ -4268,9 +4301,10 @@ async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRang
   if (rows.length === 0) return [];
 
   const budgetIds = rows.map((r) => String(r.id ?? "")).filter(Boolean);
-  const { data: links } = await supabase.from("budget_categories").select("budget_id,category_id").in("budget_id", budgetIds);
+  const { data: links, error: linkErr } = await supabase.from("budget_categories").select("budget_id,category_id").in("budget_id", budgetIds);
+  if (linkErr && !isMissingTableError(linkErr)) throw linkErr;
   const linkMap = new Map<string, string[]>();
-  for (const row of (links ?? []) as Array<Record<string, JsonValue>>) {
+  for (const row of (!linkErr ? (links ?? []) : []) as Array<Record<string, JsonValue>>) {
     const bid = String(row.budget_id ?? "");
     const cid = String(row.category_id ?? "");
     if (!bid || !cid) continue;
@@ -4331,10 +4365,7 @@ async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRang
 }
 
 function getBudgetPeriodLabel(command: BudgetPeriodCommand): string {
-  const titleMap: Record<BudgetPeriodType, Record<BudgetPeriodKey, string>> = {
-    monthly: { current: "📊 *Budget Bulan Ini*", previous: "📊 *Budget Bulan Lalu*", next: "📊 *Budget Bulan Depan*" },
-  };
-  return titleMap[command.periodType][command.period];
+  return `📊 *Budget ${command.label}*`;
 }
 
 function buildBudgetPeriodMessage(command: BudgetPeriodCommand, monthly: BudgetPeriodItem[]): string {
@@ -4961,6 +4992,7 @@ Deno.serve(async (req: Request) => {
 
     let reply = "";
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
+    let budgetPeriodCommand: BudgetPeriodCommand | null = null;
 
     if (isCalculatorExpression(message)) {
       console.log("[ROUTE MATCH]", { route: "calculator", normalized, isGroup, contextKey });
@@ -5082,20 +5114,26 @@ Deno.serve(async (req: Request) => {
       const budgetRes = await handleDeleteBudgetCommand(userId, contextKey, normalized);
       reply = budgetRes.reply;
       parsedLog = budgetRes.parsedLog;
-    } else if (parseBudgetPeriodCommand(normalized)) {
-      const periodCommand = parseBudgetPeriodCommand(normalized) as BudgetPeriodCommand;
+    } else if ((budgetPeriodCommand = parseBudgetPeriodCommand(normalized))) {
+      const periodCommand = budgetPeriodCommand;
       const label = getBudgetPeriodLabel(periodCommand);
       console.log("[BUDGET PERIOD COMMAND]", {
         normalized,
-        period: periodCommand.period,
+        period: periodCommand.type,
         label,
       });
-      const range = getBudgetPeriodRange(periodCommand.periodType, periodCommand.period);
+      const range: BudgetPeriodRange = {
+        start: periodCommand.monthStart,
+        end: getRelativeMonthStartJakarta(periodCommand.type === "previous" ? 0 : periodCommand.type === "next" ? 2 : 1),
+        periodMonth: periodCommand.monthStart,
+        periodType: "monthly",
+        period: periodCommand.type,
+      };
       const monthlyBudgets = await getMonthlyBudgetsByPeriod(userId, range);
       const displayedBudgets = budgetDisplayItems(monthlyBudgets);
       console.log("[BUDGET DISPLAYED]", displayedBudgets);
       reply = buildBudgetPeriodMessage(periodCommand, monthlyBudgets);
-      parsedLog = { command: "budget_period", period: periodCommand.period, source: getBudgetPeriodSource(normalized), displayedBudgets };
+      parsedLog = { command: "budget_period", period: periodCommand.type, source: getBudgetPeriodSource(normalized), displayedBudgets };
     } else if (normalized.startsWith("budget ")) {
       const categoryName = normalized.replace(/^budget\s+/, "").trim();
       const [monthlyBudget, weeklyBudget] = await Promise.all([
