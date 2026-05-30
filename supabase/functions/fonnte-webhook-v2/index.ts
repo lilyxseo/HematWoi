@@ -161,6 +161,16 @@ type BudgetSchema = {
   categoryField: string | null;
 };
 
+type DailyExpenseReport = {
+  startDate: string;
+  endDate: string;
+  days: Array<{ date: string; total: number }>;
+  total: number;
+  average: number;
+  max: { date: string; total: number };
+  min: { date: string; total: number };
+};
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FONNTE_TOKEN = Deno.env.get("FONNTE_TOKEN") ?? "";
@@ -172,6 +182,7 @@ function isGroupPrivateDebugEnabled(): boolean {
 
 const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️", "📘"];
 const MENU_COMMANDS = new Set(["menu", "help", "bantuan", ".menu"]);
+const DAILY_EXPENSE_COMMANDS = new Set(["pengeluaran harian", "pengeluaran per hari", "harian", "daily expense", "expense harian"]);
 const LOW_BALANCE_WARNING = 100000;
 const MAX_SMART_WARNINGS = 3;
 const warningCache = new Map<string, number>();
@@ -184,6 +195,10 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "contoh",
   "saldo",
   "summary",
+  "pengeluaran",
+  "harian",
+  "daily",
+  "expense",
   "history",
   "budget",
   "tambah",
@@ -203,7 +218,7 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "ping",
 ]);
 const NATURAL_RESERVED_COMMANDS = new Set([
-  "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "history", "riwayat", "budget", "tambah budget", "edit budget", "hapus budget", "hutang",
+  "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "pengeluaran harian", "pengeluaran per hari", "harian", "daily expense", "expense harian", "history", "riwayat", "budget", "tambah budget", "edit budget", "hapus budget", "hutang",
   "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
   "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "hapus", "undo",
 ]);
@@ -581,6 +596,89 @@ function formatHistoryDate(date: string): string {
   const [year, month, day] = String(date).split("-");
   if (!year || !month || !day) return String(date || "-");
   return `${day}/${month}`;
+}
+
+function formatShortDate(date: string): string {
+  const [_year, month, day] = String(date).split("-");
+  if (!month || !day) return String(date || "-");
+  return `${day}/${month}`;
+}
+
+function getLast30DaysDateRange(): { startDate: string; endDate: string; dates: string[] } {
+  const endDate = getTodayJakarta();
+  const [year, month, day] = endDate.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day));
+  start.setUTCDate(start.getUTCDate() - 29);
+
+  const dates: string[] = [];
+  for (let i = 0; i < 30; i++) {
+    const current = new Date(start);
+    current.setUTCDate(start.getUTCDate() + i);
+    const y = String(current.getUTCFullYear());
+    const m = String(current.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(current.getUTCDate()).padStart(2, "0");
+    dates.push(`${y}-${m}-${d}`);
+  }
+
+  return { startDate: dates[0] ?? endDate, endDate, dates };
+}
+
+async function getDailyExpenseReport(userId: string): Promise<DailyExpenseReport> {
+  const { startDate, endDate, dates } = getLast30DaysDateRange();
+  let query = supabase
+    .from("transactions")
+    .select("amount,date")
+    .eq("user_id", userId)
+    .eq("type", "expense")
+    .gte("date", startDate)
+    .lte("date", endDate);
+  query = await applyTransactionNotDeleted(query);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const dailyTotals = new Map(dates.map((date) => [date, 0]));
+  for (const row of (data ?? []) as Array<Record<string, JsonValue>>) {
+    const date = String(row.date ?? "");
+    if (!dailyTotals.has(date)) continue;
+    dailyTotals.set(date, (dailyTotals.get(date) ?? 0) + Number(row.amount ?? 0));
+  }
+
+  const days = dates.map((date) => ({ date, total: dailyTotals.get(date) ?? 0 }));
+  const total = days.reduce((sum, day) => sum + day.total, 0);
+  const average = days.length > 0 ? total / days.length : 0;
+  const firstDay = days[0] ?? { date: endDate, total: 0 };
+  const max = days.reduce((currentMax, day) => day.total > currentMax.total ? day : currentMax, firstDay);
+  const min = days.reduce((currentMin, day) => day.total < currentMin.total ? day : currentMin, firstDay);
+
+  console.log("[DAILY EXPENSE REPORT]", {
+    startDate,
+    endDate,
+    total,
+    average,
+    max,
+  });
+
+  return { startDate, endDate, days, total, average, max, min };
+}
+
+function buildDailyExpenseMessage(report: DailyExpenseReport): string {
+  const dailyLines = report.days
+    .slice(0, 30)
+    .map((day) => `${formatShortDate(day.date)}: ${money(day.total)}`);
+
+  return [
+    "📆 *Pengeluaran Harian*",
+    "_30 hari terakhir_",
+    "",
+    line(),
+    ...dailyLines,
+    "",
+    line(),
+    `💸 Total: ${money(report.total)}`,
+    `📊 Rata-rata/hari: ${money(Math.round(report.average))}`,
+    `🔥 Tertinggi: ${money(report.max.total)} pada *${formatShortDate(report.max.date)}*`,
+    `✅ Terendah: ${money(report.min.total)} pada *${formatShortDate(report.min.date)}*`,
+  ].join("\n");
 }
 
 async function getHistoryByAccount(
@@ -4540,9 +4638,12 @@ function buildMenuMessage(): string {
     line(),
     "💰 *Keuangan*",
     "• saldo",
-    "• summary",
     "• history",
-    "• budget bulan ini",
+    "",
+    "📊 *Laporan*",
+    "• summary",
+    "• pengeluaran harian",
+    "• budget",
     "",
     "📚 *History*",
     "• history",
@@ -4618,6 +4719,10 @@ function buildExampleMessage(): string {
     "• history momoyo bulan ini",
     "• hapus 1",
     "• edit 1 15000",
+    "",
+    "📊 *Laporan*",
+    "• pengeluaran harian",
+    "• pengeluaran per hari",
     "",
     "🤖 *AI*",
     "• ai",
@@ -4715,9 +4820,10 @@ function isPotentialBotCommand(message: string): boolean {
 
   if (/^(10|[1-9])$/.test(message.trim())) return true;
   if (isCalculatorExpression(message)) return true;
+  if (DAILY_EXPENSE_COMMANDS.has(normalized)) return true;
 
   const validCommands = [
-    "saldo", "summary", "history", "kategori", "akun", "budget", "ai", "ping", "info",
+    "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "kategori", "akun", "budget", "ai", "ping", "info",
     "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
@@ -4944,6 +5050,11 @@ Deno.serve(async (req: Request) => {
         if (activeWarnings.length > 0) summaryLines.push("", "⚠️ Warning Aktif", ...activeWarnings.map((w) => `• ${w}`));
       }
       reply = summaryLines.join("\n");
+    } else if (DAILY_EXPENSE_COMMANDS.has(normalized)) {
+      console.log("[ROUTE MATCH]", { route: "daily_expense_report", normalized, isGroup, contextKey });
+      const report = await getDailyExpenseReport(userId);
+      reply = buildDailyExpenseMessage(report);
+      parsedLog = { command: "daily_expense_report", startDate: report.startDate, endDate: report.endDate, total: report.total, average: report.average, max: report.max.total };
     } else if (normalized === "info") {
       console.log("[ROUTE MATCH]", { route: "info", normalized, isGroup, contextKey });
       const today = getTodayJakarta();
