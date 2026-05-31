@@ -3462,6 +3462,142 @@ async function handleHistoryNavigationCommand(
   return await buildHistoryPageReply(userId, historyQuery, targetPage, pageSize);
 }
 
+
+type LatestInteractiveSession = {
+  type: "history" | "ai" | "budget" | null;
+  page: number | null;
+  historyQuery: HistoryQuery | null;
+  totalPages?: number;
+  pageSize?: number;
+};
+
+function isAiSuggestionLogForContext(
+  parsed: Record<string, JsonValue> | null,
+  createdAt: string,
+  input: { isGroup: boolean; chatTarget: string },
+): boolean {
+  if (parsed?.command !== "ai_suggestion" || parsed?.active === false) return false;
+  if (Date.now() - new Date(createdAt).getTime() > AI_SUGGESTION_SESSION_TTL_MS) return false;
+  if (input.isGroup) {
+    return parsed?.context === "group" && String(parsed?.chatTarget ?? "") === input.chatTarget;
+  }
+  return parsed?.context === "personal" || !parsed?.context;
+}
+
+async function getLatestInteractiveSession(
+  userId: string,
+  phone: string,
+  options: { isGroup?: boolean; chatTarget?: string } = {},
+): Promise<LatestInteractiveSession> {
+  const { data: logs, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("id,created_at,parsed")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  for (const log of (logs ?? []) as Array<Record<string, JsonValue>>) {
+    const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
+    const command = String(parsed?.command ?? "");
+
+    if (command === "history") {
+      const historyQuery = getHistoryQueryFromParsed(parsed);
+      if (historyQuery) {
+        return {
+          type: "history",
+          page: Math.max(1, Number(parsed?.page ?? 1)),
+          historyQuery,
+          totalPages: Math.max(1, Number(parsed?.totalPages ?? 1)),
+          pageSize: Math.max(1, Number(parsed?.pageSize ?? 10)),
+        };
+      }
+    }
+
+    if (command === "ai_suggestion" && isAiSuggestionLogForContext(parsed, String(log.created_at ?? ""), {
+      isGroup: Boolean(options.isGroup),
+      chatTarget: String(options.chatTarget ?? ""),
+    })) {
+      return { type: "ai", page: null, historyQuery: null };
+    }
+
+    if (command === "budget_period") {
+      return { type: "budget", page: null, historyQuery: null };
+    }
+  }
+
+  return { type: null, page: null, historyQuery: null };
+}
+
+async function handleInteractiveNavigationCommand(
+  userId: string,
+  phone: string,
+  command: HistoryNavigationCommand,
+  options: { isGroup?: boolean; chatTarget?: string } = {},
+): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const activeSession = await getLatestInteractiveSession(userId, phone, options);
+  console.log("[NEXT COMMAND]", { activeSession });
+
+  if (activeSession.type === "history" && activeSession.historyQuery) {
+    const currentPage = Math.max(1, Number(activeSession.page ?? 1));
+    const totalPages = Math.max(1, Number(activeSession.totalPages ?? 1));
+    const pageSize = Math.max(1, Number(activeSession.pageSize ?? 10));
+    let targetPage = currentPage;
+    if (command.action === "next") targetPage = currentPage + 1;
+    if (command.action === "prev") targetPage = currentPage - 1;
+    if (command.action === "page") targetPage = Math.max(1, Number(command.targetPage ?? 1));
+
+    console.log("[HISTORY PAGE NAVIGATION]", {
+      currentPage,
+      targetPage,
+    });
+
+    if (command.action === "next" && currentPage >= totalPages) {
+      return {
+        reply: [`ℹ️ *Sudah Halaman Terakhir*`, "", "Halaman:", `*${totalPages} dari ${totalPages}*`].join("\n"),
+        parsedLog: { command: "history_navigation", action: command.action, currentPage, targetPage: currentPage, totalPages, historyQuery: activeSession.historyQuery },
+      };
+    }
+
+    if (command.action === "prev" && currentPage <= 1) {
+      return {
+        reply: "ℹ️ *Sudah Halaman Pertama*",
+        parsedLog: { command: "history_navigation", action: command.action, currentPage, targetPage: currentPage, totalPages, historyQuery: activeSession.historyQuery },
+      };
+    }
+
+    if (targetPage < 1 || targetPage > totalPages) {
+      return {
+        reply: [`⚠️ *Halaman Tidak Ditemukan*`, "", "Total halaman:", `*${totalPages}*`].join("\n"),
+        parsedLog: { command: "history_navigation", action: command.action, currentPage, targetPage, totalPages, historyQuery: activeSession.historyQuery },
+      };
+    }
+
+    return await buildHistoryPageReply(userId, activeSession.historyQuery, targetPage, pageSize);
+  }
+
+  if (activeSession.type === "budget") {
+    return {
+      reply: "⚠️ Tidak ada pagination untuk budget.",
+      parsedLog: { command: "budget_navigation_failed", reason: "pagination_not_available", action: command.action },
+    };
+  }
+
+  if (activeSession.type === "ai") {
+    return {
+      reply: "⚠️ Tidak ada pagination untuk AI.\n\nPilih nomor 1-10 dari daftar AI.",
+      parsedLog: { command: "ai_navigation_failed", reason: "pagination_not_available", action: command.action },
+    };
+  }
+
+  return {
+    reply: "⚠️ Tidak ada sesi aktif.\n\nGunakan:\n• history\n• ai",
+    parsedLog: { command: "interactive_navigation_failed", reason: "no_active_session", action: command.action },
+  };
+}
+
 async function getLastHistoryTransactions(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
   const historyLog = await getLastHistoryLog(userId, phone);
   const parsed = (historyLog?.parsed ?? null) as Record<string, JsonValue> | null;
@@ -4420,7 +4556,8 @@ function parseBudgetPeriodKey(text: string): BudgetPeriodKey | null {
 
 function parseBudgetPeriodCommand(text: string): BudgetPeriodCommand | null {
   const normalized = normalizeText(text);
-  const type = normalized === "budget" ? "current" : parseBudgetPeriodKey(normalized.replace(/^budget\s+/, "").trim());
+  const hasBudgetPrefix = normalized.startsWith("budget ");
+  const type = normalized === "budget" ? "current" : hasBudgetPrefix ? parseBudgetPeriodKey(normalized.replace(/^budget\s+/, "").trim()) : null;
   if (!type) return null;
 
   const label = getBudgetPeriodDisplayName(type);
@@ -5224,6 +5361,21 @@ Deno.serve(async (req: Request) => {
           }
         }
       }
+    } else if (isAISuggestionNumber(normalized) && await hasActiveAISuggestionSession({ userId, contextKey, isGroup, chatTarget: String(chatTarget ?? "") })) {
+      console.log("[ROUTE MATCH]", { route: "ai_pick_number", normalized, isGroup, contextKey });
+      const aiPick = await handleAISuggestionPick(
+        userId,
+        contextKey,
+        normalized,
+        { isGroup, chatTarget, participant },
+      );
+      reply = aiPick.reply;
+      parsedLog = aiPick.parsedLog;
+    } else if (parseHistoryNavigationCommand(normalized) && !parseHistoryNavigationCommand(normalized)?.shortcut) {
+      const historyNav = parseHistoryNavigationCommand(normalized)!;
+      const navResult = await handleInteractiveNavigationCommand(userId, contextKey, historyNav, { isGroup, chatTarget });
+      reply = navResult.reply;
+      parsedLog = navResult.parsedLog;
     } else if (MENU_COMMANDS.has(normalized)) {
       console.log("[ROUTE MATCH]", { route: "menu", normalized, isGroup, contextKey });
       reply = buildMenuMessage();
@@ -5378,17 +5530,7 @@ Deno.serve(async (req: Request) => {
       parsedLog = isGroup
         ? { command: "ai_suggestion", context: "group", chatTarget, participant, sessionId: crypto.randomUUID(), suggestions, active: true }
         : { command: "ai_suggestion", context: "personal", sessionId: crypto.randomUUID(), suggestions, active: true };
-    } else if (isAISuggestionNumber(normalized) && await hasActiveAISuggestionSession({ userId, contextKey, isGroup, chatTarget: String(chatTarget ?? "") })) {
-      console.log("[ROUTE MATCH]", { route: "ai_pick_number", normalized, isGroup, contextKey });
-      const aiPick = await handleAISuggestionPick(
-        userId,
-        contextKey,
-        normalized,
-        { isGroup, chatTarget, participant },
-      );
-      reply = aiPick.reply;
-      parsedLog = aiPick.parsedLog;
-    } else if (parseHistoryNavigationCommand(normalized) && (!(parseHistoryNavigationCommand(normalized)?.shortcut) || await getLastHistoryLog(userId, contextKey))) {
+    } else if (parseHistoryNavigationCommand(normalized)?.shortcut && await getLastHistoryLog(userId, contextKey)) {
       const historyNav = parseHistoryNavigationCommand(normalized)!;
       const navResult = await handleHistoryNavigationCommand(userId, contextKey, historyNav);
       reply = navResult.reply;
