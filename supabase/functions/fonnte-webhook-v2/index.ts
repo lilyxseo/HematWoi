@@ -171,6 +171,25 @@ type DailyExpenseReport = {
   min: { date: string; total: number };
 };
 
+type HistoryQuery = {
+  filterType: string;
+  filterValue?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  entityType?: "category" | "account" | null;
+  entityName?: string | null;
+  categoryId?: string | null;
+  accountId?: string | null;
+};
+
+type HistoryPageResult = {
+  transactions: Array<Record<string, JsonValue>>;
+  totalCount: number;
+  totalPages: number;
+  page: number;
+  pageSize: number;
+};
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const FONNTE_TOKEN = Deno.env.get("FONNTE_TOKEN") ?? "";
@@ -702,22 +721,62 @@ async function getHistoryByDateRange(
   userId: string,
   startDate: string | null,
   endDate: string | null,
-  opts: { categoryId?: string; accountId?: string; limit?: number } = {},
-): Promise<Array<Record<string, JsonValue>>> {
+  opts: { categoryId?: string; accountId?: string; page?: number; pageSize?: number } = {},
+): Promise<HistoryPageResult> {
+  const pageSize = Math.max(1, Number(opts.pageSize ?? 10));
+  const page = Math.max(1, Number(opts.page ?? 1));
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
   let query = supabase.from("transactions")
-    .select("id,title,amount,type,date,category_id,account_id,to_account_id,inserted_at")
+    .select("id,title,amount,type,date,category_id,account_id,to_account_id,inserted_at", { count: "exact" })
     .eq("user_id", userId)
     .is("deleted_at", null)
     .order("inserted_at", { ascending: false })
-    .limit(opts.limit ?? 10);
+    .range(from, to);
   if (startDate && endDate) {
     query = query.gte("date", startDate).lte("date", endDate);
   }
   if (opts.categoryId) query = query.eq("category_id", opts.categoryId);
   if (opts.accountId) query = query.eq("account_id", opts.accountId);
-  const { data, error } = await query;
+  const { data, error, count } = await query;
   if (error) throw error;
-  return (data ?? []) as Array<Record<string, JsonValue>>;
+  const totalCount = count ?? 0;
+  const totalPages = Math.ceil(totalCount / pageSize);
+  return { transactions: (data ?? []) as Array<Record<string, JsonValue>>, totalCount, totalPages, page, pageSize };
+}
+
+async function getHistoryByTitle(
+  userId: string,
+  keyword: string,
+  startDate: string | null,
+  endDate: string | null,
+  page = 1,
+  pageSize = 10,
+): Promise<HistoryPageResult> {
+  console.log("[HISTORY TITLE SEARCH]", {
+    keyword,
+    startDate,
+    endDate,
+  });
+  const safePageSize = Math.max(1, Number(pageSize));
+  const safePage = Math.max(1, Number(page));
+  const from = (safePage - 1) * safePageSize;
+  const to = from + safePageSize - 1;
+  let query = supabase.from("transactions")
+    .select("id,title,amount,type,date,category_id,account_id,to_account_id,inserted_at", { count: "exact" })
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .ilike("title", `%${keyword}%`)
+    .order("inserted_at", { ascending: false })
+    .range(from, to);
+  if (startDate && endDate) {
+    query = query.gte("date", startDate).lte("date", endDate);
+  }
+  const { data, error, count } = await query;
+  if (error) throw error;
+  const totalCount = count ?? 0;
+  const totalPages = Math.ceil(totalCount / safePageSize);
+  return { transactions: (data ?? []) as Array<Record<string, JsonValue>>, totalCount, totalPages, page: safePage, pageSize: safePageSize };
 }
 
 async function detectHistoryEntity(userId: string, raw: string): Promise<{ entityType: "category" | "account" | null; entityName: string | null; categoryId?: string; accountId?: string }> {
@@ -730,41 +789,16 @@ async function detectHistoryEntity(userId: string, raw: string): Promise<{ entit
   return { entityType: null, entityName: null };
 }
 
-async function getHistoryByTitle(
-  userId: string,
-  keyword: string,
-  startDate: string | null,
-  endDate: string | null,
-  limit = 10,
-): Promise<Array<Record<string, JsonValue>>> {
-  console.log("[HISTORY TITLE SEARCH]", {
-    keyword,
-    startDate,
-    endDate,
-  });
-  let query = supabase.from("transactions")
-    .select("id,title,amount,type,date,category_id,account_id,to_account_id,inserted_at")
-    .eq("user_id", userId)
-    .is("deleted_at", null)
-    .ilike("title", `%${keyword}%`)
-    .order("inserted_at", { ascending: false })
-    .limit(limit);
-  if (startDate && endDate) {
-    query = query.gte("date", startDate).lte("date", endDate);
-  }
-  const { data, error } = await query;
-  if (error) throw error;
-  return (data ?? []) as Array<Record<string, JsonValue>>;
-}
 
 function buildHistoryMessage(
   header: string,
   transactions: Array<Record<string, JsonValue>>,
   categoryMap: Map<string, string>,
   accountMap: Map<string, string>,
+  meta: { page: number; totalPages: number; totalCount: number; pageSize: number },
 ): { reply: string; displayedTransactions: JsonValue[] } {
   const displayedTransactions: JsonValue[] = [];
-  const lines = transactions.map((tx, i) => {
+  const lines = transactions.slice(0, meta.pageSize).map((tx, i) => {
     const no = i + 1;
     const type = String(tx.type ?? "expense");
     const amount = Number(tx.amount ?? 0);
@@ -774,60 +808,7 @@ function buildHistoryMessage(
     const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
     const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
     const title = String(tx.title ?? "-");
-    if (type === "transfer") {
-      const fromName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
-      const toName = accountMap.get(String(tx.to_account_id ?? "")) ?? "-";
-      displayedTransactions.push({
-        no,
-        id: txId,
-        title,
-        amount,
-        type,
-        date: txDate,
-        categoryName,
-        accountName,
-        toAccountName: toName,
-      });
-      return `${no}. ${formattedDate}\n   Transfer ${fromName} → ${toName}\n   ↔ ${formatIDR(amount)}`;
-    }
-    const sign = type === "income" ? "+" : "-";
-    displayedTransactions.push({
-      no,
-      id: txId,
-      title,
-      amount,
-      type,
-      date: txDate,
-      categoryName,
-      accountName,
-    });
-    return `${no}. ${formattedDate}\n   ${categoryName} - ${title}\n   ${sign} ${formatIDR(amount)}`;
-  });
-  return {
-    reply: `${header}\n\n${line()}\n${lines.slice(0, 10).join("\n\n")}\n\n${line()}\nKetik *hapus 1* untuk menghapus nomor history.`,
-    displayedTransactions: displayedTransactions.slice(0, 10),
-  };
-}
-
-function buildHistoryTitleMessage(
-  keyword: string,
-  transactions: Array<Record<string, JsonValue>>,
-  categoryMap: Map<string, string>,
-  accountMap: Map<string, string>,
-): { reply: string; displayedTransactions: JsonValue[] } {
-  const displayedTransactions: JsonValue[] = [];
-  const lines = transactions.slice(0, 10).map((tx, i) => {
-    const no = i + 1;
-    const type = String(tx.type ?? "expense");
-    const amount = Number(tx.amount ?? 0);
-    const txId = String(tx.id ?? "");
-    const txDate = String(tx.date ?? "");
-    const formattedDate = formatHistoryDate(txDate);
-    const categoryName = categoryMap.get(String(tx.category_id ?? "")) ?? "-";
-    const accountName = accountMap.get(String(tx.account_id ?? "")) ?? "-";
     const toAccountName = accountMap.get(String(tx.to_account_id ?? "")) ?? "-";
-    const title = String(tx.title ?? "-");
-    const sign = type === "income" ? "+" : type === "transfer" ? "↔" : "-";
     displayedTransactions.push({
       no,
       id: txId,
@@ -840,13 +821,146 @@ function buildHistoryTitleMessage(
       toAccountName,
     });
     if (type === "transfer") {
-      return `${no}. *${formattedDate}*\n   Transfer ${accountName} → ${toAccountName} — ${title}\n   ${sign} *${formatIDR(amount)}*`;
+      return `${no}. *${formattedDate}*\n   Transfer ${accountName} → ${toAccountName} — ${title}\n   ↔ *${formatIDR(amount)}*`;
     }
+    const sign = type === "income" ? "+" : "-";
     return `${no}. *${formattedDate}*\n   ${categoryName} — ${title}\n   ${sign} *${formatIDR(amount)}*`;
   });
+
+  const infoLines = [
+    "📊 *Info Data*",
+    `• Menampilkan: *${displayedTransactions.length} data*`,
+    `• Total Data: *${meta.totalCount} data*`,
+    `• Halaman: *${meta.page} dari ${meta.totalPages}*`,
+  ];
+
   return {
-    reply: `📚 *History Judul: ${keyword}*\n\n${line()}\n${lines.join("\n\n")}\n\n${line()}\nKetik *hapus 1* untuk menghapus nomor history.\nKetik *edit 1 01/06* untuk edit transaksi.`,
+    reply: [
+      header,
+      `_Page ${meta.page}/${meta.totalPages}_`,
+      "",
+      line(),
+      ...infoLines,
+      "",
+      line(),
+      "",
+      lines.join("\n\n"),
+      "",
+      line(),
+      "Navigasi:",
+      "• *next*",
+      "• *prev*",
+      `• *page ${Math.min(meta.page + 1, meta.totalPages)}*`,
+      "",
+      "Ketik:",
+      "• *hapus 1*",
+      "• *edit 1 01/06*",
+    ].join("\n"),
     displayedTransactions,
+  };
+}
+
+async function getHistoryDisplayMaps(
+  transactions: Array<Record<string, JsonValue>>,
+): Promise<{ categoryMap: Map<string, string>; accountMap: Map<string, string> }> {
+  const categoryIds = [...new Set(transactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
+  const accountIds = [...new Set(
+    transactions
+      .flatMap((tx) => [String(tx.account_id ?? ""), String(tx.to_account_id ?? "")])
+      .filter(Boolean),
+  )];
+
+  const categoryMap = new Map<string, string>();
+  const accountMap = new Map<string, string>();
+
+  if (categoryIds.length > 0) {
+    const { data: categoryRows } = await supabase.from("categories").select("id,name").in("id", categoryIds);
+    for (const row of (categoryRows ?? []) as Array<Record<string, JsonValue>>) {
+      categoryMap.set(String(row.id), String(row.name));
+    }
+  }
+
+  if (accountIds.length > 0) {
+    const { data: accountRows } = await supabase.from("accounts").select("id,name").in("id", accountIds);
+    for (const row of (accountRows ?? []) as Array<Record<string, JsonValue>>) {
+      accountMap.set(String(row.id), String(row.name));
+    }
+  }
+
+  return { categoryMap, accountMap };
+}
+
+function buildHistoryHeader(historyQuery: HistoryQuery): string {
+  if (historyQuery.filterType === "title" && historyQuery.filterValue) return `📚 *History Judul: ${historyQuery.filterValue}*`;
+  if (historyQuery.entityType === "account" && historyQuery.entityName) return `📚 *History Akun: ${historyQuery.entityName}*`;
+  if (historyQuery.entityType === "category" && historyQuery.entityName) return `📚 *History Kategori: ${historyQuery.entityName}*`;
+  const dateLabel = historyQuery.startDate && historyQuery.endDate
+    ? `${formatHistoryDate(historyQuery.startDate)} - ${formatHistoryDate(historyQuery.endDate)}`
+    : "";
+  return `📚 *History ${dateLabel ? dateLabel : "Transaksi"}*`;
+}
+
+async function getHistoryPage(userId: string, historyQuery: HistoryQuery, page: number, pageSize: number): Promise<HistoryPageResult> {
+  if (historyQuery.filterType === "title" && historyQuery.filterValue) {
+    return await getHistoryByTitle(userId, historyQuery.filterValue, historyQuery.startDate ?? null, historyQuery.endDate ?? null, page, pageSize);
+  }
+  return await getHistoryByDateRange(userId, historyQuery.startDate ?? null, historyQuery.endDate ?? null, {
+    categoryId: historyQuery.categoryId ?? undefined,
+    accountId: historyQuery.accountId ?? undefined,
+    page,
+    pageSize,
+  });
+}
+
+async function buildHistoryPageReply(
+  userId: string,
+  historyQuery: HistoryQuery,
+  page: number,
+  pageSize: number,
+): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const result = await getHistoryPage(userId, historyQuery, page, pageSize);
+  const header = buildHistoryHeader(historyQuery);
+  console.log("[HISTORY PAGINATION]", {
+    page: result.page,
+    totalPages: result.totalPages,
+    totalCount: result.totalCount,
+    pageSize: result.pageSize,
+  });
+
+  if (result.totalCount === 0) {
+    return {
+      reply: historyQuery.filterType === "title" && historyQuery.filterValue
+        ? `ℹ️ *Data Kosong*\n\nTidak ada history dengan judul:\n*${historyQuery.filterValue}*`
+        : "📚 Tidak ada history transaksi.",
+      parsedLog: {
+        command: "history",
+        page: result.page,
+        totalPages: result.totalPages,
+        totalCount: result.totalCount,
+        pageSize: result.pageSize,
+        historyQuery,
+        displayedTransactions: [],
+      },
+    };
+  }
+
+  const { categoryMap, accountMap } = await getHistoryDisplayMaps(result.transactions);
+  const { reply, displayedTransactions } = buildHistoryMessage(header, result.transactions, categoryMap, accountMap, result);
+  console.log("[HISTORY DISPLAYED TRANSACTIONS]", {
+    count: displayedTransactions.length,
+    ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
+  });
+  return {
+    reply,
+    parsedLog: {
+      command: "history",
+      page: result.page,
+      totalPages: result.totalPages,
+      totalCount: result.totalCount,
+      pageSize: result.pageSize,
+      historyQuery,
+      displayedTransactions,
+    },
   };
 }
 
@@ -1792,6 +1906,13 @@ async function getLastAISuggestionSession(
   if (isExpired) return { session: null, isExpired: true };
 
   return { session, isExpired: false };
+}
+
+async function hasActiveAISuggestionSession(
+  input: { userId: string; contextKey: string; isGroup: boolean; chatTarget: string },
+): Promise<boolean> {
+  const { session } = await getLastAISuggestionSession(input);
+  return Boolean(session);
 }
 
 async function handleAISuggestionPick(
@@ -3261,6 +3382,86 @@ async function getLastHistoryLog(userId: string, phone: string): Promise<Record<
   return historyLog ?? null;
 }
 
+
+type HistoryNavigationCommand = { action: "next" | "prev" | "page"; targetPage?: number; shortcut?: boolean };
+
+function parseHistoryNavigationCommand(normalized: string): HistoryNavigationCommand | null {
+  if (normalized === "next" || normalized === "lanjut") return { action: "next" };
+  if (normalized === "prev" || normalized === "sebelumnya" || normalized === "back") return { action: "prev" };
+  const pageMatch = normalized.match(/^(?:page|halaman)\s+(\d+)$/);
+  if (pageMatch) return { action: "page", targetPage: Number(pageMatch[1]) };
+  if (/^\d+$/.test(normalized)) {
+    const page = Number(normalized);
+    if (page > 0) return { action: "page", targetPage: page, shortcut: true };
+  }
+  return null;
+}
+
+function getHistoryQueryFromParsed(parsed: Record<string, JsonValue> | null): HistoryQuery | null {
+  const historyQuery = (parsed?.historyQuery ?? null) as Record<string, JsonValue> | null;
+  if (!historyQuery) return null;
+  return {
+    filterType: String(historyQuery.filterType ?? "all"),
+    filterValue: historyQuery.filterValue == null ? null : String(historyQuery.filterValue),
+    startDate: historyQuery.startDate == null ? null : String(historyQuery.startDate),
+    endDate: historyQuery.endDate == null ? null : String(historyQuery.endDate),
+    entityType: historyQuery.entityType === "category" || historyQuery.entityType === "account" ? historyQuery.entityType : null,
+    entityName: historyQuery.entityName == null ? null : String(historyQuery.entityName),
+    categoryId: historyQuery.categoryId == null ? null : String(historyQuery.categoryId),
+    accountId: historyQuery.accountId == null ? null : String(historyQuery.accountId),
+  };
+}
+
+async function handleHistoryNavigationCommand(
+  userId: string,
+  phone: string,
+  command: HistoryNavigationCommand,
+): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const historyLog = await getLastHistoryLog(userId, phone);
+  const parsed = (historyLog?.parsed ?? null) as Record<string, JsonValue> | null;
+  const historyQuery = getHistoryQueryFromParsed(parsed);
+  if (!historyQuery) {
+    return { reply: "⚠️ Belum ada history terakhir.\n\nKetik:\nhistory", parsedLog: { command: "history_navigation_failed", reason: "history_not_found", action: command.action } };
+  }
+
+  const currentPage = Math.max(1, Number(parsed?.page ?? 1));
+  const totalPages = Math.max(1, Number(parsed?.totalPages ?? 1));
+  const pageSize = Math.max(1, Number(parsed?.pageSize ?? 10));
+  let targetPage = currentPage;
+  if (command.action === "next") targetPage = currentPage + 1;
+  if (command.action === "prev") targetPage = currentPage - 1;
+  if (command.action === "page") targetPage = Math.max(1, Number(command.targetPage ?? 1));
+
+  console.log("[HISTORY NAVIGATION]", {
+    action: command.action,
+    currentPage,
+    targetPage,
+  });
+
+  if (command.action === "next" && currentPage >= totalPages) {
+    return {
+      reply: [`ℹ️ *Sudah Halaman Terakhir*`, "", "Halaman:", `*${totalPages} dari ${totalPages}*`].join("\n"),
+      parsedLog: { command: "history_navigation", action: command.action, currentPage, targetPage: currentPage, totalPages, historyQuery },
+    };
+  }
+
+  if (command.action === "prev" && currentPage <= 1) {
+    return {
+      reply: "ℹ️ *Sudah Halaman Pertama*",
+      parsedLog: { command: "history_navigation", action: command.action, currentPage, targetPage: currentPage, totalPages, historyQuery },
+    };
+  }
+
+  if (targetPage < 1 || targetPage > totalPages) {
+    return {
+      reply: [`⚠️ *Halaman Tidak Ditemukan*`, "", "Total halaman:", `*${totalPages}*`].join("\n"),
+      parsedLog: { command: "history_navigation", action: command.action, currentPage, targetPage, totalPages, historyQuery },
+    };
+  }
+
+  return await buildHistoryPageReply(userId, historyQuery, targetPage, pageSize);
+}
+
 async function getLastHistoryTransactions(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
   const historyLog = await getLastHistoryLog(userId, phone);
   const parsed = (historyLog?.parsed ?? null) as Record<string, JsonValue> | null;
@@ -4680,9 +4881,10 @@ function buildMenuMessage(): string {
     "• history",
     "• history cash",
     "• history jajan",
-    "• history es budeh",
-    "• history 25/05",
-    "• history cash 25/05",
+    "• history momoyo",
+    "• next",
+    "• prev",
+    "• page 2",
     "• hapus 1",
     "• edit 1 15000",
     "",
@@ -4745,9 +4947,12 @@ function buildExampleMessage(): string {
     "• tf 50000 cash seabank",
     "",
     "📚 *History*",
+    "• history",
     "• history es budeh",
-    "• history beli oli",
-    "• history momoyo bulan ini",
+    "• history cash",
+    "• next",
+    "• prev",
+    "• page 2",
     "• hapus 1",
     "• edit 1 15000",
     "",
@@ -4854,7 +5059,7 @@ function isPotentialBotCommand(message: string): boolean {
   if (DAILY_EXPENSE_COMMANDS.has(normalized)) return true;
 
   const validCommands = [
-    "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "kategori", "akun", "budget", "ai", "ping", "info",
+    "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "budget", "ai", "ping", "info",
     "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
@@ -5173,7 +5378,7 @@ Deno.serve(async (req: Request) => {
       parsedLog = isGroup
         ? { command: "ai_suggestion", context: "group", chatTarget, participant, sessionId: crypto.randomUUID(), suggestions, active: true }
         : { command: "ai_suggestion", context: "personal", sessionId: crypto.randomUUID(), suggestions, active: true };
-    } else if (isAISuggestionNumber(normalized)) {
+    } else if (isAISuggestionNumber(normalized) && await hasActiveAISuggestionSession({ userId, contextKey, isGroup, chatTarget: String(chatTarget ?? "") })) {
       console.log("[ROUTE MATCH]", { route: "ai_pick_number", normalized, isGroup, contextKey });
       const aiPick = await handleAISuggestionPick(
         userId,
@@ -5183,6 +5388,11 @@ Deno.serve(async (req: Request) => {
       );
       reply = aiPick.reply;
       parsedLog = aiPick.parsedLog;
+    } else if (parseHistoryNavigationCommand(normalized) && (!(parseHistoryNavigationCommand(normalized)?.shortcut) || await getLastHistoryLog(userId, contextKey))) {
+      const historyNav = parseHistoryNavigationCommand(normalized)!;
+      const navResult = await handleHistoryNavigationCommand(userId, contextKey, historyNav);
+      reply = navResult.reply;
+      parsedLog = navResult.parsedLog;
     } else if (detectSmartSearchIntent(normalized)) {
       const smartSearch = await handleSmartSearch(userId, normalized);
       if (smartSearch) {
@@ -5247,7 +5457,18 @@ Deno.serve(async (req: Request) => {
       const hasDateFilter = Boolean(dateRange.startDate && dateRange.endDate);
       const titleKeyword = entityQuery && !entityType ? entityQuery : "";
       const filterType = entityType ?? (titleKeyword ? "title" : hasDateFilter ? "date" : "all");
-      const limit = 10;
+      const page = 1;
+      const pageSize = 10;
+      const historyQuery: HistoryQuery = {
+        filterType,
+        filterValue: titleKeyword || null,
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate,
+        entityType,
+        entityName,
+        categoryId: entity.categoryId ?? null,
+        accountId: entity.accountId ?? null,
+      };
       console.log("[DATE RANGE PARSER]", { rawInput, startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName });
       console.log("[HISTORY DETECTION]", {
         rawInput,
@@ -5264,123 +5485,9 @@ Deno.serve(async (req: Request) => {
         endDate: dateRange.endDate,
         hasDateFilter,
       });
-
-      if (titleKeyword) {
-        const finalTransactions = await getHistoryByTitle(userId, titleKeyword, dateRange.startDate, dateRange.endDate, limit);
-        console.log("[HISTORY RESULT]", { count: finalTransactions.length, filterType });
-        if (finalTransactions.length === 0) {
-          parsedLog = {
-            command: "history",
-            filterType: "title",
-            filterValue: titleKeyword,
-            startDate: dateRange.startDate,
-            endDate: dateRange.endDate,
-            entityType,
-            entityName,
-            displayedTransactions: [],
-          };
-          reply = `ℹ️ *Data Kosong*\n\nTidak ada history dengan judul:\n*${titleKeyword}*`;
-        } else {
-          const categoryIds = [...new Set(finalTransactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
-          const accountIds = [...new Set(
-            finalTransactions
-              .flatMap((tx) => [String(tx.account_id ?? ""), String(tx.to_account_id ?? "")])
-              .filter(Boolean),
-          )];
-
-          const categoryMap = new Map<string, string>();
-          const accountMap = new Map<string, string>();
-
-          if (categoryIds.length > 0) {
-            const { data: categoryRows } = await supabase.from("categories").select("id,name").in("id", categoryIds);
-            for (const row of (categoryRows ?? []) as Array<Record<string, JsonValue>>) {
-              categoryMap.set(String(row.id), String(row.name));
-            }
-          }
-
-          if (accountIds.length > 0) {
-            const { data: accountRows } = await supabase.from("accounts").select("id,name").in("id", accountIds);
-            for (const row of (accountRows ?? []) as Array<Record<string, JsonValue>>) {
-              accountMap.set(String(row.id), String(row.name));
-            }
-          }
-          const { reply: historyReply, displayedTransactions } = buildHistoryTitleMessage(
-            titleKeyword,
-            finalTransactions,
-            categoryMap,
-            accountMap,
-          );
-          console.log("[HISTORY DISPLAYED TRANSACTIONS]", {
-            count: displayedTransactions.length,
-            ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
-          });
-          parsedLog = {
-            command: "history",
-            filterType: "title",
-            filterValue: titleKeyword,
-            startDate: dateRange.startDate,
-            endDate: dateRange.endDate,
-            entityType,
-            entityName,
-            displayedTransactions,
-          };
-          reply = historyReply;
-        }
-      }
-      if (!reply) {
-        const finalTransactions = await getHistoryByDateRange(userId, dateRange.startDate, dateRange.endDate, {
-          categoryId: entity.categoryId,
-          accountId: entity.accountId,
-          limit,
-        });
-        console.log("[HISTORY RESULT]", { count: finalTransactions.length, filterType });
-        if (finalTransactions.length === 0) {
-          reply = "📚 Tidak ada history transaksi.";
-        } else {
-          const categoryIds = [...new Set(finalTransactions.map((tx) => String(tx.category_id ?? "")).filter(Boolean))];
-          const accountIds = [...new Set(
-            finalTransactions
-              .flatMap((tx) => [String(tx.account_id ?? ""), String(tx.to_account_id ?? "")])
-              .filter(Boolean),
-          )];
-
-          const categoryMap = new Map<string, string>();
-          const accountMap = new Map<string, string>();
-
-          if (categoryIds.length > 0) {
-            const { data: categoryRows } = await supabase.from("categories").select("id,name").in("id", categoryIds);
-            for (const row of (categoryRows ?? []) as Array<Record<string, JsonValue>>) {
-              categoryMap.set(String(row.id), String(row.name));
-            }
-          }
-
-          if (accountIds.length > 0) {
-            const { data: accountRows } = await supabase.from("accounts").select("id,name").in("id", accountIds);
-            for (const row of (accountRows ?? []) as Array<Record<string, JsonValue>>) {
-              accountMap.set(String(row.id), String(row.name));
-            }
-          }
-          const titleSuffix = [
-            entityType === "account" && entityName ? `Akun ${entityName}` : "",
-            entityType === "category" && entityName ? `Kategori ${entityName}` : "",
-            !entityType ? "Transaksi" : "",
-            dateRange.label ? dateRange.label.charAt(0).toUpperCase() + dateRange.label.slice(1) : "",
-          ].filter(Boolean).join(" ");
-          const headerLines = [`📚 *History ${titleSuffix}*`];
-          const { reply: historyReply, displayedTransactions } = buildHistoryMessage(
-            headerLines.join("\n"),
-            finalTransactions,
-            categoryMap,
-            accountMap,
-          );
-          console.log("[HISTORY DISPLAYED TRANSACTIONS]", {
-            count: displayedTransactions.length,
-            ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
-          });
-          parsedLog = { command: "history", filterType, startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName, displayedTransactions };
-          reply = historyReply;
-        }
-      }
+      const historyResult = await buildHistoryPageReply(userId, historyQuery, page, pageSize);
+      reply = historyResult.reply;
+      parsedLog = historyResult.parsedLog;
     } else if (/^hapus\s+(\d+)$/.test(normalized)) {
       const deleteMatch = normalized.match(/^hapus\s+(\d+)$/);
       const number = Number(deleteMatch?.[1] ?? 0);
