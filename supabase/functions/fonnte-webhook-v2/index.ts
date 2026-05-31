@@ -855,6 +855,7 @@ function buildHistoryMessage(
       "Ketik:",
       "• *hapus 1*",
       "• *edit 1 01/06*",
+      "• *edit kategori 1 makan*",
     ].join("\n"),
     displayedTransactions,
   };
@@ -3361,7 +3362,22 @@ function formatEditDateForReply(date: string): string {
 }
 
 function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionCommand | null {
-  const match = rawMessage.trim().match(/^edit\s+(\d+)\s+(.+)$/i);
+  const trimmed = rawMessage.trim();
+  const directFieldMatch = trimmed.match(/^edit\s+(kategori|akun|judul|title)\s+(\d+)\s+(.+)$/i);
+  if (directFieldMatch) {
+    const directFieldToken = normalizeText(directFieldMatch[1] ?? "");
+    const directNumber = Number(directFieldMatch[2]);
+    const directValue = String(directFieldMatch[3] ?? "").trim();
+    if (!Number.isInteger(directNumber) || directNumber < 1 || !directValue) return null;
+    const directField: EditField = directFieldToken === "kategori"
+      ? "category"
+      : directFieldToken === "akun"
+      ? "account"
+      : "title";
+    return { number: directNumber, field: directField, value: directValue };
+  }
+
+  const match = trimmed.match(/^edit\s+(\d+)\s+(.+)$/i);
   if (!match) return null;
 
   const number = Number(match[1]);
@@ -3695,6 +3711,26 @@ async function updateTransactionDateField(transactionId: string, userId: string,
   throw new Error(`TRANSACTION_DATE_FIELD_NOT_FOUND: ${lastError?.message ?? "No supported date field found"}`);
 }
 
+async function updateTransactionRequiredFields(transactionId: string, userId: string, payload: Record<string, JsonValue>): Promise<void> {
+  const { error } = await supabase
+    .from("transactions")
+    .update(payload)
+    .eq("id", transactionId)
+    .eq("user_id", userId);
+  if (error) throw error;
+}
+
+async function updateTransactionOptionalField(transactionId: string, userId: string, field: string, value: JsonValue): Promise<boolean> {
+  const { error } = await supabase
+    .from("transactions")
+    .update({ [field]: value })
+    .eq("id", transactionId)
+    .eq("user_id", userId);
+  if (!error) return true;
+  if (isMissingColumnError(error)) return false;
+  throw error;
+}
+
 async function handleEditTransaction(userId: string, phone: string, rawMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   const parsedEdit = parseEditTransactionCommand(rawMessage);
   if (!parsedEdit) {
@@ -3709,11 +3745,11 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
 
   const displayedTransactions = await getLastHistoryTransactions(userId, phone);
   if (displayedTransactions.length === 0) {
-    return { reply: "⚠️ Belum ada history terakhir.\n\nKetik:\nhistory", parsedLog: { command: "edit_transaction_failed", reason: "history_not_found" } };
+    return { reply: "⚠️ *Nomor History Tidak Ditemukan*\n\nGunakan:\n*history*", parsedLog: { command: "edit_transaction_failed", reason: "history_not_found" } };
   }
   const selectedTransaction = findDisplayedTransactionByNumber(displayedTransactions, parsedEdit.number);
   if (!selectedTransaction) {
-    return { reply: "⚠️ Nomor history tidak ditemukan.\n\nKetik:\nhistory", parsedLog: { command: "edit_transaction_failed", reason: "number_not_found", number: parsedEdit.number } };
+    return { reply: "⚠️ *Nomor History Tidak Ditemukan*\n\nGunakan:\n*history*", parsedLog: { command: "edit_transaction_failed", reason: "number_not_found", number: parsedEdit.number } };
   }
 
   const transactionId = String(selectedTransaction.id ?? "");
@@ -3750,38 +3786,92 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     };
   }
   if (parsedEdit.field === "title") {
-    const oldValue = String(txRow.title ?? "-");
+    const oldValue = String(txRow.title ?? selectedTransaction.title ?? "-");
     const newValue = String(parsedEdit.value);
-    const { error } = await supabase.from("transactions").update({ title: newValue }).eq("id", transactionId).eq("user_id", userId);
-    if (error) throw error;
-    return { reply: [`✅ Judul transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Judul lama: ${oldValue}`, `Judul baru: ${newValue}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "title", oldValue, newValue } };
+    await updateTransactionRequiredFields(transactionId, userId, { title: newValue });
+    return {
+      reply: [
+        "✏️ *Judul Transaksi Berhasil Diubah*",
+        "",
+        "━━━━━━━━━━━━━━",
+        `No: *${parsedEdit.number}*`,
+        "",
+        "Sebelum:",
+        `*${oldValue}*`,
+        "",
+        "Sesudah:",
+        `*${newValue}*`,
+      ].join("\n"),
+      parsedLog: { command: "edit_transaction_title", transactionId, oldTitle: oldValue, newTitle: newValue },
+    };
   }
   if (parsedEdit.field === "category") {
     const categoryInput = String(parsedEdit.value);
     const category = await findCategory(userId, categoryInput);
-    if (!category) return { reply: `⚠️ Kategori tidak ditemukan: ${categoryInput}`, parsedLog: { command: "edit_transaction_failed", reason: "category_not_found", transactionId, field: "category", value: categoryInput } };
+    if (!category) {
+      return {
+        reply: [
+          "❌ *Kategori Tidak Ditemukan*",
+          "",
+          "Kategori:",
+          `*${categoryInput}*`,
+          "",
+          "Gunakan:",
+          "*kategori*",
+          "",
+          "untuk melihat daftar kategori.",
+        ].join("\n"),
+        parsedLog: { command: "edit_transaction_failed", reason: "category_not_found", transactionId, field: "category", value: categoryInput },
+      };
+    }
     const oldValue = String(selectedTransaction.categoryName ?? "-");
-    const { error } = await supabase.from("transactions").update({ category_id: category.id, type: category.type }).eq("id", transactionId).eq("user_id", userId);
-    if (error) throw error;
-    return { reply: [`✅ Kategori transaksi diperbarui`, "", `No: ${parsedEdit.number}`, `Kategori lama: ${oldValue}`, `Kategori baru: ${category.name}`].join("\n"), parsedLog: { command: "edit_transaction", transactionId, field: "category", oldValue, newValue: category.name } };
+    await updateTransactionRequiredFields(transactionId, userId, { category_id: category.id, type: category.type });
+    await updateTransactionOptionalField(transactionId, userId, "category_name", category.name);
+    await updateTransactionOptionalField(transactionId, userId, "category", category.name);
+    return {
+      reply: [
+        "✏️ *Kategori Transaksi Berhasil Diubah*",
+        "",
+        "━━━━━━━━━━━━━━",
+        `No: *${parsedEdit.number}*`,
+        "",
+        "Sebelum:",
+        `*${oldValue}*`,
+        "",
+        "Sesudah:",
+        `*${category.name}*`,
+        "",
+        "Judul:",
+        `*${String(txRow.title ?? selectedTransaction.title ?? "-")}*`,
+        "",
+        "Nominal:",
+        `*${formatIDR(Number(txRow.amount ?? selectedTransaction.amount ?? 0))}*`,
+      ].join("\n"),
+      parsedLog: { command: "edit_transaction_category", transactionId, oldCategory: oldValue, newCategory: category.name },
+    };
   }
   if (parsedEdit.field === "account") {
     const accountInput = String(parsedEdit.value);
     const account = await findAccount(userId, accountInput);
     if (!account) return { reply: `❌ Akun *${accountInput}* tidak ditemukan.`, parsedLog: { command: "edit_transaction_failed", reason: "account_not_found", transactionId, field: "account", value: accountInput } };
     const oldValue = String(selectedTransaction.accountName ?? "-");
-    const { error } = await supabase.from("transactions").update({ account_id: account.id }).eq("id", transactionId).eq("user_id", userId);
-    if (error) throw error;
+    await updateTransactionRequiredFields(transactionId, userId, { account_id: account.id });
+    await updateTransactionOptionalField(transactionId, userId, "account_name", account.name);
+    await updateTransactionOptionalField(transactionId, userId, "account", account.name);
     return {
       reply: [
-        "✏️ Transaksi Berhasil Diedit",
+        "✏️ *Akun Transaksi Berhasil Diubah*",
         "",
         "━━━━━━━━━━━━━━",
-        `No: ${parsedEdit.number}`,
-        "Akun Baru:",
-        account.name,
+        `No: *${parsedEdit.number}*`,
+        "",
+        "Sebelum:",
+        `*${oldValue}*`,
+        "",
+        "Sesudah:",
+        `*${account.name}*`,
       ].join("\n"),
-      parsedLog: { command: "edit_transaction", transactionId, field: "account", oldValue, newValue: account.name },
+      parsedLog: { command: "edit_transaction_account", transactionId, oldAccount: oldValue, newAccount: account.name },
     };
   }
   const dateInput = String(parsedEdit.value);
@@ -5119,7 +5209,11 @@ function buildMenuMessage(): string {
     "• prev",
     "• page 2",
     "• hapus 1",
-    "• edit 1 15000",
+    "",
+    "✏️ *Edit Data*",
+    "• edit 1 20000",
+    "• edit 1 01/06",
+    "• edit kategori 1 makan",
     "",
     "🤖 *AI Assistant*",
     "• ai",
@@ -5187,7 +5281,11 @@ function buildExampleMessage(): string {
     "• prev",
     "• page 2",
     "• hapus 1",
-    "• edit 1 15000",
+    "",
+    "✏️ *Edit Data*",
+    "• edit kategori 1 makan",
+    "• edit kategori 2 jajan",
+    "• edit kategori 3 motor",
     "",
     "📊 *Laporan*",
     "• pengeluaran harian",
@@ -5611,6 +5709,13 @@ Deno.serve(async (req: Request) => {
           ...budgetLines,
         ].join("\n");
       }
+    } else if (/^edit\s+(kategori|akun|judul|title)\s+\d+\s+.+$/i.test(message.trim())) {
+      console.log("[EDIT HISTORY FIELD COMMAND DETECTED]", {
+        message,
+      });
+      const editResult = await handleEditTransaction(userId, contextKey, message);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
     } else if (/^edit\s+(\d+)\s+(.+)$/i.test(message.trim())) {
       console.log("[EDIT COMMAND DETECTED]", {
         message,
