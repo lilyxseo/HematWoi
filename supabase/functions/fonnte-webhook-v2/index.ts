@@ -3267,6 +3267,53 @@ function parseDebtCommand(message: string): ParsedDebtCommand | null {
   return { action: action as DebtAction, debtType, partyName, amount, accountName, date };
 }
 
+function isDateLike(value: string): boolean {
+  const input = String(value ?? "").trim();
+  return /^\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?$/.test(input) || /^\d{4}-\d{2}-\d{2}$/.test(input);
+}
+
+function parseFlexibleDate(value: string): string | null {
+  const input = String(value ?? "").trim();
+  if (!input) return null;
+
+  const now = new Date();
+  const jakartaNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
+  const currentYear = jakartaNow.getFullYear();
+
+  let day = 0;
+  let month = 0;
+  let year = currentYear;
+
+  const isoMatch = input.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    year = Number(isoMatch[1]);
+    month = Number(isoMatch[2]);
+    day = Number(isoMatch[3]);
+  } else {
+    const dateMatch = input.match(/^(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?$/);
+    if (!dateMatch) return null;
+    day = Number(dateMatch[1]);
+    month = Number(dateMatch[2]);
+    if (dateMatch[3]) {
+      year = dateMatch[3].length === 2 ? 2000 + Number(dateMatch[3]) : Number(dateMatch[3]);
+    }
+  }
+
+  if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) return null;
+  if (year < 1900 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    candidate.getUTCFullYear() !== year ||
+    candidate.getUTCMonth() !== (month - 1) ||
+    candidate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 function parseEditDateToken(raw: string): string | null {
   const input = raw.trim();
   if (!input) return null;
@@ -3874,6 +3921,30 @@ async function updateDebtAmount(userId: string, debtId: string, amount: number):
   if (error) throw error;
 }
 
+async function updateDebtDueDate(userId: string, debtId: string, parsedDate: string): Promise<string> {
+  const { data: row, error: rowError } = await supabase.from("debts").select("*").eq("id", debtId).eq("user_id", userId).maybeSingle();
+  if (rowError) throw rowError;
+  if (!row) throw new Error("Debt not found");
+  const debtRow = row as Record<string, JsonValue>;
+  const field = "due_date" in debtRow
+    ? "due_date"
+    : "due_at" in debtRow
+    ? "due_at"
+    : "jatuh_tempo" in debtRow
+    ? "jatuh_tempo"
+    : "deadline" in debtRow
+    ? "deadline"
+    : null;
+  if (!field) throw new Error("DEBT_DUE_DATE_FIELD_NOT_FOUND");
+  console.log("[EDIT DEBT DUE DATE FIELD]", {
+    field,
+    parsedDate,
+  });
+  const { error } = await supabase.from("debts").update({ [field]: parsedDate }).eq("id", debtId).eq("user_id", userId);
+  if (error) throw error;
+  return field;
+}
+
 async function softDeleteDebt(userId: string, debtId: string): Promise<void> {
   const { data: row, error: rowError } = await supabase.from("debts").select("*").eq("id", debtId).eq("user_id", userId).maybeSingle();
   if (rowError) throw rowError;
@@ -3938,13 +4009,38 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
   const editMatch = normalized.match(/^edit\s+hutang\s+(\d+)\s+(.+)$/);
   if (editMatch) {
     const number = Number(editMatch[1]);
-    const amount = parseAmount(editMatch[2]);
-    console.log("[EDIT DEBT]", { number, amount });
-    if (!Number.isFinite(amount) || amount <= 0) return { reply: "⚠️ Nominal tidak valid.", parsedLog: { command: "edit_hutang", status: "invalid_amount" } };
+    const rawValue = editMatch[2].trim();
+    const isDate = isDateLike(rawValue);
+    const parsedDate = isDate ? parseFlexibleDate(rawValue) : null;
+    const parsedAmount = isDate ? null : parseAmount(rawValue);
+    console.log("[EDIT DEBT VALUE DETECT]", {
+      rawValue,
+      isDate,
+      parsedDate,
+      parsedAmount,
+    });
+    console.log("[EDIT DEBT]", { number, amount: parsedAmount, parsedDate });
+    if (isDate && !parsedDate) return { reply: "⚠️ Format tanggal tidak valid.\n\nGunakan format:\n01/06\n01/06/2026\n2026-06-01", parsedLog: { command: "edit_hutang", status: "invalid_date", number, rawValue } };
+    if (!isDate && (parsedAmount === null || !Number.isFinite(parsedAmount) || parsedAmount <= 0)) return { reply: "⚠️ Nominal tidak valid.", parsedLog: { command: "edit_hutang", status: "invalid_amount" } };
     const displayedDebts = await findLastDisplayedDebtList(userId);
     if (!displayedDebts) return { reply: "⚠️ *Belum Ada List Hutang*\n\nKetik:\n*hutang*", parsedLog: { command: "edit_hutang", status: "list_not_found" } };
     const selected = displayedDebts.find((item) => Number((item as Record<string, JsonValue>).no ?? 0) === number) as Record<string, JsonValue> | undefined;
     if (!selected) return { reply: "❌ *Nomor Hutang Tidak Ditemukan*", parsedLog: { command: "edit_hutang", status: "number_not_found", number } };
+    if (isDate && parsedDate) {
+      try {
+        const field = await updateDebtDueDate(userId, String(selected.id ?? ""), parsedDate);
+        return {
+          reply: `✏️ *Jatuh Tempo Hutang Diedit*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n📅 Jatuh Tempo Baru: *${formatEditDateForReply(parsedDate)}*`,
+          parsedLog: { command: "edit_hutang", status: "success", field, number, dueDate: parsedDate },
+        };
+      } catch (error) {
+        if (error instanceof Error && error.message === "DEBT_DUE_DATE_FIELD_NOT_FOUND") {
+          return { reply: "❌ *Kolom Jatuh Tempo Tidak Ditemukan*\n\nSchema hutang belum punya kolom jatuh tempo.", parsedLog: { command: "edit_hutang", status: "due_date_field_not_found", number } };
+        }
+        throw error;
+      }
+    }
+    const amount = parsedAmount ?? 0;
     try {
       await updateDebtAmount(userId, String(selected.id ?? ""), amount);
     } catch (error) {
