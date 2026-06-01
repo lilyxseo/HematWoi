@@ -176,6 +176,9 @@ type HistoryQuery = {
   filterValue?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  periodLabel?: string | null;
+  page?: number | null;
+  pageSize?: number | null;
   entityType?: "category" | "account" | null;
   entityName?: string | null;
   categoryId?: string | null;
@@ -617,6 +620,143 @@ function formatHistoryDate(date: string): string {
   return `${day}/${month}`;
 }
 
+const HISTORY_MONTH_NAMES = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
+const HISTORY_MONTH_NAME_MAP = HISTORY_MONTH_NAMES.reduce<Record<string, number>>((acc, name, index) => {
+  acc[name.toLowerCase()] = index + 1;
+  return acc;
+}, {});
+
+function buildHistoryMonthPeriod(
+  year: number,
+  month: number,
+  remainingText: string,
+): { startDate: string; endDate: string; label: string; remainingText: string } | null {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return null;
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  const label = `${HISTORY_MONTH_NAMES[month - 1]} ${year}`;
+  return { startDate, endDate, label, remainingText: normalizeText(remainingText) };
+}
+
+function parseHistoryMonthPeriod(input: string): { startDate: string; endDate: string; label: string; remainingText: string } | null {
+  const rawInput = String(input ?? "");
+  const text = normalizeText(rawInput);
+  if (!text) return null;
+
+  const todayParts = getTodayJakarta().split("-").map(Number);
+  const currentYear = todayParts[0];
+  const currentMonth = todayParts[1];
+
+  const relativeMatch = text.match(/\bbulan\s+(ini|lalu|depan)\b/);
+  if (relativeMatch) {
+    const offset = relativeMatch[1] === "lalu" ? -1 : relativeMatch[1] === "depan" ? 1 : 0;
+    const ref = new Date(Date.UTC(currentYear, currentMonth - 1 + offset, 1));
+    const period = buildHistoryMonthPeriod(
+      ref.getUTCFullYear(),
+      ref.getUTCMonth() + 1,
+      text.replace(relativeMatch[0], " ").trim(),
+    );
+    if (period) {
+      console.log("[HISTORY MONTH PERIOD]", {
+        rawInput,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        label: period.label,
+        remainingText: period.remainingText,
+      });
+    }
+    return period;
+  }
+
+  const numericSlashMatch = text.match(/\b(0?[1-9]|1[0-2])\/(\d{4})\b/);
+  if (numericSlashMatch) {
+    const period = buildHistoryMonthPeriod(
+      Number(numericSlashMatch[2]),
+      Number(numericSlashMatch[1]),
+      text.replace(numericSlashMatch[0], " ").trim(),
+    );
+    if (period) {
+      console.log("[HISTORY MONTH PERIOD]", {
+        rawInput,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        label: period.label,
+        remainingText: period.remainingText,
+      });
+    }
+    return period;
+  }
+
+  const numericDashMatch = text.match(/\b(\d{4})-(0?[1-9]|1[0-2])\b/);
+  if (numericDashMatch) {
+    const period = buildHistoryMonthPeriod(
+      Number(numericDashMatch[1]),
+      Number(numericDashMatch[2]),
+      text.replace(numericDashMatch[0], " ").trim(),
+    );
+    if (period) {
+      console.log("[HISTORY MONTH PERIOD]", {
+        rawInput,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        label: period.label,
+        remainingText: period.remainingText,
+      });
+    }
+    return period;
+  }
+
+  for (const [monthName, month] of Object.entries(HISTORY_MONTH_NAME_MAP)) {
+    const dailyDateWithMonthNamePattern = new RegExp(`\\b\\d{1,2}\\s+${monthName}\\b`);
+    if (dailyDateWithMonthNamePattern.test(text)) continue;
+    const monthPattern = new RegExp(`\\b${monthName}\\b`);
+    if (!monthPattern.test(text)) continue;
+    const period = buildHistoryMonthPeriod(
+      currentYear,
+      month,
+      text.replace(monthPattern, " ").trim(),
+    );
+    if (period) {
+      console.log("[HISTORY MONTH PERIOD]", {
+        rawInput,
+        startDate: period.startDate,
+        endDate: period.endDate,
+        label: period.label,
+        remainingText: period.remainingText,
+      });
+    }
+    return period;
+  }
+
+  return null;
+}
+
+function normalizeHistorySpecificDateRange(
+  rawInput: string,
+  parsedRange: { startDate: string | null; endDate: string | null; label: string | null; remainingText: string },
+): { startDate: string | null; endDate: string | null; label: string | null; remainingText: string } {
+  if (!parsedRange.startDate || !parsedRange.endDate) return parsedRange;
+  const input = normalizeText(rawInput);
+  const hasSpecificDailyDate = /(\b\d{1,2}\/\d{1,2}\b|\b\d{1,2}-\d{1,2}\b|\b\d{1,2}\s+[a-z]+\b)/.test(input);
+  if (!hasSpecificDailyDate) return parsedRange;
+  return { ...parsedRange, endDate: parsedRange.startDate };
+}
+
 function formatShortDate(date: string): string {
   const [_year, month, day] = String(date).split("-");
   if (!month || !day) return String(date || "-");
@@ -795,7 +935,7 @@ function buildHistoryMessage(
   transactions: Array<Record<string, JsonValue>>,
   categoryMap: Map<string, string>,
   accountMap: Map<string, string>,
-  meta: { page: number; totalPages: number; totalCount: number; pageSize: number },
+  meta: { page: number; totalPages: number; totalCount: number; pageSize: number; periodLabel?: string | null },
 ): { reply: string; displayedTransactions: JsonValue[] } {
   const displayedTransactions: JsonValue[] = [];
   const lines = transactions.slice(0, meta.pageSize).map((tx, i) => {
@@ -833,11 +973,15 @@ function buildHistoryMessage(
     `• Total Data: *${meta.totalCount} data*`,
     `• Halaman: *${meta.page} dari ${meta.totalPages}*`,
   ];
+  const pageLabel = meta.totalPages > 0 ? meta.totalPages : 1;
+  const subLabel = meta.periodLabel
+    ? `_${meta.periodLabel} — Page ${meta.page}/${pageLabel}_`
+    : `_Page ${meta.page}/${pageLabel}_`;
 
   return {
     reply: [
       header,
-      `_Page ${meta.page}/${meta.totalPages}_`,
+      subLabel,
       "",
       line(),
       ...infoLines,
@@ -920,7 +1064,8 @@ async function buildHistoryPageReply(
   pageSize: number,
 ): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
   const result = await getHistoryPage(userId, historyQuery, page, pageSize);
-  const header = buildHistoryHeader(historyQuery);
+  const effectiveHistoryQuery: HistoryQuery = { ...historyQuery, page: result.page, pageSize: result.pageSize };
+  const header = buildHistoryHeader(effectiveHistoryQuery);
   console.log("[HISTORY PAGINATION]", {
     page: result.page,
     totalPages: result.totalPages,
@@ -929,24 +1074,36 @@ async function buildHistoryPageReply(
   });
 
   if (result.totalCount === 0) {
-    return {
-      reply: historyQuery.filterType === "title" && historyQuery.filterValue
+    const emptyReply = effectiveHistoryQuery.entityType === "category" && effectiveHistoryQuery.entityName && effectiveHistoryQuery.periodLabel
+      ? [
+        header,
+        `_${effectiveHistoryQuery.periodLabel}_`,
+        "",
+        line(),
+        "ℹ️ Tidak ada transaksi untuk kategori ini.",
+      ].join("\n")
+      : historyQuery.filterType === "title" && historyQuery.filterValue
         ? `ℹ️ *Data Kosong*\n\nTidak ada history dengan judul:\n*${historyQuery.filterValue}*`
-        : "📚 Tidak ada history transaksi.",
+        : "📚 Tidak ada history transaksi.";
+    return {
+      reply: emptyReply,
       parsedLog: {
         command: "history",
         page: result.page,
         totalPages: result.totalPages,
         totalCount: result.totalCount,
         pageSize: result.pageSize,
-        historyQuery,
+        historyQuery: effectiveHistoryQuery,
         displayedTransactions: [],
       },
     };
   }
 
   const { categoryMap, accountMap } = await getHistoryDisplayMaps(result.transactions);
-  const { reply, displayedTransactions } = buildHistoryMessage(header, result.transactions, categoryMap, accountMap, result);
+  const { reply, displayedTransactions } = buildHistoryMessage(header, result.transactions, categoryMap, accountMap, {
+    ...result,
+    periodLabel: effectiveHistoryQuery.periodLabel ?? null,
+  });
   console.log("[HISTORY DISPLAYED TRANSACTIONS]", {
     count: displayedTransactions.length,
     ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
@@ -959,7 +1116,7 @@ async function buildHistoryPageReply(
       totalPages: result.totalPages,
       totalCount: result.totalCount,
       pageSize: result.pageSize,
-      historyQuery,
+      historyQuery: effectiveHistoryQuery,
       displayedTransactions,
     },
   };
@@ -3825,6 +3982,9 @@ function getHistoryQueryFromParsed(parsed: Record<string, JsonValue> | null): Hi
     filterValue: historyQuery.filterValue == null ? null : String(historyQuery.filterValue),
     startDate: historyQuery.startDate == null ? null : String(historyQuery.startDate),
     endDate: historyQuery.endDate == null ? null : String(historyQuery.endDate),
+    periodLabel: historyQuery.periodLabel == null ? null : String(historyQuery.periodLabel),
+    page: historyQuery.page == null ? null : Number(historyQuery.page),
+    pageSize: historyQuery.pageSize == null ? null : Number(historyQuery.pageSize),
     entityType: historyQuery.entityType === "category" || historyQuery.entityType === "account" ? historyQuery.entityType : null,
     entityName: historyQuery.entityName == null ? null : String(historyQuery.entityName),
     categoryId: historyQuery.categoryId == null ? null : String(historyQuery.categoryId),
@@ -5560,7 +5720,12 @@ function buildMenuMessage(): string {
     "📚 *History*",
     "• history",
     "• history cash",
-    "• history jajan",
+    "",
+    "📚 *History Bulanan*",
+    "• history jajan juni",
+    "• history makan mei",
+    "• history motor 06/2026",
+    "• history cash bulan lalu",
     "• history momoyo",
     "• next",
     "• prev",
@@ -5640,6 +5805,12 @@ function buildExampleMessage(): string {
     "• history",
     "• history es budeh",
     "• history cash",
+    "",
+    "📚 *History Bulanan*",
+    "• history jajan juni",
+    "• history makan mei",
+    "• history bensin 06/2026",
+    "• history cash bulan lalu",
     "• next",
     "• prev",
     "• page 2",
@@ -6160,7 +6331,9 @@ Deno.serve(async (req: Request) => {
     } else if (normalized.startsWith("history")) {
       console.log("[HISTORY COMMAND]", { normalized, userId, sender: contextKey });
       const rawInput = normalized.replace(/^history\s*/, "").trim();
-      const parsedRange = parseNaturalDateRange(rawInput);
+      const parsedMonthPeriod = parseHistoryMonthPeriod(rawInput);
+      const parsedNaturalRange = parseNaturalDateRange(rawInput);
+      const parsedRange = parsedMonthPeriod ?? normalizeHistorySpecificDateRange(rawInput, parsedNaturalRange);
       const dateRange = parsedRange;
       const entityQuery = parsedRange.remainingText;
       const entity = await detectHistoryEntity(userId, entityQuery);
@@ -6173,14 +6346,24 @@ Deno.serve(async (req: Request) => {
       const pageSize = 10;
       const historyQuery: HistoryQuery = {
         filterType,
-        filterValue: titleKeyword || null,
+        filterValue: entityName ?? (titleKeyword || null),
         startDate: dateRange.startDate,
         endDate: dateRange.endDate,
+        periodLabel: parsedMonthPeriod?.label ?? null,
+        page,
+        pageSize,
         entityType,
         entityName,
         categoryId: entity.categoryId ?? null,
         accountId: entity.accountId ?? null,
       };
+      if (parsedMonthPeriod && entityType === "category" && entityName) {
+        console.log("[HISTORY CATEGORY MONTH]", {
+          categoryName: entityName,
+          startDate: parsedMonthPeriod.startDate,
+          endDate: parsedMonthPeriod.endDate,
+        });
+      }
       console.log("[DATE RANGE PARSER]", { rawInput, startDate: dateRange.startDate, endDate: dateRange.endDate, entityType, entityName });
       console.log("[HISTORY DETECTION]", {
         rawInput,
