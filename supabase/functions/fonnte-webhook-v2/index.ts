@@ -3417,6 +3417,202 @@ function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionC
   return { number, field: "account", value: rawValue };
 }
 
+type LastTransactionSession = {
+  transactionId: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  accountId: string | null;
+  accountName: string | null;
+  title: string;
+  amount: number;
+};
+
+function buildQuickFixLines(): string[] {
+  return [
+    "",
+    line(),
+    "⚡ Koreksi Cepat",
+    "• kategori makan",
+    "• kategori jajan",
+    "• akun cash",
+    "• akun seabank",
+  ];
+}
+
+function buildLastTransactionLog(input: LastTransactionSession): Record<string, JsonValue> {
+  return {
+    command: "last_transaction",
+    transactionId: input.transactionId,
+    categoryId: input.categoryId,
+    categoryName: input.categoryName,
+    accountId: input.accountId,
+    accountName: input.accountName,
+    title: input.title,
+    amount: input.amount,
+  };
+}
+
+async function getLastTransactionSession(userId: string, phone: string): Promise<LastTransactionSession | null> {
+  const { data: logs, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("id,created_at,parsed")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (error) throw error;
+
+  const sessionLog = (logs ?? []).find((log) => {
+    const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
+    return parsed?.command === "last_transaction" && Boolean(parsed?.transactionId);
+  }) as Record<string, JsonValue> | undefined;
+  const parsed = (sessionLog?.parsed ?? null) as Record<string, JsonValue> | null;
+  if (!parsed?.transactionId) return null;
+
+  return {
+    transactionId: String(parsed.transactionId),
+    categoryId: parsed.categoryId == null ? null : String(parsed.categoryId),
+    categoryName: parsed.categoryName == null ? null : String(parsed.categoryName),
+    accountId: parsed.accountId == null ? null : String(parsed.accountId),
+    accountName: parsed.accountName == null ? null : String(parsed.accountName),
+    title: String(parsed.title ?? "-"),
+    amount: Number(parsed.amount ?? 0),
+  };
+}
+
+function parseQuickFixCommand(normalized: string): { field: "category" | "account"; value: string } | null {
+  const match = normalized.match(/^(kategori|akun)\s+(.+)$/);
+  if (!match) return null;
+  const field = match[1] === "kategori" ? "category" : "account";
+  const value = String(match[2] ?? "").trim();
+  if (!value) return null;
+  if (["tambah", "edit", "hapus", "list"].includes(value.split(" ")[0] ?? "")) return null;
+  return { field, value };
+}
+
+async function handleQuickFixCommand(
+  userId: string,
+  phone: string,
+  command: { field: "category" | "account"; value: string },
+): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const session = await getLastTransactionSession(userId, phone);
+  if (!session) {
+    return {
+      reply: ["⚠️ Tidak ada transaksi terakhir yang bisa diedit.", "", "Gunakan:", "history"].join("\n"),
+      parsedLog: { command: "quick_fix_failed", field: command.field, reason: "last_transaction_not_found" },
+    };
+  }
+
+  const { data: txRow, error: txError } = await supabase
+    .from("transactions")
+    .select("id,title,amount,category_id,account_id,type")
+    .eq("id", session.transactionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (txError) throw txError;
+  if (!txRow) {
+    return {
+      reply: ["⚠️ Tidak ada transaksi terakhir yang bisa diedit.", "", "Gunakan:", "history"].join("\n"),
+      parsedLog: { command: "quick_fix_failed", field: command.field, reason: "transaction_not_found", transactionId: session.transactionId },
+    };
+  }
+
+  const title = String(txRow.title ?? session.title ?? "-");
+  if (command.field === "category") {
+    const newCategory = await findCategory(userId, command.value);
+    if (!newCategory) {
+      return {
+        reply: ["❌ Kategori Tidak Ditemukan", "", "Kategori:", `*${command.value}*`].join("\n"),
+        parsedLog: { command: "quick_category_fix_failed", reason: "category_not_found", transactionId: session.transactionId, categoryName: command.value },
+      };
+    }
+
+    const oldCategoryId = String(txRow.category_id ?? session.categoryId ?? "");
+    const { data: oldCategoryRow } = oldCategoryId
+      ? await supabase.from("categories").select("name").eq("id", oldCategoryId).eq("user_id", userId).maybeSingle()
+      : { data: null };
+    const oldCategory = String(oldCategoryRow?.name ?? session.categoryName ?? "-");
+    await updateTransactionRequiredFields(session.transactionId, userId, { category_id: newCategory.id, type: newCategory.type });
+    await updateTransactionOptionalField(session.transactionId, userId, "category_name", newCategory.name);
+    await updateTransactionOptionalField(session.transactionId, userId, "category", newCategory.name);
+    console.log("[QUICK CATEGORY FIX]", {
+      transactionId: session.transactionId,
+      oldCategory,
+      newCategory: newCategory.name,
+    });
+
+    return {
+      reply: [
+        "✏️ *Kategori Berhasil Diubah*",
+        "",
+        "━━━━━━━━━━━━━━",
+        "Sebelum:",
+        `*${oldCategory}*`,
+        "",
+        "Sesudah:",
+        `*${newCategory.name}*`,
+        "",
+        "Judul:",
+        `*${title}*`,
+      ].join("\n"),
+      parsedLog: buildLastTransactionLog({
+        transactionId: session.transactionId,
+        categoryId: newCategory.id,
+        categoryName: newCategory.name,
+        accountId: txRow.account_id == null ? session.accountId : String(txRow.account_id),
+        accountName: session.accountName,
+        title,
+        amount: Number(txRow.amount ?? session.amount ?? 0),
+      }),
+    };
+  }
+
+  const newAccount = await findAccount(userId, command.value);
+  if (!newAccount) {
+    return {
+      reply: `❌ Akun *${command.value}* tidak ditemukan.`,
+      parsedLog: { command: "quick_account_fix_failed", reason: "account_not_found", transactionId: session.transactionId, accountName: command.value },
+    };
+  }
+
+  const oldAccountId = String(txRow.account_id ?? session.accountId ?? "");
+  const { data: oldAccountRow } = oldAccountId
+    ? await supabase.from("accounts").select("name").eq("id", oldAccountId).eq("user_id", userId).maybeSingle()
+    : { data: null };
+  const oldAccount = String(oldAccountRow?.name ?? session.accountName ?? "-");
+  await updateTransactionRequiredFields(session.transactionId, userId, { account_id: newAccount.id });
+  await updateTransactionOptionalField(session.transactionId, userId, "account_name", newAccount.name);
+  await updateTransactionOptionalField(session.transactionId, userId, "account", newAccount.name);
+  console.log("[QUICK ACCOUNT FIX]", {
+    transactionId: session.transactionId,
+    oldAccount,
+    newAccount: newAccount.name,
+  });
+
+  return {
+    reply: [
+      "✏️ *Akun Berhasil Diubah*",
+      "",
+      "━━━━━━━━━━━━━━",
+      "Sebelum:",
+      `*${oldAccount}*`,
+      "",
+      "Sesudah:",
+      `*${newAccount.name}*`,
+    ].join("\n"),
+    parsedLog: buildLastTransactionLog({
+      transactionId: session.transactionId,
+      categoryId: txRow.category_id == null ? session.categoryId : String(txRow.category_id),
+      categoryName: session.categoryName,
+      accountId: newAccount.id,
+      accountName: newAccount.name,
+      title,
+      amount: Number(txRow.amount ?? session.amount ?? 0),
+    }),
+  };
+}
+
 async function getLastHistoryLog(userId: string, phone: string): Promise<Record<string, JsonValue> | null> {
   const { data: logs, error } = await supabase
     .from("whatsapp_message_logs")
@@ -5215,6 +5411,12 @@ function buildMenuMessage(): string {
     "• edit 1 01/06",
     "• edit kategori 1 makan",
     "",
+    "⚡ *Koreksi Cepat*",
+    "• kategori makan",
+    "• kategori jajan",
+    "• akun cash",
+    "• akun seabank",
+    "",
     "🤖 *AI Assistant*",
     "• ai",
     "• ai pengeluaran cash minggu ini",
@@ -5570,6 +5772,11 @@ Deno.serve(async (req: Request) => {
       const navResult = await handleInteractiveNavigationCommand(userId, contextKey, historyNav, { isGroup, chatTarget });
       reply = navResult.reply;
       parsedLog = navResult.parsedLog;
+    } else if (parseQuickFixCommand(normalized)) {
+      const quickFixCommand = parseQuickFixCommand(normalized)!;
+      const quickFixResult = await handleQuickFixCommand(userId, contextKey, quickFixCommand);
+      reply = quickFixResult.reply;
+      parsedLog = quickFixResult.parsedLog;
     } else if (MENU_COMMANDS.has(normalized)) {
       console.log("[ROUTE MATCH]", { route: "menu", normalized, isGroup, contextKey });
       reply = buildMenuMessage();
@@ -5999,10 +6206,10 @@ Deno.serve(async (req: Request) => {
                   parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
                   reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
                 } else {
-                  parsedLog = { command: "smart_transaction", title: finalSmartTitle, amount: smartTx.amount, categoryName: smartCategory.name, accountName: smartAccount.name, accountSource: smartTx.accountName ? "manual" : "history" };
                   const smartType = smartCategory.type === "income" ? "income" : "expense";
-                  const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type: smartType, category_id: smartCategory.id, account_id: smartAccount.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` });
+                  const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type: smartType, category_id: smartCategory.id, account_id: smartAccount.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` }).select("id").single();
                   if (error) throw error;
+                  parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: smartCategory.id, categoryName: smartCategory.name, accountId: smartAccount.id, accountName: smartAccount.name, title: finalSmartTitle, amount: smartTx.amount });
                   const b = await getRealtimeBalanceSummary(userId);
                   const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${finalSmartTitle}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`];
                   if (smartTx.accountName) lines.push("", keywordCategory ? "🤖 Kategori dikenali dari nama kategori." : "🤖 Kategori otomatis dari history.");
@@ -6014,6 +6221,7 @@ Deno.serve(async (req: Request) => {
                     console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: smartCategory.name });
                     if (warnings.length > 0) lines.push("", ...warnings);
                   }
+                  lines.push(...buildQuickFixLines());
                   reply = lines.join("\n");
                 }
               }
@@ -6025,7 +6233,7 @@ Deno.serve(async (req: Request) => {
           } else {
             const type = category.type === "income" ? "income" : "expense";
 
-            const { error } = await supabase.from("transactions").insert({
+            const { data: insertedTx, error } = await supabase.from("transactions").insert({
               user_id: userId,
               date: tx.date,
               type,
@@ -6034,8 +6242,9 @@ Deno.serve(async (req: Request) => {
               amount: tx.amount,
               title: tx.title,
               notes: `WhatsApp: ${message}`,
-            });
+            }).select("id").single();
             if (error) throw error;
+            parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: tx.title, amount: tx.amount });
 
             const b = await getRealtimeBalanceSummary(userId);
             const baseLines = [
@@ -6069,6 +6278,7 @@ Deno.serve(async (req: Request) => {
               if (warnings.length > 0) baseLines.push("", ...warnings);
             }
 
+            baseLines.push(...buildQuickFixLines());
             reply = baseLines.join("\n");
           }
         } else {
@@ -6117,7 +6327,7 @@ Deno.serve(async (req: Request) => {
                 } else if (!account) {
                   reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
                 } else {
-                  const { error } = await supabase.from("transactions").insert({
+                  const { data: insertedTx, error } = await supabase.from("transactions").insert({
                     user_id: userId,
                     date: naturalTx.date,
                     type: finalType,
@@ -6126,9 +6336,9 @@ Deno.serve(async (req: Request) => {
                     amount: naturalTx.amount,
                     title: finalNaturalTitle,
                     notes: `WhatsApp natural: ${message}`,
-                  });
+                  }).select("id").single();
                   if (error) throw error;
-                  parsedLog = { command: "natural_transaction", type: finalType, title: finalNaturalTitle, amount: naturalTx.amount, accountName: account.name, categoryName: category.name, date: naturalTx.date, accountSource: naturalTx.accountName ? "manual" : "history" };
+                  parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalNaturalTitle, amount: naturalTx.amount });
                   const b = await getRealtimeBalanceSummary(userId);
                   const lines = [
                     finalType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
@@ -6162,6 +6372,7 @@ Deno.serve(async (req: Request) => {
                     console.log("[SMART WARNING]", { warnings, transactionAmount: naturalTx.amount, categoryName: category.name });
                     if (warnings.length > 0) lines.push("", ...warnings);
                   }
+                  lines.push(...buildQuickFixLines());
                   reply = lines.join("\n");
                 }
               }
@@ -6188,10 +6399,10 @@ Deno.serve(async (req: Request) => {
                 parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
                 reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
               } else {
-                parsedLog = { command: "smart_transaction", title: finalSmartTitle, amount: smartTx.amount, categoryName: category.name, accountName: account.name, accountSource: smartTx.accountName ? "manual" : "history" };
                 const type = category.type === "income" ? "income" : "expense";
-                const { error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type, category_id: category.id, account_id: account.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` });
+                const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type, category_id: category.id, account_id: account.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` }).select("id").single();
                 if (error) throw error;
+                parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalSmartTitle, amount: smartTx.amount });
                 const b = await getRealtimeBalanceSummary(userId);
                 const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${finalSmartTitle}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`];
                 if (smartTx.accountName) lines.push("", keywordCategory ? "🤖 Kategori dikenali dari nama kategori." : "🤖 Kategori otomatis dari history.");
@@ -6203,6 +6414,7 @@ Deno.serve(async (req: Request) => {
                   console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: category.name });
                   if (warnings.length > 0) lines.push("", ...warnings);
                 }
+                lines.push(...buildQuickFixLines());
                 reply = lines.join("\n");
               }
             }
