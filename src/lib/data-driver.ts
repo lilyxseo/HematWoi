@@ -112,11 +112,30 @@ export class CloudDriver implements DataDriver {
     this.userId = userId;
   }
 
-  private ensureClientPayload(payload: Record<string, any>) {
+  private ensureClientPayload(entity: EntityName, payload: Record<string, any>, options?: { requireName?: boolean }) {
     const result = ensureClientRecord(payload);
     result.user_id = this.userId;
     if (!result.updated_at) {
       result.updated_at = nowISO();
+    }
+    if (entity === 'accounts') {
+      const hasName = Object.prototype.hasOwnProperty.call(payload, 'name');
+      if (hasName) {
+        const trimmed = typeof payload.name === 'string' ? payload.name.trim() : '';
+        if (trimmed) {
+          result.name = trimmed;
+        } else {
+          delete result.name;
+        }
+      }
+      if (options?.requireName && !result.name) {
+        throw new Error('Account name is required');
+      }
+    }
+    for (const key of Object.keys(result)) {
+      if (result[key] === undefined) {
+        delete result[key];
+      }
     }
     return result;
   }
@@ -159,7 +178,9 @@ export class CloudDriver implements DataDriver {
     entity: EntityName,
     payload: Partial<T> & Record<string, any>,
   ): Promise<T> {
-    const record = this.ensureClientPayload(payload);
+    const record = this.ensureClientPayload(entity, payload, {
+      requireName: entity === 'accounts',
+    });
     const { data, error } = await this.client
       .from(entity)
       .upsert(record, { onConflict: 'user_id,client_id' })
@@ -177,10 +198,17 @@ export class CloudDriver implements DataDriver {
     clientId: string,
     payload: Partial<T> & Record<string, any>,
   ): Promise<T> {
-    const record = this.ensureClientPayload({ ...payload, client_id: clientId });
+    const record = this.ensureClientPayload(entity, { ...payload, client_id: clientId });
+    const updates: Record<string, any> = { ...record };
+    delete updates.client_id;
+    if (entity !== 'accounts') {
+      delete updates.id;
+    }
     const { data, error } = await this.client
       .from(entity)
-      .upsert(record, { onConflict: 'user_id,client_id' })
+      .update(updates)
+      .eq('user_id', this.userId)
+      .eq('client_id', clientId)
       .select()
       .maybeSingle();
     if (error) {

@@ -4,6 +4,7 @@ export class CloudRepo implements IRepo {
   client: any;
   private userScopedTables = new Set([
     'transactions',
+    'accounts',
     'budgets',
     'categories',
     'subscriptions',
@@ -44,7 +45,18 @@ export class CloudRepo implements IRepo {
     if (!this.userScopedTables.has(name)) return item;
     const userId = await this.getUserId();
     if (!userId) throw new Error('User not authenticated');
-    return { ...item, user_id: item.user_id ?? userId };
+    const payload = { ...item, user_id: item.user_id ?? userId };
+    if (name === 'accounts') {
+      if (Object.prototype.hasOwnProperty.call(payload, 'name')) {
+        const trimmed = typeof payload.name === 'string' ? payload.name.trim() : '';
+        if (!trimmed) {
+          delete payload.name;
+        } else {
+          payload.name = trimmed;
+        }
+      }
+    }
+    return payload;
   }
 
   private table<T>(name: string): ICrud<T> {
@@ -65,7 +77,14 @@ export class CloudRepo implements IRepo {
         return (data as T) || (payload as T);
       },
       update: async (id: string | number, data: Partial<T>) => {
-        let query = this.client.from(name).update(data).eq('id', id);
+        const payload = await this.ensureUserPayload(name, data);
+        const updates = Object.fromEntries(
+          Object.entries(payload).filter(([, value]) => value !== undefined),
+        );
+        if (Object.keys(updates).length === 0) {
+          return;
+        }
+        let query = this.client.from(name).update(updates).eq('id', id);
         query = await this.withUserScope(query, name);
         await this.runQuery<any>(query, name, 'update');
       },
