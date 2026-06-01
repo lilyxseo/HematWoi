@@ -1,5 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
+const originalProcessEnv = globalThis.process?.env
+
 describe('supabase client env handling', () => {
   const originalWarn = console.warn
 
@@ -7,11 +9,9 @@ describe('supabase client env handling', () => {
     vi.resetModules()
     vi.doUnmock('@supabase/supabase-js')
     console.warn = vi.fn()
-    const env = globalThis.process?.env
-    if (env) {
-      delete env.VITE_SUPABASE_URL
-      delete env.VITE_SUPABASE_PUBLISHABLE_KEY
-      delete env.VITE_SUPABASE_ANON_KEY
+    if (originalProcessEnv) {
+      originalProcessEnv.VITE_SUPABASE_URL = undefined
+      originalProcessEnv.VITE_SUPABASE_ANON_KEY = undefined
     }
   })
 
@@ -22,23 +22,25 @@ describe('supabase client env handling', () => {
     vi.restoreAllMocks()
   })
 
-  it('falls back to VITE_SUPABASE_ANON_KEY when publishable key is missing', async () => {
-    const env = globalThis.process?.env
-    if (!env) throw new Error('process.env tidak tersedia dalam lingkungan pengujian')
-    env.VITE_SUPABASE_URL = 'http://localhost'
-    env.VITE_SUPABASE_ANON_KEY = 'anon-key'
+  it('initializes client with pkce flow and persistence', async () => {
+    if (!originalProcessEnv) {
+      throw new Error('process.env tidak tersedia dalam lingkungan pengujian')
+    }
+    originalProcessEnv.VITE_SUPABASE_URL = 'http://localhost'
+    originalProcessEnv.VITE_SUPABASE_ANON_KEY = 'anon-key'
 
     const createClient = vi.fn(() => ({}))
     vi.doMock('@supabase/supabase-js', () => ({ createClient }))
 
-    await import('./supabase.js')
+    await import('./supabaseClient')
 
     expect(createClient).toHaveBeenCalledWith('http://localhost', 'anon-key', {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: false,
+        detectSessionInUrl: true,
         flowType: 'pkce',
+        storageKey: 'hematwoi-auth',
       },
     })
     expect(console.warn).not.toHaveBeenCalled()

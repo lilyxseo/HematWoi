@@ -534,6 +534,9 @@ function AppShell({ prefs, setPrefs }) {
         if (!isMounted) return;
         const session = data.session ?? null;
         if (session?.user) {
+          console.info("[HW][auth] initial session detected", {
+            email: session.user.email ?? null,
+          });
           try {
             localStorage.setItem("hw:connectionMode", "online");
             localStorage.setItem("hw:mode", "online");
@@ -559,6 +562,11 @@ function AppShell({ prefs, setPrefs }) {
       setSessionUser(session?.user ?? null);
       setSessionChecked(true);
       if (event === "SIGNED_IN") {
+        console.info("[HW][auth] onAuthStateChange SIGNED_IN", {
+          email: session?.user?.email ?? null,
+        });
+      }
+      if (event === "SIGNED_IN") {
         try {
           localStorage.setItem("hw:connectionMode", "online");
           localStorage.setItem("hw:mode", "online");
@@ -571,6 +579,7 @@ function AppShell({ prefs, setPrefs }) {
         }
       }
       if (event === "SIGNED_OUT") {
+        console.info("[HW][auth] onAuthStateChange SIGNED_OUT");
         syncedUsersRef.current.clear();
       }
     });
