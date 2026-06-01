@@ -3,6 +3,7 @@ import clsx from 'clsx';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
+  impersonateUser,
   listUsers,
   updateUserProfile,
   type ListUsersParams,
@@ -83,6 +84,7 @@ export default function AdminUsersTab() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [drafts, setDrafts] = useState<UserDraftMap>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [impersonatingId, setImpersonatingId] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<'created_at' | 'username' | 'role' | 'status'>('created_at');
@@ -264,17 +266,40 @@ export default function AdminUsersTab() {
   const updateDraft = (id: string, patch: UpdateUserProfileInput) => {
     setDrafts((prev) => {
       const current = prev[id] ?? {};
-      const next = { ...current, ...patch };
+      const next: UpdateUserProfileInput = { ...current, ...patch };
+
+      if ('password' in patch && (!patch.password || patch.password.length === 0)) {
+        delete next.password;
+      }
+
       const user = users.find((item) => item.id === id);
       if (!user) return prev;
+
       const role = next.role ?? user.role;
       const isActive =
         typeof next.is_active === 'boolean' ? next.is_active : user.is_active;
-      const dirty = role !== user.role || isActive !== user.is_active;
+      const nextUsername = Object.prototype.hasOwnProperty.call(next, 'username')
+        ? next.username ?? ''
+        : user.username ?? '';
+      const nextEmail = Object.prototype.hasOwnProperty.call(next, 'email')
+        ? next.email ?? ''
+        : user.email ?? '';
+      const currentUsername = user.username ?? '';
+      const currentEmail = user.email ?? '';
+      const hasPassword = typeof next.password === 'string' && next.password.length > 0;
+
+      const dirty =
+        role !== user.role ||
+        isActive !== user.is_active ||
+        nextUsername !== currentUsername ||
+        nextEmail !== currentEmail ||
+        hasPassword;
+
       if (!dirty) {
         const { [id]: _omit, ...rest } = prev;
         return rest;
       }
+
       return { ...prev, [id]: next };
     });
   };
@@ -291,7 +316,33 @@ export default function AdminUsersTab() {
       payload.is_active = draft.is_active;
     }
 
-    if (!payload.role && typeof payload.is_active !== 'boolean') {
+    if (Object.prototype.hasOwnProperty.call(draft, 'username')) {
+      const nextUsername = draft.username ?? '';
+      const currentUsername = user.username ?? '';
+      if (nextUsername !== currentUsername) {
+        payload.username = nextUsername.trim() ? nextUsername.trim() : null;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(draft, 'email')) {
+      const nextEmail = draft.email ?? '';
+      const currentEmail = user.email ?? '';
+      if (nextEmail !== currentEmail) {
+        const trimmed = nextEmail.trim();
+        payload.email = trimmed ? trimmed : null;
+      }
+    }
+
+    if (draft.password) {
+      const trimmedPassword = draft.password.trim();
+      if (trimmedPassword.length < 6) {
+        addToast('Password minimal 6 karakter', 'error');
+        return;
+      }
+      payload.password = trimmedPassword;
+    }
+
+    if (Object.keys(payload).length === 0) {
       return;
     }
 
@@ -317,6 +368,25 @@ export default function AdminUsersTab() {
       const { [id]: _omit, ...rest } = prev;
       return rest;
     });
+  };
+
+  const handleLoginAsUser = async (user: UserProfileRecord) => {
+    if (!user.email) {
+      addToast('Pengguna belum memiliki email sehingga tidak dapat login.', 'error');
+      return;
+    }
+
+    setImpersonatingId(user.id);
+    try {
+      await impersonateUser(user.email);
+      addToast('Berhasil login sebagai pengguna. Mengalihkan...', 'success');
+      window.location.href = '/';
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Gagal login sebagai pengguna';
+      addToast(message, 'error');
+    } finally {
+      setImpersonatingId(null);
+    }
   };
 
   const renderSkeleton = () => (
@@ -397,6 +467,38 @@ export default function AdminUsersTab() {
         </div>
         <div className="mt-4 grid gap-3">
           <label className="text-sm font-semibold text-muted-foreground">
+            Username
+            <input
+              value={draft?.username ?? user.username ?? ''}
+              onChange={(event) => updateDraft(user.id, { username: event.target.value })}
+              className={clsx(INPUT_CLASS, 'mt-1')}
+              placeholder="Masukkan username"
+              autoComplete="off"
+            />
+          </label>
+          <label className="text-sm font-semibold text-muted-foreground">
+            Email
+            <input
+              value={draft?.email ?? user.email ?? ''}
+              onChange={(event) => updateDraft(user.id, { email: event.target.value })}
+              className={clsx(INPUT_CLASS, 'mt-1')}
+              placeholder="Masukkan email"
+              type="email"
+              autoComplete="off"
+            />
+          </label>
+          <label className="text-sm font-semibold text-muted-foreground">
+            Password baru
+            <input
+              value={draft?.password ?? ''}
+              onChange={(event) => updateDraft(user.id, { password: event.target.value })}
+              className={clsx(INPUT_CLASS, 'mt-1')}
+              placeholder="Minimal 6 karakter"
+              type="password"
+              autoComplete="new-password"
+            />
+          </label>
+          <label className="text-sm font-semibold text-muted-foreground">
             Peran
             <select
               value={role}
@@ -437,6 +539,14 @@ export default function AdminUsersTab() {
           >
             Batalkan
           </button>
+          <button
+            type="button"
+            onClick={() => handleLoginAsUser(user)}
+            className="h-11 flex-1 rounded-2xl border border-primary/60 px-4 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:opacity-50"
+            disabled={!user.email || impersonatingId === user.id}
+          >
+            {impersonatingId === user.id ? 'Masuk...' : 'Login sebagai user'}
+          </button>
         </div>
       </div>
     );
@@ -458,6 +568,7 @@ export default function AdminUsersTab() {
                 />
               </th>
               <th className="px-4 py-3 text-left font-semibold">Pengguna</th>
+              <th className="px-4 py-3 text-left font-semibold">Informasi Akun</th>
               <th className="px-4 py-3 text-left font-semibold">Peran</th>
               <th className="px-4 py-3 text-left font-semibold">Status</th>
               <th className="px-4 py-3 text-left font-semibold">Dibuat</th>
@@ -492,6 +603,42 @@ export default function AdminUsersTab() {
                         <p className="truncate text-sm font-semibold">{user.username || 'Tanpa nama'}</p>
                         <p className="truncate text-xs text-muted-foreground">{user.email || '—'}</p>
                       </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="grid gap-3">
+                      <label className="text-xs font-semibold text-muted-foreground">
+                        Username
+                        <input
+                          value={draft?.username ?? user.username ?? ''}
+                          onChange={(event) => updateDraft(user.id, { username: event.target.value })}
+                          className={clsx(INPUT_CLASS, 'mt-1')}
+                          placeholder="Username"
+                          autoComplete="off"
+                        />
+                      </label>
+                      <label className="text-xs font-semibold text-muted-foreground">
+                        Email
+                        <input
+                          value={draft?.email ?? user.email ?? ''}
+                          onChange={(event) => updateDraft(user.id, { email: event.target.value })}
+                          className={clsx(INPUT_CLASS, 'mt-1')}
+                          placeholder="Email"
+                          type="email"
+                          autoComplete="off"
+                        />
+                      </label>
+                      <label className="text-xs font-semibold text-muted-foreground">
+                        Password baru
+                        <input
+                          value={draft?.password ?? ''}
+                          onChange={(event) => updateDraft(user.id, { password: event.target.value })}
+                          className={clsx(INPUT_CLASS, 'mt-1')}
+                          placeholder="Minimal 6 karakter"
+                          type="password"
+                          autoComplete="new-password"
+                        />
+                      </label>
                     </div>
                   </td>
                   <td className="px-4 py-3">
@@ -544,6 +691,14 @@ export default function AdminUsersTab() {
                       >
                         Batalkan
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => handleLoginAsUser(user)}
+                        className="h-11 rounded-2xl border border-primary/60 px-4 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:opacity-50"
+                        disabled={!user.email || impersonatingId === user.id}
+                      >
+                        {impersonatingId === user.id ? 'Masuk...' : 'Login sebagai user'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -560,7 +715,7 @@ export default function AdminUsersTab() {
       <div>
         <h2 className="text-lg font-semibold">Pengguna</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Lihat dan kelola peran pengguna. Ubah role dan status aktif dengan aman.
+          Kelola akun pengguna: perbarui username, email, password, atur role dan status aktif, serta masuk sebagai pengguna untuk membantu mereka.
         </p>
       </div>
 
