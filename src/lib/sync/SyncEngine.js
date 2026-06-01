@@ -17,6 +17,10 @@ export const SyncStatus = {
 let status = navigator.onLine ? SyncStatus.IDLE : SyncStatus.OFFLINE;
 const listeners = new Set();
 
+const QUEUE_EVENT = "hw:sync:queue";
+let scheduledFlushId = null;
+let queueListenerBound = false;
+
 function emit() {
   listeners.forEach((fn) => fn(status));
 }
@@ -24,6 +28,24 @@ function emit() {
 function setStatus(s) {
   status = s;
   emit();
+}
+
+function clearScheduledFlush() {
+  if (scheduledFlushId == null) return;
+  if (typeof window !== "undefined" && typeof window.clearTimeout === "function") {
+    window.clearTimeout(scheduledFlushId);
+  }
+  scheduledFlushId = null;
+}
+
+function scheduleFlush(delay = SYNC_INTERVAL_MS) {
+  if (typeof window === "undefined" || typeof window.setTimeout !== "function") return;
+  const clampedDelay = Math.max(0, Number.isFinite(delay) ? delay : SYNC_INTERVAL_MS);
+  clearScheduledFlush();
+  scheduledFlushId = window.setTimeout(() => {
+    scheduledFlushId = null;
+    void flushQueue().catch((error) => handleSyncError(error, { stage: "scheduledFlush" }));
+  }, clampedDelay);
 }
 
 export function onStatusChange(fn) {
@@ -498,6 +520,7 @@ export async function upsert(entity, record) {
     await dbCache.set(entity, normalized); // optimistic
     await oplogStore.add(op);
     setStatus(SyncStatus.OFFLINE);
+    scheduleFlush(0);
   }
   return normalized;
 }
@@ -519,12 +542,27 @@ export async function remove(entity, id) {
     await dbCache.remove(entity, id);
     await oplogStore.add(op);
     setStatus(SyncStatus.OFFLINE);
+    scheduleFlush(0);
   }
 }
 
 export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
-  if (!navigator.onLine || window.__sync?.fakeOffline) return;
-  setStatus(SyncStatus.SYNCING);
+  const pendingBefore = await oplogStore.count();
+  if (!navigator.onLine || window.__sync?.fakeOffline) {
+    if (pendingBefore > 0) {
+      setStatus(SyncStatus.OFFLINE);
+      scheduleFlush(SYNC_INTERVAL_MS);
+    } else {
+      setStatus(SyncStatus.IDLE);
+      clearScheduledFlush();
+    }
+    return;
+  }
+  if (pendingBefore > 0) {
+    setStatus(SyncStatus.SYNCING);
+  } else {
+    setStatus(SyncStatus.IDLE);
+  }
   try {
     const now = Date.now();
     const ops = await oplogStore.listReady(now);
@@ -598,8 +636,13 @@ export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
     handleSyncError(error, { stage: "flushQueue" });
   } finally {
     const remaining = await oplogStore.count();
-    const nextStatus = remaining > 0 ? SyncStatus.SYNCING : SyncStatus.IDLE;
-    setStatus(nextStatus);
+    if (remaining > 0) {
+      setStatus(navigator.onLine && !window.__sync?.fakeOffline ? SyncStatus.SYNCING : SyncStatus.OFFLINE);
+      scheduleFlush(SYNC_INTERVAL_MS);
+    } else {
+      setStatus(SyncStatus.IDLE);
+      clearScheduledFlush();
+    }
   }
 }
 
@@ -644,7 +687,18 @@ export function initSyncEngine() {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") flushQueue();
   });
-  setInterval(() => flushQueue(), SYNC_INTERVAL_MS);
+  if (!queueListenerBound) {
+    window.addEventListener(QUEUE_EVENT, (event) => {
+      const immediate = Boolean(event?.detail?.immediate);
+      scheduleFlush(immediate ? 0 : SYNC_INTERVAL_MS);
+    });
+    queueListenerBound = true;
+  }
+  void pending()
+    .then((count) => {
+      if (count > 0) scheduleFlush(0);
+    })
+    .catch((error) => handleSyncError(error, { stage: "initPending" }));
   wireRealtime();
   emit();
 }

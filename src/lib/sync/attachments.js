@@ -2,6 +2,8 @@ import { supabase } from "../supabase";
 import { getCurrentUserId } from "../session";
 import { oplogStore, dbCache } from "./localdb";
 
+const QUEUE_EVENT = "hw:sync:queue";
+
 export async function enqueueReceiptPut(file, txId) {
   const op = {
     opId: crypto.randomUUID(),
@@ -16,6 +18,9 @@ export async function enqueueReceiptPut(file, txId) {
     ts: Date.now(),
   };
   await oplogStore.add(op);
+  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+    window.dispatchEvent(new CustomEvent(QUEUE_EVENT, { detail: { immediate: true } }));
+  }
 }
 
 export async function processStoragePutBatch(slice) {
