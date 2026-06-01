@@ -349,6 +349,8 @@ function AppShell({ prefs, setPrefs }) {
   const syncedUsersRef = useRef(new Set());
   const budgetRetryTimeoutRef = useRef(null);
   const budgetRetryVisibilityHandlerRef = useRef(null);
+  const budgetRetryOnlineHandlerRef = useRef(null);
+  const budgetRetryAttemptRef = useRef(0);
   const lastCloudUserRef = useRef(null);
   const syncGuestData = useCallback(async (userId) => {
     if (!userId) return;
@@ -868,6 +870,7 @@ function AppShell({ prefs, setPrefs }) {
         })
         .filter(Boolean);
       setData((d) => ({ ...d, budgets: mapped }));
+      budgetRetryAttemptRef.current = 0;
       return true;
     } catch (e) {
       console.error("fetch budgets failed", e);
@@ -876,6 +879,7 @@ function AppShell({ prefs, setPrefs }) {
       const isFailedToFetch =
         e instanceof TypeError && message.toLowerCase().includes("failed to fetch");
       if (isFailedToFetch && typeof document !== "undefined") {
+        const offline = typeof navigator !== "undefined" && navigator.onLine === false;
         if (budgetRetryTimeoutRef.current) {
           clearTimeout(budgetRetryTimeoutRef.current);
           budgetRetryTimeoutRef.current = null;
@@ -887,24 +891,52 @@ function AppShell({ prefs, setPrefs }) {
           );
           budgetRetryVisibilityHandlerRef.current = null;
         }
-        const offline = typeof navigator !== "undefined" && navigator.onLine === false;
         if (offline) {
           addToast(
             "Gagal memuat data anggaran: Tidak ada koneksi internet. Kami akan mencoba lagi setelah tersambung.",
             "error"
           );
+          if (!budgetRetryOnlineHandlerRef.current) {
+            const onlineHandler = () => {
+              window.removeEventListener("online", onlineHandler);
+              budgetRetryOnlineHandlerRef.current = null;
+              budgetRetryAttemptRef.current = 0;
+              console.warn("[HW][budget] back online, retrying fetchBudgetsCloud");
+              void fetchBudgetsCloud();
+            };
+            budgetRetryOnlineHandlerRef.current = onlineHandler;
+            window.addEventListener("online", onlineHandler);
+            console.warn("[HW][budget] offline, deferring retry until online");
+          }
+          return false;
         }
+        const attempt = budgetRetryAttemptRef.current + 1;
+        budgetRetryAttemptRef.current = attempt;
+        const baseDelay = Math.min(30000, 2000 * 2 ** Math.min(attempt - 1, 4));
+        const delay = baseDelay + Math.floor(Math.random() * 500);
         const retryFetch = () => {
           budgetRetryTimeoutRef.current = null;
+          console.warn("[HW][budget] retrying fetchBudgetsCloud", {
+            attempt,
+            delayMs: delay,
+          });
           void fetchBudgetsCloud();
         };
         if (document.visibilityState === "visible") {
-          budgetRetryTimeoutRef.current = setTimeout(retryFetch, 2000);
+          console.warn("[HW][budget] scheduling retry for fetchBudgetsCloud", {
+            attempt,
+            delayMs: delay,
+          });
+          budgetRetryTimeoutRef.current = setTimeout(retryFetch, delay);
         } else {
           const handler = () => {
             if (document.visibilityState === "visible") {
               document.removeEventListener("visibilitychange", handler);
               budgetRetryVisibilityHandlerRef.current = null;
+              console.warn("[HW][budget] resuming retry after visibility change", {
+                attempt,
+                delayMs: delay,
+              });
               retryFetch();
             }
           };
@@ -928,6 +960,10 @@ function AppShell({ prefs, setPrefs }) {
       if (budgetRetryTimeoutRef.current) {
         clearTimeout(budgetRetryTimeoutRef.current);
         budgetRetryTimeoutRef.current = null;
+      }
+      if (budgetRetryOnlineHandlerRef.current) {
+        window.removeEventListener("online", budgetRetryOnlineHandlerRef.current);
+        budgetRetryOnlineHandlerRef.current = null;
       }
       if (
         typeof document !== "undefined" &&
