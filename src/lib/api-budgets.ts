@@ -143,11 +143,11 @@ function mapBudgetRow(row: Record<string, any>): BudgetRecord {
   const period = row.period_month ?? row.month ?? row.period ?? null;
   const resolvedPeriod = period ? toISODate(String(period).slice(0, 7)) : new Date().toISOString().slice(0, 10);
   const nameFromRelation = row.category?.name ?? row.categories?.name ?? row.category_name ?? null;
-  const planned = parseNumber(row.planned ?? row.amount_planned);
-  const rolloverIn = parseNumber(row.rollover_in ?? row.rolloverIn ?? 0);
-  const rolloverOut = parseNumber(row.rollover_out ?? row.rolloverOut ?? 0);
-  const note = row.note ?? row.notes ?? null;
-  const carryRule: CarryRule = (row.carry_rule as CarryRule) ?? (row.carryover_enabled ? 'carry-positive' : 'none');
+  const planned = parseNumber(row.planned);
+  const rolloverIn = parseNumber(row.rollover_in);
+  const rolloverOut = parseNumber(row.rollover_out);
+  const note = row.note ?? null;
+  const carryRule: CarryRule = (row.carry_rule as CarryRule) ?? 'carry-positive';
   const baseActivity = row.activity
     ? {
         period_month: row.activity.period_month ?? resolvedPeriod,
@@ -157,15 +157,13 @@ function mapBudgetRow(row: Record<string, any>): BudgetRecord {
         outflow: parseNumber(row.activity.outflow),
       }
     : undefined;
-  const fallbackActual = parseNumber(
-    row.current_spent ?? row.actual ?? row.spent ?? baseActivity?.actual ?? 0
-  );
+  const fallbackActual = parseNumber(row.actual ?? row.current_spent ?? row.spent ?? baseActivity?.actual ?? 0);
   const activity = baseActivity ?? {
     period_month: resolvedPeriod,
     category_id: row.category_id ?? null,
     actual: fallbackActual,
-    inflow: 0,
-    outflow: fallbackActual,
+    inflow: parseNumber(row.inflow ?? 0),
+    outflow: parseNumber(row.outflow ?? fallbackActual),
   };
 
   return {
@@ -183,6 +181,34 @@ function mapBudgetRow(row: Record<string, any>): BudgetRecord {
     updated_at: row.updated_at ?? new Date().toISOString(),
     activity,
   };
+}
+
+async function fetchBudgetActivity(periodIso: string): Promise<Map<string | null, BudgetActivity>> {
+  const map = new Map<string | null, BudgetActivity>();
+  const { data, error } = await supabase
+    .from('budget_activity')
+    .select('period_month, category_id, actual, inflow, outflow')
+    .eq('period_month', periodIso);
+
+  if (error) {
+    if (isRelationMissing(error, 'budget_activity')) {
+      return map;
+    }
+    throw error;
+  }
+
+  for (const row of data ?? []) {
+    const categoryId = (row as Record<string, any>).category_id ?? null;
+    map.set(categoryId, {
+      period_month: toISODate(String((row as Record<string, any>).period_month).slice(0, 7)),
+      category_id: categoryId,
+      actual: parseNumber((row as Record<string, any>).actual),
+      inflow: parseNumber((row as Record<string, any>).inflow),
+      outflow: parseNumber((row as Record<string, any>).outflow),
+    });
+  }
+
+  return map;
 }
 
 function mapRuleRow(row: Record<string, any>): BudgetRuleRecord {
@@ -236,7 +262,9 @@ export async function listBudgets(options: ListBudgetsOptions): Promise<BudgetRe
 
     let query = supabase
       .from('budgets')
-      .select('*, category:categories(id, name)')
+      .select(
+        'id, user_id, period_month, category_id, name, planned, rollover_in, rollover_out, carry_rule, note, created_at, updated_at, category:categories(id, name)'
+      )
       .eq('user_id', userId)
       .eq('period_month', periodIso);
 
@@ -255,7 +283,20 @@ export async function listBudgets(options: ListBudgetsOptions): Promise<BudgetRe
     const { data, error } = await query;
     if (error) throw error;
 
-    const mapped = (data ?? []).map(mapBudgetRow);
+    let activityMap: Map<string | null, BudgetActivity> | null = null;
+    if (withActivity) {
+      try {
+        activityMap = await fetchBudgetActivity(periodIso);
+      } catch (activityError) {
+        logDev(activityError, 'fetchBudgetActivity');
+      }
+    }
+
+    const mapped = (data ?? []).map((row) => {
+      const activity = activityMap?.get((row as Record<string, any>).category_id ?? null);
+      const hydrated = activity ? { ...(row as Record<string, any>), activity } : row;
+      return mapBudgetRow(hydrated as Record<string, any>);
+    });
 
     if (sort) {
       mapped.sort((a, b) => {
@@ -297,25 +338,25 @@ export async function upsertBudget(payload: BudgetInput): Promise<BudgetRecord> 
     if (!payload.category_id && !payload.name) {
       throw new Error('Nama anggaran wajib diisi untuk envelope tanpa kategori');
     }
-    const carryoverEnabled = payload.carry_rule === 'carry-positive' || payload.carry_rule === 'carry-all';
     const body: Record<string, any> = {
       id: payload.id,
       user_id: userId,
       period_month: periodIso,
       category_id: payload.category_id ?? null,
+      name: payload.name ?? null,
       planned: Number(payload.planned ?? 0),
-      carryover_enabled: carryoverEnabled,
-      notes: payload.note ?? null,
+      carry_rule: payload.carry_rule,
+      note: payload.note ?? null,
+      rollover_in: Number(payload.rollover_in ?? 0),
+      rollover_out: Number(payload.rollover_out ?? 0),
     };
-
-    if (!payload.category_id && payload.name) {
-      body.notes = payload.note ? `${payload.name} — ${payload.note}` : payload.name;
-    }
 
     const { data, error } = await supabase
       .from('budgets')
       .upsert(body)
-      .select('*, category:categories(id, name)')
+      .select(
+        'id, user_id, period_month, category_id, name, planned, rollover_in, rollover_out, carry_rule, note, created_at, updated_at, category:categories(id, name)'
+      )
       .maybeSingle();
     if (error) throw error;
     if (!data) throw new Error('Tidak ada data yang dikembalikan');
@@ -338,25 +379,26 @@ export async function bulkUpsertBudgets(payloads: BudgetInput[]): Promise<Budget
       if (!p.category_id && !p.name) {
         throw new Error('Nama anggaran wajib diisi untuk envelope tanpa kategori');
       }
-      const carryoverEnabled = p.carry_rule === 'carry-positive' || p.carry_rule === 'carry-all';
       const row: Record<string, any> = {
         id: p.id,
         user_id: userId,
         period_month: toISODate(p.period),
         category_id: p.category_id ?? null,
+        name: p.name ?? null,
         planned: Number(p.planned ?? 0),
-        carryover_enabled: carryoverEnabled,
-        notes: p.note ?? null,
+        carry_rule: p.carry_rule,
+        note: p.note ?? null,
+        rollover_in: Number(p.rollover_in ?? 0),
+        rollover_out: Number(p.rollover_out ?? 0),
       };
-      if (!p.category_id && p.name) {
-        row.notes = p.note ? `${p.name} — ${p.note}` : p.name;
-      }
       return row;
     });
     const { data, error } = await supabase
       .from('budgets')
       .upsert(rows)
-      .select('*, category:categories(id, name)');
+      .select(
+        'id, user_id, period_month, category_id, name, planned, rollover_in, rollover_out, carry_rule, note, created_at, updated_at, category:categories(id, name)'
+      );
     if (error) throw error;
     return (data ?? []).map(mapBudgetRow);
   } catch (error) {
@@ -396,7 +438,9 @@ export async function copyBudgets(payload: CopyBudgetsPayload): Promise<BudgetRe
 
     const { data: rows, error } = await supabase
       .from('budgets')
-      .select('*, category:categories(id, name)')
+      .select(
+        'id, user_id, period_month, category_id, name, planned, rollover_in, rollover_out, carry_rule, note, category:categories(id, name)'
+      )
       .eq('user_id', userId)
       .eq('period_month', fromIso);
     if (error) throw error;
@@ -407,15 +451,20 @@ export async function copyBudgets(payload: CopyBudgetsPayload): Promise<BudgetRe
       user_id: userId,
       period_month: toIso,
       category_id: row.category_id ?? null,
-      amount_planned: parseNumber(row.amount_planned ?? row.planned ?? 0),
-      carryover_enabled: Boolean(row.carryover_enabled ?? false),
-      notes: row.notes ?? null,
+      name: row.name ?? null,
+      planned: parseNumber(row.planned ?? 0),
+      carry_rule: (row.carry_rule as CarryRule) ?? 'carry-positive',
+      note: row.note ?? null,
+      rollover_in: parseNumber(row.rollover_in ?? 0),
+      rollover_out: parseNumber(row.rollover_out ?? 0),
     }));
 
     const { data: inserted, error: upsertError } = await supabase
       .from('budgets')
       .upsert(cloned)
-      .select('*, category:categories(id, name)');
+      .select(
+        'id, user_id, period_month, category_id, name, planned, rollover_in, rollover_out, carry_rule, note, created_at, updated_at, category:categories(id, name)'
+      );
     if (upsertError) throw upsertError;
     return (inserted ?? []).map(mapBudgetRow);
   } catch (error) {
@@ -526,21 +575,33 @@ export async function getSummary(options: { period: string }): Promise<BudgetSum
     const periodIso = toISODate(options.period);
     const { data: budgetsData, error } = await supabase
       .from('budgets')
-      .select('amount_planned, current_spent')
+      .select('category_id, planned, rollover_in, rollover_out')
       .eq('user_id', userId)
       .eq('period_month', periodIso);
     if (error) throw error;
 
-    const totalPlanned = (budgetsData ?? []).reduce(
-      (sum, row) => sum + parseNumber(row.amount_planned ?? row.planned),
+    let activityMap: Map<string | null, BudgetActivity> | null = null;
+    try {
+      activityMap = await fetchBudgetActivity(periodIso);
+    } catch (activityError) {
+      logDev(activityError, 'fetchBudgetActivity');
+    }
+
+    const totalPlanned = (budgetsData ?? []).reduce((sum, row) => sum + parseNumber(row.planned), 0);
+    const totalRolloverIn = (budgetsData ?? []).reduce(
+      (sum, row) => sum + parseNumber(row.rollover_in),
       0
     );
-    const totalActual = (budgetsData ?? []).reduce(
-      (sum, row) => sum + parseNumber(row.current_spent ?? row.actual),
+    const totalRolloverOut = (budgetsData ?? []).reduce(
+      (sum, row) => sum + parseNumber(row.rollover_out),
       0
     );
-    const totalRolloverIn = 0;
-    const remaining = totalPlanned + totalRolloverIn - totalActual;
+    const totalActual = (budgetsData ?? []).reduce((sum, row) => {
+      const categoryId = (row as Record<string, any>).category_id ?? null;
+      const activity = activityMap?.get(categoryId);
+      return sum + parseNumber(activity?.actual ?? 0);
+    }, 0);
+    const remaining = totalPlanned + totalRolloverIn - totalRolloverOut - totalActual;
     const overspend = remaining < 0 ? Math.abs(remaining) : 0;
 
     let coverageDays: number | null = null;
