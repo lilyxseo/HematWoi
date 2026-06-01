@@ -234,6 +234,9 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "top",
   "cashflow",
   "hapus",
+  "beli",
+  "arsip",
+  "wishlist",
   "akun",
   "kategori",
   "info",
@@ -243,6 +246,7 @@ const NATURAL_RESERVED_COMMANDS = new Set([
   "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "pengeluaran harian", "pengeluaran per hari", "harian", "daily expense", "expense harian", "history", "riwayat", "budget", "tambah budget", "edit budget", "hapus budget", "hutang",
   "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
   "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "hapus", "undo",
+  "wishlist", "tambah wishlist", "edit wishlist", "hapus wishlist", "beli wishlist", "arsip wishlist",
 ]);
 
 
@@ -5702,6 +5706,326 @@ async function handleDeleteBudgetCommand(userId: string, phone: string, normaliz
 }
 
 
+type WishlistStatus = "planned" | "deferred" | "purchased" | "archived";
+type WishlistItem = {
+  id: string;
+  title: string;
+  estimated_price: number | string | null;
+  priority: number | null;
+  status: WishlistStatus;
+  created_at?: string | null;
+};
+type DisplayedWishlistItem = {
+  no: number;
+  id: string;
+  title: string;
+  estimatedPrice: number;
+  priority: number | null;
+  status: string;
+};
+
+const WISHLIST_STATUSES: WishlistStatus[] = ["planned", "deferred", "purchased", "archived"];
+const ACTIVE_WISHLIST_STATUSES: WishlistStatus[] = ["planned", "deferred"];
+
+function isWishlistCommand(normalized: string): boolean {
+  return normalized === "wishlist" ||
+    normalized.startsWith("wishlist ") ||
+    normalized.startsWith("tambah wishlist ") ||
+    /^edit\s+wishlist\s+\d+\s+.+$/.test(normalized) ||
+    /^hapus\s+wishlist\s+\d+$/.test(normalized) ||
+    /^beli\s+wishlist\s+\d+$/.test(normalized) ||
+    /^arsip\s+wishlist\s+\d+$/.test(normalized);
+}
+
+function toTitleCase(text: string): string {
+  return text.trim().replace(/\s+/g, " ").split(" ").map((word) => {
+    if (!word) return word;
+    if (/^[A-Z0-9]+$/.test(word)) return word;
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  }).join(" ");
+}
+
+function parseWishlistPriority(raw: string): number | null {
+  const match = raw.match(/(?:^|\s)prioritas\s+([1-5])(?:\s|$)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function parseWishlistNote(raw: string): string | null {
+  const match = raw.match(/(?:^|\s)catatan\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
+function isWishlistAmountText(text: string): boolean {
+  const input = text.trim();
+  return /^(?:rp\s*)?\d[\d.,]*\s*(?:rb|rbu|ribu|k|jt|juta|m)?$/i.test(input);
+}
+
+function parseAddWishlistCommand(rawMessage: string): { title: string; amount: number; priority: number; note: string | null } | null {
+  const remainder = rawMessage.trim().replace(/^tambah\s+wishlist\s+/i, "").trim();
+  if (!remainder) return null;
+  const tokens = remainder.split(/\s+/).filter(Boolean);
+  const optionalIndex = tokens.findIndex((token) => /^(prioritas|catatan)$/i.test(token));
+  const mainTokens = optionalIndex >= 0 ? tokens.slice(0, optionalIndex) : tokens;
+  let amountIndex = -1;
+  for (let i = mainTokens.length - 1; i >= 0; i--) {
+    if (isWishlistAmountText(mainTokens[i]) && parseAmount(mainTokens[i]) > 0) {
+      amountIndex = i;
+      break;
+    }
+  }
+  if (amountIndex <= 0) return null;
+  const amount = parseAmount(mainTokens[amountIndex]);
+  const title = mainTokens.slice(0, amountIndex).join(" ").trim();
+  if (!title || amount <= 0) return null;
+  const priority = parseWishlistPriority(remainder) ?? 3;
+  const note = parseWishlistNote(remainder);
+  return { title: toTitleCase(title), amount, priority, note };
+}
+
+function parseWishlistNumber(normalized: string, action: "edit" | "hapus" | "beli" | "arsip"): number | null {
+  const match = normalized.match(new RegExp(`^${action}\\s+wishlist\\s+(\\d+)(?:\\s|$)`));
+  if (!match) return null;
+  const no = Number(match[1]);
+  return Number.isInteger(no) && no > 0 ? no : null;
+}
+
+function wishlistRowToDisplay(row: WishlistItem, index: number): DisplayedWishlistItem {
+  return {
+    no: index + 1,
+    id: String(row.id),
+    title: String(row.title ?? "-"),
+    estimatedPrice: Number(row.estimated_price ?? 0),
+    priority: row.priority == null ? null : Number(row.priority),
+    status: String(row.status ?? "planned"),
+  };
+}
+
+function buildWishlistListMessage(title: string, items: DisplayedWishlistItem[], includeTotal = true): string {
+  if (items.length === 0) return `ℹ️ Belum ada wishlist.`;
+  const total = items.reduce((sum, item) => sum + item.estimatedPrice, 0);
+  const itemLines = items.map((item) => [
+    `${item.no}. *${item.title}*`,
+    `💰 Harga: *${formatIDR(item.estimatedPrice)}*`,
+    `🔥 Prioritas: *${item.priority ?? "-"}*`,
+    `📌 Status: *${item.status}*`,
+  ].join("\n")).join("\n\n");
+  const lines = [
+    title,
+    "",
+    line(),
+    itemLines,
+  ];
+  if (includeTotal) {
+    lines.push("", line(), "💵 *Total Wishlist*", `*${formatIDR(total)}*`);
+  }
+  lines.push("", "Ketik:", "• *edit wishlist 1 5jt*", "• *beli wishlist 1*", "• *hapus wishlist 1*");
+  return lines.join("\n");
+}
+
+async function getWishlistRows(userId: string, statuses: WishlistStatus[]): Promise<WishlistItem[]> {
+  const { data, error } = await supabase
+    .from("wishlist_items")
+    .select("id,title,estimated_price,priority,status,created_at")
+    .eq("user_id", userId)
+    .in("status", statuses)
+    .order("priority", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as WishlistItem[];
+}
+
+async function getLastWishlistDisplayLog(userId: string, phone: string): Promise<Record<string, JsonValue> | null> {
+  const { data: logs, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("id,created_at,parsed")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (error) throw error;
+  const wishlistLog = (logs ?? []).find((log) => {
+    const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
+    return parsed?.command === "wishlist_list" && Array.isArray(parsed?.displayedWishlist) && parsed.displayedWishlist.length > 0;
+  }) as Record<string, JsonValue> | undefined;
+  return wishlistLog ?? null;
+}
+
+async function resolveDisplayedWishlistItem(userId: string, phone: string, no: number): Promise<{ item: DisplayedWishlistItem | null; missingList: boolean }> {
+  const log = await getLastWishlistDisplayLog(userId, phone);
+  const parsed = (log?.parsed ?? null) as Record<string, JsonValue> | null;
+  const displayed = (parsed?.displayedWishlist ?? null) as JsonValue[] | null;
+  if (!Array.isArray(displayed) || displayed.length === 0) return { item: null, missingList: true };
+  const found = displayed.find((entry) => Number((entry as Record<string, JsonValue>).no ?? 0) === no) as Record<string, JsonValue> | undefined;
+  if (!found) return { item: null, missingList: false };
+  return {
+    item: {
+      no: Number(found.no),
+      id: String(found.id),
+      title: String(found.title ?? "-"),
+      estimatedPrice: Number(found.estimatedPrice ?? 0),
+      priority: found.priority == null ? null : Number(found.priority),
+      status: String(found.status ?? "planned"),
+    },
+    missingList: false,
+  };
+}
+
+function wishlistMissingListReply(): string {
+  return ["⚠️ *Belum Ada List Wishlist*", "", "Ketik:", "*wishlist*"].join("\n");
+}
+
+function wishlistInvalidPriceReply(): string {
+  return ["⚠️ *Harga Wishlist Tidak Valid*", "", "Contoh:", "*tambah wishlist helm 750rb*"].join("\n");
+}
+
+async function handleAddWishlistCommand(userId: string, rawMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const parsed = parseAddWishlistCommand(rawMessage);
+  if (!parsed) return { reply: wishlistInvalidPriceReply(), parsedLog: { command: "wishlist_add", status: "invalid_price" } };
+  console.log("[WISHLIST CRUD]", { action: "add", title: parsed.title, amount: parsed.amount, priority: parsed.priority, status: "planned" });
+  const { data, error } = await supabase.from("wishlist_items").insert({
+    user_id: userId,
+    title: parsed.title,
+    estimated_price: parsed.amount,
+    priority: parsed.priority,
+    note: parsed.note,
+    status: "planned",
+  }).select("id").single();
+  if (error) throw error;
+  return {
+    reply: [
+      "✅ *Wishlist Ditambahkan*",
+      "",
+      line(),
+      `🎯 Item: *${parsed.title}*`,
+      `💰 Harga: *${formatIDR(parsed.amount)}*`,
+      `🔥 Prioritas: *${parsed.priority}*`,
+      "📌 Status: *planned*",
+    ].join("\n"),
+    parsedLog: { command: "wishlist_add", id: String(data.id), title: parsed.title, amount: parsed.amount, priority: parsed.priority, status: "planned" },
+  };
+}
+
+async function handleListWishlistCommand(userId: string, mode: "default" | "priority" | "status" | "affordable", status?: WishlistStatus): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const statuses = status ? [status] : ACTIVE_WISHLIST_STATUSES;
+  let rows = await getWishlistRows(userId, statuses);
+  let balance: number | null = null;
+  let title = "🎯 *Wishlist*";
+  if (mode === "priority") title = "🎯 *Wishlist Prioritas*";
+  if (mode === "status" && status) title = `🎯 *Wishlist ${status}*`;
+  if (mode === "affordable") {
+    const b = await getRealtimeBalanceSummary(userId);
+    balance = b.total;
+    rows = rows.filter((row) => Number(row.estimated_price ?? 0) <= b.total);
+    const displayedAffordable = rows.map(wishlistRowToDisplay);
+    console.log("[WISHLIST DISPLAYED]", displayedAffordable);
+    if (displayedAffordable.length === 0) {
+      return { reply: "ℹ️ Belum ada wishlist yang bisa dibeli dari saldo saat ini.", parsedLog: { command: "wishlist_list", mode, balance, displayedWishlist: [] } };
+    }
+    const lines = [
+      "🎯 *Wishlist yang Bisa Dibeli*",
+      "",
+      "Saldo Saat Ini:",
+      `*${formatIDR(balance)}*`,
+      "",
+      line(),
+      displayedAffordable.map((item) => [
+        `${item.no}. *${item.title}*`,
+        `Harga: *${formatIDR(item.estimatedPrice)}*`,
+        `Sisa saldo setelah beli: *${formatIDR((balance ?? 0) - item.estimatedPrice)}*`,
+      ].join("\n")).join("\n\n"),
+    ];
+    return { reply: lines.join("\n"), parsedLog: { command: "wishlist_list", mode, balance, displayedWishlist: displayedAffordable } };
+  }
+  const displayedWishlist = rows.map(wishlistRowToDisplay);
+  console.log("[WISHLIST DISPLAYED]", displayedWishlist);
+  return { reply: buildWishlistListMessage(title, displayedWishlist), parsedLog: { command: "wishlist_list", mode, status: status ?? null, displayedWishlist } };
+}
+
+async function handleEditWishlistCommand(userId: string, phone: string, normalized: string, rawMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const no = parseWishlistNumber(normalized, "edit");
+  const value = rawMessage.trim().replace(/^edit\s+wishlist\s+\d+\s+/i, "").trim();
+  if (!no || !value) return { reply: "⚠️ Format tidak valid.", parsedLog: { command: "wishlist_edit", status: "invalid_format" } };
+  const resolved = await resolveDisplayedWishlistItem(userId, phone, no);
+  if (resolved.missingList) return { reply: wishlistMissingListReply(), parsedLog: { command: "wishlist_edit", status: "missing_list", no } };
+  if (!resolved.item) return { reply: "❌ *Nomor Wishlist Tidak Ditemukan*", parsedLog: { command: "wishlist_edit", status: "not_found", no } };
+  const lowerValue = normalizeText(value);
+  const update: Record<string, JsonValue> = { updated_at: new Date().toISOString() };
+  let replyField = "";
+  let replyValue = "";
+  let amount: number | null = null;
+  let priority: number | null = null;
+  let status: WishlistStatus | null = null;
+  let title: string | null = null;
+  if (/^prioritas\s+[1-5]$/.test(lowerValue)) {
+    priority = Number(lowerValue.match(/[1-5]$/)?.[0] ?? 3);
+    update.priority = priority;
+    replyField = "Prioritas Baru";
+    replyValue = `*${priority}*`;
+  } else if (lowerValue.startsWith("nama ")) {
+    title = toTitleCase(value.replace(/^nama\s+/i, "").trim());
+    update.title = title;
+    replyField = "Nama Baru";
+    replyValue = `*${title}*`;
+  } else if (lowerValue.startsWith("catatan ")) {
+    const note = value.replace(/^catatan\s+/i, "").trim();
+    update.note = note;
+    replyField = "Catatan Baru";
+    replyValue = `*${note}*`;
+  } else if (lowerValue.startsWith("status ")) {
+    const nextStatus = lowerValue.replace(/^status\s+/, "").trim() as WishlistStatus;
+    if (!WISHLIST_STATUSES.includes(nextStatus)) return { reply: "⚠️ Status wishlist tidak valid.", parsedLog: { command: "wishlist_edit", status: "invalid_status", no } };
+    status = nextStatus;
+    update.status = nextStatus;
+    replyField = "Status Baru";
+    replyValue = `*${nextStatus}*`;
+  } else {
+    amount = isWishlistAmountText(value) ? parseAmount(value) : 0;
+    if (amount <= 0) return { reply: wishlistInvalidPriceReply(), parsedLog: { command: "wishlist_edit", status: "invalid_price", no } };
+    update.estimated_price = amount;
+    replyField = "Harga Baru";
+    replyValue = `*${formatIDR(amount)}*`;
+  }
+  console.log("[WISHLIST CRUD]", { action: "edit", title: title ?? resolved.item.title, amount, priority, status });
+  const { error } = await supabase.from("wishlist_items").update(update).eq("user_id", userId).eq("id", resolved.item.id);
+  if (error) throw error;
+  return {
+    reply: ["✏️ *Wishlist Diperbarui*", "", line(), `Item: *${title ?? resolved.item.title}*`, `${replyField}: ${replyValue}`].join("\n"),
+    parsedLog: { command: "wishlist_edit", status: "success", no, id: resolved.item.id, field: replyField, amount, priority, wishlistStatus: status, title: title ?? resolved.item.title },
+  };
+}
+
+async function updateWishlistStatusByNumber(userId: string, phone: string, normalized: string, action: "hapus" | "beli" | "arsip"): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const no = parseWishlistNumber(normalized, action);
+  if (!no) return { reply: "⚠️ Format tidak valid.", parsedLog: { command: `wishlist_${action}`, status: "invalid_format" } };
+  const resolved = await resolveDisplayedWishlistItem(userId, phone, no);
+  if (resolved.missingList) return { reply: wishlistMissingListReply(), parsedLog: { command: `wishlist_${action}`, status: "missing_list", no } };
+  if (!resolved.item) return { reply: "❌ *Nomor Wishlist Tidak Ditemukan*", parsedLog: { command: `wishlist_${action}`, status: "not_found", no } };
+  const nextStatus: WishlistStatus = action === "beli" ? "purchased" : "archived";
+  console.log("[WISHLIST CRUD]", { action, title: resolved.item.title, amount: resolved.item.estimatedPrice, priority: resolved.item.priority, status: nextStatus });
+  const { error } = await supabase.from("wishlist_items").update({ status: nextStatus, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("id", resolved.item.id);
+  if (error) throw error;
+  const reply = action === "beli"
+    ? ["✅ *Wishlist Ditandai Dibeli*", "", line(), `Item: *${resolved.item.title}*`, `Harga: *${formatIDR(resolved.item.estimatedPrice)}*`].join("\n")
+    : ["🗑️ *Wishlist Diarsipkan*", "", line(), `Item: *${resolved.item.title}*`].join("\n");
+  return { reply, parsedLog: { command: `wishlist_${action}`, status: "success", no, id: resolved.item.id, wishlistStatus: nextStatus } };
+}
+
+async function handleWishlistCommand(userId: string, phone: string, rawMessage: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  if (normalized.startsWith("tambah wishlist ")) return await handleAddWishlistCommand(userId, rawMessage);
+  if (/^edit\s+wishlist\s+\d+\s+.+$/.test(normalized)) return await handleEditWishlistCommand(userId, phone, normalized, rawMessage);
+  if (/^hapus\s+wishlist\s+\d+$/.test(normalized)) return await updateWishlistStatusByNumber(userId, phone, normalized, "hapus");
+  if (/^beli\s+wishlist\s+\d+$/.test(normalized)) return await updateWishlistStatusByNumber(userId, phone, normalized, "beli");
+  if (/^arsip\s+wishlist\s+\d+$/.test(normalized)) return await updateWishlistStatusByNumber(userId, phone, normalized, "arsip");
+  if (normalized === "wishlist mampu") return await handleListWishlistCommand(userId, "affordable");
+  if (normalized === "wishlist prioritas") return await handleListWishlistCommand(userId, "priority");
+  const status = normalized.match(/^wishlist\s+(planned|deferred|purchased|archived)$/)?.[1] as WishlistStatus | undefined;
+  if (status) return await handleListWishlistCommand(userId, "status", status);
+  if (normalized === "wishlist") return await handleListWishlistCommand(userId, "default");
+  return { reply: "⚠️ Command wishlist tidak valid.", parsedLog: { command: "wishlist", status: "invalid_command" } };
+}
+
+
 function buildMenuMessage(): string {
   return [
     "📋 *Menu HematWoi*",
@@ -5757,6 +6081,14 @@ function buildMenuMessage(): string {
     "• beli bensin 20rb",
     "• jajan kopi 15000 cash",
     "• tf 50000 cash seabank",
+    "",
+    "🎯 *Wishlist*",
+    "• wishlist",
+    "• tambah wishlist helm 750rb",
+    "• edit wishlist 1 1jt",
+    "• beli wishlist 1",
+    "• hapus wishlist 1",
+    "• wishlist mampu",
     "",
     "🎯 *Budget*",
     "• budget",
@@ -5830,6 +6162,14 @@ function buildExampleMessage(): string {
     "• ai top kategori bulan ini",
     "• saldo cash",
     "• ai pengeluaran jajan minggu ini",
+    "",
+    "🎯 *Wishlist*",
+    "• tambah wishlist insta360 x3 4500000",
+    "• tambah wishlist helm kyt 750rb prioritas 5",
+    "• wishlist",
+    "• edit wishlist 1 5jt",
+    "• beli wishlist 1",
+    "• wishlist mampu",
     "",
     "🎯 *Budget*",
     "• budget",
@@ -5925,7 +6265,7 @@ function isPotentialBotCommand(message: string): boolean {
 
   const validCommands = [
     "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
-    "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "undo", "menu", "help", "bantuan", "contoh",
+    "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "beli", "arsip", "wishlist", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
   if (validCommands.some((cmd) => normalized === cmd || normalized.startsWith(`${cmd} `))) return true;
@@ -6249,6 +6589,11 @@ Deno.serve(async (req: Request) => {
           ...budgetLines,
         ].join("\n");
       }
+    } else if (isWishlistCommand(normalized)) {
+      console.log("[ROUTE MATCH]", { route: "wishlist", normalized, isGroup, contextKey });
+      const wishlistRes = await handleWishlistCommand(userId, contextKey, message, normalized);
+      reply = wishlistRes.reply;
+      parsedLog = wishlistRes.parsedLog;
     } else if (/^edit\s+(kategori|akun|judul|title)\s+\d+\s+.+$/i.test(message.trim())) {
       console.log("[EDIT HISTORY FIELD COMMAND DETECTED]", {
         message,
