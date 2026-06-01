@@ -419,9 +419,16 @@ export async function createPassword(payload: PasswordCreatePayload): Promise<Pa
       throw new Error('Password baru minimal 6 karakter.');
     }
     const user = await requireUser();
-    const hasPassword = Boolean(
+    const hasPasswordIdentities = Boolean(
       user.identities?.some((identity: { provider?: string | null }) => identity.provider === 'email'),
     );
+    const hasPasswordProviders = Array.isArray(user.app_metadata?.providers)
+      ? user.app_metadata?.providers.includes('email')
+      : false;
+    const hasPrimaryEmailProvider = typeof user.app_metadata?.provider === 'string'
+      ? user.app_metadata?.provider === 'email'
+      : false;
+    const hasPassword = hasPasswordIdentities || hasPasswordProviders || hasPrimaryEmailProvider;
     if (hasPassword) {
       throw new Error('Password sudah tersedia untuk akun ini.');
     }
