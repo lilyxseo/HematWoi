@@ -3811,6 +3811,209 @@ function buildLastTransactionLog(input: LastTransactionSession): Record<string, 
   };
 }
 
+type PendingTransactionReason = "missing_category" | "missing_account" | "missing_category_account";
+type PendingTransactionSession = {
+  reason: PendingTransactionReason;
+  title: string;
+  amount: number;
+  date: string;
+  rawText: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  accountId: string | null;
+  accountName: string | null;
+};
+type PendingTransactionLookup = { session: PendingTransactionSession; expired: boolean } | null;
+type PendingTransactionUpdateCommand = { field: "category" | "account"; value: string };
+
+const PENDING_TRANSACTION_TTL_MS = 10 * 60 * 1000;
+
+function getPendingTransactionReason(input: { categoryId: string | null; accountId: string | null }): PendingTransactionReason {
+  if (!input.categoryId && !input.accountId) return "missing_category_account";
+  if (!input.categoryId) return "missing_category";
+  return "missing_account";
+}
+
+function pendingTransactionParsed(session: PendingTransactionSession): Record<string, JsonValue> {
+  return {
+    command: "pending_transaction",
+    reason: session.reason,
+    title: session.title,
+    amount: session.amount,
+    date: session.date,
+    rawText: session.rawText,
+    categoryId: session.categoryId,
+    categoryName: session.categoryName,
+    accountId: session.accountId,
+    accountName: session.accountName,
+  };
+}
+
+function buildPendingTransactionLog(session: PendingTransactionSession): Record<string, JsonValue> {
+  console.log("[PENDING TRANSACTION CREATED]", {
+    reason: session.reason,
+    title: session.title,
+    amount: session.amount,
+    date: session.date,
+  });
+  return pendingTransactionParsed(session);
+}
+
+function buildPendingTransactionUpdateLog(session: PendingTransactionSession): Record<string, JsonValue> {
+  console.log("[PENDING TRANSACTION UPDATE]", {
+    categoryName: session.categoryName,
+    accountName: session.accountName,
+  });
+  return pendingTransactionParsed({
+    ...session,
+    reason: getPendingTransactionReason({ categoryId: session.categoryId, accountId: session.accountId }),
+  });
+}
+
+function parsePendingTransactionUpdateCommand(normalized: string): PendingTransactionUpdateCommand | null {
+  const match = normalized.match(/^(kategori|akun)\s+(.+)$/);
+  if (!match) return null;
+  const value = String(match[2] ?? "").trim();
+  if (!value || ["tambah", "edit", "hapus", "list"].includes(value.split(" ")[0] ?? "")) return null;
+  return { field: match[1] === "kategori" ? "category" : "account", value };
+}
+
+async function getCategorySuggestions(userId: string, limit = 3): Promise<string[]> {
+  const categoriesHasDeletedAt = await hasDeletedAtColumn("categories");
+  let query = supabase.from("categories").select("name").eq("user_id", userId).eq("type", "expense").order("name").limit(limit);
+  if (categoriesHasDeletedAt) query = query.is("deleted_at", null);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, JsonValue>) => String(row.name ?? "").trim()).filter(Boolean);
+}
+
+async function getAccountSuggestions(userId: string, limit = 3): Promise<string[]> {
+  const { data, error } = await getAccountsBaseQuery(userId, "name").order("name").limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, JsonValue>) => String(row.name ?? "").trim()).filter(Boolean);
+}
+
+function buildSuggestionLines(prefix: "kategori" | "akun", names: string[]): string[] {
+  return names.map((name) => `• *${prefix} ${name.toLowerCase()}*`);
+}
+
+async function buildMissingCategoryReply(userId: string, tx: { title: string; amount: number }): Promise<string> {
+  const suggestions = await getCategorySuggestions(userId, 3);
+  return ["⚠️ *Kategori Belum Diketahui*", "", "Transaksi:", `*${tx.title} — ${formatIDR(tx.amount)}*`, "", "Sebutkan kategori:", ...buildSuggestionLines("kategori", suggestions)].join("\n");
+}
+
+async function buildMissingAccountReply(userId: string, tx: { title: string; amount: number }): Promise<string> {
+  const suggestions = await getAccountSuggestions(userId, 3);
+  return ["⚠️ *Akun Belum Diketahui*", "", "Transaksi:", `*${tx.title} — ${formatIDR(tx.amount)}*`, "", "Sebutkan akun:", ...buildSuggestionLines("akun", suggestions)].join("\n");
+}
+
+async function getLatestPendingTransactionSession(userId: string, phone: string): Promise<PendingTransactionLookup> {
+  const { data: logs, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("id,created_at,parsed")
+    .eq("user_id", userId)
+    .eq("phone", phone)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(30);
+  if (error) throw error;
+
+  for (const log of (logs ?? []) as Array<Record<string, JsonValue>>) {
+    const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
+    if (parsed?.command === "last_transaction" && Boolean(parsed?.transactionId)) return null;
+    if (parsed?.command === "pending_transaction_expired") return null;
+    if (parsed?.command !== "pending_transaction") continue;
+    const createdAt = new Date(String(log.created_at ?? "")).getTime();
+    return {
+      expired: !Number.isFinite(createdAt) || Date.now() - createdAt > PENDING_TRANSACTION_TTL_MS,
+      session: {
+        reason: String(parsed.reason ?? "missing_category_account") as PendingTransactionReason,
+        title: String(parsed.title ?? "-"),
+        amount: Number(parsed.amount ?? 0),
+        date: String(parsed.date ?? getTodayJakarta()),
+        rawText: String(parsed.rawText ?? ""),
+        categoryId: parsed.categoryId == null ? null : String(parsed.categoryId),
+        categoryName: parsed.categoryName == null ? null : String(parsed.categoryName),
+        accountId: parsed.accountId == null ? null : String(parsed.accountId),
+        accountName: parsed.accountName == null ? null : String(parsed.accountName),
+      },
+    };
+  }
+  return null;
+}
+
+async function getCategoryById(userId: string, categoryId: string): Promise<{ id: string; name: string; type: string } | null> {
+  const { data, error } = await supabase.from("categories").select("id,name,type").eq("user_id", userId).eq("id", categoryId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function getAccountById(userId: string, accountId: string): Promise<{ id: string; name: string; type: string } | null> {
+  const { data, error } = await getAccountsBaseQuery(userId, "id,name,type").eq("id", accountId).maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+async function completePendingTransaction(userId: string, session: PendingTransactionSession, sourceMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  if (!session.categoryId || !session.accountId) throw new Error("PENDING_TRANSACTION_INCOMPLETE");
+  const [category, account] = await Promise.all([getCategoryById(userId, session.categoryId), getAccountById(userId, session.accountId)]);
+  if (!category) return { reply: ["❌ *Kategori Tidak Ditemukan*", "", "Kategori:", `*${session.categoryName ?? "-"}*`, "", "Ketik *kategori* untuk melihat daftar."].join("\n"), parsedLog: { command: "pending_transaction_failed", reason: "category_not_found", categoryName: session.categoryName } };
+  if (!account) return { reply: ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${session.accountName ?? "-"}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n"), parsedLog: { command: "pending_transaction_failed", reason: "account_not_found", accountName: session.accountName } };
+
+  const type = category.type === "income" ? "income" : "expense";
+  const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: session.date, type, category_id: category.id, account_id: account.id, amount: session.amount, title: session.title, notes: `WhatsApp pending: ${sourceMessage || session.rawText}` }).select("id").single();
+  if (error) throw error;
+
+  console.log("[PENDING TRANSACTION COMPLETE]", {
+    categoryName: category.name,
+    accountName: account.name,
+    amount: session.amount,
+  });
+
+  const parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: session.title, amount: session.amount, date: session.date });
+  const reply = [type === "income" ? "✅ *Pemasukan Tercatat*" : "✅ *Pengeluaran Tercatat*", "", `Kategori: *${category.name}*`, `Judul: *${session.title}*`, `Nominal: *${formatIDR(session.amount)}*`, `Akun: *${account.name}*`].join("\n");
+  return { reply, parsedLog };
+}
+
+async function handlePendingTransactionUpdate(userId: string, phone: string, command: PendingTransactionUpdateCommand, sourceMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> } | null> {
+  const pendingLookup = await getLatestPendingTransactionSession(userId, phone);
+  if (!pendingLookup) return null;
+  if (pendingLookup.expired) return { reply: ["⚠️ *Sesi Transaksi Habis*", "", "Kirim ulang transaksi kamu."].join("\n"), parsedLog: { command: "pending_transaction_expired" } };
+
+  const session = { ...pendingLookup.session };
+  if (command.field === "category") {
+    const category = await findCategory(userId, command.value);
+    if (!category) return { reply: ["❌ *Kategori Tidak Ditemukan*", "", "Kategori:", `*${command.value}*`, "", "Ketik *kategori* untuk melihat daftar."].join("\n"), parsedLog: { command: "pending_transaction_failed", reason: "category_not_found", categoryName: command.value } };
+    session.categoryId = category.id;
+    session.categoryName = category.name;
+  } else {
+    const account = await findAccount(userId, command.value);
+    if (!account) return { reply: ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${command.value}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n"), parsedLog: { command: "pending_transaction_failed", reason: "account_not_found", accountName: command.value } };
+    session.accountId = account.id;
+    session.accountName = account.name;
+  }
+
+  if (session.categoryId && session.accountId) return await completePendingTransaction(userId, session, sourceMessage);
+
+  const parsedLog = buildPendingTransactionUpdateLog(session);
+  if (command.field === "category") {
+    const accountSuggestions = await getAccountSuggestions(userId, 3);
+    return { reply: [`✅ Kategori dipilih: *${session.categoryName}*`, "", "Sekarang sebutkan akun:", ...buildSuggestionLines("akun", accountSuggestions)].join("\n"), parsedLog };
+  }
+  const categorySuggestions = await getCategorySuggestions(userId, 3);
+  return { reply: [`✅ Akun dipilih: *${session.accountName}*`, "", "Sekarang sebutkan kategori:", ...buildSuggestionLines("kategori", categorySuggestions)].join("\n"), parsedLog };
+}
+
+async function createPendingTransactionResponse(userId: string, pending: Omit<PendingTransactionSession, "reason">): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const session: PendingTransactionSession = {
+    ...pending,
+    reason: getPendingTransactionReason({ categoryId: pending.categoryId, accountId: pending.accountId }),
+  };
+  const parsedLog = buildPendingTransactionLog(session);
+  if (!session.categoryId) return { reply: await buildMissingCategoryReply(userId, session), parsedLog };
+  return { reply: await buildMissingAccountReply(userId, session), parsedLog };
+}
+
 async function getLastTransactionSession(userId: string, phone: string): Promise<LastTransactionSession | null> {
   const { data: logs, error } = await supabase
     .from("whatsapp_message_logs")
@@ -6305,6 +6508,10 @@ function buildMenuMessage(): string {
     "• akun cash",
     "• akun seabank",
     "",
+    "💡 Jika bot belum tahu kategori/akun, cukup balas:",
+    "• kategori jajan",
+    "• akun cash",
+    "",
     "🤖 *AI Assistant*",
     "• ai",
     "• ai pengeluaran cash minggu ini",
@@ -6390,6 +6597,10 @@ function buildExampleMessage(): string {
     "• edit kategori 1 makan",
     "• edit kategori 2 jajan",
     "• edit kategori 3 motor",
+    "",
+    "💡 Jika bot belum tahu kategori/akun, cukup balas:",
+    "• kategori jajan",
+    "• akun cash",
     "",
     "📊 *Laporan*",
     "• pengeluaran harian",
@@ -6649,7 +6860,16 @@ Deno.serve(async (req: Request) => {
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
     let budgetPeriodCommand: BudgetPeriodCommand | null = null;
 
-    if (isCalculatorExpression(message)) {
+    const pendingUpdateCommand = parsePendingTransactionUpdateCommand(normalized);
+
+    if (pendingUpdateCommand && await getLatestPendingTransactionSession(userId, contextKey)) {
+      console.log("[ROUTE MATCH]", { route: "pending_transaction_update", normalized, isGroup, contextKey });
+      const pendingResult = await handlePendingTransactionUpdate(userId, contextKey, pendingUpdateCommand, message);
+      if (pendingResult) {
+        reply = pendingResult.reply;
+        parsedLog = pendingResult.parsedLog;
+      }
+    } else if (isCalculatorExpression(message)) {
       console.log("[ROUTE MATCH]", { route: "calculator", normalized, isGroup, contextKey });
       const expression = normalizeCalculatorExpression(message);
       if (!expression) {
@@ -7143,13 +7363,36 @@ Deno.serve(async (req: Request) => {
                   ? await findBestAccountByCategoryHistory(userId, smartCategory.id) ?? await findAccountByTransactionHistory(userId, finalSmartTitle, smartCategory.id, null)
                   : await findAccountByTransactionHistory(userId, finalSmartTitle, null, null);
               if (smartTx.accountName && !smartAccount) {
-                reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
+                reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${smartTx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
               } else if (!smartAccount) {
-                reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
+                {
+                  const pending = await createPendingTransactionResponse(userId, {
+                    title: finalSmartTitle,
+                    amount: smartTx.amount,
+                    date: smartTx.date,
+                    rawText: message,
+                    categoryId: smartCategory?.id ?? null,
+                    categoryName: smartCategory?.name ?? null,
+                    accountId: null,
+                    accountName: null,
+                  });
+                  reply = pending.reply;
+                  parsedLog = pending.parsedLog;
+                }
               } else {
                 if (!smartCategory) {
-                  parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
-                  reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
+                  const pending = await createPendingTransactionResponse(userId, {
+                    title: finalSmartTitle,
+                    amount: smartTx.amount,
+                    date: smartTx.date,
+                    rawText: message,
+                    categoryId: null,
+                    categoryName: null,
+                    accountId: smartAccount.id,
+                    accountName: smartAccount.name,
+                  });
+                  reply = pending.reply;
+                  parsedLog = pending.parsedLog;
                 } else {
                   const smartType = smartCategory.type === "income" ? "income" : "expense";
                   const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type: smartType, category_id: smartCategory.id, account_id: smartAccount.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` }).select("id").single();
@@ -7168,10 +7411,10 @@ Deno.serve(async (req: Request) => {
                 }
               }
             } else {
-              reply = `❌ Kategori *${tx.categoryName}* tidak ditemukan.`;
+              reply = ["❌ *Kategori Tidak Ditemukan*", "", "Kategori:", `*${tx.categoryName}*`, "", "Ketik *kategori* untuk melihat daftar."].join("\n");
             }
           } else if (!account) {
-            reply = `❌ Akun *${tx.accountName}* tidak ditemukan.`;
+            reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${tx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
           } else {
             const type = category.type === "income" ? "income" : "expense";
 
@@ -7239,7 +7482,23 @@ Deno.serve(async (req: Request) => {
               const category = keywordCategory ?? await findCategoryByTransactionHistory(userId, naturalTx.title);
               if (!category) {
                 parsedLog = { command: "natural_transaction_failed", reason: "category_not_found", title: naturalTx.title, amount: naturalTx.amount, accountName: naturalTx.accountName };
-                reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 20000 cash", "", "Setelah itu sistem bisa belajar dari histori."].join("\n");
+                {
+                  const pendingAccount = naturalTx.accountName
+                    ? accounts.find((a) => a.name.toLowerCase() === naturalTx.accountName!.toLowerCase()) ?? null
+                    : null;
+                  const pending = await createPendingTransactionResponse(userId, {
+                    title: naturalTx.title,
+                    amount: naturalTx.amount,
+                    date: naturalTx.date,
+                    rawText: message,
+                    categoryId: null,
+                    categoryName: null,
+                    accountId: pendingAccount?.id ?? null,
+                    accountName: pendingAccount?.name ?? naturalTx.accountName,
+                  });
+                  reply = pending.reply;
+                  parsedLog = pending.parsedLog;
+                }
               } else {
                 const finalType = naturalTx.type === "income" ? "income" : "expense";
                 if (category.type !== finalType) {
@@ -7265,9 +7524,20 @@ Deno.serve(async (req: Request) => {
                     ? await findBestAccountByCategoryHistory(userId, category.id) ?? await findAccountByTransactionHistory(userId, finalNaturalTitle, category.id, finalType)
                     : await findAccountByTransactionHistory(userId, finalNaturalTitle, category.id, finalType);
                 if (naturalTx.accountName && !account) {
-                  reply = ["⚠️ Akun tidak ditemukan.", "", "Sebutkan akun di pesan.", "Contoh:", "beli kopi 20rb cash"].join("\n");
+                  reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${naturalTx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
                 } else if (!account) {
-                  reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
+                  const pending = await createPendingTransactionResponse(userId, {
+                    title: finalNaturalTitle,
+                    amount: naturalTx.amount,
+                    date: naturalTx.date,
+                    rawText: message,
+                    categoryId: category.id,
+                    categoryName: category.name,
+                    accountId: null,
+                    accountName: null,
+                  });
+                  reply = pending.reply;
+                  parsedLog = pending.parsedLog;
                 } else {
                   const { data: insertedTx, error } = await supabase.from("transactions").insert({
                     user_id: userId,
@@ -7326,13 +7596,34 @@ Deno.serve(async (req: Request) => {
                 ? await findBestAccountByCategoryHistory(userId, category.id) ?? await findAccountByTransactionHistory(userId, finalSmartTitle, category.id, null)
                 : await findAccountByTransactionHistory(userId, finalSmartTitle, null, null);
             if (smartTx.accountName && !account) {
-              reply = `❌ Akun *${smartTx.accountName}* tidak ditemukan.`;
+              reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${smartTx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
             } else if (!account) {
-              reply = ["⚠️ Akun otomatis tidak ditemukan.", "", "Gunakan format:", "momoyo 20000 seabank", "", "Setelah itu sistem bisa belajar dari history."].join("\n");
+              const pending = await createPendingTransactionResponse(userId, {
+                title: finalSmartTitle,
+                amount: smartTx.amount,
+                date: smartTx.date,
+                rawText: message,
+                categoryId: category?.id ?? null,
+                categoryName: category?.name ?? null,
+                accountId: null,
+                accountName: null,
+              });
+              reply = pending.reply;
+              parsedLog = pending.parsedLog;
             } else {
               if (!category) {
-                parsedLog = { command: "smart_transaction_failed", title: smartTx.title, amount: smartTx.amount, accountName: smartTx.accountName, reason: "category_not_found" };
-                reply = ["⚠️ Kategori otomatis tidak ditemukan.", "", "Gunakan format lengkap:", "jajan kopi 10000 cash", "", "Atau buat dulu transaksi dengan kategori agar sistem bisa belajar."].join("\n");
+                const pending = await createPendingTransactionResponse(userId, {
+                  title: finalSmartTitle,
+                  amount: smartTx.amount,
+                  date: smartTx.date,
+                  rawText: message,
+                  categoryId: null,
+                  categoryName: null,
+                  accountId: account.id,
+                  accountName: account.name,
+                });
+                reply = pending.reply;
+                parsedLog = pending.parsedLog;
               } else {
                 const type = category.type === "income" ? "income" : "expense";
                 const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type, category_id: category.id, account_id: account.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` }).select("id").single();
