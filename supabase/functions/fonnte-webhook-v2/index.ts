@@ -171,6 +171,25 @@ type DailyExpenseReport = {
   min: { date: string; total: number };
 };
 
+type CategoryDailyReportDay = { date: string; total: number; transactionCount: number };
+type CategoryDailyReportQuery = {
+  categoryId: string;
+  categoryName: string;
+  startDate: string;
+  endDate: string;
+  periodLabel: string;
+  pageSize: number;
+};
+type CategoryDailyReport = CategoryDailyReportQuery & {
+  days: CategoryDailyReportDay[];
+  totalExpense: number;
+  averagePerDay: number;
+  activeDays: number;
+  totalDays: number;
+  totalTransactions: number;
+  topDays: CategoryDailyReportDay[];
+};
+
 type HistoryQuery = {
   filterType: string;
   filterValue?: string | null;
@@ -842,6 +861,164 @@ function buildDailyExpenseMessage(report: DailyExpenseReport): string {
     `🔥 Tertinggi: ${money(report.max.total)} pada *${formatShortDate(report.max.date)}*`,
     `✅ Terendah: ${money(report.min.total)} pada *${formatShortDate(report.min.date)}*`,
   ].join("\n");
+}
+
+function getDateRangeDates(startDate: string, endDate: string): string[] {
+  const [startYear, startMonth, startDay] = startDate.split("-").map(Number);
+  const [endYear, endMonth, endDay] = endDate.split("-").map(Number);
+  const start = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+  const end = new Date(Date.UTC(endYear, endMonth - 1, endDay));
+  const dates: string[] = [];
+  for (const current = new Date(start); current <= end; current.setUTCDate(current.getUTCDate() + 1)) {
+    dates.push(`${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, "0")}-${String(current.getUTCDate()).padStart(2, "0")}`);
+  }
+  return dates;
+}
+
+function parseCategoryDailyReportCommand(normalized: string): { categoryInput: string; startDate: string; endDate: string; periodLabel: string } | null {
+  if (!normalized.startsWith("harian ")) return null;
+  const rawInput = normalized.replace(/^harian\s+/, "").trim();
+  if (!rawInput) return null;
+  const parsedMonth = parseHistoryMonthPeriod(rawInput);
+  if (parsedMonth) {
+    const categoryInput = parsedMonth.remainingText.trim();
+    if (!categoryInput) return null;
+    return {
+      categoryInput,
+      startDate: parsedMonth.startDate,
+      endDate: parsedMonth.endDate,
+      periodLabel: parsedMonth.label,
+    };
+  }
+
+  const { startDate, endDate } = getLast30DaysDateRange();
+  return { categoryInput: rawInput, startDate, endDate, periodLabel: "30 Hari Terakhir" };
+}
+
+async function getCategoryDailyReport(userId: string, query: CategoryDailyReportQuery): Promise<CategoryDailyReport> {
+  const dates = getDateRangeDates(query.startDate, query.endDate);
+  let txQuery = supabase
+    .from("transactions")
+    .select("id,amount,date")
+    .eq("user_id", userId)
+    .eq("type", "expense")
+    .eq("category_id", query.categoryId)
+    .gte("date", query.startDate)
+    .lte("date", query.endDate);
+  txQuery = await applyTransactionNotDeleted(txQuery);
+  const { data, error } = await txQuery;
+  if (error) throw error;
+
+  const dailyMap = new Map(dates.map((date) => [date, { date, total: 0, transactionCount: 0 } as CategoryDailyReportDay]));
+  for (const row of (data ?? []) as Array<Record<string, JsonValue>>) {
+    const date = String(row.date ?? "");
+    const day = dailyMap.get(date);
+    if (!day) continue;
+    day.total += Number(row.amount ?? 0);
+    day.transactionCount += 1;
+  }
+
+  const days = dates.map((date) => dailyMap.get(date) ?? { date, total: 0, transactionCount: 0 });
+  const totalExpense = days.reduce((sum, day) => sum + day.total, 0);
+  const totalTransactions = days.reduce((sum, day) => sum + day.transactionCount, 0);
+  const totalDays = days.length;
+  const averagePerDay = totalDays > 0 ? totalExpense / totalDays : 0;
+  const activeDays = days.filter((day) => day.total > 0).length;
+  const topDays = [...days].sort((a, b) => b.total - a.total || a.date.localeCompare(b.date)).slice(0, 3);
+
+  console.log("[CATEGORY DAILY REPORT]", {
+    categoryName: query.categoryName,
+    startDate: query.startDate,
+    endDate: query.endDate,
+    totalExpense,
+    totalTransactions,
+  });
+
+  return { ...query, days, totalExpense, averagePerDay, activeDays, totalDays, totalTransactions, topDays };
+}
+
+function buildCategoryDailyReportMessage(report: CategoryDailyReport, page = 1): string {
+  const totalPages = Math.max(1, Math.ceil(report.days.length / report.pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const newestFirstDays = [...report.days].reverse();
+  const visibleDays = newestFirstDays.slice((safePage - 1) * report.pageSize, safePage * report.pageSize);
+  const mostExpensiveDay = report.topDays[0] ?? { date: report.endDate, total: 0, transactionCount: 0 };
+  const lines = [
+    `📊 *Harian Kategori: ${report.categoryName}*`,
+    italic(report.periodLabel),
+    "",
+    line(),
+    `💰 Total: ${money(report.totalExpense)}`,
+    `📈 Rata-rata/Hari: ${money(Math.round(report.averagePerDay))}`,
+    "🔥 Hari Terboros:",
+    `*${formatShortDate(mostExpensiveDay.date)} — ${formatIDR(mostExpensiveDay.total)}*`,
+    "",
+    "📅 Hari Aktif:",
+    `*${report.activeDays} dari ${report.totalDays} hari*`,
+    "",
+    "🏆 Top 3 Hari Terboros",
+    "",
+    ...report.topDays.map((day, index) => `${index + 1}. ${formatShortDate(day.date)} - ${formatIDR(day.total)}`),
+    "",
+    line(),
+    "",
+    ...visibleDays.map((day) => `${formatShortDate(day.date)} • ${formatIDR(day.total)}`),
+    "",
+    line(),
+    "📊 Total Transaksi:",
+    `*${report.totalTransactions} transaksi*`,
+  ];
+
+  if (totalPages > 1) {
+    lines.push("", `Halaman: *${safePage} dari ${totalPages}*`, "Navigasi: *next*, *prev*, atau *page 2*");
+  }
+
+  return lines.join("\n");
+}
+
+async function buildCategoryDailyReportReply(
+  userId: string,
+  query: CategoryDailyReportQuery,
+  page: number,
+): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const report = await getCategoryDailyReport(userId, query);
+  const totalPages = Math.max(1, Math.ceil(report.days.length / report.pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  return {
+    reply: buildCategoryDailyReportMessage(report, safePage),
+    parsedLog: {
+      command: "category_daily_report",
+      page: safePage,
+      totalPages,
+      pageSize: report.pageSize,
+      categoryDailyQuery: query,
+      categoryName: report.categoryName,
+      startDate: report.startDate,
+      endDate: report.endDate,
+      totalExpense: report.totalExpense,
+      totalTransactions: report.totalTransactions,
+    },
+  };
+}
+
+async function handleCategoryDailyReportCommand(userId: string, normalized: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> } | null> {
+  const parsed = parseCategoryDailyReportCommand(normalized);
+  if (!parsed) return null;
+  const category = await findCategory(userId, parsed.categoryInput);
+  if (!category || String(category.type ?? "").toLowerCase() !== "expense") {
+    return {
+      reply: `⚠️ Kategori expense tidak ditemukan: *${parsed.categoryInput}*`,
+      parsedLog: { command: "category_daily_report_failed", reason: "category_not_found", categoryName: parsed.categoryInput },
+    };
+  }
+  return await buildCategoryDailyReportReply(userId, {
+    categoryId: category.id,
+    categoryName: category.name,
+    startDate: parsed.startDate,
+    endDate: parsed.endDate,
+    periodLabel: parsed.periodLabel,
+    pageSize: 30,
+  }, 1);
 }
 
 async function getHistoryByAccount(
@@ -4048,9 +4225,10 @@ async function handleHistoryNavigationCommand(
 
 
 type LatestInteractiveSession = {
-  type: "history" | "ai" | "budget" | null;
+  type: "history" | "ai" | "budget" | "category_daily_report" | null;
   page: number | null;
   historyQuery: HistoryQuery | null;
+  categoryDailyQuery?: CategoryDailyReportQuery | null;
   totalPages?: number;
   pageSize?: number;
 };
@@ -4096,6 +4274,27 @@ async function getLatestInteractiveSession(
           historyQuery,
           totalPages: Math.max(1, Number(parsed?.totalPages ?? 1)),
           pageSize: Math.max(1, Number(parsed?.pageSize ?? 10)),
+        };
+      }
+    }
+
+    if (command === "category_daily_report") {
+      const rawQuery = (parsed?.categoryDailyQuery ?? null) as Record<string, JsonValue> | null;
+      if (rawQuery) {
+        return {
+          type: "category_daily_report",
+          page: Math.max(1, Number(parsed?.page ?? 1)),
+          historyQuery: null,
+          categoryDailyQuery: {
+            categoryId: String(rawQuery.categoryId ?? ""),
+            categoryName: String(rawQuery.categoryName ?? ""),
+            startDate: String(rawQuery.startDate ?? ""),
+            endDate: String(rawQuery.endDate ?? ""),
+            periodLabel: String(rawQuery.periodLabel ?? ""),
+            pageSize: Math.max(1, Number(rawQuery.pageSize ?? parsed?.pageSize ?? 30)),
+          },
+          totalPages: Math.max(1, Number(parsed?.totalPages ?? 1)),
+          pageSize: Math.max(1, Number(parsed?.pageSize ?? rawQuery.pageSize ?? 30)),
         };
       }
     }
@@ -4160,6 +4359,38 @@ async function handleInteractiveNavigationCommand(
     }
 
     return await buildHistoryPageReply(userId, activeSession.historyQuery, targetPage, pageSize);
+  }
+
+  if (activeSession.type === "category_daily_report" && activeSession.categoryDailyQuery) {
+    const currentPage = Math.max(1, Number(activeSession.page ?? 1));
+    const totalPages = Math.max(1, Number(activeSession.totalPages ?? 1));
+    let targetPage = currentPage;
+    if (command.action === "next") targetPage = currentPage + 1;
+    if (command.action === "prev") targetPage = currentPage - 1;
+    if (command.action === "page") targetPage = Math.max(1, Number(command.targetPage ?? 1));
+
+    if (command.action === "next" && currentPage >= totalPages) {
+      return {
+        reply: [`ℹ️ *Sudah Halaman Terakhir*`, "", "Halaman:", `*${totalPages} dari ${totalPages}*`].join("\n"),
+        parsedLog: { command: "category_daily_report", action: command.action, page: currentPage, totalPages, pageSize: activeSession.pageSize ?? 30, categoryDailyQuery: activeSession.categoryDailyQuery },
+      };
+    }
+
+    if (command.action === "prev" && currentPage <= 1) {
+      return {
+        reply: "ℹ️ *Sudah Halaman Pertama*",
+        parsedLog: { command: "category_daily_report", action: command.action, page: currentPage, totalPages, pageSize: activeSession.pageSize ?? 30, categoryDailyQuery: activeSession.categoryDailyQuery },
+      };
+    }
+
+    if (targetPage < 1 || targetPage > totalPages) {
+      return {
+        reply: [`⚠️ *Halaman Tidak Ditemukan*`, "", "Total halaman:", `*${totalPages}*`].join("\n"),
+        parsedLog: { command: "category_daily_report", action: command.action, page: currentPage, targetPage, totalPages, pageSize: activeSession.pageSize ?? 30, categoryDailyQuery: activeSession.categoryDailyQuery },
+      };
+    }
+
+    return await buildCategoryDailyReportReply(userId, activeSession.categoryDailyQuery, targetPage);
   }
 
   if (activeSession.type === "budget") {
@@ -6041,6 +6272,13 @@ function buildMenuMessage(): string {
     "• pengeluaran harian",
     "• budget",
     "",
+    "📊 *Laporan Harian*",
+    "• harian jajan",
+    "• harian makan",
+    "• harian motor",
+    "• harian juni",
+    "• harian bulan lalu",
+    "",
     "📚 *History*",
     "• history",
     "• history cash",
@@ -6156,6 +6394,13 @@ function buildExampleMessage(): string {
     "📊 *Laporan*",
     "• pengeluaran harian",
     "• pengeluaran per hari",
+    "",
+    "📊 *Laporan Harian*",
+    "• harian jajan",
+    "• harian makan",
+    "• harian motor",
+    "• harian juni",
+    "• harian bulan lalu",
     "",
     "🤖 *AI*",
     "• ai",
@@ -6513,6 +6758,16 @@ Deno.serve(async (req: Request) => {
         if (activeWarnings.length > 0) summaryLines.push("", "⚠️ Warning Aktif", ...activeWarnings.map((w) => `• ${w}`));
       }
       reply = summaryLines.join("\n");
+    } else if (normalized.startsWith("harian ")) {
+      console.log("[ROUTE MATCH]", { route: "category_daily_report", normalized, isGroup, contextKey });
+      const categoryDaily = await handleCategoryDailyReportCommand(userId, normalized);
+      if (categoryDaily) {
+        reply = categoryDaily.reply;
+        parsedLog = categoryDaily.parsedLog;
+      } else {
+        reply = "⚠️ Format laporan harian kategori tidak valid.\n\nContoh:\n• harian jajan\n• harian makan juni\n• harian bensin bulan lalu";
+        parsedLog = { command: "category_daily_report_failed", reason: "invalid_format" };
+      }
     } else if (DAILY_EXPENSE_COMMANDS.has(normalized)) {
       console.log("[ROUTE MATCH]", { route: "daily_expense_report", normalized, isGroup, contextKey });
       const report = await getDailyExpenseReport(userId);
