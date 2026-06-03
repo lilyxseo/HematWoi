@@ -106,6 +106,15 @@ type ParsedDebtCommand = {
   accountName: string;
   date: string;
 };
+type ParsedDebtPaymentCommand = {
+  debtType: DebtType;
+  selector: string;
+  selectorNumber: number | null;
+  amount: number;
+  accountName: string | null;
+  date: string;
+  paymentSource: "number" | "name";
+};
 type EditField = "amount" | "title" | "category" | "account" | "date";
 type ParsedEditTransactionCommand = {
   number: number;
@@ -3606,6 +3615,44 @@ function parseDebtCommand(message: string): ParsedDebtCommand | null {
   return { action: action as DebtAction, debtType, partyName, amount, accountName, date };
 }
 
+
+function parseDebtPaymentCommand(message: string): ParsedDebtPaymentCommand | null {
+  const parts = message.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 4) return null;
+  const action = normalizeText(parts[0]);
+  const debtWord = normalizeText(parts[1]);
+  if (action !== "bayar" || (debtWord !== "hutang" && debtWord !== "piutang")) return null;
+
+  const debtType: DebtType = debtWord === "hutang" ? "debt" : "receivable";
+  let date = getTodayJakarta();
+  let workParts = [...parts];
+  const maybeDate = parseOptionalDateToken(workParts[workParts.length - 1]);
+  if (maybeDate) {
+    date = maybeDate;
+    workParts = workParts.slice(0, -1);
+  }
+
+  const core = workParts.slice(2);
+  const amountIndex = core.findIndex((part) => parseAmount(part) > 0);
+  if (amountIndex <= 0) return null;
+
+  const selector = core.slice(0, amountIndex).join(" ").trim();
+  const amount = parseAmount(core[amountIndex]);
+  const accountName = core.slice(amountIndex + 1).join(" ").trim() || null;
+  if (!selector || amount <= 0) return null;
+
+  const selectorNumber = /^\d+$/.test(selector) ? Number(selector) : null;
+  return {
+    debtType,
+    selector,
+    selectorNumber,
+    amount,
+    accountName,
+    date,
+    paymentSource: selectorNumber !== null ? "number" : "name",
+  };
+}
+
 function isDateLike(value: string): boolean {
   const input = String(value ?? "").trim();
   return /^\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?$/.test(input) || /^\d{4}-\d{2}-\d{2}$/.test(input);
@@ -4955,6 +5002,233 @@ async function findOpenDebtByParty(userId: string, debtType: DebtType, partyName
   }) ?? null;
 }
 
+async function findOpenDebtsByParty(userId: string, debtType: DebtType, partyName: string): Promise<Array<Record<string, JsonValue>>> {
+  const { data, error } = await supabase
+    .from("debts")
+    .select("*")
+    .eq("user_id", userId);
+  if (error) throw error;
+
+  const normalizedParty = normalizeText(partyName);
+  const rows = ((data ?? []) as Array<Record<string, JsonValue>>).filter(isDebtRowOpen);
+  return rows.filter((row) => {
+    const hasTypeField = rowHasDebtTypeField(row);
+    if (hasTypeField && !isDebtTypeRow(row, debtType === "debt" ? "hutang" : "piutang")) return false;
+    if (!hasTypeField && debtType !== "debt") return false;
+    const names = [
+      getDebtName(row),
+      row.party_name,
+      row.person_name,
+      row.counterparty_name,
+    ].map((value) => normalizeText(String(value ?? ""))).filter(Boolean);
+    return names.some((name) => name.includes(normalizedParty) || normalizedParty.includes(name));
+  });
+}
+
+async function findOpenDebtById(userId: string, debtId: string, debtType: DebtType): Promise<Record<string, JsonValue> | null> {
+  const { data, error } = await supabase
+    .from("debts")
+    .select("*")
+    .eq("id", debtId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = data as Record<string, JsonValue>;
+  if (!isDebtRowOpen(row)) return null;
+  const hasTypeField = rowHasDebtTypeField(row);
+  if (hasTypeField && !isDebtTypeRow(row, debtType === "debt" ? "hutang" : "piutang")) return null;
+  if (!hasTypeField && debtType !== "debt") return null;
+  return row;
+}
+
+
+function accountHasPrimaryFlag(row: Record<string, JsonValue>): boolean {
+  return row.is_default === true ||
+    row.default === true ||
+    row.is_primary === true ||
+    row.primary === true ||
+    row.is_main === true ||
+    row.main === true ||
+    row.is_utama === true ||
+    normalizeText(String(row.name ?? "")) === "utama";
+}
+
+async function findPrimaryAccount(userId: string): Promise<{ id: string; name: string; type: string } | null> {
+  const { data, error } = await getAccountsBaseQuery(userId, "*");
+  if (error) throw error;
+  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  const row = rows.find(accountHasPrimaryFlag) ?? (rows.length === 1 ? rows[0] : null);
+  if (!row) return null;
+  return { id: String(row.id), name: String(row.name), type: String(row.type ?? "") };
+}
+
+async function findLastDebtPaymentAccount(userId: string, debtType: DebtType): Promise<{ id: string; name: string; type: string } | null> {
+  const rows = await getOpenDebts(userId);
+  const debtIds = rows
+    .filter((row) => {
+      const hasTypeField = rowHasDebtTypeField(row);
+      if (hasTypeField) return isDebtTypeRow(row, debtType === "debt" ? "hutang" : "piutang");
+      return debtType === "debt";
+    })
+    .map((row) => String(row.id ?? ""))
+    .filter(Boolean);
+  if (debtIds.length === 0) return null;
+
+  const { data, error } = await supabase
+    .from("debt_payments")
+    .select("account_id,date")
+    .eq("user_id", userId)
+    .in("debt_id", debtIds)
+    .not("account_id", "is", null)
+    .order("date", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const accountId = String(((data ?? []) as Array<Record<string, JsonValue>>)[0]?.account_id ?? "");
+  if (!accountId) return null;
+  return await getAccountById(userId, accountId);
+}
+
+async function resolveDebtPaymentAccount(userId: string, debtType: DebtType, accountName: string | null): Promise<{ account: { id: string; name: string; type: string } | null; status: string; requestedName: string | null }> {
+  if (accountName) {
+    const account = await findAccount(userId, accountName);
+    return { account, status: account ? "explicit" : "not_found", requestedName: accountName };
+  }
+
+  const lastPaymentAccount = await findLastDebtPaymentAccount(userId, debtType);
+  if (lastPaymentAccount) return { account: lastPaymentAccount, status: "last_payment", requestedName: null };
+
+  const primaryAccount = await findPrimaryAccount(userId);
+  if (primaryAccount) return { account: primaryAccount, status: "primary", requestedName: null };
+
+  return { account: null, status: "needs_account", requestedName: null };
+}
+
+function getDebtPaidField(row: Record<string, JsonValue>): string | null {
+  return "paid_amount" in row
+    ? "paid_amount"
+    : "paid" in row
+    ? "paid"
+    : "amount_paid" in row
+    ? "amount_paid"
+    : "total_paid" in row
+    ? "total_paid"
+    : "paid_total" in row
+    ? "paid_total"
+    : null;
+}
+
+function getDebtDisplayName(row: Record<string, JsonValue>, fallback: string): string {
+  const name = getDebtName(row);
+  if (name && name !== "-") return name;
+  return String(row.party_name ?? fallback);
+}
+
+function buildDebtPaymentSuccessReply(debtType: DebtType, debtName: string, amount: number, newRemaining: number, newPaidTotal: number): string {
+  const debtLabel = debtType === "debt" ? "Hutang" : "Piutang";
+  if (newRemaining === 0) {
+    return [
+      `✅ *${debtLabel} Lunas*`,
+      "",
+      "━━━━━━━━━━━━━━",
+      `📌 ${debtLabel}:`,
+      `*${debtName}*`,
+      "",
+      "💰 Total Dibayar:",
+      `*${formatIDR(newPaidTotal)}*`,
+      "",
+      `🎉 Selamat, ${debtLabel.toLowerCase()} sudah lunas.`,
+    ].join("\n");
+  }
+
+  return [
+    `✅ *Pembayaran ${debtLabel} Berhasil*`,
+    "",
+    "━━━━━━━━━━━━━━",
+    `📌 ${debtLabel}:`,
+    `*${debtName}*`,
+    "",
+    "💰 Dibayar:",
+    `*${formatIDR(amount)}*`,
+    "",
+    "🧾 Sisa:",
+    `*${formatIDR(newRemaining)}*`,
+  ].join("\n");
+}
+
+async function processDebtPayment(input: {
+  userId: string;
+  rawMessage: string;
+  debtType: DebtType;
+  debt: Record<string, JsonValue>;
+  amount: number;
+  account: { id: string; name: string; type: string };
+  date: string;
+  paymentSource: "number" | "name";
+  selectorName: string;
+}): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const { userId, rawMessage, debtType, debt, amount, account, date, paymentSource, selectorName } = input;
+  const totalAmount = getDebtTotalAmount(debt);
+  const paidTotal = getDebtPaidAmount(debt);
+  const remaining = Math.max(0, totalAmount - paidTotal);
+  const debtId = String(debt.id ?? "");
+  const debtName = getDebtDisplayName(debt, selectorName);
+
+  if (amount > remaining) {
+    return {
+      reply: `⚠️ Nominal melebihi sisa hutang.\n\nSisa hutang: ${formatIDR(remaining)}`,
+      parsedLog: { command: "debt_payment", status: "amount_exceeds_remaining", debtId, amount, accountId: account.id, paymentSource },
+    };
+  }
+
+  const txType = debtType === "debt" ? "expense" : "income";
+  const { data: paymentTx, error: paymentTxErr } = await supabase.from("transactions").insert({
+    user_id: userId,
+    date,
+    type: txType,
+    account_id: account.id,
+    amount,
+    title: `${debtType === "debt" ? "Bayar hutang" : "Bayar piutang"} ${debtName}`,
+    notes: debtType === "debt" ? `WhatsApp debt payment: ${rawMessage}` : `WhatsApp receivable payment: ${rawMessage}`,
+  }).select("id").single();
+  if (paymentTxErr) throw paymentTxErr;
+
+  await createDebtPayment({
+    userId,
+    debtId,
+    accountId: account.id,
+    transactionId: String(paymentTx.id),
+    amount,
+    date,
+    notes: `WhatsApp: ${rawMessage}`,
+  });
+
+  const newPaidTotal = paidTotal + amount;
+  const newRemaining = Math.max(0, totalAmount - newPaidTotal);
+  const nextStatus = newRemaining === 0 ? "paid" : "ongoing";
+  const paidField = getDebtPaidField(debt);
+  if (!paidField) {
+    return { reply: "❌ Kolom pembayaran hutang tidak ditemukan di schema.", parsedLog: { command: "debt_payment", status: "payment_field_not_found", debtId, amount, accountId: account.id, paymentSource } };
+  }
+  console.log("[DEBT UPDATE FIELD]", { field: paidField, value: newPaidTotal });
+  const debtUpdate: Record<string, JsonValue> = { [paidField]: newPaidTotal };
+  if ("status" in debt) debtUpdate.status = nextStatus;
+  const { error: updateDebtErr } = await supabase.from("debts").update(debtUpdate).eq("id", debtId).eq("user_id", userId);
+  if (updateDebtErr) throw updateDebtErr;
+
+  console.log("[DEBT PAYMENT]", {
+    debtId,
+    amount,
+    paymentSource,
+    accountName: account.name,
+  });
+
+  return {
+    reply: buildDebtPaymentSuccessReply(debtType, debtName, amount, newRemaining, newPaidTotal),
+    parsedLog: { command: "debt_payment", debtId, amount, accountId: account.id, paymentSource },
+  };
+}
+
 async function createDebtPayment(input: {
   userId: string;
   debtId: string;
@@ -5063,7 +5337,7 @@ function formatDebtDueDate(row: any): string {
   return formatDebtDateLocal(String(due));
 }
 
-async function findLastDisplayedDebtList(userId: string): Promise<Array<Record<string, JsonValue>> | null> {
+async function findLastDisplayedDebtList(userId: string, debtType?: DebtType): Promise<Array<Record<string, JsonValue>> | null> {
   const { data, error } = await supabase
     .from("whatsapp_message_logs")
     .select("parsed,created_at")
@@ -5071,9 +5345,17 @@ async function findLastDisplayedDebtList(userId: string): Promise<Array<Record<s
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) throw error;
+  const expectedLegacyCommand = debtType === "receivable" ? "piutang_list" : "hutang_list";
+  const expectedType = debtType === "receivable" ? "piutang" : debtType === "debt" ? "hutang" : null;
   for (const row of (data ?? []) as Array<Record<string, JsonValue>>) {
     const parsed = row.parsed as Record<string, JsonValue> | null;
-    if (!parsed || String(parsed.command ?? "") !== "hutang_list") continue;
+    if (!parsed) continue;
+    const command = String(parsed.command ?? "");
+    const parsedType = String(parsed.debtType ?? parsed.type ?? "");
+    const matchesCommand = command === "debt_list"
+      ? !expectedType || parsedType === expectedType || parsedType === debtType
+      : command === expectedLegacyCommand || (!debtType && (command === "hutang_list" || command === "piutang_list"));
+    if (!matchesCommand) continue;
     const displayedDebts = parsed.displayedDebts as JsonValue;
     if (Array.isArray(displayedDebts)) return displayedDebts as Array<Record<string, JsonValue>>;
   }
@@ -5171,8 +5453,8 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
 
     const title = type === "hutang" ? "💳 *Hutang Aktif*" : "📒 *Piutang Aktif*";
     const emptyText = type === "hutang" ? "ℹ️ Belum ada hutang aktif." : "ℹ️ Belum ada piutang aktif.";
-    const command = type === "hutang" ? "hutang_list" : "piutang_list";
-    if (filteredRows.length === 0) return { reply: `${title}\n\n━━━━━━━━━━━━━━\n${emptyText}`, parsedLog: { command, displayedDebts: [] } };
+    const command = "debt_list";
+    if (filteredRows.length === 0) return { reply: `${title}\n\n━━━━━━━━━━━━━━\n${emptyText}`, parsedLog: { command, debtType: type, displayedDebts: [] } };
 
     const displayedDebts = filteredRows.map((row, i) => {
       const totalAmount = getDebtTotalAmount(row);
@@ -5183,8 +5465,11 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
       return { no: i + 1, id: String(row.id ?? ""), name: getDebtName(row), totalAmount, paidAmount, remainingAmount, dueDate };
     });
     const lines = displayedDebts.map((item) => `${item.no}. *${item.name}*\n💰 Total: *${formatIDR(item.totalAmount)}*\n💸 Dibayar: *${formatIDR(item.paidAmount)}*\n🧾 Sisa: *${formatIDR(item.remainingAmount)}*\n📅 Jatuh Tempo: *${item.dueDate}*`);
-    const editHint = type === "hutang" ? `\n\n━━━━━━━━━━━━━━\n✏️ Edit:\n• edit hutang 1 200rb\n• edit hutang 2 500000\n\n🗑️ Hapus:\n• hapus hutang 1` : "";
-    return { reply: `${title}\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}${editHint}`, parsedLog: { command, displayedDebts } };
+    const paymentHint = type === "hutang"
+      ? `\n\n━━━━━━━━━━━━━━\n💸 Bayar:\n• bayar hutang 1 100000\n• bayar hutang 2 50000`
+      : `\n\n━━━━━━━━━━━━━━\n💸 Bayar:\n• bayar piutang 1 100000\n• bayar piutang 2 50000`;
+    const editHint = type === "hutang" ? `\n\n✏️ Edit:\n• edit hutang 1 200rb\n\n🗑️ Hapus:\n• hapus hutang 1` : "";
+    return { reply: `${title}\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}${paymentHint}${editHint}`, parsedLog: { command, debtType: type, displayedDebts } };
   }
 
   const editMatch = normalized.match(/^edit\s+hutang\s+(\d+)\s+(.+)$/);
@@ -5250,6 +5535,78 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
       throw error;
     }
     return { reply: `🗑️ *Hutang Berhasil Dihapus*\n\n━━━━━━━━━━━━━━\n📌 Nama: *${String(selected.name ?? "-")}*\n💰 Nominal: *${formatIDR(Number(selected.totalAmount ?? 0))}*`, parsedLog: { command: "hapus_hutang", status: "success", number } };
+  }
+
+  const parsedPayment = parseDebtPaymentCommand(rawMessage);
+  if (parsedPayment) {
+    const accountResult = await resolveDebtPaymentAccount(userId, parsedPayment.debtType, parsedPayment.accountName);
+    if (!accountResult.account) {
+      if (accountResult.status === "not_found") {
+        return {
+          reply: `⚠️ Akun tidak ditemukan: ${accountResult.requestedName}`,
+          parsedLog: { command: "debt_payment", status: "account_not_found", amount: parsedPayment.amount, paymentSource: parsedPayment.paymentSource, accountName: accountResult.requestedName },
+        };
+      }
+      const typeWord = parsedPayment.debtType === "debt" ? "hutang" : "piutang";
+      return {
+        reply: [`⚠️ *Akun Belum Bisa Ditentukan*`, "", "Tambahkan akun di belakang command:", `• bayar ${typeWord} ${parsedPayment.selector} ${parsedPayment.amount} cash`, `• bayar ${typeWord} ${parsedPayment.selector} ${parsedPayment.amount} seabank`].join("\n"),
+        parsedLog: { command: "debt_payment", status: "account_required", amount: parsedPayment.amount, paymentSource: parsedPayment.paymentSource },
+      };
+    }
+
+    let debt: Record<string, JsonValue> | null = null;
+    if (parsedPayment.paymentSource === "number") {
+      const displayedDebts = await findLastDisplayedDebtList(userId, parsedPayment.debtType);
+      console.log("[DISPLAYED DEBTS]", displayedDebts);
+      if (!displayedDebts) {
+        const typeWord = parsedPayment.debtType === "debt" ? "hutang" : "piutang";
+        return { reply: `⚠️ *Belum Ada List ${typeWord === "hutang" ? "Hutang" : "Piutang"}*\n\nKetik:\n*${typeWord}*`, parsedLog: { command: "debt_payment", status: "list_not_found", amount: parsedPayment.amount, accountId: accountResult.account.id, paymentSource: "number" } };
+      }
+      const selected = displayedDebts.find((item) => Number((item as Record<string, JsonValue>).no ?? 0) === parsedPayment.selectorNumber) as Record<string, JsonValue> | undefined;
+      if (!selected) {
+        return { reply: `❌ *Nomor ${parsedPayment.debtType === "debt" ? "Hutang" : "Piutang"} Tidak Ditemukan*`, parsedLog: { command: "debt_payment", status: "number_not_found", number: parsedPayment.selectorNumber, amount: parsedPayment.amount, accountId: accountResult.account.id, paymentSource: "number" } };
+      }
+      debt = await findOpenDebtById(userId, String(selected.id ?? ""), parsedPayment.debtType);
+      if (!debt) {
+        return { reply: "⚠️ Data hutang/piutang tidak ditemukan.", parsedLog: { command: "debt_payment", status: "debt_not_found", debtId: String(selected.id ?? ""), amount: parsedPayment.amount, accountId: accountResult.account.id, paymentSource: "number" } };
+      }
+    } else {
+      const matches = await findOpenDebtsByParty(userId, parsedPayment.debtType, parsedPayment.selector);
+      if (matches.length === 0) {
+        return { reply: "⚠️ Data hutang/piutang tidak ditemukan.", parsedLog: { command: "debt_payment", status: "debt_not_found", amount: parsedPayment.amount, accountId: accountResult.account.id, paymentSource: "name" } };
+      }
+      if (matches.length > 1) {
+        const displayedDebts = await findLastDisplayedDebtList(userId, parsedPayment.debtType);
+        console.log("[DISPLAYED DEBTS]", displayedDebts);
+        const typeWord = parsedPayment.debtType === "debt" ? "hutang" : "piutang";
+        const suggestions = (displayedDebts ?? [])
+          .filter((item) => matches.some((match) => String(match.id ?? "") === String((item as Record<string, JsonValue>).id ?? "")))
+          .map((item) => `• bayar ${typeWord} ${Number((item as Record<string, JsonValue>).no ?? 0)} ${parsedPayment.amount}`)
+          .filter((line) => !line.includes(" 0 "));
+        const fallbackSuggestions = matches.map((_, index) => `• bayar ${typeWord} ${index + 1} ${parsedPayment.amount}`);
+        return {
+          reply: ["⚠️ *Ditemukan Lebih Dari Satu Hutang*", "", "Gunakan nomor:", "", ...(suggestions.length > 0 ? suggestions : fallbackSuggestions)].join("\n"),
+          parsedLog: { command: "debt_payment", status: "ambiguous_name", amount: parsedPayment.amount, accountId: accountResult.account.id, paymentSource: "name" },
+        };
+      }
+      debt = matches[0];
+    }
+
+    if (!debt) {
+      return { reply: "⚠️ Data hutang/piutang tidak ditemukan.", parsedLog: { command: "debt_payment", status: "debt_not_found", amount: parsedPayment.amount, accountId: accountResult.account.id, paymentSource: parsedPayment.paymentSource } };
+    }
+
+    return await processDebtPayment({
+      userId,
+      rawMessage,
+      debtType: parsedPayment.debtType,
+      debt,
+      amount: parsedPayment.amount,
+      account: accountResult.account,
+      date: parsedPayment.date,
+      paymentSource: parsedPayment.paymentSource,
+      selectorName: parsedPayment.selector,
+    });
   }
 
   const parsed = parseDebtCommand(rawMessage);
@@ -6555,10 +6912,16 @@ function buildMenuMessage(): string {
     "💳 *Hutang & Piutang*",
     "• hutang",
     "• piutang",
+    "",
+    "• bayar hutang 1 100000",
+    "• bayar hutang kredivo 100000",
+    "",
+    "• bayar piutang 1 50000",
+    "• bayar piutang andi 50000",
+    "",
     "• edit hutang 1 200rb",
     "• hapus hutang 1",
     "• tambah hutang shopee 100000 seabank",
-    "• bayar hutang shopee 50000 seabank",
     "",
     line(),
     "Ketik *contoh* untuk format lengkap.",
@@ -6649,8 +7012,13 @@ function buildExampleMessage(): string {
     "• 50rb x 3",
     "",
     "💳 *Hutang / Piutang*",
+    "• hutang",
+    "• piutang",
+    "• bayar hutang 1 100000",
+    "• bayar hutang kredivo 100000",
+    "• bayar piutang 1 50000",
+    "• bayar piutang andi 50000",
     "• tambah hutang shopee 100000 seabank",
-    "• bayar hutang shopee 50000 seabank",
   ].join("\n");
 }
 
