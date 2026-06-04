@@ -103,8 +103,9 @@ type ParsedDebtCommand = {
   debtType: DebtType;
   partyName: string;
   amount: number;
-  accountName: string;
+  accountName: string | null;
   date: string;
+  dueDate: string | null;
 };
 type ParsedDebtPaymentCommand = {
   debtType: DebtType;
@@ -3637,32 +3638,61 @@ function parseTransferMessage(message: string): ParsedTransfer | null {
 }
 
 function parseDebtCommand(message: string): ParsedDebtCommand | null {
-  const parts = message.trim().split(/\s+/);
-  if (parts.length < 5) return null;
+  const parts = message.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 4) return null;
   const action = normalizeText(parts[0]);
   const debtWord = normalizeText(parts[1]);
   if ((action !== "tambah" && action !== "bayar") || (debtWord !== "hutang" && debtWord !== "piutang")) return null;
   const debtType: DebtType = debtWord === "hutang" ? "debt" : "receivable";
 
-  let date = getTodayJakarta();
-  let workParts = [...parts];
-  const maybeDate = parseOptionalDateToken(workParts[workParts.length - 1]);
-  if (maybeDate) {
-    date = maybeDate;
-    workParts = workParts.slice(0, -1);
+  if (action === "bayar") {
+    let date = getTodayJakarta();
+    let workParts = [...parts];
+    const maybeDate = parseOptionalDateToken(workParts[workParts.length - 1]);
+    if (maybeDate) {
+      date = maybeDate;
+      workParts = workParts.slice(0, -1);
+    }
+
+    if (workParts.length < 5) return null;
+    const accountName = workParts[workParts.length - 1];
+    const core = workParts.slice(2, -1);
+    const amountIndex = core.findIndex((p) => parseAmount(p) > 0);
+    if (amountIndex <= 0) return null;
+
+    const partyName = core.slice(0, amountIndex).join(" ").trim();
+    const amount = parseAmount(core[amountIndex]);
+    if (!partyName || amount <= 0) return null;
+
+    return { action, debtType, partyName, amount, accountName, date, dueDate: null };
   }
 
-  if (workParts.length < 5) return null;
-  const accountName = workParts[workParts.length - 1];
-  const core = workParts.slice(2, -1);
-  const amountIndex = core.findIndex((p) => parseAmount(p) > 0);
+  const core = parts.slice(2);
+  const amountIndex = core.findIndex((part) => parseAmount(part) > 0);
   if (amountIndex <= 0) return null;
 
-  const partyName = core.slice(0, amountIndex).join(" ").trim();
   const amount = parseAmount(core[amountIndex]);
-  if (!partyName || amount <= 0) return null;
+  if (amount <= 0) return null;
 
-  return { action: action as DebtAction, debtType, partyName, amount, accountName, date };
+  let dueDate: string | null = null;
+  let dueDateIndex = -1;
+  for (let i = 0; i < core.length; i++) {
+    if (i === amountIndex) continue;
+    const parsedDate = parseFlexibleDate(core[i]);
+    if (parsedDate) {
+      dueDate = parsedDate;
+      dueDateIndex = i;
+      break;
+    }
+  }
+
+  const partyName = core.slice(0, amountIndex).join(" ").trim();
+  const accountName = dueDateIndex >= 0
+    ? core.slice(dueDateIndex + 1).join(" ").trim() || null
+    : core.slice(amountIndex + 1).join(" ").trim() || null;
+  if (!partyName) return null;
+
+  return { action, debtType, partyName, amount, accountName, date: getTodayJakarta(), dueDate };
 }
 
 
@@ -5574,6 +5604,98 @@ function formatDebtDueDate(row: any): string {
   return formatDebtDateLocal(String(due));
 }
 
+function getDebtDueDateField(row: Record<string, JsonValue>): string | null {
+  if ("due_date" in row) return "due_date";
+  if ("due_at" in row) return "due_at";
+  if ("jatuh_tempo" in row) return "jatuh_tempo";
+  if ("deadline" in row) return "deadline";
+  return null;
+}
+
+async function getDebtInsertSchemaSample(userId: string): Promise<Record<string, JsonValue> | null> {
+  const { data, error } = await supabase
+    .from("debts")
+    .select("*")
+    .eq("user_id", userId)
+    .limit(1);
+  if (error) throw error;
+  return ((data ?? []) as Array<Record<string, JsonValue>>)[0] ?? null;
+}
+
+async function insertDebtSchemaSafe(input: {
+  userId: string;
+  debtType: DebtType;
+  name: string;
+  amount: number;
+  dueDate: string;
+  accountId: string | null;
+  rawMessage: string;
+}): Promise<{ dueField: string; accountSaved: boolean }> {
+  const dueFields = ["due_date", "due_at", "jatuh_tempo", "deadline"];
+  const sample = await getDebtInsertSchemaSample(input.userId);
+  const hintedDueField = sample ? getDebtDueDateField(sample) : null;
+  const dueFieldCandidates = hintedDueField ? [hintedDueField] : dueFields;
+  const canSaveAccountBySample = Boolean(sample && "account_id" in sample);
+  let lastError: { code?: string; message?: string } | null = null;
+
+  for (const dueField of dueFieldCandidates) {
+    const accountModes = input.accountId && (!sample || canSaveAccountBySample) ? [true, false] : [false];
+    for (const saveAccount of accountModes) {
+      const payload: Record<string, JsonValue> = {
+        user_id: input.userId,
+        type: input.debtType,
+        party_name: input.name,
+        title: `${input.debtType === "debt" ? "Hutang" : "Piutang"} ${input.name}`,
+        date: getTodayJakarta(),
+        [dueField]: input.dueDate,
+        amount: input.amount,
+        paid_total: 0,
+        status: "ongoing",
+        notes: `WhatsApp: ${input.rawMessage}`,
+      };
+      if (saveAccount && input.accountId) payload.account_id = input.accountId;
+
+      const { error } = await supabase.from("debts").insert(payload);
+      if (!error) return { dueField, accountSaved: saveAccount && Boolean(input.accountId) };
+      lastError = error;
+      if (!isMissingColumnError(error)) throw error;
+    }
+  }
+
+  throw new Error(lastError?.message || "Kolom jatuh tempo hutang tidak ditemukan di schema.");
+}
+
+function buildMissingDebtDueDateReply(): string {
+  return [
+    "⚠️ *Jatuh Tempo Belum Disebutkan*",
+    "",
+    "Contoh:",
+    "",
+    "• tambah hutang paylater juni 298484 31/05",
+    "• tambah hutang kredivo 999000 01/07",
+  ].join("\n");
+}
+
+function buildAddDebtSuccessReply(input: { debtType: DebtType; name: string; amount: number; dueDate: string; accountName: string | null }): string {
+  const debtLabel = input.debtType === "debt" ? "Hutang" : "Piutang";
+  return [
+    `✅ *${debtLabel} Berhasil Dicatat*`,
+    "",
+    "━━━━━━━━━━━━━━",
+    "📌 Nama:",
+    `*${toTitleCase(input.name)}*`,
+    "",
+    "💰 Nominal:",
+    `*${formatIDR(input.amount)}*`,
+    "",
+    "📅 Jatuh Tempo:",
+    `*${formatEditDateForReply(input.dueDate)}*`,
+    "",
+    "🏦 Akun:",
+    `*${input.accountName ? toTitleCase(input.accountName) : "-"}*`,
+  ].join("\n");
+}
+
 async function findLastDisplayedDebtList(userId: string, debtType?: DebtType): Promise<Array<Record<string, JsonValue>> | null> {
   const { data, error } = await supabase
     .from("whatsapp_message_logs")
@@ -6013,45 +6135,67 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
   }
 
 
-  const account = await findAccount(userId, parsed.accountName);
-  if (!account) {
-    const reply = parsed.action === "bayar"
-      ? ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${parsed.accountName}*`, "", "Ketik:", "*akun*"].join("\n")
-      : `⚠️ Akun tidak ditemukan: ${parsed.accountName}`;
+  if (parsed.action === "tambah") {
+    if (!parsed.dueDate) {
+      return {
+        reply: buildMissingDebtDueDateReply(),
+        parsedLog: { command: "debt", action: "tambah", status: "missing_due_date", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+      };
+    }
+
+    let account: { id: string; name: string; type: string } | null = null;
+    if (parsed.accountName) {
+      account = await findAccount(userId, parsed.accountName);
+      if (!account) {
+        return {
+          reply: ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${parsed.accountName}*`, "", "Ketik:", "*akun*"].join("\n"),
+          parsedLog: { command: "debt", action: "tambah", status: "account_not_found", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, dueDate: parsed.dueDate, accountName: parsed.accountName },
+        };
+      }
+    }
+
+    console.log("[ADD DEBT PARSED]", {
+      debtType: parsed.debtType,
+      name: parsed.partyName,
+      amount: parsed.amount,
+      dueDate: parsed.dueDate,
+      accountName: account?.name ?? parsed.accountName ?? null,
+    });
+
+    const insertResult = await insertDebtSchemaSafe({
+      userId,
+      debtType: parsed.debtType,
+      name: parsed.partyName,
+      amount: parsed.amount,
+      dueDate: parsed.dueDate,
+      accountId: account?.id ?? null,
+      rawMessage,
+    });
+
     return {
-      reply,
-      parsedLog: { command: "debt", action: parsed.action, debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+      reply: buildAddDebtSuccessReply({
+        debtType: parsed.debtType,
+        name: parsed.partyName,
+        amount: parsed.amount,
+        dueDate: parsed.dueDate,
+        accountName: account?.name ?? null,
+      }),
+      parsedLog: { command: "debt", action: "tambah", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, dueDate: parsed.dueDate, dueField: insertResult.dueField, accountName: account?.name ?? parsed.accountName, accountSaved: insertResult.accountSaved },
     };
   }
 
-  if (parsed.action === "tambah") {
-    const { error: debtErr } = await supabase.from("debts").insert({
-      user_id: userId,
-      type: parsed.debtType,
-      party_name: parsed.partyName,
-      title: `${parsed.debtType === "debt" ? "Hutang" : "Piutang"} ${parsed.partyName}`,
-      date: parsed.date,
-      amount: parsed.amount,
-      paid_total: 0,
-      status: "ongoing",
-      notes: `WhatsApp: ${rawMessage}`,
-    });
-    if (debtErr) throw debtErr;
-
-    const { error: txErr } = await supabase.from("transactions").insert({
-      user_id: userId,
-      date: parsed.date,
-      type: "expense",
-      account_id: account.id,
-      amount: parsed.amount,
-      title: `${parsed.debtType === "debt" ? "Tambah hutang" : "Tambah piutang"} ${parsed.partyName}`,
-      notes: parsed.debtType === "debt" ? `WhatsApp debt add: ${rawMessage}` : `WhatsApp receivable add: ${rawMessage}`,
-    });
-    if (txErr) throw txErr;
-
+  if (!parsed.accountName) {
     return {
-      reply: [`✅ ${parsed.debtType === "debt" ? "Hutang" : "Piutang"} berhasil dicatat`, "", `Nama: ${parsed.partyName}`, `Nominal: ${formatIDR(parsed.amount)}`, `Akun: ${account.name}`].join("\n"),
-      parsedLog: { command: "debt", action: "tambah", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
+      reply: ["❌ *Akun Belum Disebutkan*", "", "Contoh:", "• bayar hutang shopee 25000 seabank", "• bayar piutang andi 50000 cash"].join("\n"),
+      parsedLog: { command: "debt", action: "bayar", status: "missing_account", debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount },
+    };
+  }
+
+  const account = await findAccount(userId, parsed.accountName);
+  if (!account) {
+    return {
+      reply: ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${parsed.accountName}*`, "", "Ketik:", "*akun*"].join("\n"),
+      parsedLog: { command: "debt", action: parsed.action, debtType: parsed.debtType, partyName: parsed.partyName, amount: parsed.amount, accountName: parsed.accountName },
     };
   }
 
