@@ -1275,12 +1275,21 @@ async function buildHistoryPageReply(
       : historyQuery.filterType === "title" && historyQuery.filterValue
         ? `ℹ️ *Data Kosong*\n\nTidak ada history dengan judul:\n*${historyQuery.filterValue}*`
         : "📚 Tidak ada history transaksi.";
+    console.log("[HISTORY SNAPSHOT SAVED]", {
+      filterType: effectiveHistoryQuery.filterType,
+      filterValue: effectiveHistoryQuery.filterValue ?? effectiveHistoryQuery.entityName ?? null,
+      page: result.page,
+      count: 0,
+    });
     return {
       reply: emptyReply,
       parsedLog: {
-        command: "history",
+        command: "history_list",
         page: result.page,
+        totalItems: result.totalCount,
         totalPages: result.totalPages,
+        filterType: effectiveHistoryQuery.filterType,
+        filterValue: effectiveHistoryQuery.filterValue ?? effectiveHistoryQuery.entityName ?? null,
         totalCount: result.totalCount,
         pageSize: result.pageSize,
         historyQuery: effectiveHistoryQuery,
@@ -1298,12 +1307,21 @@ async function buildHistoryPageReply(
     count: displayedTransactions.length,
     ids: displayedTransactions.map((x) => (x as Record<string, JsonValue>).id),
   });
+  console.log("[HISTORY SNAPSHOT SAVED]", {
+    filterType: effectiveHistoryQuery.filterType,
+    filterValue: effectiveHistoryQuery.filterValue ?? effectiveHistoryQuery.entityName ?? null,
+    page: result.page,
+    count: displayedTransactions.length,
+  });
   return {
     reply,
     parsedLog: {
-      command: "history",
+      command: "history_list",
       page: result.page,
+      totalItems: result.totalCount,
       totalPages: result.totalPages,
+      filterType: effectiveHistoryQuery.filterType,
+      filterValue: effectiveHistoryQuery.filterValue ?? effectiveHistoryQuery.entityName ?? null,
       totalCount: result.totalCount,
       pageSize: result.pageSize,
       historyQuery: effectiveHistoryQuery,
@@ -4236,6 +4254,7 @@ function parseLastTransactionQuickEditCommand(normalized: string): LastTransacti
   const editMatch = normalized.match(/^edit\s+(.+)$/);
   if (editMatch) {
     const value = String(editMatch[1] ?? "").trim();
+    if (/^\d+\s+/.test(value)) return null;
     const amount = extractNaturalAmountFromText(value);
     if (amount > 0) return { field: "amount", value: amount };
     return null;
@@ -4502,9 +4521,8 @@ async function getLastHistoryLog(userId: string, phone: string): Promise<Record<
 
   const historyLog = (logs ?? []).find((log) => {
     const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
-    return parsed?.command === "history" &&
-      Array.isArray(parsed?.displayedTransactions) &&
-      parsed.displayedTransactions.length > 0;
+    return (parsed?.command === "history_list" || parsed?.command === "history") &&
+      Array.isArray(parsed?.displayedTransactions);
   }) as Record<string, JsonValue> | undefined;
 
   console.log("[LAST HISTORY LOG FOUND]", {
@@ -4642,7 +4660,7 @@ async function getLatestInteractiveSession(
     const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
     const command = String(parsed?.command ?? "");
 
-    if (command === "history") {
+    if (command === "history_list" || command === "history") {
       const historyQuery = getHistoryQueryFromParsed(parsed);
       if (historyQuery) {
         return {
@@ -4790,10 +4808,28 @@ async function handleInteractiveNavigationCommand(
   };
 }
 
-async function getLastHistoryTransactions(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
+type LastHistorySelection = {
+  displayedTransactions: Array<Record<string, JsonValue>>;
+  filterType: string | null;
+  filterValue: string | null;
+  page: number | null;
+};
+
+async function getLastHistorySelection(userId: string, phone: string): Promise<LastHistorySelection> {
   const historyLog = await getLastHistoryLog(userId, phone);
   const parsed = (historyLog?.parsed ?? null) as Record<string, JsonValue> | null;
-  return (parsed?.displayedTransactions ?? []) as Array<Record<string, JsonValue>>;
+  const historyQuery = getHistoryQueryFromParsed(parsed);
+  return {
+    displayedTransactions: (parsed?.displayedTransactions ?? []) as Array<Record<string, JsonValue>>,
+    filterType: parsed?.filterType == null ? (historyQuery?.filterType ?? null) : String(parsed.filterType),
+    filterValue: parsed?.filterValue == null ? (historyQuery?.filterValue ?? historyQuery?.entityName ?? null) : String(parsed.filterValue),
+    page: parsed?.page == null ? null : Number(parsed.page),
+  };
+}
+
+async function getLastHistoryTransactions(userId: string, phone: string): Promise<Array<Record<string, JsonValue>>> {
+  const selection = await getLastHistorySelection(userId, phone);
+  return selection.displayedTransactions;
 }
 
 function findDisplayedTransactionByNumber(displayedTransactions: Array<Record<string, JsonValue>>, number: number): Record<string, JsonValue> | null {
@@ -4872,7 +4908,8 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     detectedType: parsedEdit.field,
   });
 
-  const displayedTransactions = await getLastHistoryTransactions(userId, phone);
+  const historySelection = await getLastHistorySelection(userId, phone);
+  const displayedTransactions = historySelection.displayedTransactions;
   if (displayedTransactions.length === 0) {
     return { reply: "⚠️ *Nomor History Tidak Ditemukan*\n\nGunakan:\n*history*", parsedLog: { command: "edit_transaction_failed", reason: "history_not_found" } };
   }
@@ -4882,6 +4919,11 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
   }
 
   const transactionId = String(selectedTransaction.id ?? "");
+  console.log("[EDIT FROM HISTORY]", {
+    historyFilter: historySelection.filterValue,
+    selectedNo: parsedEdit.number,
+    transactionId,
+  });
   const { data: txRow, error: txError } = await supabase
     .from("transactions")
     .select("id,title,amount,type,category_id,account_id,to_account_id")
@@ -4902,16 +4944,26 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     const newValue = Number(parsedEdit.value);
     const { error } = await supabase.from("transactions").update({ amount: newValue }).eq("id", transactionId).eq("user_id", userId);
     if (error) throw error;
+    const categoryLabel = String(selectedTransaction.categoryName ?? "-");
+    const titleLabel = String(txRow.title ?? selectedTransaction.title ?? "-");
     return {
       reply: [
-        "✏️ Transaksi Berhasil Diedit",
+        "✏️ *Nominal Berhasil Diubah*",
         "",
         "━━━━━━━━━━━━━━",
-        `No: ${parsedEdit.number}`,
-        "Nominal Baru:",
-        formatIDR(newValue),
+        "Kategori:",
+        `*${categoryLabel}*`,
+        "",
+        "Judul:",
+        `*${titleLabel}*`,
+        "",
+        "Sebelum:",
+        `*${formatIDR(oldValue)}*`,
+        "",
+        "Sesudah:",
+        `*${formatIDR(newValue)}*`,
       ].join("\n"),
-      parsedLog: { command: "edit_transaction", transactionId, field: "amount", oldValue, newValue },
+      parsedLog: { command: "edit_transaction", transactionId, field: "amount", oldValue, newValue, historyFilter: historySelection.filterValue, selectedNo: parsedEdit.number },
     };
   }
   if (parsedEdit.field === "title") {
@@ -7951,7 +8003,7 @@ Deno.serve(async (req: Request) => {
       normalized === "kategori" ||
       normalized === "list kategori" ||
       normalized.startsWith("tambah kategori ") ||
-      normalized.startsWith("edit kategori ") ||
+      (normalized.startsWith("edit kategori ") && !/^edit kategori \d+\s+.+$/i.test(normalized)) ||
       normalized.startsWith("hapus kategori ") ||
       normalized.startsWith("kategori tambah ") ||
       normalized.startsWith("kategori edit ") ||
