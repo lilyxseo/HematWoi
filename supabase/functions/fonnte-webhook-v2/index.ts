@@ -5677,8 +5677,9 @@ function buildMissingDebtDueDateReply(): string {
 }
 
 function buildAddDebtSuccessReply(input: { debtType: DebtType; name: string; amount: number; dueDate: string; accountName: string | null }): string {
-  const debtLabel = input.debtType === "debt" ? "Hutang" : "Piutang";
-  return [
+  const isDebt = input.debtType === "debt";
+  const debtLabel = isDebt ? "Hutang" : "Piutang";
+  const lines = [
     `✅ *${debtLabel} Berhasil Dicatat*`,
     "",
     "━━━━━━━━━━━━━━",
@@ -5690,10 +5691,21 @@ function buildAddDebtSuccessReply(input: { debtType: DebtType; name: string; amo
     "",
     "📅 Jatuh Tempo:",
     `*${formatEditDateForReply(input.dueDate)}*`,
+  ];
+
+  if (isDebt) {
+    lines.push("", "🏦 Akun:", `*${input.accountName ? toTitleCase(input.accountName) : "-"}*`);
+  }
+
+  lines.push(
     "",
-    "🏦 Akun:",
-    `*${input.accountName ? toTitleCase(input.accountName) : "-"}*`,
-  ].join("\n");
+    "Catatan:",
+    isDebt
+      ? "_Hutang tidak dihitung sebagai pengeluaran sampai kamu membayarnya._"
+      : "_Piutang tidak dihitung sebagai pemasukan sampai dibayar._",
+  );
+
+  return lines.join("\n");
 }
 
 async function findLastDisplayedDebtList(userId: string, debtType?: DebtType): Promise<Array<Record<string, JsonValue>> | null> {
@@ -6170,6 +6182,14 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
       dueDate: parsed.dueDate,
       accountId: account?.id ?? null,
       rawMessage,
+    });
+
+    console.log("[ADD DEBT NO TRANSACTION]", {
+      debtType: parsed.debtType,
+      name: parsed.partyName,
+      amount: parsed.amount,
+      dueDate: parsed.dueDate,
+      accountName: account?.name ?? parsed.accountName ?? null,
     });
 
     return {
