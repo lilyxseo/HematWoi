@@ -1152,10 +1152,10 @@ function buildHistoryMessage(
       toAccountName,
     });
     if (type === "transfer") {
-      return `${no}. *${formattedDate}*\n   Transfer ${accountName} → ${toAccountName} — ${title}\n   ↔ *${formatIDR(amount)}*`;
+      return `${no}. *${formattedDate}*\n   Transfer ${accountName} → ${toAccountName} — ${title}\n   ↔ *${formatIDR(amount)}* • *${accountName} → ${toAccountName}*`;
     }
     const sign = type === "income" ? "+" : "-";
-    return `${no}. *${formattedDate}*\n   ${categoryName} — ${title}\n   ${sign} *${formatIDR(amount)}*`;
+    return `${no}. *${formattedDate}*\n   ${categoryName} — ${title}\n   ${sign} *${formatIDR(amount)}* • *${accountName}*`;
   });
 
   const infoLines = [
@@ -3486,38 +3486,98 @@ async function getUserRecentTransactionsForLearning(userId: string): Promise<Arr
   return (data ?? []) as Array<Record<string, JsonValue>>;
 }
 
+async function getUserTitleMatchedTransactionsForLearning(userId: string, title: string): Promise<Array<Record<string, JsonValue>>> {
+  const normalizedTitle = normalizeHistoryTitle(title).normalized;
+  if (!normalizedTitle) return [];
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("title,category_id,account_id,type,inserted_at")
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .not("account_id", "is", null)
+    .not("title", "is", null)
+    .in("type", ["income", "expense"])
+    .ilike("title", `%${normalizedTitle}%`)
+    .order("inserted_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []) as Array<Record<string, JsonValue>>;
+}
+
+function mergeLearningRows(...groups: Array<Array<Record<string, JsonValue>>>): Array<Record<string, JsonValue>> {
+  const seen = new Set<string>();
+  const rows: Array<Record<string, JsonValue>> = [];
+  for (const group of groups) {
+    for (const row of group) {
+      const key = [row.title, row.category_id, row.account_id, row.type, row.inserted_at].map((value) => String(value ?? "")).join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+type AutoAccountPredictionReason = "title_match" | "category_match" | "fallback";
+type AutoAccountPrediction = { account: { id: string; name: string; type: string }; reason: AutoAccountPredictionReason; score: number };
+
+function getTitleMatchScore(input: { normalized: string; words: string[] }, history: { normalized: string; words: string[] }): number {
+  if (!input.normalized || !history.normalized) return 0;
+  if (history.normalized === input.normalized) return 100;
+  if (history.normalized.includes(input.normalized) || input.normalized.includes(history.normalized)) return 50;
+
+  const sharedKeywordCount = input.words.filter((word) => word.length >= 3 && history.words.includes(word)).length;
+  return sharedKeywordCount > 0 ? sharedKeywordCount * 50 : 0;
+}
+
 function findBestAccountFromHistory(
   inputTitle: string,
   categoryId: string | null,
   txType: NaturalTransactionType | null,
   rows: Array<Record<string, JsonValue>>,
-): { accountId: string; score: number } | null {
+): { accountId: string; score: number; reason: AutoAccountPredictionReason; matches: Array<Record<string, JsonValue>>; scores: Map<string, number> } | null {
   const input = normalizeHistoryTitle(inputTitle);
   if (!input.normalized) return null;
 
-  let best: { accountId: string; score: number } | null = null;
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+  const titleScoreByAccount = new Map<string, number>();
+  const categoryScoreByAccount = new Map<string, number>();
+  const matches: Array<Record<string, JsonValue>> = [];
+
+  for (const row of rows) {
     const historyTitle = String(row.title ?? "");
     const accountId = String(row.account_id ?? "").trim();
     if (!historyTitle || !accountId) continue;
+    if (txType && String(row.type ?? "") !== txType) continue;
 
     const history = normalizeHistoryTitle(historyTitle);
     if (!history.normalized) continue;
 
-    let score = 0;
-    if (history.normalized === input.normalized) score += 100;
-    if (history.normalized.includes(input.normalized)) score += 80;
-    if (input.normalized.includes(history.normalized)) score += 70;
-    score += input.words.filter((word) => history.words.includes(word)).length * 10;
-    if (categoryId && String(row.category_id ?? "") === categoryId) score += 40;
-    if (txType && String(row.type ?? "") === txType) score += 20;
-    score += Math.max(0, 10 - i * 0.05);
+    const titleScore = getTitleMatchScore(input, history);
+    const categoryScore = categoryId && String(row.category_id ?? "") === categoryId ? 10 : 0;
 
-    if (!best || score > best.score) best = { accountId, score };
+    if (titleScore > 0) {
+      const score = titleScore + categoryScore;
+      titleScoreByAccount.set(accountId, (titleScoreByAccount.get(accountId) ?? 0) + score);
+      matches.push({
+        title: historyTitle,
+        accountId,
+        categoryId: String(row.category_id ?? ""),
+        titleScore,
+        categoryScore,
+        score,
+      });
+    } else if (categoryScore > 0) {
+      categoryScoreByAccount.set(accountId, (categoryScoreByAccount.get(accountId) ?? 0) + categoryScore);
+    }
   }
 
-  if (!best || best.score < 30) return null;
+  const scores = titleScoreByAccount.size > 0 ? titleScoreByAccount : categoryScoreByAccount;
+  const reason: AutoAccountPredictionReason = titleScoreByAccount.size > 0 ? "title_match" : "category_match";
+  let best: { accountId: string; score: number; reason: AutoAccountPredictionReason; matches: Array<Record<string, JsonValue>>; scores: Map<string, number> } | null = null;
+  for (const [accountId, score] of scores.entries()) {
+    if (!best || score > best.score) best = { accountId, score, reason, matches, scores };
+  }
+
   return best;
 }
 
@@ -3527,16 +3587,80 @@ async function findAccountByTransactionHistory(
   categoryId: string | null,
   txType: NaturalTransactionType | null,
 ): Promise<{ id: string; name: string; type: string } | null> {
-  const rows = await getUserRecentTransactionsForLearning(userId);
-  const best = findBestAccountFromHistory(title, categoryId, txType, rows);
-  if (!best) return null;
+  return (await predictAccountForTransaction(userId, title, categoryId, txType))?.account ?? null;
+}
 
-  const { data, error } = await getAccountsBaseQuery(userId, "id,name,type,user_id")
-    .eq("id", best.accountId)
-    .maybeSingle();
+async function predictAccountForTransaction(
+  userId: string,
+  title: string,
+  categoryId: string | null,
+  txType: NaturalTransactionType | null,
+): Promise<AutoAccountPrediction | null> {
+  const [titleRows, recentRows] = await Promise.all([
+    getUserTitleMatchedTransactionsForLearning(userId, title),
+    getUserRecentTransactionsForLearning(userId),
+  ]);
+  const rows = mergeLearningRows(titleRows, recentRows);
+  const best = findBestAccountFromHistory(title, categoryId, txType, rows);
+  const accountIds = [...new Set([
+    ...(best ? [...best.scores.keys()] : []),
+    ...rows.map((row) => String(row.account_id ?? "").trim()).filter(Boolean),
+  ])];
+  const { data: accountRows, error } = accountIds.length > 0
+    ? await getAccountsBaseQuery(userId, "id,name,type,user_id").in("id", accountIds)
+    : { data: [], error: null };
   if (error) throw error;
-  if (!data) return null;
-  return { id: String(data.id), name: String(data.name), type: String(data.type ?? "") };
+
+  const accountMap = new Map<string, { id: string; name: string; type: string }>();
+  for (const row of (accountRows ?? []) as Array<Record<string, JsonValue>>) {
+    accountMap.set(String(row.id), { id: String(row.id), name: String(row.name), type: String(row.type ?? "") });
+  }
+
+  const scoreByName = new Map<string, number>();
+  if (best) {
+    for (const [accountId, score] of best.scores.entries()) {
+      const account = accountMap.get(accountId);
+      if (account) scoreByName.set(normalizeText(account.name), score);
+    }
+  }
+  console.log("[AUTO ACCOUNT TITLE MATCH]", {
+    title,
+    matches: best?.matches ?? [],
+  });
+  console.log("[AUTO ACCOUNT SCORES]", {
+    cashScore: scoreByName.get("cash") ?? 0,
+    seabankScore: scoreByName.get("seabank") ?? 0,
+    scores: Object.fromEntries(scoreByName.entries()),
+  });
+
+  if (best) {
+    const account = accountMap.get(best.accountId);
+    if (account) {
+      console.log("[AUTO ACCOUNT SELECTED]", { accountName: account.name, reason: best.reason });
+      return { account, reason: best.reason, score: best.score };
+    }
+  }
+
+  const fallbackAccount = await findAutoAccountFallback(userId);
+  if (!fallbackAccount) {
+    console.log("[AUTO ACCOUNT SELECTED]", { accountName: null, reason: "fallback" });
+    return null;
+  }
+  console.log("[AUTO ACCOUNT SELECTED]", { accountName: fallbackAccount.name, reason: "fallback" });
+  return { account: fallbackAccount, reason: "fallback", score: 0 };
+}
+
+async function findAutoAccountFallback(userId: string): Promise<{ id: string; name: string; type: string } | null> {
+  const primaryAccount = await findPrimaryAccount(userId);
+  if (primaryAccount) return primaryAccount;
+
+  const { data, error } = await getAccountsBaseQuery(userId, "id,name,type,user_id").order("name");
+  if (error) throw error;
+  const rows = (data ?? []) as Array<Record<string, JsonValue>>;
+  const cashRow = rows.find((row) => normalizeText(String(row.name ?? "")) === "cash");
+  const row = cashRow ?? rows[0] ?? null;
+  if (!row) return null;
+  return { id: String(row.id), name: String(row.name), type: String(row.type ?? "") };
 }
 
 async function findBestAccountByCategoryHistory(userId: string, categoryId: string): Promise<{ id: string; name: string; type: string } | null> {
@@ -8250,11 +8374,12 @@ Deno.serve(async (req: Request) => {
               const finalSmartTitle = smartCategory
                 ? cleanTransactionTitleWithCategoryPrefix(smartTx.originalTitle, smartTx.accountName ? [smartTx.accountName] : [], smartCategory.name)
                 : smartTx.title;
+              const smartAccountPrediction = smartTx.accountName
+                ? null
+                : await predictAccountForTransaction(userId, finalSmartTitle, smartCategory?.id ?? null, null);
               const smartAccount = smartTx.accountName
                 ? await findAccount(userId, smartTx.accountName)
-                : smartCategory
-                  ? await findBestAccountByCategoryHistory(userId, smartCategory.id) ?? await findAccountByTransactionHistory(userId, finalSmartTitle, smartCategory.id, null)
-                  : await findAccountByTransactionHistory(userId, finalSmartTitle, null, null);
+                : smartAccountPrediction?.account ?? null;
               if (smartTx.accountName && !smartAccount) {
                 reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${smartTx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
               } else if (!smartAccount) {
@@ -8291,6 +8416,7 @@ Deno.serve(async (req: Request) => {
                   const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type: smartType, category_id: smartCategory.id, account_id: smartAccount.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` }).select("id").single();
                   if (error) throw error;
                   parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: smartCategory.id, categoryName: smartCategory.name, accountId: smartAccount.id, accountName: smartAccount.name, title: finalSmartTitle, amount: smartTx.amount, date: smartTx.date });
+                  if (smartAccountPrediction) parsedLog.autoAccountReason = smartAccountPrediction.reason;
                   const b = await getRealtimeBalanceSummary(userId);
                   const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${finalSmartTitle}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`];
                   if (smartType === "expense") {
@@ -8411,11 +8537,12 @@ Deno.serve(async (req: Request) => {
                   }
                 }
                 const finalNaturalTitle = cleanTransactionTitleWithCategoryPrefix(naturalTx.originalTitle, accounts.map((a) => a.name), category.name);
+                const naturalAccountPrediction = naturalTx.accountName
+                  ? null
+                  : await predictAccountForTransaction(userId, finalNaturalTitle, category.id, finalType);
                 const account = naturalTx.accountName
                   ? accounts.find((a) => a.name.toLowerCase() === naturalTx.accountName!.toLowerCase()) ?? null
-                  : keywordCategory
-                    ? await findBestAccountByCategoryHistory(userId, category.id) ?? await findAccountByTransactionHistory(userId, finalNaturalTitle, category.id, finalType)
-                    : await findAccountByTransactionHistory(userId, finalNaturalTitle, category.id, finalType);
+                  : naturalAccountPrediction?.account ?? null;
                 if (naturalTx.accountName && !account) {
                   reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${naturalTx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
                 } else if (!account) {
@@ -8444,6 +8571,7 @@ Deno.serve(async (req: Request) => {
                   }).select("id").single();
                   if (error) throw error;
                   parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalNaturalTitle, amount: naturalTx.amount, date: naturalTx.date });
+                  if (naturalAccountPrediction) parsedLog.autoAccountReason = naturalAccountPrediction.reason;
                   const b = await getRealtimeBalanceSummary(userId);
                   const lines = [
                     finalType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
@@ -8483,11 +8611,12 @@ Deno.serve(async (req: Request) => {
             const finalSmartTitle = category
               ? cleanTransactionTitleWithCategoryPrefix(smartTx.originalTitle, smartTx.accountName ? [smartTx.accountName] : [], category.name)
               : smartTx.title;
+            const smartAccountPrediction = smartTx.accountName
+              ? null
+              : await predictAccountForTransaction(userId, finalSmartTitle, category?.id ?? null, null);
             const account = smartTx.accountName
               ? await findAccount(userId, smartTx.accountName)
-              : category
-                ? await findBestAccountByCategoryHistory(userId, category.id) ?? await findAccountByTransactionHistory(userId, finalSmartTitle, category.id, null)
-                : await findAccountByTransactionHistory(userId, finalSmartTitle, null, null);
+              : smartAccountPrediction?.account ?? null;
             if (smartTx.accountName && !account) {
               reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${smartTx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
             } else if (!account) {
@@ -8522,6 +8651,7 @@ Deno.serve(async (req: Request) => {
                 const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: smartTx.date, type, category_id: category.id, account_id: account.id, amount: smartTx.amount, title: finalSmartTitle, notes: `WhatsApp: ${message}` }).select("id").single();
                 if (error) throw error;
                 parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalSmartTitle, amount: smartTx.amount, date: smartTx.date });
+                if (smartAccountPrediction) parsedLog.autoAccountReason = smartAccountPrediction.reason;
                 const b = await getRealtimeBalanceSummary(userId);
                 const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${finalSmartTitle}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`];
                 if (type === "expense") {
