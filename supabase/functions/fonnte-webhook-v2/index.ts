@@ -4317,7 +4317,10 @@ async function completePendingTransaction(userId: string, session: PendingTransa
   });
 
   const parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: session.title, amount: session.amount, date: session.date });
-  const reply = [type === "income" ? "✅ *Pemasukan Tercatat*" : "✅ *Pengeluaran Tercatat*", "", `Kategori: *${category.name}*`, `Judul: *${session.title}*`, `Nominal: *${formatIDR(session.amount)}*`, `Akun: *${account.name}*`].join("\n");
+  const budgetSection = await buildTransactionBudgetSection({ userId, categoryId: category.id, amount: session.amount, transactionDate: session.date });
+  const lines = [type === "income" ? "✅ *Pemasukan Tercatat*" : "✅ *Pengeluaran Tercatat*", "", `Kategori: *${category.name}*`, `Judul: *${session.title}*`, `Nominal: *${formatIDR(session.amount)}*`, `Akun: *${account.name}*`];
+  if (budgetSection) lines.push("", budgetSection);
+  const reply = lines.join("\n");
   return { reply, parsedLog };
 }
 
@@ -6567,6 +6570,37 @@ function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget
   return lines;
 }
 
+async function buildTransactionBudgetSection(input: {
+  userId: string;
+  categoryId: string | null;
+  amount: number;
+  transactionDate: string;
+}): Promise<string> {
+  const { userId, categoryId, transactionDate } = input;
+  void input.amount;
+  let section = "";
+
+  if (categoryId) {
+    const category = await getCategoryById(userId, categoryId);
+    if (category) {
+      const [monthlyBudget, weeklyBudget] = await Promise.all([
+        getMonthlyBudgetInfo(userId, category.name, transactionDate),
+        getWeeklyBudgetInfo(userId, category.name, transactionDate),
+      ]);
+      section = buildCombinedBudgetLines(monthlyBudget, weeklyBudget).join("\n");
+    }
+  }
+
+  console.log("[TRANSACTION BUDGET SECTION]", {
+    userId,
+    categoryId,
+    transactionDate,
+    hasBudgetSection: Boolean(section),
+  });
+
+  return section;
+}
+
 const BUDGET_AMOUNT_FIELDS = ["limit_amount", "budget_limit", "budget_amount", "target_amount", "planned_amount", "amount_planned", "planned", "amount", "total", "value"];
 const BUDGET_PERIOD_FIELDS = ["period_month", "month", "period", "budget_month"];
 const BUDGET_NAME_FIELDS = ["name", "title", "label"];
@@ -8418,9 +8452,11 @@ Deno.serve(async (req: Request) => {
                   parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: smartCategory.id, categoryName: smartCategory.name, accountId: smartAccount.id, accountName: smartAccount.name, title: finalSmartTitle, amount: smartTx.amount, date: smartTx.date });
                   if (smartAccountPrediction) parsedLog.autoAccountReason = smartAccountPrediction.reason;
                   const b = await getRealtimeBalanceSummary(userId);
+                  const budgetSection = await buildTransactionBudgetSection({ userId, categoryId: smartCategory.id, amount: smartTx.amount, transactionDate: smartTx.date });
                   const lines = [smartType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${smartCategory.name}`, `Judul: ${finalSmartTitle}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${smartAccount.name}`];
                   if (smartType === "expense") {
                     lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
+                    if (budgetSection) lines.push("", budgetSection);
                     const warnings = await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: smartCategory.name });
                     console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: smartCategory.name });
                     if (warnings.length > 0) lines.push("", ...warnings);
@@ -8451,6 +8487,7 @@ Deno.serve(async (req: Request) => {
             parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: tx.title, amount: tx.amount, date: tx.date });
 
             const b = await getRealtimeBalanceSummary(userId);
+            const budgetSection = await buildTransactionBudgetSection({ userId, categoryId: category.id, amount: tx.amount, transactionDate: tx.date });
             const baseLines = [
               type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
               "",
@@ -8467,16 +8504,7 @@ Deno.serve(async (req: Request) => {
             ];
 
             if (type === "expense") {
-              const [monthlyBudget, weeklyBudget] = await Promise.all([
-                getMonthlyBudgetInfo(userId, category.name, tx.date),
-                getWeeklyBudgetInfo(userId, category.name, tx.date),
-              ]);
-
-              const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
-
-              if (budgetLines.length > 0) {
-                baseLines.push("", ...budgetLines);
-              }
+              if (budgetSection) baseLines.push("", budgetSection);
               const warnings = await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name });
               console.log("[SMART WARNING]", { warnings, transactionAmount: tx.amount, categoryName: category.name });
               if (warnings.length > 0) baseLines.push("", ...warnings);
@@ -8573,6 +8601,7 @@ Deno.serve(async (req: Request) => {
                   parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalNaturalTitle, amount: naturalTx.amount, date: naturalTx.date });
                   if (naturalAccountPrediction) parsedLog.autoAccountReason = naturalAccountPrediction.reason;
                   const b = await getRealtimeBalanceSummary(userId);
+                  const budgetSection = await buildTransactionBudgetSection({ userId, categoryId: category.id, amount: naturalTx.amount, transactionDate: naturalTx.date });
                   const lines = [
                     finalType === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat",
                     "",
@@ -8588,12 +8617,7 @@ Deno.serve(async (req: Request) => {
                     `Total: ${formatIDR(b.total)}`,
                   ];
                   if (finalType === "expense") {
-                    const [monthlyBudget, weeklyBudget] = await Promise.all([
-                      getMonthlyBudgetInfo(userId, category.name, naturalTx.date),
-                      getWeeklyBudgetInfo(userId, category.name, naturalTx.date),
-                    ]);
-                    const budgetLines = buildCombinedBudgetLines(monthlyBudget, weeklyBudget);
-                    if (budgetLines.length > 0) lines.push("", ...budgetLines);
+                    if (budgetSection) lines.push("", budgetSection);
                     const warnings = await buildSmartWarnings({ userId, date: naturalTx.date, amount: naturalTx.amount, categoryName: category.name });
                     console.log("[SMART WARNING]", { warnings, transactionAmount: naturalTx.amount, categoryName: category.name });
                     if (warnings.length > 0) lines.push("", ...warnings);
@@ -8653,9 +8677,11 @@ Deno.serve(async (req: Request) => {
                 parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalSmartTitle, amount: smartTx.amount, date: smartTx.date });
                 if (smartAccountPrediction) parsedLog.autoAccountReason = smartAccountPrediction.reason;
                 const b = await getRealtimeBalanceSummary(userId);
+                const budgetSection = await buildTransactionBudgetSection({ userId, categoryId: category.id, amount: smartTx.amount, transactionDate: smartTx.date });
                 const lines = [type === "income" ? "✅ Pemasukan tercatat" : "✅ Pengeluaran tercatat", "", `Kategori: ${category.name}`, `Judul: ${finalSmartTitle}`, `Nominal: ${formatIDR(smartTx.amount)}`, `Akun: ${account.name}`];
                 if (type === "expense") {
                   lines.push("", "💰 Saldo Saat Ini", `Cash: ${formatIDR(b.cash)}`, `Non Cash: ${formatIDR(b.nonCash)}`, `Total: ${formatIDR(b.total)}`);
+                  if (budgetSection) lines.push("", budgetSection);
                   const warnings = await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: category.name });
                   console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: category.name });
                   if (warnings.length > 0) lines.push("", ...warnings);
