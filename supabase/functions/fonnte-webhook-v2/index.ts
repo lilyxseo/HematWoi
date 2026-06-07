@@ -7530,6 +7530,7 @@ function buildMenuMessage(): string {
     "",
     "📊 *Laporan*",
     "• summary",
+    "• history hari ini",
     "• pengeluaran harian",
     "• budget",
     "",
@@ -7669,6 +7670,8 @@ function buildExampleMessage(): string {
     "• akun cash",
     "",
     "📊 *Laporan*",
+    "• summary",
+    "• history hari ini",
     "• pengeluaran harian",
     "• pengeluaran per hari",
     "",
@@ -8028,6 +8031,22 @@ Deno.serve(async (req: Request) => {
       summaryQuery = await applyTransactionNotDeleted(summaryQuery);
       const { data: txs, error } = await summaryQuery;
       if (error) throw error;
+
+      let historyQuery = supabase
+        .from("transactions")
+        .select("id,title,amount,category_id,account_id,date,inserted_at", { count: "exact" })
+        .eq("user_id", userId)
+        .eq("type", "expense")
+        .eq("date", today)
+        .order("inserted_at", { ascending: false })
+        .limit(10);
+      historyQuery = await applyTransactionNotDeleted(historyQuery);
+      const { data: historyRowsRaw, error: historyError, count: expenseHistoryCount } = await historyQuery;
+      if (historyError) throw historyError;
+      const historyRows = (historyRowsRaw ?? []) as Array<Record<string, JsonValue>>;
+      const historyCount = expenseHistoryCount ?? historyRows.length;
+      const { categoryMap: historyCategoryMap, accountMap: historyAccountMap } = await getHistoryDisplayMaps(historyRows);
+
       let income = 0;
       let expense = 0;
       const catMap = new Map<string, number>();
@@ -8041,12 +8060,34 @@ Deno.serve(async (req: Request) => {
           if (cid) catMap.set(cid, (catMap.get(cid) ?? 0) + amount);
         }
       }
+      console.log("[SUMMARY HISTORY]", {
+        count: historyCount,
+        totalExpense: expense,
+      });
+
       let biggestCategory = "-";
       if (catMap.size > 0) {
         const [topId] = [...catMap.entries()].sort((a, b) => b[1] - a[1])[0];
         const { data: cat } = await supabase.from("categories").select("name").eq("id", topId).maybeSingle();
         biggestCategory = cat?.name ?? "-";
       }
+      const biggestCategoryAmount = catMap.size > 0 ? Math.max(...catMap.values()) : 0;
+      const historyLines = historyRows.length > 0
+        ? historyRows.map((tx, index) => {
+          const categoryName = historyCategoryMap.get(String(tx.category_id ?? "")) ?? "-";
+          const title = String(tx.title ?? "-").trim() || "-";
+          const accountName = historyAccountMap.get(String(tx.account_id ?? "")) ?? "-";
+          return `${index + 1}. ${categoryName} — ${title}
+   ${money(Number(tx.amount ?? 0))} • ${bold(accountName)}`;
+        })
+        : ["ℹ️ Belum ada pengeluaran hari ini."];
+      if (historyCount > historyRows.length) {
+        historyLines.push("", italic(`+${historyCount - historyRows.length} transaksi lainnya. Ketik *history hari ini* untuk detail.`));
+      }
+
+      const activeWarnings = expense > 0
+        ? await buildSmartWarnings({ userId, date: today, amount: 0, categoryName: biggestCategory === "-" ? "Lainnya" : biggestCategory })
+        : [];
       const summaryLines = [
         "📊 *Summary Hari Ini*",
         "",
@@ -8056,15 +8097,20 @@ Deno.serve(async (req: Request) => {
         `🧾 Transaksi: ${bold(`${(txs ?? []).length} data`)}`,
         "",
         "🏆 *Kategori Terbesar*",
-        `${biggestCategory} — ${money(catMap.size > 0 ? Math.max(...catMap.values()) : 0)}`,
+        `${biggestCategory} — ${money(biggestCategoryAmount)}`,
         "",
+        line(),
+        "📚 *History Pengeluaran Hari Ini*",
+        "",
+        ...historyLines,
+        "",
+        line(),
         "💡 *Insight*",
         expense > income ? "Pengeluaran hari ini perlu dijaga." : "Pengeluaran hari ini masih terkontrol.",
+        "",
+        "⚠️ *Warning Aktif*",
+        ...(activeWarnings.length > 0 ? activeWarnings.map((w) => `• ${w}`) : ["ℹ️ Tidak ada warning aktif."]),
       ];
-      if (expense > 0) {
-        const activeWarnings = await buildSmartWarnings({ userId, date: today, amount: 0, categoryName: biggestCategory === "-" ? "Lainnya" : biggestCategory });
-        if (activeWarnings.length > 0) summaryLines.push("", "⚠️ Warning Aktif", ...activeWarnings.map((w) => `• ${w}`));
-      }
       reply = summaryLines.join("\n");
     } else if (normalized.startsWith("harian ")) {
       console.log("[ROUTE MATCH]", { route: "category_daily_report", normalized, isGroup, contextKey });
