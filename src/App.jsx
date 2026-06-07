@@ -37,6 +37,7 @@ import RegisterPage from "./pages/RegisterPage";
 import AdminPage from "./pages/AdminPage";
 import ChallengesPage from "./pages/Challenges.jsx";
 import WishlistPage from "./pages/WishlistPage";
+import BarangBalikan from "./pages/BarangBalikan";
 import useChallenges from "./hooks/useChallenges.js";
 import usePrefersReducedMotion from "./hooks/usePrefersReducedMotion.js";
 import { useWidgetAutoSync } from "./hooks/useWidgetAutoSync";
@@ -1464,6 +1465,7 @@ function AppShell({ prefs, setPrefs }) {
                   element={<Categories cat={data.cat} onSave={saveCategories} />}
                 />
                 <Route path="wishlist" element={<WishlistPage />} />
+                <Route path="barang-balikan" element={<BarangBalikan />} />
                 <Route path="accounts" element={<AccountsPage />} />
                 <Route
                   path="subscriptions"
