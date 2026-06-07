@@ -142,6 +142,10 @@ type BudgetInfo = {
   remaining: number;
   percentage: number;
 };
+type WeeklyBudgetUsageFresh = BudgetInfo & {
+  weekStart: string;
+  weekEnd: string;
+};
 type BudgetPeriodType = "monthly";
 type BudgetPeriodKey = "current" | "previous" | "next";
 type BudgetPeriodCommand = { type: BudgetPeriodKey; label: string; monthStart: string };
@@ -1600,6 +1604,15 @@ function getNextWeekStartJakarta(date = new Date()): string {
   const y = String(weekStart.getFullYear());
   const m = String(weekStart.getMonth() + 1).padStart(2, "0");
   const d = String(weekStart.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function getWeekEndJakarta(date = new Date()): string {
+  const weekEnd = new Date(`${getWeekStartJakarta(date)}T00:00:00+07:00`);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  const y = String(weekEnd.getFullYear());
+  const m = String(weekEnd.getMonth() + 1).padStart(2, "0");
+  const d = String(weekEnd.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
@@ -6439,22 +6452,32 @@ async function getMonthlyBudgetInfo(userId: string, categoryName: string, date?:
   return { categoryNames, planned, used, remaining, percentage };
 }
 
-async function getWeeklyBudgetInfo(userId: string, categoryName: string, date?: string): Promise<BudgetInfo | null> {
-  const category = await findCategory(userId, categoryName);
+async function getWeeklyBudgetUsageFresh(input: {
+  userId: string;
+  categoryId: string;
+  transactionDate?: string;
+}): Promise<WeeklyBudgetUsageFresh | null> {
+  const { userId, categoryId, transactionDate } = input;
+  const category = await getCategoryById(userId, categoryId);
   if (!category) return null;
 
-  const dateRef = date ? new Date(`${date}T00:00:00+07:00`) : new Date();
+  const dateRef = transactionDate ? new Date(`${transactionDate}T00:00:00+07:00`) : new Date();
   const weekStart = getWeekStartJakarta(dateRef);
-  const nextWeekStart = getNextWeekStartJakarta(dateRef);
+  const weekEnd = getWeekEndJakarta(dateRef);
+
+  console.log("[WEEKLY BUDGET RANGE]", {
+    transactionDate,
+    weekStart,
+    weekEnd,
+  });
 
   let budgetId: string | null = null;
   let planned = 0;
-  let categoryIds: string[] = [category.id];
   const { data: directBudget, error: directErr } = await supabase
     .from("budgets_weekly")
     .select("id,user_id,category_id,name,planned_amount,week_start,month_start,created_at")
     .eq("user_id", userId)
-    .eq("category_id", category.id)
+    .eq("category_id", categoryId)
     .eq("week_start", weekStart)
     .maybeSingle();
   if (directErr) throw directErr;
@@ -6464,14 +6487,14 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string, date?: 
     planned = Number((directBudget as Record<string, JsonValue>).planned_amount ?? 0);
   }
 
-  const { data: mappedRows, error: mappedErr } = await supabase
-    .from("weekly_budget_categories")
-    .select("budget_weekly_id,category_id")
-    .eq("user_id", userId)
-    .eq("category_id", category.id);
-  if (mappedErr) throw mappedErr;
-
   if (!budgetId) {
+    const { data: mappedRows, error: mappedErr } = await supabase
+      .from("weekly_budget_categories")
+      .select("budget_weekly_id,category_id")
+      .eq("user_id", userId)
+      .eq("category_id", categoryId);
+    if (mappedErr) throw mappedErr;
+
     const mappedBudgetIds = [...new Set((mappedRows ?? [])
       .map((row: Record<string, JsonValue>) => String(row.budget_weekly_id ?? ""))
       .filter(Boolean))];
@@ -6495,43 +6518,19 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string, date?: 
 
   if (!budgetId) return null;
 
-  const { data: linkedRows, error: linkedErr } = await supabase
-    .from("weekly_budget_categories")
-    .select("category_id")
-    .eq("user_id", userId)
-    .eq("budget_weekly_id", budgetId);
-  if (linkedErr) throw linkedErr;
-
-  const linkedCategoryIds = (linkedRows ?? [])
-    .map((row: Record<string, JsonValue>) => String(row.category_id ?? ""))
-    .filter(Boolean);
-
-  if (linkedCategoryIds.length > 0) {
-    categoryIds = [...new Set([...categoryIds, ...linkedCategoryIds])];
-  }
-
-  const { data: categoryNameRows } = await supabase
-    .from("categories")
-    .select("id,name")
-    .in("id", categoryIds);
-
-  const categoryNames = (categoryNameRows ?? [])
-    .map((row: Record<string, JsonValue>) => String(row.name ?? ""))
-    .filter(Boolean);
-
   const { data: txRows, error: txErr } = await supabase
     .from("transactions")
-    .select("amount")
+    .select("id,amount")
     .eq("user_id", userId)
     .eq("type", "expense")
+    .eq("category_id", categoryId)
     .is("deleted_at", null)
-    .is("to_account_id", null)
-    .in("category_id", categoryIds)
     .gte("date", weekStart)
-    .lt("date", nextWeekStart);
+    .lte("date", weekEnd);
   if (txErr) throw txErr;
 
-  const used = (txRows ?? []).reduce(
+  const transactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
+  const used = transactions.reduce(
     (sum: number, tx: Record<string, JsonValue>) => sum + Number(tx.amount ?? 0),
     0,
   );
@@ -6539,15 +6538,49 @@ async function getWeeklyBudgetInfo(userId: string, categoryName: string, date?: 
   const remaining = planned - used;
   const percentage = planned > 0 ? (used / planned) * 100 : 0;
 
+  console.log("[WEEKLY BUDGET USED]", {
+    categoryId,
+    used,
+    planned,
+    remaining,
+  });
+
+  console.log("[WEEKLY BUDGET TX COUNT]", {
+    count: transactions.length,
+    ids: transactions.map((t) => t.id),
+  });
+
   return {
-    categoryNames: categoryNames.length > 0 ? categoryNames : [category.name],
+    categoryNames: [category.name],
     planned,
     used,
     remaining,
     percentage,
+    weekStart,
+    weekEnd,
   };
 }
 
+async function getWeeklyBudgetInfo(userId: string, categoryName: string, date?: string): Promise<BudgetInfo | null> {
+  const category = await findCategory(userId, categoryName);
+  if (!category) return null;
+
+  const weeklyUsage = await getWeeklyBudgetUsageFresh({
+    userId,
+    categoryId: category.id,
+    transactionDate: date,
+  });
+
+  if (!weeklyUsage) return null;
+
+  return {
+    categoryNames: weeklyUsage.categoryNames,
+    planned: weeklyUsage.planned,
+    used: weeklyUsage.used,
+    remaining: weeklyUsage.remaining,
+    percentage: weeklyUsage.percentage,
+  };
+}
 
 function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget: BudgetInfo | null): string[] {
   const lines: string[] = [];
@@ -6564,7 +6597,11 @@ function buildCombinedBudgetLines(monthlyBudget: BudgetInfo | null, weeklyBudget
     lines.push("🗓️ Budget Mingguan");
     lines.push(`• Terpakai: ${formatIDR(weeklyBudget.used)} / ${formatIDR(weeklyBudget.planned)}`);
     lines.push(`• Sisa: ${formatIDR(weeklyBudget.remaining)}`);
-    if (weeklyBudget.percentage >= 80) lines.push(`⚠️ Budget mingguan hampir habis (${weeklyBudget.percentage.toFixed(1)}%)`);
+    if (weeklyBudget.remaining < 0) {
+      lines.push("🚨 Budget mingguan sudah melewati limit");
+    } else if (weeklyBudget.percentage >= 80) {
+      lines.push(`⚠️ Budget mingguan hampir habis (${weeklyBudget.percentage.toFixed(1)}%)`);
+    }
   }
 
   return lines;
@@ -6585,7 +6622,7 @@ async function buildTransactionBudgetSection(input: {
     if (category) {
       const [monthlyBudget, weeklyBudget] = await Promise.all([
         getMonthlyBudgetInfo(userId, category.name, transactionDate),
-        getWeeklyBudgetInfo(userId, category.name, transactionDate),
+        getWeeklyBudgetUsageFresh({ userId, categoryId, transactionDate }),
       ]);
       section = buildCombinedBudgetLines(monthlyBudget, weeklyBudget).join("\n");
     }
