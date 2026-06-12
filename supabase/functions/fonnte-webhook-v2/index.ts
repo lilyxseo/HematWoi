@@ -235,7 +235,7 @@ function isGroupPrivateDebugEnabled(): boolean {
   return String(Deno.env.get("GROUP_REPLY_DEBUG_PRIVATE") ?? "false").toLowerCase() === "true";
 }
 
-const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️", "📘"];
+const BOT_PREFIXES = ["🤖", "✅", "❌", "⚠️", "💰", "ℹ️", "📊", "📚", "🏦", "📌", "🗑️", "🧾", "🎯", "🔁", "🏓", "📋", "📆", "🗓️", "📘", "📝"];
 const MENU_COMMANDS = new Set(["menu", "help", "bantuan", ".menu"]);
 const DAILY_EXPENSE_COMMANDS = new Set(["pengeluaran harian", "pengeluaran per hari", "harian", "daily expense", "expense harian"]);
 const LOW_BALANCE_WARNING = 100000;
@@ -274,12 +274,14 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
   "kategori",
   "info",
   "ping",
+  "note",
+  "nb",
 ]);
 const NATURAL_RESERVED_COMMANDS = new Set([
   "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "pengeluaran harian", "pengeluaran per hari", "harian", "daily expense", "expense harian", "history", "riwayat", "budget", "tambah budget", "edit budget", "hapus budget", "hutang",
   "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
   "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "hapus", "undo",
-  "wishlist", "tambah wishlist", "edit wishlist", "hapus wishlist", "beli wishlist", "arsip wishlist",
+  "wishlist", "tambah wishlist", "edit wishlist", "hapus wishlist", "beli wishlist", "arsip wishlist", "note", "nb",
 ]);
 
 
@@ -1571,6 +1573,24 @@ function getTodayJakarta(): string {
   const now = new Date();
   const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit" });
   return fmt.format(now);
+}
+
+function formatDashboardNoteUpdatedAt(value: string | null | undefined): string {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("day")}/${part("month")}/${part("year")} ${part("hour")}:${part("minute")}`;
 }
 
 function getMonthStart(date = new Date()): string {
@@ -7518,6 +7538,107 @@ async function handleWishlistCommand(userId: string, phone: string, rawMessage: 
 }
 
 
+type DashboardNoteCommand =
+  | { action: "view" }
+  | { action: "set"; content: string }
+  | { action: "delete" };
+
+const DASHBOARD_NOTE_MAX_LENGTH = 500;
+
+function parseDashboardNoteCommand(rawMessage: string, normalized: string): DashboardNoteCommand | null {
+  if (normalized === "note" || normalized === "nb") return { action: "view" };
+  if (normalized === "note hapus" || normalized === "nb hapus" || normalized === "hapus note" || normalized === "hapus nb") return { action: "delete" };
+
+  const setMatch = rawMessage.trim().match(/^(note|nb)\s+([\s\S]+)$/i);
+  if (!setMatch) return null;
+  const content = String(setMatch[2] ?? "").trim();
+  if (!content) return { action: "view" };
+  return { action: "set", content };
+}
+
+async function handleDashboardNoteCommand(userId: string, command: DashboardNoteCommand): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  if (command.action === "view") {
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("dashboard_note,dashboard_note_updated_at")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) throw error;
+
+    const note = String(data?.dashboard_note ?? "").trim();
+    console.log("[DASHBOARD NOTE]", { action: command.action, userId, length: note.length });
+    if (!note) {
+      return {
+        reply: [
+          "📝 *Catatan Dashboard*",
+          "",
+          line(),
+          "ℹ️ Belum ada catatan.",
+          "",
+          "Tambah catatan:",
+          "*note isi catatan kamu*",
+        ].join("\n"),
+        parsedLog: { command: "dashboard_note", action: command.action, length: 0 },
+      };
+    }
+
+    return {
+      reply: [
+        "📝 *Catatan Dashboard*",
+        "",
+        line(),
+        note,
+        "",
+        italic(`Updated: ${formatDashboardNoteUpdatedAt(String(data?.dashboard_note_updated_at ?? ""))}`),
+      ].join("\n"),
+      parsedLog: { command: "dashboard_note", action: command.action, length: note.length },
+    };
+  }
+
+  if (command.action === "delete") {
+    console.log("[DASHBOARD NOTE]", { action: command.action, userId, length: 0 });
+    const { error } = await supabase
+      .from("user_profiles")
+      .update({ dashboard_note: null, dashboard_note_updated_at: new Date().toISOString() })
+      .eq("id", userId);
+    if (error) throw error;
+    return {
+      reply: "🗑️ *Catatan Dihapus*",
+      parsedLog: { command: "dashboard_note", action: command.action, length: 0 },
+    };
+  }
+
+  const content = command.content.trim();
+  console.log("[DASHBOARD NOTE]", { action: command.action, userId, length: content.length });
+  if (content.length > DASHBOARD_NOTE_MAX_LENGTH) {
+    return {
+      reply: [
+        "⚠️ *Catatan Terlalu Panjang*",
+        "",
+        "Maksimal:",
+        `*${DASHBOARD_NOTE_MAX_LENGTH} karakter*`,
+      ].join("\n"),
+      parsedLog: { command: "dashboard_note", action: command.action, length: content.length, status: "too_long" },
+    };
+  }
+
+  const { error } = await supabase
+    .from("user_profiles")
+    .update({ dashboard_note: content, dashboard_note_updated_at: new Date().toISOString() })
+    .eq("id", userId);
+  if (error) throw error;
+
+  return {
+    reply: [
+      "✅ *Catatan Disimpan*",
+      "",
+      line(),
+      content,
+    ].join("\n"),
+    parsedLog: { command: "dashboard_note", action: command.action, length: content.length },
+  };
+}
+
 function buildMenuMessage(): string {
   return [
     "📋 *Menu HematWoi*",
@@ -7555,6 +7676,12 @@ function buildMenuMessage(): string {
     "• prev",
     "• page 2",
     "• hapus 1",
+    "",
+    "📝 *Catatan*",
+    "• note",
+    "• note jangan lupa bayar hutang",
+    "• nb isi bensin besok",
+    "• note hapus",
     "",
     "✏️ *Edit Data*",
     "• edit 1 20000",
@@ -7659,6 +7786,12 @@ function buildExampleMessage(): string {
     "• prev",
     "• page 2",
     "• hapus 1",
+    "",
+    "📝 *Catatan*",
+    "• note",
+    "• note bayar hutang tanggal 10",
+    "• nb beli oli minggu depan",
+    "• hapus note",
     "",
     "✏️ *Edit Data*",
     "• edit kategori 1 makan",
@@ -7797,7 +7930,7 @@ function isPotentialBotCommand(message: string): boolean {
 
   const validCommands = [
     "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
-    "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "beli", "arsip", "wishlist", "undo", "menu", "help", "bantuan", "contoh",
+    "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "beli", "arsip", "wishlist", "note", "nb", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
   if (validCommands.some((cmd) => normalized === cmd || normalized.startsWith(`${cmd} `))) return true;
@@ -7938,8 +8071,14 @@ Deno.serve(async (req: Request) => {
 
     const pendingUpdateCommand = parsePendingTransactionUpdateCommand(normalized);
     const pendingDebtAccountCommand = parsePendingDebtPaymentAccountCommand(normalized);
+    const dashboardNoteCommand = parseDashboardNoteCommand(message, normalized);
 
-    if (pendingDebtAccountCommand && await getLatestPendingDebtPaymentSession(userId, contextKey)) {
+    if (dashboardNoteCommand) {
+      console.log("[ROUTE MATCH]", { route: "dashboard_note", normalized, isGroup, contextKey });
+      const noteResult = await handleDashboardNoteCommand(userId, dashboardNoteCommand);
+      reply = noteResult.reply;
+      parsedLog = noteResult.parsedLog;
+    } else if (pendingDebtAccountCommand && await getLatestPendingDebtPaymentSession(userId, contextKey)) {
       console.log("[ROUTE MATCH]", { route: "pending_debt_payment_account", normalized, isGroup, contextKey });
       const pendingDebtResult = await handlePendingDebtPaymentAccount(userId, contextKey, pendingDebtAccountCommand.accountName, message);
       if (pendingDebtResult) {
