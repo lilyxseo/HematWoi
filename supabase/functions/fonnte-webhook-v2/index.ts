@@ -1384,10 +1384,10 @@ function isCalculatorExpression(text: string): boolean {
   const withoutNominalAmounts = raw.replace(nominalAmountPattern, "1");
   if (/[a-zA-Z]{2,}/.test(withoutNominalAmounts)) return false;
   if (containsDateOnlyPattern(raw)) return false;
-  if (!/[+\-*x×/:]/i.test(raw)) return false;
+  if (!/[+\-*x×/:÷]/i.test(raw)) return false;
 
   const normalizedAmounts = raw.replace(nominalAmountPattern, "1");
-  return /^[0-9\s+\-*x×/:().,]+$/i.test(normalizedAmounts);
+  return /^[0-9\s+\-*x×/:÷().,]+$/i.test(normalizedAmounts);
 }
 
 function normalizeNumberToken(token: string): string {
@@ -1420,7 +1420,7 @@ function normalizeCalculatorExpression(text: string): string | null {
 
   const normalizedOperators = normalizedNumbers
     .replace(/[x×]/gi, "*")
-    .replace(/:/g, "/");
+    .replace(/[÷:]/g, "/");
 
   if (!/^[0-9+\-*/().\s]+$/.test(normalizedOperators)) return null;
   if (!/[+\-*/]/.test(normalizedOperators)) return null;
@@ -1518,6 +1518,98 @@ function buildCalculatorReply(expression: string, result: number): string {
     getCalculatorExpressionText(expression),
     `= *${formatIDR(result)}*`,
   ].join("\n");
+}
+
+
+const CALCULATOR_RESET_COMMANDS = new Set(["c", "clear", "reset"]);
+
+function parseCalculatorSessionOperation(text: string): { operator: string; operand: number; displayOperand: string; expression: string } | null {
+  const raw = getCalculatorExpressionText(text);
+  const match = raw.match(/^([+\-*x×/÷])\s*(.+)$/i);
+  if (!match) return null;
+
+  const operator = match[1].replace(/[x×]/i, "*").replace(/÷/g, "/");
+  const operandText = match[2].trim();
+  const operandExpression = normalizeCalculatorExpression(operandText);
+  const normalizedOperand = operandExpression ?? normalizeNumberToken(operandText);
+  if (!/^\d+(?:\.\d+)?$/.test(normalizedOperand)) return null;
+
+  const operand = Number(normalizedOperand);
+  if (!Number.isFinite(operand)) return null;
+
+  return {
+    operator,
+    operand,
+    displayOperand: getCalculatorExpressionText(match[2]),
+    expression: raw,
+  };
+}
+
+function formatCalculatorNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(8)));
+}
+
+function buildCalculatorSessionReply(displayExpression: string, result: number): string {
+  return [
+    "🧮 *Kalkulator HematWoi*",
+    "",
+    line(),
+    displayExpression,
+    `= *${formatIDR(result)}*`,
+  ].join("\n");
+}
+
+function buildCalculatorMissingSessionReply(): string {
+  return [
+    "⚠️ *Belum Ada Hasil Kalkulator*",
+    "",
+    "Contoh:",
+    "",
+    "828+39",
+    "",
+    "Lalu:",
+    "",
+    "+20",
+  ].join("\n");
+}
+
+function buildCalculatorResetReply(): string {
+  return "🧹 *Kalkulator Direset*";
+}
+
+function buildCalculatorLastResultReply(result: number): string {
+  return ["🧮 *Hasil Terakhir*", "", `*${formatIDR(result)}*`].join("\n");
+}
+
+function buildCalculatorSessionLog(input: { result: number; expression: string; contextKey: string }): Record<string, JsonValue> {
+  return {
+    command: "calculator_session",
+    result: input.result,
+    expression: input.expression,
+    contextKey: input.contextKey,
+  };
+}
+
+async function getLastCalculatorSession(userId: string, contextKey: string): Promise<{ result: number; expression: string } | null> {
+  const { data: logs, error } = await supabase
+    .from("whatsapp_message_logs")
+    .select("created_at,parsed")
+    .eq("user_id", userId)
+    .eq("phone", contextKey)
+    .eq("status", "success")
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+
+  for (const log of logs ?? []) {
+    const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
+    if (parsed?.command === "calculator_session_reset") return null;
+    if (parsed?.command !== "calculator_session") continue;
+    const result = Number(parsed.result);
+    if (Number.isFinite(result)) return { result, expression: String(parsed.expression ?? "") };
+  }
+
+  return null;
 }
 
 function buildCalculatorInvalidReply(): string {
@@ -7703,10 +7795,13 @@ function buildMenuMessage(): string {
     "• ai pengeluaran cash minggu ini",
     "",
     "🧮 *Kalkulator*",
-    "• 20rb + 15rb",
-    "• 100rb - 25rb",
-    "• 50rb x 3",
-    "• 1jt / 4",
+    "• 828+39",
+    "• +20",
+    "• -50",
+    "• *2",
+    "• /4",
+    "• hasil",
+    "• clear",
     "",
     "➕ *Catat Transaksi*",
     "• beli bensin 20rb",
@@ -7846,9 +7941,13 @@ function buildExampleMessage(): string {
     "• hapus kategori motor",
     "",
     "🧮 *Kalkulator*",
-    "• hitung 20rb + 15rb",
-    "• calc 100rb - 25rb",
-    "• 50rb x 3",
+    "• 828+39",
+    "• +20",
+    "• -50",
+    "• *2",
+    "• /4",
+    "• hasil",
+    "• clear",
     "",
     "💳 *Hutang / Piutang*",
     "• hutang",
@@ -7926,6 +8025,7 @@ function isPotentialBotCommand(message: string): boolean {
 
   if (/^(10|[1-9])$/.test(message.trim())) return true;
   if (isCalculatorExpression(message)) return true;
+  if (CALCULATOR_RESET_COMMANDS.has(normalized) || normalized === "hasil") return true;
   if (DAILY_EXPENSE_COMMANDS.has(normalized)) return true;
 
   const validCommands = [
@@ -8099,28 +8199,69 @@ Deno.serve(async (req: Request) => {
         reply = payDebtNumberResult.reply;
         parsedLog = payDebtNumberResult.parsedLog;
       }
+    } else if (CALCULATOR_RESET_COMMANDS.has(normalized)) {
+      console.log("[ROUTE MATCH]", { route: "calculator_reset", normalized, isGroup, contextKey });
+      reply = buildCalculatorResetReply();
+      parsedLog = { command: "calculator_session_reset", contextKey };
+    } else if (normalized === "hasil") {
+      console.log("[ROUTE MATCH]", { route: "calculator_last_result", normalized, isGroup, contextKey });
+      const session = await getLastCalculatorSession(userId, contextKey);
+      if (!session) {
+        reply = buildCalculatorMissingSessionReply();
+        parsedLog = { command: "calculator_session_result", result: null, status: "missing", contextKey };
+      } else {
+        reply = buildCalculatorLastResultReply(session.result);
+        parsedLog = { command: "calculator_session_result", result: session.result, contextKey };
+      }
     } else if (isCalculatorExpression(message)) {
       console.log("[ROUTE MATCH]", { route: "calculator", normalized, isGroup, contextKey });
-      const expression = normalizeCalculatorExpression(message);
-      if (!expression) {
-        reply = buildCalculatorInvalidReply();
-        parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "invalid" };
-      } else {
-        try {
-          const result = calculateExpressionSafe(expression);
-          if (result === null) {
-            reply = buildCalculatorInvalidReply();
-            parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "invalid" };
-          } else {
-            reply = buildCalculatorReply(message, result);
-            parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result };
-          }
-        } catch (error) {
-          if (error instanceof Error && error.message === "DIVISION_BY_ZERO") {
+      const sessionOperation = parseCalculatorSessionOperation(message);
+      if (sessionOperation) {
+        const session = await getLastCalculatorSession(userId, contextKey);
+        if (!session) {
+          reply = buildCalculatorMissingSessionReply();
+          parsedLog = { command: "calculator_session", expression: sessionOperation.expression, result: null, status: "missing", contextKey };
+        } else {
+          const previousResult = session.result;
+          const { operator, operand } = sessionOperation;
+          if ((operator === "/" && operand === 0)) {
             reply = "❌ *Tidak Bisa Dibagi 0*";
-            parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "division_by_zero" };
+            parsedLog = { command: "calculator_session", expression: sessionOperation.expression, result: null, status: "division_by_zero", contextKey };
           } else {
-            throw error;
+            const newResult = operator === "+" ? previousResult + operand : operator === "-" ? previousResult - operand : operator === "*" ? previousResult * operand : previousResult / operand;
+            console.log("[CALCULATOR SESSION]", {
+              previousResult,
+              operator,
+              operand,
+              newResult,
+            });
+            const displayExpression = `${formatCalculatorNumber(previousResult)} ${operator} ${sessionOperation.displayOperand}`;
+            reply = buildCalculatorSessionReply(displayExpression, newResult);
+            parsedLog = buildCalculatorSessionLog({ result: newResult, expression: displayExpression, contextKey });
+          }
+        }
+      } else {
+        const expression = normalizeCalculatorExpression(message);
+        if (!expression) {
+          reply = buildCalculatorInvalidReply();
+          parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "invalid", contextKey };
+        } else {
+          try {
+            const result = calculateExpressionSafe(expression);
+            if (result === null) {
+              reply = buildCalculatorInvalidReply();
+              parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "invalid", contextKey };
+            } else {
+              reply = buildCalculatorReply(message, result);
+              parsedLog = buildCalculatorSessionLog({ result, expression: getCalculatorExpressionText(message), contextKey });
+            }
+          } catch (error) {
+            if (error instanceof Error && error.message === "DIVISION_BY_ZERO") {
+              reply = "❌ *Tidak Bisa Dibagi 0*";
+              parsedLog = { command: "calculator", expression: getCalculatorExpressionText(message), result: null, status: "division_by_zero", contextKey };
+            } else {
+              throw error;
+            }
           }
         }
       }
