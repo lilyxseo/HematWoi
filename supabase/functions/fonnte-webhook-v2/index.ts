@@ -2585,13 +2585,14 @@ function getMonthRangeJakarta(
 
 function getWeekRangeJakarta(
   date = new Date(),
-): { start: string; end: string; label: string; daysInPeriod: number; daysPassed: number; daysRemaining: number } {
-  const start = getWeekStartJakarta(date);
-  const end = getNextWeekStartJakarta(date);
+): { weekStart: string; weekEnd: string; start: string; end: string; label: string; daysInPeriod: number; daysPassed: number; daysRemaining: number } {
+  const weekStart = getWeekStartJakarta(date);
+  const weekEnd = getWeekEndJakarta(date);
+  const nextWeekStart = getNextWeekStartJakarta(date);
   const jakarta = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Jakarta" }));
   const day = jakarta.getDay();
   const passed = day === 0 ? 7 : day;
-  return { start, end, label: "minggu ini", daysInPeriod: 7, daysPassed: passed, daysRemaining: Math.max(0, 7 - passed) };
+  return { weekStart, weekEnd, start: weekStart, end: nextWeekStart, label: "minggu ini", daysInPeriod: 7, daysPassed: passed, daysRemaining: Math.max(0, 7 - passed) };
 }
 
 
@@ -5295,7 +5296,7 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
   });
   const { data: txRow, error: txError } = await supabase
     .from("transactions")
-    .select("id,title,amount,type,category_id,account_id,to_account_id")
+    .select("id,title,amount,type,category_id,account_id,to_account_id,date")
     .eq("id", transactionId)
     .eq("user_id", userId)
     .is("deleted_at", null)
@@ -5315,23 +5316,28 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     if (error) throw error;
     const categoryLabel = String(selectedTransaction.categoryName ?? "-");
     const titleLabel = String(txRow.title ?? selectedTransaction.title ?? "-");
+    const budgetSection = txType === "expense"
+      ? await buildTransactionBudgetSection({ userId, categoryId: String(txRow.category_id ?? "") || null, amount: newValue, transactionDate: String(txRow.date ?? getTodayJakarta()) })
+      : "";
+    const replyLines = [
+      "✏️ *Nominal Berhasil Diubah*",
+      "",
+      "━━━━━━━━━━━━━━",
+      "Kategori:",
+      `*${categoryLabel}*`,
+      "",
+      "Judul:",
+      `*${titleLabel}*`,
+      "",
+      "Sebelum:",
+      `*${formatIDR(oldValue)}*`,
+      "",
+      "Sesudah:",
+      `*${formatIDR(newValue)}*`,
+    ];
+    if (budgetSection) replyLines.push("", budgetSection);
     return {
-      reply: [
-        "✏️ *Nominal Berhasil Diubah*",
-        "",
-        "━━━━━━━━━━━━━━",
-        "Kategori:",
-        `*${categoryLabel}*`,
-        "",
-        "Judul:",
-        `*${titleLabel}*`,
-        "",
-        "Sebelum:",
-        `*${formatIDR(oldValue)}*`,
-        "",
-        "Sesudah:",
-        `*${formatIDR(newValue)}*`,
-      ].join("\n"),
+      reply: replyLines.join("\n"),
       parsedLog: { command: "edit_transaction", transactionId, field: "amount", oldValue, newValue, historyFilter: historySelection.filterValue, selectedNo: parsedEdit.number },
     };
   }
@@ -5378,25 +5384,31 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     await updateTransactionRequiredFields(transactionId, userId, { category_id: category.id, type: category.type });
     await updateTransactionOptionalField(transactionId, userId, "category_name", category.name);
     await updateTransactionOptionalField(transactionId, userId, "category", category.name);
+    const amount = Number(txRow.amount ?? selectedTransaction.amount ?? 0);
+    const budgetSection = category.type === "expense"
+      ? await buildTransactionBudgetSection({ userId, categoryId: category.id, amount, transactionDate: String(txRow.date ?? getTodayJakarta()) })
+      : "";
+    const replyLines = [
+      "✏️ *Kategori Transaksi Berhasil Diubah*",
+      "",
+      "━━━━━━━━━━━━━━",
+      `No: *${parsedEdit.number}*`,
+      "",
+      "Sebelum:",
+      `*${oldValue}*`,
+      "",
+      "Sesudah:",
+      `*${category.name}*`,
+      "",
+      "Judul:",
+      `*${String(txRow.title ?? selectedTransaction.title ?? "-")}*`,
+      "",
+      "Nominal:",
+      `*${formatIDR(amount)}*`,
+    ];
+    if (budgetSection) replyLines.push("", budgetSection);
     return {
-      reply: [
-        "✏️ *Kategori Transaksi Berhasil Diubah*",
-        "",
-        "━━━━━━━━━━━━━━",
-        `No: *${parsedEdit.number}*`,
-        "",
-        "Sebelum:",
-        `*${oldValue}*`,
-        "",
-        "Sesudah:",
-        `*${category.name}*`,
-        "",
-        "Judul:",
-        `*${String(txRow.title ?? selectedTransaction.title ?? "-")}*`,
-        "",
-        "Nominal:",
-        `*${formatIDR(Number(txRow.amount ?? selectedTransaction.amount ?? 0))}*`,
-      ].join("\n"),
+      reply: replyLines.join("\n"),
       parsedLog: { command: "edit_transaction_category", transactionId, oldCategory: oldValue, newCategory: category.name },
     };
   }
@@ -6647,8 +6659,7 @@ async function getWeeklyBudgetUsageFresh(input: {
   if (!category) return null;
 
   const dateRef = transactionDate ? new Date(`${transactionDate}T00:00:00+07:00`) : new Date();
-  const weekStart = getWeekStartJakarta(dateRef);
-  const weekEnd = getWeekEndJakarta(dateRef);
+  const { weekStart, weekEnd } = getWeekRangeJakarta(dateRef);
 
   console.log("[WEEKLY BUDGET RANGE]", {
     transactionDate,
@@ -6665,9 +6676,9 @@ async function getWeeklyBudgetUsageFresh(input: {
     .eq("category_id", categoryId)
     .eq("week_start", weekStart)
     .maybeSingle();
-  if (directErr) throw directErr;
+  if (directErr && !isMissingTableError(directErr)) throw directErr;
 
-  if (directBudget) {
+  if (!directErr && directBudget) {
     budgetId = String((directBudget as Record<string, JsonValue>).id ?? "");
     planned = Number((directBudget as Record<string, JsonValue>).planned_amount ?? 0);
   }
@@ -6678,9 +6689,9 @@ async function getWeeklyBudgetUsageFresh(input: {
       .select("budget_weekly_id,category_id")
       .eq("user_id", userId)
       .eq("category_id", categoryId);
-    if (mappedErr) throw mappedErr;
+    if (mappedErr && !isMissingTableError(mappedErr)) throw mappedErr;
 
-    const mappedBudgetIds = [...new Set((mappedRows ?? [])
+    const mappedBudgetIds = [...new Set((!mappedErr ? (mappedRows ?? []) : [])
       .map((row: Record<string, JsonValue>) => String(row.budget_weekly_id ?? ""))
       .filter(Boolean))];
 
@@ -6692,9 +6703,9 @@ async function getWeeklyBudgetUsageFresh(input: {
         .eq("week_start", weekStart)
         .in("id", mappedBudgetIds)
         .maybeSingle();
-      if (mappedBudgetErr) throw mappedBudgetErr;
+      if (mappedBudgetErr && !isMissingTableError(mappedBudgetErr)) throw mappedBudgetErr;
 
-      if (mappedBudget) {
+      if (!mappedBudgetErr && mappedBudget) {
         budgetId = String((mappedBudget as Record<string, JsonValue>).id ?? "");
         planned = Number((mappedBudget as Record<string, JsonValue>).planned_amount ?? 0);
       }
@@ -6703,15 +6714,17 @@ async function getWeeklyBudgetUsageFresh(input: {
 
   if (!budgetId) return null;
 
-  const { data: txRows, error: txErr } = await supabase
+  let txQuery = supabase
     .from("transactions")
-    .select("id,amount")
+    .select("id,amount,date,category_id,type")
     .eq("user_id", userId)
     .eq("type", "expense")
     .eq("category_id", categoryId)
-    .is("deleted_at", null)
     .gte("date", weekStart)
     .lte("date", weekEnd);
+  if (await hasDeletedAtColumn("transactions")) txQuery = txQuery.is("deleted_at", null);
+
+  const { data: txRows, error: txErr } = await txQuery;
   if (txErr) throw txErr;
 
   const transactions = (txRows ?? []) as Array<Record<string, JsonValue>>;
@@ -6723,16 +6736,19 @@ async function getWeeklyBudgetUsageFresh(input: {
   const remaining = planned - used;
   const percentage = planned > 0 ? (used / planned) * 100 : 0;
 
-  console.log("[WEEKLY BUDGET USED]", {
+  console.log("[WEEKLY BUDGET USED FRESH]", {
+    userId,
     categoryId,
-    used,
     planned,
+    used,
     remaining,
+    percentage,
   });
 
-  console.log("[WEEKLY BUDGET TX COUNT]", {
+  console.log("[WEEKLY BUDGET TX]", {
     count: transactions.length,
     ids: transactions.map((t) => t.id),
+    total: used,
   });
 
   return {
@@ -6801,23 +6817,24 @@ async function buildTransactionBudgetSection(input: {
   const { userId, categoryId, transactionDate } = input;
   void input.amount;
   let section = "";
+  let weeklyBudget: WeeklyBudgetUsageFresh | null = null;
 
   if (categoryId) {
     const category = await getCategoryById(userId, categoryId);
     if (category) {
-      const [monthlyBudget, weeklyBudget] = await Promise.all([
+      const [monthlyBudget, freshWeeklyBudget] = await Promise.all([
         getMonthlyBudgetInfo(userId, category.name, transactionDate),
         getWeeklyBudgetUsageFresh({ userId, categoryId, transactionDate }),
       ]);
+      weeklyBudget = freshWeeklyBudget;
       section = buildCombinedBudgetLines(monthlyBudget, weeklyBudget).join("\n");
     }
   }
 
   console.log("[TRANSACTION BUDGET SECTION]", {
-    userId,
     categoryId,
-    transactionDate,
-    hasBudgetSection: Boolean(section),
+    hasWeeklyBudget: Boolean(weeklyBudget && weeklyBudget.planned > 0),
+    weeklyUsed: weeklyBudget?.used ?? 0,
   });
 
   return section;
