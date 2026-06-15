@@ -5996,8 +5996,9 @@ function buildMissingDebtDueDateReply(): string {
     "",
     "Contoh:",
     "",
-    "• tambah hutang paylater juni 298484 31/05",
-    "• tambah hutang kredivo 999000 01/07",
+    "• tambah hutang paylater tiktok 45115 01/07",
+    "• tambah hutang kredivo 999000 15/07",
+    "• tambah piutang andi 500000 10/07",
   ].join("\n");
 }
 
@@ -6018,9 +6019,7 @@ function buildAddDebtSuccessReply(input: { debtType: DebtType; name: string; amo
     `*${formatEditDateForReply(input.dueDate)}*`,
   ];
 
-  if (isDebt) {
-    lines.push("", "🏦 Akun:", `*${input.accountName ? toTitleCase(input.accountName) : "-"}*`);
-  }
+  lines.push("", "🏦 Akun:", `*${input.accountName ? toTitleCase(input.accountName) : "-"}*`);
 
   lines.push(
     "",
@@ -6295,7 +6294,7 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
     console.log("[DEBT LIST BUILT]", { type, count: filteredRows.length });
 
     const title = type === "hutang" ? "💳 *Hutang Aktif*" : "📒 *Piutang Aktif*";
-    const emptyText = type === "hutang" ? "ℹ️ Belum ada hutang aktif." : "ℹ️ Belum ada piutang aktif.";
+    const emptyText = type === "hutang" ? "ℹ️ Tidak ada hutang aktif." : "ℹ️ Tidak ada piutang aktif.";
     const command = "debt_list";
     if (filteredRows.length === 0) return { reply: `${title}\n\n━━━━━━━━━━━━━━\n${emptyText}`, parsedLog: { command, debtType: type, displayedDebts: [] } };
 
@@ -6304,15 +6303,64 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
       const paidAmount = getDebtPaidAmount(row);
       const remainingAmount = getDebtRemainingAmount(row);
       const dueDate = formatDebtDueDate(row);
+      const rawDueDate = getDebtDueDate(row);
       console.log("[DEBT SCHEMA SAFE]", { totalAmount, paidAmount, remainingAmount, dueDate });
-      return { no: i + 1, id: String(row.id ?? ""), name: getDebtName(row), totalAmount, paidAmount, remainingAmount, dueDate };
+      return { no: i + 1, id: String(row.id ?? ""), name: getDebtName(row), totalAmount, paidAmount, remainingAmount, dueDate, rawDueDate };
     });
-    const lines = displayedDebts.map((item) => `${item.no}. *${item.name}*\n💰 Total: *${formatIDR(item.totalAmount)}*\n💸 Dibayar: *${formatIDR(item.paidAmount)}*\n🧾 Sisa: *${formatIDR(item.remainingAmount)}*\n📅 Jatuh Tempo: *${item.dueDate}*`);
+
+    const totalDebt = filteredRows.reduce((sum, row) => sum + getDebtTotalAmount(row), 0);
+    const totalPaid = filteredRows.reduce((sum, row) => sum + getDebtPaidAmount(row), 0);
+    const totalRemaining = filteredRows.reduce((sum, row) => sum + getDebtRemainingAmount(row), 0);
+    const count = filteredRows.length;
+    console.log("[DEBT SUMMARY]", {
+      totalDebt,
+      totalPaid,
+      totalRemaining,
+      count,
+    });
+
+    const today = new Date(`${getTodayJakarta()}T00:00:00+07:00`);
+    const dueSoonDebts = displayedDebts.filter((item) => {
+      if (!item.rawDueDate) return false;
+      const parsedDueDate = parseFlexibleDate(String(item.rawDueDate).slice(0, 10));
+      if (!parsedDueDate) return false;
+      const due = new Date(`${parsedDueDate}T00:00:00+07:00`);
+      const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays <= 7;
+    });
+    console.log("[DUE SOON DEBTS]", { count: dueSoonDebts.length });
+
+    const summaryLabel = type === "hutang" ? "Hutang" : "Piutang";
+    const paidLabel = type === "hutang" ? "Dibayar" : "Diterima";
+    const summaryLines = [
+      "📊 Ringkasan",
+      "",
+      `💰 Total ${summaryLabel}:`,
+      formatIDR(totalDebt),
+      "",
+      `💸 Total ${paidLabel}:`,
+      formatIDR(totalPaid),
+      "",
+      "🧾 Total Sisa:",
+      formatIDR(totalRemaining),
+      "",
+      `📋 Jumlah ${summaryLabel}:`,
+      `${count} data`,
+    ];
+    const dueSoonLines = dueSoonDebts.length > 0
+      ? [
+        "",
+        "⚠️ Jatuh Tempo Dekat",
+        "",
+        ...dueSoonDebts.map((item) => `• ${toTitleCase(String(item.name))} — ${item.dueDate}`),
+      ]
+      : [];
+    const lines = displayedDebts.map((item) => `${item.no}. *${item.name}*\n   💰 Total: *${formatIDR(item.totalAmount)}*\n   💸 ${paidLabel}: *${formatIDR(item.paidAmount)}*\n   🧾 Sisa: *${formatIDR(item.remainingAmount)}*\n   📅 Jatuh Tempo: *${item.dueDate}*`);
     const paymentHint = type === "hutang"
-      ? `\n\n━━━━━━━━━━━━━━\n💸 Bayar:\n• bayar hutang 1 100000\n• bayar hutang 2 50000`
-      : `\n\n━━━━━━━━━━━━━━\n💸 Bayar:\n• bayar piutang 1 100000\n• bayar piutang 2 50000`;
-    const editHint = type === "hutang" ? `\n\n✏️ Edit:\n• edit hutang 1 200rb\n\n🗑️ Hapus:\n• hapus hutang 1` : "";
-    return { reply: `${title}\n\n━━━━━━━━━━━━━━\n${lines.join("\n\n")}${paymentHint}${editHint}`, parsedLog: { command, debtType: type, displayedDebts } };
+      ? `\n\n━━━━━━━━━━━━━━\n💸 Bayar:\n• bayar hutang 1 100000\n• bayar hutang 1 100000 seabank`
+      : `\n\n━━━━━━━━━━━━━━\n💸 Bayar:\n• bayar piutang 1 100000\n• bayar piutang 1 100000 cash`;
+    const editHint = type === "hutang" ? `\n\n✏️ Edit:\n• edit hutang 1 200rb\n• edit hutang 1 01/07\n\n🗑️ Hapus:\n• hapus hutang 1` : "";
+    return { reply: `${title}\n\n━━━━━━━━━━━━━━\n${[...summaryLines, ...dueSoonLines].join("\n")}\n\n━━━━━━━━━━━━━━\n\n${lines.join("\n\n")}${paymentHint}${editHint}`, parsedLog: { command, debtType: type, displayedDebts, totalDebt, totalPaid, totalRemaining, count, dueSoonCount: dueSoonDebts.length } };
   }
 
   const editMatch = normalized.match(/^edit\s+hutang\s+(\d+)\s+(.+)$/);
@@ -6466,7 +6514,7 @@ async function handleDebtCommand(userId: string, rawMessage: string, normalized:
   const parsed = parseDebtCommand(rawMessage);
   if (!parsed) {
     return {
-      reply: ["⚠️ Format hutang/piutang salah.", "", "Contoh:", "• tambah hutang shopee 100000 seabank", "• bayar hutang shopee 25000 seabank", "• tambah piutang andi 50000 cash", "• bayar piutang andi 50000 cash"].join("\n"),
+      reply: ["⚠️ Format hutang/piutang salah.", "", "Contoh:", "• tambah hutang paylater tiktok 45115 01/07", "• tambah hutang kredivo 999000 15/07", "• tambah piutang andi 500000 10/07", "• bayar hutang 1 100000 seabank", "• bayar piutang 1 50000 cash"].join("\n"),
       parsedLog: { command: "debt", action: "invalid" },
     };
   }
@@ -7910,16 +7958,15 @@ function buildMenuMessage(): string {
     "• hutang",
     "• piutang",
     "",
+    "• tambah hutang paylater 45115 01/07",
+    "• tambah piutang andi 500000 10/07",
+    "",
     "• bayar hutang 1 100000",
     "• bayar hutang 1 100000 seabank",
-    "• bayar hutang kredivo 200rb seabank",
-    "• tambah hutang shopee 100000 seabank",
-    "_Jika akun belum disebut, bot akan meminta akun._",
-    "",
-    "• bayar piutang 1 50000",
-    "• bayar piutang andi 50000",
     "",
     "• edit hutang 1 200rb",
+    "• edit hutang 1 01/07",
+    "",
     "• hapus hutang 1",
     "",
     line(),
@@ -8022,16 +8069,20 @@ function buildExampleMessage(): string {
     "• hasil",
     "• clear",
     "",
-    "💳 *Hutang / Piutang*",
+    "💳 *Hutang & Piutang*",
     "• hutang",
     "• piutang",
+    "",
+    "• tambah hutang paylater 45115 01/07",
+    "• tambah piutang andi 500000 10/07",
+    "",
     "• bayar hutang 1 100000",
     "• bayar hutang 1 100000 seabank",
-    "• bayar hutang kredivo 200rb seabank",
-    "• tambah hutang shopee 100000 seabank",
-    "_Jika akun belum disebut, bot akan meminta akun._",
-    "• bayar piutang 1 50000",
-    "• bayar piutang andi 50000",
+    "",
+    "• edit hutang 1 200rb",
+    "• edit hutang 1 01/07",
+    "",
+    "• hapus hutang 1",
   ].join("\n");
 }
 
