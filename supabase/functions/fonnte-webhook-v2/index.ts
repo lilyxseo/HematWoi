@@ -398,12 +398,16 @@ function isAISuggestionNumber(text: string): boolean {
   return /^(10|[1-9])$/.test(text.trim());
 }
 
-function normalizePhone(raw: string): string {
-  const trimmed = raw.trim();
-  const noPlus = trimmed.startsWith("+62") ? trimmed.slice(1) : trimmed;
-  const digits = noPlus.replace(/[^0-9]/g, "");
+function normalizePhoneForLookup(phone: string): string {
+  const digits = String(phone ?? "").replace(/[^0-9]/g, "");
   if (digits.startsWith("0")) return `62${digits.slice(1)}`;
+  if (digits.startsWith("8")) return `62${digits}`;
+  if (digits.startsWith("62")) return digits;
   return digits;
+}
+
+function normalizePhone(raw: string): string {
+  return normalizePhoneForLookup(raw);
 }
 
 function buildFonnteTargets(target: string): string[] {
@@ -2047,14 +2051,26 @@ async function logMessage(input: {
   if (error) console.error("[LOG_MESSAGE_ERROR]", error);
 }
 
+async function getRegisteredWaUser(phone: string): Promise<{ user_id: string; phone: string } | null> {
+  const rawPhone = String(phone ?? "").trim();
+  const normalizedPhone = normalizePhoneForLookup(rawPhone);
+  const lookupPhones = [...new Set([rawPhone, normalizedPhone].filter(Boolean))];
+
+  for (const lookupPhone of lookupPhones) {
+    const { data, error } = await supabase
+      .from("whatsapp_users")
+      .select("user_id,phone")
+      .eq("phone", lookupPhone)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) return data;
+  }
+
+  return null;
+}
+
 async function getWaUser(phone: string): Promise<{ user_id: string } | null> {
-  const { data, error } = await supabase
-    .from("whatsapp_users")
-    .select("user_id")
-    .eq("phone", phone)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+  return await getRegisteredWaUser(phone);
 }
 
 async function findCategory(userId: string, name: string): Promise<{ id: string; name: string; type: string } | null> {
@@ -8250,6 +8266,28 @@ Deno.serve(async (req: Request) => {
     });
 
     const contextKey = getMessageContextKey({ isGroup, sender, chatTarget });
+    const rawSenderForLookup = isGroup ? extractRawParticipant(body) : String(body.sender ?? body.from ?? body.phone ?? body.number ?? body.data?.sender ?? body.data?.phone ?? body.data?.number ?? "").trim();
+    const normalizedPhoneForLookup = normalizePhoneForLookup(sender);
+
+    const waUser = await getRegisteredWaUser(sender);
+    if (!waUser) {
+      console.log("[WA USER NOT REGISTERED]", {
+        rawSender: rawSenderForLookup,
+        normalizedPhone: normalizedPhoneForLookup,
+        isGroup,
+        chatTarget,
+      });
+      return json({ ok: true, ignored: true, reason: "unregistered_phone" });
+    }
+
+    console.log("[WA USER REGISTERED]", {
+      phone: waUser.phone,
+      userId: waUser.user_id,
+      isGroup,
+    });
+
+    userId = waUser.user_id;
+
     const validCommand = isPotentialBotCommand(message);
     console.log("[REPLY ROUTE]", {
       isGroup,
@@ -8288,22 +8326,6 @@ Deno.serve(async (req: Request) => {
     if (duplicateError) throw duplicateError;
     if (duplicate) return json({ ok: true, duplicate: true });
 
-    const waUser = await getWaUser(sender);
-    if (!waUser) {
-      await logMessage({
-        wa_message_id: waMessageId,
-        phone: contextKey,
-        user_id: null,
-        raw_text: message,
-        parsed: { command: "unknown" },
-        status: "failed",
-        error_message: "WA user not found",
-      });
-      await replyWhatsApp({ target: chatTarget || sender, message: "❌ Nomor belum terdaftar di HematWoi." });
-      return json({ ok: true, handled: true, reason: "user not found" });
-    }
-
-    userId = waUser.user_id;
     const normalized = normalizeText(message);
 
     let reply = "";
