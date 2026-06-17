@@ -250,6 +250,18 @@ export default function Sidebar({
                 : String(row.category),
         }));
 
+        if (!normalized.some((item) => item.route === '/barang-balikan')) {
+          normalized.push({
+            id: 'barang-balikan',
+            title: 'Barang Balikan',
+            route: '/barang-balikan',
+            access_level: 'user',
+            icon_name: 'file-spreadsheet',
+            position: Number.MAX_SAFE_INTEGER - 1,
+            category: null,
+          });
+        }
+
         if (!normalized.some((item) => item.route === '/calendar')) {
           normalized.push({
             id: 'calendar',
