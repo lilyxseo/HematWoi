@@ -1372,10 +1372,19 @@ function containsDateOnlyPattern(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
 
-  const datePattern = /\b\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?\b/g;
-  if (!datePattern.test(raw)) return false;
+  const datePattern = /\b(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?\b/g;
+  let hasDate = false;
+  const withoutDates = raw.replace(datePattern, (match, dayText, monthText) => {
+    const day = Number(dayText);
+    const month = Number(monthText);
+    if (Number.isInteger(day) && day >= 1 && day <= 31 && Number.isInteger(month) && month >= 1 && month <= 12) {
+      hasDate = true;
+      return " ";
+    }
+    return match;
+  });
+  if (!hasDate) return false;
 
-  const withoutDates = raw.replace(datePattern, " ");
   return !/[+*x×/:]/i.test(withoutDates) && !/(^|\s)-(?!\s*$)/.test(withoutDates);
 }
 
@@ -5288,7 +5297,7 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     return { reply: "⚠️ Format edit tidak valid.\n\nContoh:\nedit 1 15000", parsedLog: { command: "edit_transaction_failed", reason: "invalid_format" } };
   }
 
-  console.log("[EDIT HISTORY]", {
+  console.log("[EDIT HISTORY COMMAND]", {
     number: parsedEdit.number,
     value: parsedEdit.value,
     detectedType: parsedEdit.field,
@@ -5305,11 +5314,6 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
   }
 
   const transactionId = String(selectedTransaction.id ?? "");
-  console.log("[EDIT FROM HISTORY]", {
-    historyFilter: historySelection.filterValue,
-    selectedNo: parsedEdit.number,
-    transactionId,
-  });
   const { data: txRow, error: txError } = await supabase
     .from("transactions")
     .select("id,title,amount,type,category_id,account_id,to_account_id,date")
@@ -5319,6 +5323,13 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     .maybeSingle();
   if (txError) throw txError;
   if (!txRow) return { reply: "⚠️ Transaksi ini sudah tidak aktif atau sudah dihapus.", parsedLog: { command: "edit_transaction_failed", reason: "transaction_not_found", transactionId } };
+
+  console.log("[EDIT HISTORY SELECTED]", {
+    transactionId,
+    categoryName: selectedTransaction.categoryName ?? null,
+    title: txRow.title ?? selectedTransaction.title ?? null,
+    oldAmount: txRow.amount ?? selectedTransaction.amount ?? null,
+  });
 
   const txType = String(txRow.type ?? "expense");
   if (txType === "transfer" && parsedEdit.field === "account") {
@@ -5336,20 +5347,16 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
       ? await buildTransactionBudgetSection({ userId, categoryId: String(txRow.category_id ?? "") || null, amount: newValue, transactionDate: String(txRow.date ?? getTodayJakarta()) })
       : "";
     const replyLines = [
-      "✏️ *Nominal Berhasil Diubah*",
+      "✏️ Nominal Berhasil Diubah",
       "",
       "━━━━━━━━━━━━━━",
-      "Kategori:",
-      `*${categoryLabel}*`,
+      `Kategori: ${categoryLabel}`,
       "",
-      "Judul:",
-      `*${titleLabel}*`,
+      `Judul: ${titleLabel}`,
       "",
-      "Sebelum:",
-      `*${formatIDR(oldValue)}*`,
+      `Sebelum: ${formatIDR(oldValue)}`,
       "",
-      "Sesudah:",
-      `*${formatIDR(newValue)}*`,
+      `Sesudah: ${formatIDR(newValue)}`,
     ];
     if (budgetSection) replyLines.push("", budgetSection);
     return {
@@ -8362,6 +8369,11 @@ Deno.serve(async (req: Request) => {
         reply = payDebtNumberResult.reply;
         parsedLog = payDebtNumberResult.parsedLog;
       }
+    } else if (/^edit\s+(\d+)\s+(.+)$/i.test(message.trim())) {
+      console.log("[ROUTE MATCH]", { route: "edit_history", normalized, isGroup, contextKey });
+      const editResult = await handleEditTransaction(userId, contextKey, message);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
     } else if (CALCULATOR_RESET_COMMANDS.has(normalized)) {
       console.log("[ROUTE MATCH]", { route: "calculator_reset", normalized, isGroup, contextKey });
       reply = buildCalculatorResetReply();
