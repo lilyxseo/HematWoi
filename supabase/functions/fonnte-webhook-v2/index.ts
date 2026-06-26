@@ -8477,17 +8477,16 @@ Deno.serve(async (req: Request) => {
 
       let historyQuery = supabase
         .from("transactions")
-        .select("id,title,amount,category_id,account_id,date,inserted_at", { count: "exact" })
+        .select("id,title,amount,type,category_id,account_id,to_account_id,date,inserted_at", { count: "exact" })
         .eq("user_id", userId)
-        .eq("type", "expense")
         .eq("date", today)
         .order("inserted_at", { ascending: false })
         .limit(10);
       historyQuery = await applyTransactionNotDeleted(historyQuery);
-      const { data: historyRowsRaw, error: historyError, count: expenseHistoryCount } = await historyQuery;
+      const { data: historyRowsRaw, error: historyError, count: totalTodayTransactions } = await historyQuery;
       if (historyError) throw historyError;
       const historyRows = (historyRowsRaw ?? []) as Array<Record<string, JsonValue>>;
-      const historyCount = expenseHistoryCount ?? historyRows.length;
+      const historyCount = totalTodayTransactions ?? historyRows.length;
       const { categoryMap: historyCategoryMap, accountMap: historyAccountMap } = await getHistoryDisplayMaps(historyRows);
 
       let income = 0;
@@ -8503,9 +8502,9 @@ Deno.serve(async (req: Request) => {
           if (cid) catMap.set(cid, (catMap.get(cid) ?? 0) + amount);
         }
       }
-      console.log("[SUMMARY HISTORY]", {
-        count: historyCount,
-        totalExpense: expense,
+      console.log("[SUMMARY LAST TRANSACTIONS]", {
+        count: historyRows.length,
+        totalTodayTransactions: historyCount,
       });
 
       let biggestCategory = "-";
@@ -8517,13 +8516,21 @@ Deno.serve(async (req: Request) => {
       const biggestCategoryAmount = catMap.size > 0 ? Math.max(...catMap.values()) : 0;
       const historyLines = historyRows.length > 0
         ? historyRows.map((tx, index) => {
+          const type = String(tx.type ?? "expense");
+          const amount = Number(tx.amount ?? 0);
           const categoryName = historyCategoryMap.get(String(tx.category_id ?? "")) ?? "-";
           const title = String(tx.title ?? "-").trim() || "-";
           const accountName = historyAccountMap.get(String(tx.account_id ?? "")) ?? "-";
+          const toAccountName = historyAccountMap.get(String(tx.to_account_id ?? "")) ?? "-";
+          if (type === "transfer") {
+            return `${index + 1}. Transfer ${accountName} → ${toAccountName}
+   ↔ ${money(amount)} • ${bold(`${accountName} → ${toAccountName}`)}`;
+          }
+          const sign = type === "income" ? "+" : "-";
           return `${index + 1}. ${categoryName} — ${title}
-   ${money(Number(tx.amount ?? 0))} • ${bold(accountName)}`;
+   ${sign} ${money(amount)} • ${bold(accountName)}`;
         })
-        : ["ℹ️ Belum ada pengeluaran hari ini."];
+        : ["ℹ️ Belum ada transaksi hari ini."];
       if (historyCount > historyRows.length) {
         historyLines.push("", italic(`+${historyCount - historyRows.length} transaksi lainnya. Ketik *history hari ini* untuk detail.`));
       }
@@ -8543,7 +8550,7 @@ Deno.serve(async (req: Request) => {
         `${biggestCategory} — ${money(biggestCategoryAmount)}`,
         "",
         line(),
-        "📚 *History Pengeluaran Hari Ini*",
+        "📚 *Transaksi Terakhir Hari Ini*",
         "",
         ...historyLines,
         "",
