@@ -360,7 +360,7 @@ Deno.serve(async (req: Request) => {
           .eq("date", today)
           .is("deleted_at", null)
           .order("inserted_at", { ascending: false })
-          .limit(3);
+          .limit(10);
         if (historyError) {
           failed += 1;
           console.error("[DAILY SUMMARY HISTORY ERROR]", { userId, phone, error: historyError });
