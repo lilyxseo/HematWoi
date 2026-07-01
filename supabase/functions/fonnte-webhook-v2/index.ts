@@ -1362,6 +1362,85 @@ function parseAmount(raw: string): number {
 }
 
 
+const SIMPLE_CALCULATOR_PATTERN =
+  /^\s*(-?\d+(?:[.,]\d+)?)\s*([+\-*/x×÷])\s*(-?\d+(?:[.,]\d+)?)(%)?\s*$/i;
+
+type SimpleCalculatorParseResult = {
+  originalInput: string;
+  normalizedInput: string;
+  regexMatch: boolean;
+  left: number;
+  operator: string;
+  right: number;
+  rightIsPercent: boolean;
+};
+
+function normalizeSimpleCalculatorInput(text: string): string {
+  return String(text ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/x/gi, "*");
+}
+
+function parseSimpleCalculatorExpression(text: string): SimpleCalculatorParseResult | null {
+  const originalInput = String(text ?? "");
+  const expression = getCalculatorExpressionText(originalInput);
+  const normalizedInput = normalizeSimpleCalculatorInput(expression);
+  const match = normalizedInput.match(SIMPLE_CALCULATOR_PATTERN);
+  if (!match) {
+    console.log("[CALCULATOR PARSER FAILED]", {
+      originalInput,
+      normalizedInput,
+      regexMatch: false,
+      parser: "simple_calculator",
+    });
+    return null;
+  }
+
+  const left = Number(match[1].replace(",", "."));
+  const operator = match[2];
+  const right = Number(match[3].replace(",", "."));
+  if (!Number.isFinite(left) || !Number.isFinite(right)) {
+    console.log("[CALCULATOR PARSER FAILED]", {
+      originalInput,
+      normalizedInput,
+      regexMatch: true,
+      parser: "simple_calculator",
+    });
+    return null;
+  }
+
+  return {
+    originalInput,
+    normalizedInput,
+    regexMatch: true,
+    left,
+    operator,
+    right,
+    rightIsPercent: match[4] === "%",
+  };
+}
+
+
+function calculateSimpleExpressionSafe(parsed: SimpleCalculatorParseResult): number {
+  const percentValue = parsed.left * (parsed.right / 100);
+  const right = parsed.rightIsPercent
+    ? (parsed.operator === "+" || parsed.operator === "-" ? percentValue : parsed.right / 100)
+    : parsed.right;
+
+  if (parsed.operator === "+") return parsed.left + right;
+  if (parsed.operator === "-") return parsed.left - right;
+  if (parsed.operator === "*") return parsed.left * right;
+  if (parsed.operator === "/") {
+    if (right === 0) throw new Error("DIVISION_BY_ZERO");
+    return parsed.left / right;
+  }
+
+  throw new Error("INVALID_OPERATOR");
+}
+
 type CalculatorToken = { type: "number"; value: number } | { type: "operator" | "paren"; value: string };
 
 function getCalculatorExpressionText(text: string): string {
@@ -1391,6 +1470,7 @@ function containsDateOnlyPattern(text: string): boolean {
 function isCalculatorExpression(text: string): boolean {
   const raw = String(text ?? "").trim();
   if (!raw) return false;
+  if (parseSimpleCalculatorExpression(raw)) return true;
   if (/^(calc|hitung)(\s+|$)/i.test(raw)) return true;
 
   const nominalAmountPattern = /\d+(?:[.,]\d+)?\s*(?:rb|rbu|ribu|k|jt|juta|m)\b/gi;
@@ -1400,7 +1480,7 @@ function isCalculatorExpression(text: string): boolean {
   if (!/[+\-*x×/:÷]/i.test(raw)) return false;
 
   const normalizedAmounts = raw.replace(nominalAmountPattern, "1");
-  return /^[0-9\s+\-*x×/:÷().,]+$/i.test(normalizedAmounts);
+  return /^[0-9%\s+\-*x×/:÷().,]+$/i.test(normalizedAmounts);
 }
 
 function normalizeNumberToken(token: string): string {
@@ -8339,11 +8419,40 @@ Deno.serve(async (req: Request) => {
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
     let budgetPeriodCommand: BudgetPeriodCommand | null = null;
 
-    const pendingUpdateCommand = parsePendingTransactionUpdateCommand(normalized);
-    const pendingDebtAccountCommand = parsePendingDebtPaymentAccountCommand(normalized);
-    const dashboardNoteCommand = parseDashboardNoteCommand(message, normalized);
+    const simpleCalculatorExpression = parseSimpleCalculatorExpression(message);
+    const pendingUpdateCommand = simpleCalculatorExpression ? null : parsePendingTransactionUpdateCommand(normalized);
+    const pendingDebtAccountCommand = simpleCalculatorExpression ? null : parsePendingDebtPaymentAccountCommand(normalized);
+    const dashboardNoteCommand = simpleCalculatorExpression ? null : parseDashboardNoteCommand(message, normalized);
 
-    if (dashboardNoteCommand) {
+    if (simpleCalculatorExpression) {
+      console.log("[ROUTE MATCH]", {
+        route: "calculator",
+        normalized,
+        calculatorNormalized: simpleCalculatorExpression.normalizedInput,
+        regexMatch: simpleCalculatorExpression.regexMatch,
+        parser: "simple_calculator",
+        isGroup,
+        contextKey,
+      });
+      try {
+        const result = calculateSimpleExpressionSafe(simpleCalculatorExpression);
+        reply = buildCalculatorReply(simpleCalculatorExpression.normalizedInput, result);
+        parsedLog = {
+          ...buildCalculatorSessionLog({ result, expression: simpleCalculatorExpression.normalizedInput, contextKey }),
+          parser: "simple_calculator",
+          originalInput: simpleCalculatorExpression.originalInput,
+          normalizedInput: simpleCalculatorExpression.normalizedInput,
+          regexMatch: simpleCalculatorExpression.regexMatch,
+        };
+      } catch (error) {
+        if (error instanceof Error && error.message === "DIVISION_BY_ZERO") {
+          reply = "❌ *Tidak Bisa Dibagi 0*";
+          parsedLog = { command: "calculator", expression: simpleCalculatorExpression.normalizedInput, result: null, status: "division_by_zero", contextKey, parser: "simple_calculator" };
+        } else {
+          throw error;
+        }
+      }
+    } else if (dashboardNoteCommand) {
       console.log("[ROUTE MATCH]", { route: "dashboard_note", normalized, isGroup, contextKey });
       const noteResult = await handleDashboardNoteCommand(userId, dashboardNoteCommand);
       reply = noteResult.reply;
