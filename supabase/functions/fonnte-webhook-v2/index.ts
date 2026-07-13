@@ -4255,7 +4255,7 @@ function formatEditDateForReply(date: string): string {
 
 function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionCommand | null {
   const trimmed = rawMessage.trim();
-  const directFieldMatch = trimmed.match(/^edit\s+(kategori|akun|judul|title)\s+(\d+)\s+(.+)$/i);
+  const directFieldMatch = trimmed.match(/^(?:edit|ganti|ubah)\s+(kategori|akun|judul|title|tanggal|nominal)\s+(\d+)\s+(.+)$/i);
   if (directFieldMatch) {
     const directFieldToken = normalizeText(directFieldMatch[1] ?? "");
     const directNumber = Number(directFieldMatch[2]);
@@ -4265,11 +4265,20 @@ function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionC
       ? "category"
       : directFieldToken === "akun"
       ? "account"
+      : directFieldToken === "tanggal"
+      ? "date"
+      : directFieldToken === "nominal"
+      ? "amount"
       : "title";
+    if (directField === "amount") {
+      const amount = extractNaturalAmountFromText(directValue);
+      if (amount <= 0) return null;
+      return { number: directNumber, field: directField, value: amount };
+    }
     return { number: directNumber, field: directField, value: directValue };
   }
 
-  const match = trimmed.match(/^edit\s+(\d+)\s+(.+)$/i);
+  const match = trimmed.match(/^(?:edit|ganti|ubah)\s+(\d+)\s+(.+)$/i);
   if (!match) return null;
 
   const number = Number(match[1]);
@@ -5369,6 +5378,164 @@ async function updateTransactionOptionalField(transactionId: string, userId: str
   if (!error) return true;
   if (isMissingColumnError(error)) return false;
   throw error;
+}
+
+type CategoryLookupResult =
+  | { status: "found"; category: { id: string; name: string; type: string } }
+  | { status: "not_found" }
+  | { status: "ambiguous"; categories: Array<{ id: string; name: string; type: string }> };
+
+function normalizeCategoryLookupText(value: string): string {
+  return normalizeText(value).replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function findCategoryForHistoryEdit(userId: string, categoryName: string): Promise<CategoryLookupResult> {
+  const requestedLower = String(categoryName ?? "").trim().toLowerCase();
+  const requestedNormalized = normalizeCategoryLookupText(categoryName);
+  if (!requestedLower || !requestedNormalized) return { status: "not_found" };
+
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id,name,type")
+    .eq("user_id", userId);
+  if (error) throw error;
+
+  const categories = ((data ?? []) as Array<Record<string, JsonValue>>)
+    .map((row) => ({
+      id: String(row.id ?? ""),
+      name: String(row.name ?? "").trim(),
+      type: String(row.type ?? "expense"),
+      lowerName: String(row.name ?? "").trim().toLowerCase(),
+      normalizedName: normalizeCategoryLookupText(String(row.name ?? "")),
+    }))
+    .filter((row) => row.id && row.name);
+
+  const exactLower = categories.find((row) => row.lowerName === requestedLower);
+  if (exactLower) return { status: "found", category: { id: exactLower.id, name: exactLower.name, type: exactLower.type } };
+
+  const normalizedExact = categories.find((row) => row.normalizedName === requestedNormalized);
+  if (normalizedExact) return { status: "found", category: { id: normalizedExact.id, name: normalizedExact.name, type: normalizedExact.type } };
+
+  const partialMatches = categories.filter((row) => row.normalizedName.includes(requestedNormalized) || requestedNormalized.includes(row.normalizedName));
+  if (partialMatches.length === 1) {
+    const match = partialMatches[0];
+    return { status: "found", category: { id: match.id, name: match.name, type: match.type } };
+  }
+  if (partialMatches.length > 1) {
+    return {
+      status: "ambiguous",
+      categories: partialMatches.map((row) => ({ id: row.id, name: row.name, type: row.type })),
+    };
+  }
+
+  return { status: "not_found" };
+}
+
+async function handleHistoryCategoryEditCommand(
+  userId: string,
+  phone: string,
+  normalized: string,
+): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
+  const categoryEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+kategori\s+(\d+)\s+(.+)$/i);
+  if (!categoryEditMatch) {
+    return { reply: "⚠️ Format edit kategori tidak valid.\n\nContoh:\nganti kategori 5 jajan", parsedLog: { command: "edit_transaction_failed", reason: "invalid_category_edit_format" } };
+  }
+
+  const number = Number(categoryEditMatch[1]);
+  const categoryName = String(categoryEditMatch[2] ?? "").trim();
+  console.log("[HISTORY CATEGORY EDIT ROUTE]", {
+    command: normalized,
+    number,
+    categoryName,
+  });
+
+  const historySelection = await getLastHistorySelection(userId, phone);
+  const selectedTransaction = findDisplayedTransactionByNumber(historySelection.displayedTransactions, number);
+  if (!selectedTransaction) {
+    return { reply: "⚠️ *Nomor History Tidak Ditemukan*\n\nGunakan:\n*history*", parsedLog: { command: "edit_transaction_failed", reason: historySelection.displayedTransactions.length === 0 ? "history_not_found" : "number_not_found", number, field: "category" } };
+  }
+
+  const transactionId = String(selectedTransaction.id ?? "");
+  const { data: txRow, error: txError } = await supabase
+    .from("transactions")
+    .select("id,title,amount,type,category_id,account_id,date")
+    .eq("id", transactionId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (txError) throw txError;
+  if (!txRow) return { reply: "⚠️ Transaksi ini sudah tidak aktif atau sudah dihapus.", parsedLog: { command: "edit_transaction_failed", reason: "transaction_not_found", transactionId, field: "category" } };
+
+  const title = String(txRow.title ?? selectedTransaction.title ?? "-");
+  const amount = Number(txRow.amount ?? selectedTransaction.amount ?? 0);
+  const oldCategoryId = String(txRow.category_id ?? "");
+  const { data: oldCategoryRow } = oldCategoryId
+    ? await supabase.from("categories").select("name").eq("id", oldCategoryId).eq("user_id", userId).maybeSingle()
+    : { data: null };
+  const oldCategoryName = String(oldCategoryRow?.name ?? selectedTransaction.categoryName ?? "-");
+  const accountId = String(txRow.account_id ?? selectedTransaction.accountId ?? "");
+  const { data: accountRow } = accountId
+    ? await supabase.from("accounts").select("name").eq("id", accountId).eq("user_id", userId).maybeSingle()
+    : { data: null };
+  const accountName = String(accountRow?.name ?? selectedTransaction.accountName ?? "-");
+
+  console.log("[HISTORY CATEGORY EDIT SELECTED]", {
+    transactionId,
+    title,
+    oldCategoryName,
+  });
+
+  const categoryLookup = await findCategoryForHistoryEdit(userId, categoryName);
+  const selectedCategory = categoryLookup.status === "found" ? categoryLookup.category : null;
+  console.log("[HISTORY CATEGORY EDIT CATEGORY]", {
+    requestedCategory: categoryName,
+    selectedCategoryId: selectedCategory?.id,
+    selectedCategoryName: selectedCategory?.name,
+  });
+
+  if (categoryLookup.status === "not_found") {
+    return {
+      reply: ["❌ Kategori Tidak Ditemukan", "", "Kategori:", categoryName, "", "Ketik kategori untuk melihat daftar."].join("\n"),
+      parsedLog: { command: "edit_transaction_failed", reason: "category_not_found", transactionId, field: "category", value: categoryName },
+    };
+  }
+  if (categoryLookup.status === "ambiguous") {
+    return {
+      reply: ["⚠️ Kategori Ditemukan Lebih Dari Satu", "", ...categoryLookup.categories.map((category) => `• ${category.name}`), "", "Ketik nama kategori lengkap."].join("\n"),
+      parsedLog: { command: "edit_transaction_failed", reason: "category_ambiguous", transactionId, field: "category", value: categoryName },
+    };
+  }
+
+  await updateTransactionRequiredFields(transactionId, userId, { category_id: selectedCategory.id });
+
+  console.log("[HISTORY CATEGORY EDIT SUCCESS]", {
+    transactionId,
+    oldCategoryName,
+    newCategoryName: selectedCategory.name,
+  });
+
+  return {
+    reply: [
+      "✏️ Kategori Berhasil Diubah",
+      "",
+      "━━━━━━━━━━━━━━",
+      "📌 Transaksi:",
+      title,
+      "",
+      "🏷️ Sebelum:",
+      oldCategoryName,
+      "",
+      "🏷️ Sesudah:",
+      selectedCategory.name,
+      "",
+      "💰 Nominal:",
+      formatIDR(amount),
+      "",
+      "🏦 Akun:",
+      accountName,
+    ].join("\n"),
+    parsedLog: { command: "edit_transaction_category", transactionId, oldCategory: oldCategoryName, newCategory: selectedCategory.name, selectedNo: number },
+  };
 }
 
 async function handleEditTransaction(userId: string, phone: string, rawMessage: string): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
@@ -8424,7 +8591,26 @@ Deno.serve(async (req: Request) => {
     const pendingDebtAccountCommand = simpleCalculatorExpression ? null : parsePendingDebtPaymentAccountCommand(normalized);
     const dashboardNoteCommand = simpleCalculatorExpression ? null : parseDashboardNoteCommand(message, normalized);
 
-    if (simpleCalculatorExpression) {
+    const historyCategoryEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+kategori\s+(\d+)\s+(.+)$/i);
+    const historySpecificEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+(?:akun|judul|title|tanggal|nominal)\s+\d+\s+.+$/i);
+    const historyGenericEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+\d+\s+.+$/i);
+
+    if (historyCategoryEditMatch) {
+      console.log("[ROUTE MATCH]", { route: "history_category_edit", normalized, isGroup, contextKey });
+      const editResult = await handleHistoryCategoryEditCommand(userId, contextKey, normalized);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
+    } else if (historySpecificEditMatch) {
+      console.log("[ROUTE MATCH]", { route: "edit_history_specific", normalized, isGroup, contextKey });
+      const editResult = await handleEditTransaction(userId, contextKey, message);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
+    } else if (historyGenericEditMatch) {
+      console.log("[ROUTE MATCH]", { route: "edit_history", normalized, isGroup, contextKey });
+      const editResult = await handleEditTransaction(userId, contextKey, message);
+      reply = editResult.reply;
+      parsedLog = editResult.parsedLog;
+    } else if (simpleCalculatorExpression) {
       console.log("[ROUTE MATCH]", {
         route: "calculator",
         normalized,
@@ -8478,11 +8664,6 @@ Deno.serve(async (req: Request) => {
         reply = payDebtNumberResult.reply;
         parsedLog = payDebtNumberResult.parsedLog;
       }
-    } else if (/^edit\s+(\d+)\s+(.+)$/i.test(message.trim())) {
-      console.log("[ROUTE MATCH]", { route: "edit_history", normalized, isGroup, contextKey });
-      const editResult = await handleEditTransaction(userId, contextKey, message);
-      reply = editResult.reply;
-      parsedLog = editResult.parsedLog;
     } else if (CALCULATOR_RESET_COMMANDS.has(normalized)) {
       console.log("[ROUTE MATCH]", { route: "calculator_reset", normalized, isGroup, contextKey });
       reply = buildCalculatorResetReply();
