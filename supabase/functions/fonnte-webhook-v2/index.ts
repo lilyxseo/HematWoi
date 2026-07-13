@@ -3564,6 +3564,56 @@ function isAmountToken(token: string): boolean {
   return parseAmount(normalized) > 0 || /^rp?\s?\d[\d.,]*$/i.test(normalized);
 }
 
+function isAmountLike(value: string): boolean {
+  const input = String(value ?? "").trim().toLowerCase();
+  if (!input || isDateLike(input)) return false;
+  if (!/^(?:rp\s*)?\d+(?:[.,]\d+)?\s*(?:rb|rbu|ribu|k|jt|juta|m)?$/.test(input)) return false;
+  return parseAmount(input) > 0;
+}
+
+type ExplicitCategoryPrefixResult = {
+  category: { id: string; name: string; type: string };
+  matchedText: string;
+  remainingText: string;
+} | null;
+
+function findExplicitCategoryPrefix(input: {
+  text: string;
+  categories: Array<{ id: string; name: string; type: string }>;
+}): ExplicitCategoryPrefixResult {
+  const normalized = normalizeText(input.text);
+  if (!normalized) return null;
+  const sortedCategories = [...input.categories]
+    .map((category) => ({ ...category, normalizedName: normalizeText(category.name) }))
+    .filter((category) => Boolean(category.normalizedName))
+    .sort((a, b) => b.normalizedName.length - a.normalizedName.length);
+
+  for (const category of sortedCategories) {
+    const escaped = category.normalizedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = normalized.match(new RegExp(`^${escaped}(?:\\s+|$)`, "i"));
+    if (!match) continue;
+    const matchedText = match[0].trim();
+    const remainingText = normalized.slice(match[0].length).trim();
+    return {
+      category: { id: category.id, name: category.name, type: category.type },
+      matchedText,
+      remainingText,
+    };
+  }
+
+  return null;
+}
+
+async function getUserCategories(userId: string): Promise<Array<{ id: string; name: string; type: string }>> {
+  const { data, error } = await supabase.from("categories").select("id,name,type").eq("user_id", userId);
+  if (error) throw error;
+  return (data ?? []).map((row: Record<string, JsonValue>) => ({
+    id: String(row.id ?? ""),
+    name: String(row.name ?? ""),
+    type: String(row.type ?? "expense"),
+  })).filter((category) => category.id && category.name);
+}
+
 function cleanTransactionTitle(originalTitle: string, accountNames: string[]): string {
   const fallbackTitle = normalizeTitleText(originalTitle);
   if (!fallbackTitle) return "";
@@ -4271,7 +4321,8 @@ function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionC
       ? "amount"
       : "title";
     if (directField === "amount") {
-      const amount = extractNaturalAmountFromText(directValue);
+      if (!isAmountLike(directValue)) return null;
+      const amount = parseAmount(directValue);
       if (amount <= 0) return null;
       return { number: directNumber, field: directField, value: amount };
     }
@@ -4310,10 +4361,12 @@ function parseEditTransactionCommand(rawMessage: string): ParsedEditTransactionC
     return { number, field: "date", value: dateValue };
   }
 
-  if (parseEditDateToken(rawValue)) return { number, field: "date", value: rawValue };
+  if (isDateLike(rawValue) && parseEditDateToken(rawValue)) return { number, field: "date", value: rawValue };
 
-  const amount = extractNaturalAmountFromText(rawValue);
-  if (amount > 0) return { number, field: "amount", value: amount };
+  if (isAmountLike(rawValue)) {
+    const amount = parseAmount(rawValue);
+    if (amount > 0) return { number, field: "amount", value: amount };
+  }
 
   return { number, field: "account", value: rawValue };
 }
@@ -4701,7 +4754,34 @@ async function getLastTransactionSession(userId: string, phone: string): Promise
     return parsed?.command === "last_transaction" && Boolean(parsed?.transactionId);
   }) as Record<string, JsonValue> | undefined;
   const parsed = (sessionLog?.parsed ?? null) as Record<string, JsonValue> | null;
-  if (!parsed?.transactionId) return null;
+  if (!parsed?.transactionId) {
+    const { data: latestTx, error: latestTxError } = await supabase
+      .from("transactions")
+      .select("id,title,amount,date,category_id,account_id")
+      .eq("user_id", userId)
+      .is("deleted_at", null)
+      .order("inserted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestTxError) throw latestTxError;
+    if (!latestTx) return null;
+
+    const [category, account] = await Promise.all([
+      latestTx.category_id ? getCategoryById(userId, String(latestTx.category_id)) : Promise.resolve(null),
+      latestTx.account_id ? getAccountById(userId, String(latestTx.account_id)) : Promise.resolve(null),
+    ]);
+
+    return {
+      transactionId: String(latestTx.id),
+      categoryId: latestTx.category_id == null ? null : String(latestTx.category_id),
+      categoryName: category?.name ?? null,
+      accountId: latestTx.account_id == null ? null : String(latestTx.account_id),
+      accountName: account?.name ?? null,
+      title: String(latestTx.title ?? "-"),
+      amount: Number(latestTx.amount ?? 0),
+      date: String(latestTx.date ?? getTodayJakarta()),
+    };
+  }
 
   return {
     transactionId: String(parsed.transactionId),
@@ -4730,11 +4810,11 @@ function parseLastTransactionQuickEditCommand(normalized: string): LastTransacti
     return { field: "account", value };
   }
 
-  const editMatch = normalized.match(/^edit\s+(.+)$/);
+  const editMatch = normalized.match(/^edit\s+([^\s]+)$/i);
   if (editMatch) {
     const value = String(editMatch[1] ?? "").trim();
-    if (/^\d+\s+/.test(value)) return null;
-    const amount = extractNaturalAmountFromText(value);
+    if (isDateLike(value) || !isAmountLike(value)) return null;
+    const amount = parseAmount(value);
     if (amount > 0) return { field: "amount", value: amount };
     return null;
   }
@@ -4803,24 +4883,33 @@ async function handleQuickFixCommand(
 
   if (command.field === "amount") {
     const newAmount = Number(command.value);
+    console.log("[QUICK NOMINAL EDIT ROUTE]", {
+      rawValue: command.value,
+      parsedAmount: newAmount,
+      transactionId: session.transactionId,
+    });
     await updateTransactionRequiredFields(session.transactionId, userId, { amount: newAmount });
 
-    const balanceSection = await buildBalanceSection(userId);
     return {
-      reply: buildTransactionSuccessMessage({
-        type: String(txRow.type ?? "expense") === "income" ? "income" : "expense",
-        categoryName: session.categoryName,
+      reply: [
+        "✏️ Nominal Berhasil Diubah",
+        "",
+        "━━━━━━━━━━━━━━",
+        "📌 Transaksi:",
         title,
-        amount: newAmount,
-        accountName: session.accountName,
-        date,
-        balanceSection,
-        warnings: [
-          "✏️ Nominal Berhasil Diubah",
-          `Sebelum: ${formatIDR(amount)}`,
-          `Sesudah: ${formatIDR(newAmount)}`,
-        ],
-      }),
+        "",
+        "🏷️ Kategori:",
+        session.categoryName ?? "-",
+        "",
+        "💰 Sebelum:",
+        formatIDR(amount),
+        "",
+        "💰 Sesudah:",
+        formatIDR(newAmount),
+        "",
+        "🏦 Akun:",
+        session.accountName ?? "-",
+      ].join("\n"),
       parsedLog: buildLastTransactionLog({
         transactionId: session.transactionId,
         categoryId: txRow.category_id == null ? session.categoryId : String(txRow.category_id),
@@ -5544,6 +5633,15 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     return { reply: "⚠️ Format edit tidak valid.\n\nContoh:\nedit 1 15000", parsedLog: { command: "edit_transaction_failed", reason: "invalid_format" } };
   }
 
+  const detectionValue = String(parsedEdit.value);
+  const matchedAccountForDetection = parsedEdit.field === "account" ? await findAccount(userId, detectionValue) : null;
+  console.log("[GENERIC HISTORY EDIT DETECTION]", {
+    number: parsedEdit.number,
+    value: detectionValue,
+    isDate: isDateLike(detectionValue),
+    isAmount: isAmountLike(detectionValue),
+    matchedAccount: matchedAccountForDetection?.name ?? null,
+  });
   console.log("[EDIT HISTORY COMMAND]", {
     number: parsedEdit.number,
     value: parsedEdit.value,
@@ -5588,22 +5686,36 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
     const newValue = Number(parsedEdit.value);
     const { error } = await supabase.from("transactions").update({ amount: newValue }).eq("id", transactionId).eq("user_id", userId);
     if (error) throw error;
+    console.log("[HISTORY NOMINAL EDIT]", {
+      number: parsedEdit.number,
+      transactionId,
+      oldAmount: oldValue,
+      newAmount: newValue,
+    });
     const categoryLabel = String(selectedTransaction.categoryName ?? "-");
     const titleLabel = String(txRow.title ?? selectedTransaction.title ?? "-");
     const budgetSection = txType === "expense"
       ? await buildTransactionBudgetSection({ userId, categoryId: String(txRow.category_id ?? "") || null, amount: newValue, transactionDate: String(txRow.date ?? getTodayJakarta()) })
       : "";
+    const accountLabel = String(selectedTransaction.accountName ?? "-");
     const replyLines = [
       "✏️ Nominal Berhasil Diubah",
       "",
       "━━━━━━━━━━━━━━",
-      `Kategori: ${categoryLabel}`,
+      "📌 Transaksi:",
+      titleLabel,
       "",
-      `Judul: ${titleLabel}`,
+      "🏷️ Kategori:",
+      categoryLabel,
       "",
-      `Sebelum: ${formatIDR(oldValue)}`,
+      "💰 Sebelum:",
+      formatIDR(oldValue),
       "",
-      `Sesudah: ${formatIDR(newValue)}`,
+      "💰 Sesudah:",
+      formatIDR(newValue),
+      "",
+      "🏦 Akun:",
+      accountLabel,
     ];
     if (budgetSection) replyLines.push("", budgetSection);
     return {
@@ -5684,7 +5796,7 @@ async function handleEditTransaction(userId: string, phone: string, rawMessage: 
   }
   if (parsedEdit.field === "account") {
     const accountInput = String(parsedEdit.value);
-    const account = await findAccount(userId, accountInput);
+    const account = matchedAccountForDetection ?? await findAccount(userId, accountInput);
     if (!account) return { reply: `❌ Akun *${accountInput}* tidak ditemukan.`, parsedLog: { command: "edit_transaction_failed", reason: "account_not_found", transactionId, field: "account", value: accountInput } };
     const oldValue = String(selectedTransaction.accountName ?? "-");
     await updateTransactionRequiredFields(transactionId, userId, { account_id: account.id });
@@ -8610,6 +8722,12 @@ Deno.serve(async (req: Request) => {
       const editResult = await handleEditTransaction(userId, contextKey, message);
       reply = editResult.reply;
       parsedLog = editResult.parsedLog;
+    } else if (parseLastTransactionQuickEditCommand(normalized)) {
+      console.log("[ROUTE MATCH]", { route: "quick_edit_last_transaction", normalized, isGroup, contextKey });
+      const quickEditCommand = parseLastTransactionQuickEditCommand(normalized)!;
+      const quickEditResult = await handleQuickFixCommand(userId, contextKey, quickEditCommand);
+      reply = quickEditResult.reply;
+      parsedLog = quickEditResult.parsedLog;
     } else if (simpleCalculatorExpression) {
       console.log("[ROUTE MATCH]", {
         route: "calculator",
@@ -8730,12 +8848,6 @@ Deno.serve(async (req: Request) => {
           }
         }
       }
-    } else if (parseLastTransactionQuickEditCommand(normalized) && await getLastTransactionSession(userId, contextKey)) {
-      console.log("[ROUTE MATCH]", { route: "quick_edit_last_transaction", normalized, isGroup, contextKey });
-      const quickEditCommand = parseLastTransactionQuickEditCommand(normalized)!;
-      const quickEditResult = await handleQuickFixCommand(userId, contextKey, quickEditCommand);
-      reply = quickEditResult.reply;
-      parsedLog = quickEditResult.parsedLog;
     } else if (isAISuggestionNumber(normalized) && await hasActiveAISuggestionSession({ userId, contextKey, isGroup, chatTarget: String(chatTarget ?? "") })) {
       console.log("[ROUTE MATCH]", { route: "ai_pick_number", normalized, isGroup, contextKey });
       const aiPick = await handleAISuggestionPick(
@@ -9241,9 +9353,19 @@ Deno.serve(async (req: Request) => {
           if (!category) {
             const smartTx = parseSmartTransactionMessage(normalized);
             if (smartTx && !("error" in smartTx)) {
-              const keywordCategory = await findCategoryByKeyword(userId, smartTx.title);
-              const smartCategory = keywordCategory ?? await findCategoryByTransactionHistory(userId, smartTx.title);
-              const finalSmartTitle = smartCategory
+              const explicitCategoryPrefix = findExplicitCategoryPrefix({ text: normalized, categories: await getUserCategories(userId) });
+              console.log("[EXPLICIT CATEGORY PREFIX]", {
+                input: normalized,
+                matchedCategory: explicitCategoryPrefix?.category.name,
+                matchedText: explicitCategoryPrefix?.matchedText,
+                remainingText: explicitCategoryPrefix?.remainingText,
+              });
+              const explicitCategory = explicitCategoryPrefix?.category ?? null;
+              const keywordCategory = explicitCategory ? null : await findCategoryByKeyword(userId, smartTx.title);
+              const smartCategory = explicitCategory ?? keywordCategory ?? await findCategoryByTransactionHistory(userId, smartTx.title);
+              const finalSmartTitle = explicitCategoryPrefix
+                ? cleanTransactionTitle(explicitCategoryPrefix.remainingText, smartTx.accountName ? [smartTx.accountName] : [])
+                : smartCategory
                 ? cleanTransactionTitleWithCategoryPrefix(smartTx.originalTitle, smartTx.accountName ? [smartTx.accountName] : [], smartCategory.name)
                 : smartTx.title;
               const smartAccountPrediction = smartTx.accountName
@@ -9361,8 +9483,16 @@ Deno.serve(async (req: Request) => {
             } else if ("error" in naturalTx && naturalTx.error === "INVALID_DATE") {
               reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
             } else {
-              const keywordCategory = await findCategoryByKeyword(userId, naturalTx.title);
-              const category = keywordCategory ?? await findCategoryByTransactionHistory(userId, naturalTx.title);
+              const explicitCategoryPrefix = findExplicitCategoryPrefix({ text: normalized, categories: await getUserCategories(userId) });
+              console.log("[EXPLICIT CATEGORY PREFIX]", {
+                input: normalized,
+                matchedCategory: explicitCategoryPrefix?.category.name,
+                matchedText: explicitCategoryPrefix?.matchedText,
+                remainingText: explicitCategoryPrefix?.remainingText,
+              });
+              const explicitCategory = explicitCategoryPrefix?.category ?? null;
+              const keywordCategory = explicitCategory ? null : await findCategoryByKeyword(userId, naturalTx.title);
+              const category = explicitCategory ?? keywordCategory ?? await findCategoryByTransactionHistory(userId, naturalTx.title);
               if (!category) {
                 parsedLog = { command: "natural_transaction_failed", reason: "category_not_found", title: naturalTx.title, amount: naturalTx.amount, accountName: naturalTx.accountName };
                 {
@@ -9400,7 +9530,9 @@ Deno.serve(async (req: Request) => {
                     category.type = forcedCategory.data.type;
                   }
                 }
-                const finalNaturalTitle = cleanTransactionTitleWithCategoryPrefix(naturalTx.originalTitle, accounts.map((a) => a.name), category.name);
+                const finalNaturalTitle = explicitCategoryPrefix
+                  ? cleanTransactionTitle(explicitCategoryPrefix.remainingText, accounts.map((a) => a.name))
+                  : cleanTransactionTitleWithCategoryPrefix(naturalTx.originalTitle, accounts.map((a) => a.name), category.name);
                 const naturalAccountPrediction = naturalTx.accountName
                   ? null
                   : await predictAccountForTransaction(userId, finalNaturalTitle, category.id, finalType);
@@ -9460,9 +9592,19 @@ Deno.serve(async (req: Request) => {
           } else if ("error" in smartTx && smartTx.error === "INVALID_DATE") {
             reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
           } else {
-            const keywordCategory = await findCategoryByKeyword(userId, smartTx.title);
-            const category = keywordCategory ?? await findCategoryByTransactionHistory(userId, smartTx.title);
-            const finalSmartTitle = category
+            const explicitCategoryPrefix = findExplicitCategoryPrefix({ text: normalized, categories: await getUserCategories(userId) });
+            console.log("[EXPLICIT CATEGORY PREFIX]", {
+              input: normalized,
+              matchedCategory: explicitCategoryPrefix?.category.name,
+              matchedText: explicitCategoryPrefix?.matchedText,
+              remainingText: explicitCategoryPrefix?.remainingText,
+            });
+            const explicitCategory = explicitCategoryPrefix?.category ?? null;
+            const keywordCategory = explicitCategory ? null : await findCategoryByKeyword(userId, smartTx.title);
+            const category = explicitCategory ?? keywordCategory ?? await findCategoryByTransactionHistory(userId, smartTx.title);
+            const finalSmartTitle = explicitCategoryPrefix
+              ? cleanTransactionTitle(explicitCategoryPrefix.remainingText, smartTx.accountName ? [smartTx.accountName] : [])
+              : category
               ? cleanTransactionTitleWithCategoryPrefix(smartTx.originalTitle, smartTx.accountName ? [smartTx.accountName] : [], category.name)
               : smartTx.title;
             const smartAccountPrediction = smartTx.accountName
