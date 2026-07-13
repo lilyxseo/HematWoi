@@ -276,6 +276,20 @@
     @apply form-control;
   }
 
+  .input-compact,
+  input[data-compact='true'],
+  input[name='to'],
+  input[name='stockAktual'],
+  input[name='stock_aktual'],
+  input[name='stockActual'],
+  input[name='stock_actual'],
+  input[aria-label='To'],
+  input[aria-label='Stock Aktual'] {
+    width: min(10ch, 100%);
+    min-width: 7ch;
+    max-width: 10ch;
+  }
+
   .select-no-arrow {
     -webkit-appearance: none;
     -moz-appearance: none;
