@@ -8882,7 +8882,7 @@ Deno.serve(async (req: Request) => {
       const today = getTodayJakarta();
       let summaryQuery = supabase
         .from("transactions")
-        .select("amount,type,category_id")
+        .select("amount,type,category_id,title")
         .eq("user_id", userId)
         .eq("date", today);
       summaryQuery = await applyTransactionNotDeleted(summaryQuery);
@@ -8905,7 +8905,8 @@ Deno.serve(async (req: Request) => {
 
       let income = 0;
       let expense = 0;
-      const catMap = new Map<string, number>();
+      const categoryTotals = new Map<string, { total: number; transactionCount: number }>();
+      let largestExpenseTransaction: Record<string, JsonValue> | null = null;
       for (const tx of (txs ?? []) as Array<Record<string, JsonValue>>) {
         const amount = Number(tx.amount ?? 0);
         const type = String(tx.type ?? "");
@@ -8913,7 +8914,16 @@ Deno.serve(async (req: Request) => {
         if (type === "expense") {
           expense += amount;
           const cid = String(tx.category_id ?? "");
-          if (cid) catMap.set(cid, (catMap.get(cid) ?? 0) + amount);
+          if (cid) {
+            const categoryTotal = categoryTotals.get(cid) ?? { total: 0, transactionCount: 0 };
+            categoryTotals.set(cid, {
+              total: categoryTotal.total + amount,
+              transactionCount: categoryTotal.transactionCount + 1,
+            });
+          }
+          if (!largestExpenseTransaction || amount > Number(largestExpenseTransaction.amount ?? 0)) {
+            largestExpenseTransaction = tx;
+          }
         }
       }
       console.log("[SUMMARY LAST TRANSACTIONS]", {
@@ -8921,13 +8931,28 @@ Deno.serve(async (req: Request) => {
         totalTodayTransactions: historyCount,
       });
 
-      let biggestCategory = "-";
-      if (catMap.size > 0) {
-        const [topId] = [...catMap.entries()].sort((a, b) => b[1] - a[1])[0];
-        const { data: cat } = await supabase.from("categories").select("name").eq("id", topId).maybeSingle();
-        biggestCategory = cat?.name ?? "-";
+      const categoryIds = [...categoryTotals.keys()];
+      const { data: categoryRows, error: categoryError } = categoryIds.length > 0
+        ? await supabase.from("categories").select("id,name").eq("user_id", userId).in("id", categoryIds)
+        : { data: [], error: null };
+      if (categoryError) throw categoryError;
+      const categoryNameMap = new Map<string, string>();
+      for (const category of (categoryRows ?? []) as Array<Record<string, JsonValue>>) {
+        categoryNameMap.set(String(category.id ?? ""), String(category.name ?? "-"));
       }
-      const biggestCategoryAmount = catMap.size > 0 ? Math.max(...catMap.values()) : 0;
+      const categories = [...categoryTotals.entries()]
+        .map(([id, value]) => ({
+          id,
+          name: categoryNameMap.get(id) ?? "-",
+          total: value.total,
+          transactionCount: value.transactionCount,
+        }))
+        .sort((a, b) => b.total - a.total);
+      const biggestCategory = categories[0]?.name ?? "-";
+      console.log("[SUMMARY CATEGORY BREAKDOWN]", {
+        categoryCount: categories.length,
+        categories,
+      });
       const historyLines = historyRows.length > 0
         ? historyRows.map((tx, index) => {
           const type = String(tx.type ?? "expense");
@@ -8940,40 +8965,79 @@ Deno.serve(async (req: Request) => {
             return `${index + 1}. Transfer ${accountName} → ${toAccountName}
    ↔ ${money(amount)} • ${bold(`${accountName} → ${toAccountName}`)}`;
           }
-          const sign = type === "income" ? "+" : "-";
           return `${index + 1}. ${categoryName} — ${title}
-   ${sign} ${money(amount)} • ${bold(accountName)}`;
+   ${money(amount)}`;
         })
         : ["ℹ️ Belum ada transaksi hari ini."];
       if (historyCount > historyRows.length) {
         historyLines.push("", italic(`+${historyCount - historyRows.length} transaksi lainnya. Ketik *history hari ini* untuk detail.`));
       }
 
-      const activeWarnings = expense > 0
-        ? await buildSmartWarnings({ userId, date: today, amount: 0, categoryName: biggestCategory === "-" ? "Lainnya" : biggestCategory })
-        : [];
+      const categoryBreakdownLines = categories.length > 0
+        ? categories.slice(0, 10).flatMap((category, index) => [
+          `${index + 1}. ${category.name}`,
+          `   • ${formatIDR(category.total)} (${category.transactionCount}x)`,
+          "",
+        ]).slice(0, -1)
+        : ["Belum ada pengeluaran hari ini."];
+      if (categories.length > 10) categoryBreakdownLines.push("", `+${categories.length - 10} kategori lainnya...`);
+
+      const dateParts = today.split("-");
+      const summaryDate = dateParts.length === 3
+        ? `${Number(dateParts[2])} ${HISTORY_MONTH_NAMES[Number(dateParts[1]) - 1] ?? dateParts[1]} ${dateParts[0]}`
+        : today;
+      const balance = await getRealtimeBalanceSummary(userId);
+      const largestExpenseTitle = String(largestExpenseTransaction?.title ?? "-").trim() || "-";
+      const largestExpenseAmount = Number(largestExpenseTransaction?.amount ?? 0);
       const summaryLines = [
-        "📊 *Summary Hari Ini*",
+        "📊 *Summary Pengeluaran Hari Ini*",
+        "",
+        `📅 ${italic(summaryDate)}`,
         "",
         line(),
-        `💸 Pengeluaran: ${money(expense)}`,
-        `💵 Pemasukan: ${money(income)}`,
-        `🧾 Transaksi: ${bold(`${(txs ?? []).length} data`)}`,
         "",
-        "🏆 *Kategori Terbesar*",
-        `${biggestCategory} — ${money(biggestCategoryAmount)}`,
+        "💸 Total Pengeluaran",
+        money(expense),
+        "",
+        "💵 Total Pemasukan",
+        money(income),
+        "",
+        "🧾 Total Transaksi",
+        bold(`${(txs ?? []).length} transaksi`),
         "",
         line(),
-        "📚 *Transaksi Terakhir Hari Ini*",
+        "",
+        "📊 *Rincian Pengeluaran*",
+        "",
+        ...categoryBreakdownLines,
+        "",
+        line(),
+        "",
+        "🔥 *Transaksi Terbesar*",
+        "",
+        largestExpenseTitle,
+        money(largestExpenseAmount),
+        "",
+        line(),
+        "",
+        "📚 *History Terakhir*",
         "",
         ...historyLines,
         "",
         line(),
-        "💡 *Insight*",
-        expense > income ? "Pengeluaran hari ini perlu dijaga." : "Pengeluaran hari ini masih terkontrol.",
         "",
-        "⚠️ *Warning Aktif*",
-        ...(activeWarnings.length > 0 ? activeWarnings.map((w) => `• ${w}`) : ["ℹ️ Tidak ada warning aktif."]),
+        "💰 *Saldo Saat Ini*",
+        "",
+        `• Cash: ${money(balance.cash)}`,
+        `• Non Cash: ${money(balance.nonCash)}`,
+        `• Total: ${money(balance.total)}`,
+        "",
+        line(),
+        "",
+        "💡 *Insight*",
+        categories.length > 0
+          ? `⚠️ Pengeluaran hari ini didominasi kategori ${bold(biggestCategory)}.`
+          : "ℹ️ Belum ada pengeluaran hari ini.",
       ];
       reply = summaryLines.join("\n");
     } else if (normalized.startsWith("harian ")) {
