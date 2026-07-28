@@ -66,7 +66,8 @@ type WebhookBody = {
 
 type ParsedTransaction = {
   categoryName: string;
-  accountName: string;
+  accountName: string | null;
+  explicitAccountName: string | null;
   amount: number;
   title: string;
   date: string;
@@ -3452,21 +3453,13 @@ function parseSmartTransactionMessage(message: string): ParsedSmartTransaction |
 
   if (workParts.length < 2) return null;
 
-  let amountIndex = -1;
-  for (let i = workParts.length - 1; i >= 1; i--) {
-    if (parseAmount(workParts[i]) > 0) {
-      amountIndex = i;
-      break;
-    }
-  }
+  const amountSpan = findNaturalAmountSpan(workParts, 1);
+  if (!amountSpan) return null;
+  const amount = amountSpan.amount;
 
-  if (amountIndex < 1) return null;
-  const amount = parseAmount(workParts[amountIndex]);
-  if (amount <= 0) return null;
-
-  const originalTitle = workParts.slice(0, amountIndex).join(" ").trim();
+  const originalTitle = workParts.slice(0, amountSpan.start).join(" ").trim();
   if (!originalTitle) return null;
-  const trailingTokens = workParts.slice(amountIndex + 1);
+  const trailingTokens = workParts.slice(amountSpan.end);
   const accountName = trailingTokens.length > 0 ? trailingTokens.join(" ") : null;
   const title = cleanTransactionTitle(originalTitle, accountName ? [accountName] : []);
   console.log("[TITLE CLEAN]", { originalTitle, cleanedTitle: title });
@@ -3561,7 +3554,7 @@ function normalizeTitleText(text: string): string {
 function isAmountToken(token: string): boolean {
   const normalized = token.toLowerCase().replace(/[()]/g, "").trim();
   if (!normalized) return false;
-  return parseAmount(normalized) > 0 || /^rp?\s?\d[\d.,]*$/i.test(normalized);
+  return isAmountLike(normalized);
 }
 
 function isAmountLike(value: string): boolean {
@@ -4065,7 +4058,31 @@ async function findBestAccountByCategoryHistory(userId: string, categoryId: stri
   return selectedAccount;
 }
 
-function parseTransactionMessage(message: string): ParsedTransaction | ParsedTransactionError | null {
+const NON_AMOUNT_QUANTITY_UNITS = new Set(["pcs", "x", "botol", "bungkus", "pack", "biji", "buah", "cup"]);
+
+function findNaturalAmountSpan(tokens: string[], startIndex: number): { start: number; end: number; amount: number } | null {
+  for (let index = startIndex; index < tokens.length; index++) {
+    const token = String(tokens[index] ?? "").toLowerCase();
+    if (/^\d+(?:[.,]\d+)?(?:pcs|x|botol|bungkus|pack|biji|buah|cup)$/i.test(token)) continue;
+    if (/^\d+(?:[.,]\d+)?$/.test(token) && NON_AMOUNT_QUANTITY_UNITS.has(String(tokens[index + 1] ?? "").toLowerCase())) continue;
+
+    const pair = index + 1 < tokens.length ? `${token} ${tokens[index + 1]}` : "";
+    if (pair && /^(?:rp\s*)?\d+(?:[.,]\d+)?\s+(?:rb|rbu|ribu|k|jt|juta|m)$/i.test(pair)) {
+      const amount = parseAmount(pair);
+      if (amount > 0) return { start: index, end: index + 2, amount };
+    }
+    if (isAmountLike(token)) {
+      const amount = parseAmount(token);
+      if (amount > 0) return { start: index, end: index + 1, amount };
+    }
+  }
+  return null;
+}
+
+function parseTransactionMessage(
+  message: string,
+  accounts: Array<{ id: string; name: string; type: string }>,
+): ParsedTransaction | ParsedTransactionError | null {
   const parts = message.trim().split(/\s+/);
   if (parts.length < 3) return null;
 
@@ -4080,29 +4097,35 @@ function parseTransactionMessage(message: string): ParsedTransaction | ParsedTra
     workParts = workParts.slice(0, -1);
   }
 
-  if (workParts.length < 3) return null;
+  if (workParts.length < 2) return null;
 
   const categoryName = workParts[0];
-  const accountName = workParts[workParts.length - 1];
-  let amountIndex = -1;
-
-  for (let i = workParts.length - 2; i >= 1; i--) {
-    if (parseAmount(workParts[i]) > 0) {
-      amountIndex = i;
-      break;
-    }
-  }
-
-  if (amountIndex < 1) return null;
-  const amount = parseAmount(workParts[amountIndex]);
-  if (amount <= 0) return null;
-
-  const titleParts = workParts.slice(1, amountIndex);
+  const amountSpan = findNaturalAmountSpan(workParts, 1);
+  if (!amountSpan) return null;
+  const amount = amountSpan.amount;
+  const remainingParts = workParts.filter((_, index) => index < amountSpan.start || index >= amountSpan.end);
+  const remainingText = remainingParts.slice(1).join(" ");
+  const account = extractAccountFromNaturalText(remainingText, accounts);
+  const accountName = account?.name ?? null;
+  const titleParts = account
+    ? remainingParts.slice(1).filter((token) => normalizeText(token) !== normalizeText(account.name))
+    : remainingParts.slice(1);
   const originalTitle = titleParts.length > 0 ? titleParts.join(" ") : categoryName;
-  const title = cleanTransactionTitle(originalTitle, [accountName]);
+  const title = cleanTransactionTitle(originalTitle, accountName ? [accountName] : []);
+  const tokensAfterAmount = workParts.slice(amountSpan.end);
+  const explicitAccountName = !account && amountSpan.start > 1 && tokensAfterAmount.length === 1
+    ? tokensAfterAmount[0]
+    : null;
   console.log("[TITLE CLEAN]", { originalTitle, cleanedTitle: title });
+  console.log("[NATURAL PARSER]", {
+    originalMessage: message,
+    detectedCategory: categoryName,
+    detectedAmount: amount,
+    detectedAccount: accountName ?? explicitAccountName,
+    title,
+  });
 
-  return { categoryName, accountName, amount, title, date: txDate };
+  return { categoryName, accountName, explicitAccountName, amount, title, date: txDate };
 }
 
 function parseTransferMessage(message: string): ParsedTransfer | null {
@@ -9406,13 +9429,16 @@ Deno.serve(async (req: Request) => {
           });
         }
       } else {
-        const tx = parseTransactionMessage(normalized);
+        const { data: parserAccountRows, error: parserAccountError } = await getAccountsBaseQuery(userId, "id,name,type");
+        if (parserAccountError) throw parserAccountError;
+        const parserAccounts = (parserAccountRows ?? []) as Array<{ id: string; name: string; type: string }>;
+        const tx = parseTransactionMessage(normalized, parserAccounts);
         if (tx && "error" in tx && tx.error === "INVALID_DATE") {
           reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
         } else if (tx && !("error" in tx)) {
           parsedLog = { command: "transaction", category: tx.categoryName, account: tx.accountName, amount: tx.amount, title: tx.title };
           const category = await findCategory(userId, tx.categoryName);
-          const account = await findAccount(userId, tx.accountName);
+          const account = tx.accountName ? await findAccount(userId, tx.accountName) : null;
 
           if (!category) {
             const smartTx = parseSmartTransactionMessage(normalized);
@@ -9498,8 +9524,35 @@ Deno.serve(async (req: Request) => {
             } else {
               reply = ["❌ *Kategori Tidak Ditemukan*", "", "Kategori:", `*${tx.categoryName}*`, "", "Ketik *kategori* untuk melihat daftar."].join("\n");
             }
+          } else if (tx.explicitAccountName) {
+            reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${tx.explicitAccountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
           } else if (!account) {
-            reply = ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${tx.accountName}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n");
+            const predictedAccount = await predictAccountForTransaction(userId, tx.title, category.id, category.type === "income" ? "income" : "expense");
+            if (!predictedAccount?.account) {
+              const pending = await createPendingTransactionResponse(userId, {
+                title: tx.title,
+                amount: tx.amount,
+                date: tx.date,
+                rawText: message,
+                categoryId: category.id,
+                categoryName: category.name,
+                accountId: null,
+                accountName: null,
+              });
+              reply = pending.reply;
+              parsedLog = pending.parsedLog;
+            } else {
+              const selectedAccount = predictedAccount.account;
+              const type = category.type === "income" ? "income" : "expense";
+              const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: tx.date, type, category_id: category.id, account_id: selectedAccount.id, amount: tx.amount, title: tx.title, notes: `WhatsApp: ${message}` }).select("id").single();
+              if (error) throw error;
+              parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: selectedAccount.id, accountName: selectedAccount.name, title: tx.title, amount: tx.amount, date: tx.date });
+              parsedLog.autoAccountReason = predictedAccount.reason;
+              const [balanceSection, budgetSection] = await Promise.all([buildBalanceSection(userId), buildTransactionBudgetSection({ userId, categoryId: category.id, amount: tx.amount, transactionDate: tx.date })]);
+              const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name }) : [];
+              if (type === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: tx.amount, categoryName: category.name });
+              reply = buildTransactionSuccessMessage({ type, categoryName: category.name, title: tx.title, amount: tx.amount, accountName: selectedAccount.name, date: tx.date, balanceSection, budgetSection: type === "expense" ? budgetSection : null, warnings, quickCorrectionSection: buildQuickFixLines(selectedAccount.name) });
+            }
           } else {
             const type = category.type === "income" ? "income" : "expense";
 
