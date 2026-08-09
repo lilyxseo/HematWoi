@@ -4462,7 +4462,7 @@ type PendingTransactionSession = {
   accountId: string | null;
   accountName: string | null;
 };
-type PendingTransactionLookup = { session: PendingTransactionSession; expired: boolean } | null;
+type PendingTransactionLookup = { id: string; session: PendingTransactionSession; expired: boolean } | null;
 type PendingTransactionUpdateCommand = { field: "category" | "account"; value: string };
 type PendingDebtPaymentSession = {
   debtType: DebtType;
@@ -4659,6 +4659,7 @@ async function getLatestPendingTransactionSession(userId: string, phone: string)
     if (parsed?.command !== "pending_transaction") continue;
     const createdAt = new Date(String(log.created_at ?? "")).getTime();
     return {
+      id: String(log.id ?? ""),
       expired: !Number.isFinite(createdAt) || Date.now() - createdAt > PENDING_TRANSACTION_TTL_MS,
       session: {
         reason: String(parsed.reason ?? "missing_category_account") as PendingTransactionReason,
@@ -4698,9 +4699,9 @@ async function completePendingTransaction(userId: string, session: PendingTransa
   const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: session.date, type, category_id: category.id, account_id: account.id, amount: session.amount, title: session.title, notes: `WhatsApp pending: ${sourceMessage || session.rawText}` }).select("id").single();
   if (error) throw error;
 
-  console.log("[PENDING TRANSACTION COMPLETE]", {
+  console.log("[PENDING TRANSACTION COMPLETED]", {
+    title: session.title,
     categoryName: category.name,
-    accountName: account.name,
     amount: session.amount,
   });
 
@@ -5029,6 +5030,9 @@ async function handleQuickFixCommand(
       transactionId: session.transactionId,
       oldCategory,
       newCategory: newCategory.name,
+    });
+    console.log("[LAST TRANSACTION CATEGORY EDIT]", {
+      transactionId: session.transactionId,
     });
 
     return {
@@ -8723,6 +8727,19 @@ Deno.serve(async (req: Request) => {
 
     const simpleCalculatorExpression = parseSimpleCalculatorExpression(message);
     const pendingUpdateCommand = simpleCalculatorExpression ? null : parsePendingTransactionUpdateCommand(normalized);
+    const pendingTransactionLookup = pendingUpdateCommand
+      ? await getLatestPendingTransactionSession(userId, contextKey)
+      : null;
+    const activePendingTransaction = pendingTransactionLookup && !pendingTransactionLookup.expired
+      ? pendingTransactionLookup
+      : null;
+    if (pendingUpdateCommand?.field === "category") {
+      console.log("[CATEGORY COMMAND]", {
+        hasPending: Boolean(activePendingTransaction),
+        pendingId: activePendingTransaction?.id ?? null,
+        contextKey,
+      });
+    }
     const pendingDebtAccountCommand = simpleCalculatorExpression ? null : parsePendingDebtPaymentAccountCommand(normalized);
     const dashboardNoteCommand = simpleCalculatorExpression ? null : parseDashboardNoteCommand(message, normalized);
 
@@ -8730,7 +8747,14 @@ Deno.serve(async (req: Request) => {
     const historySpecificEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+(?:akun|judul|title|tanggal|nominal)\s+\d+\s+.+$/i);
     const historyGenericEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+\d+\s+.+$/i);
 
-    if (historyCategoryEditMatch) {
+    if (pendingUpdateCommand?.field === "category" && activePendingTransaction) {
+      console.log("[ROUTE MATCH]", { route: "pending_transaction_update", normalized, isGroup, contextKey });
+      const pendingResult = await handlePendingTransactionUpdate(userId, contextKey, pendingUpdateCommand, message);
+      if (pendingResult) {
+        reply = pendingResult.reply;
+        parsedLog = pendingResult.parsedLog;
+      }
+    } else if (historyCategoryEditMatch) {
       console.log("[ROUTE MATCH]", { route: "history_category_edit", normalized, isGroup, contextKey });
       const editResult = await handleHistoryCategoryEditCommand(userId, contextKey, normalized);
       reply = editResult.reply;
@@ -8791,7 +8815,7 @@ Deno.serve(async (req: Request) => {
         reply = pendingDebtResult.reply;
         parsedLog = pendingDebtResult.parsedLog;
       }
-    } else if (pendingUpdateCommand && await getLatestPendingTransactionSession(userId, contextKey)) {
+    } else if (pendingUpdateCommand && activePendingTransaction) {
       console.log("[ROUTE MATCH]", { route: "pending_transaction_update", normalized, isGroup, contextKey });
       const pendingResult = await handlePendingTransactionUpdate(userId, contextKey, pendingUpdateCommand, message);
       if (pendingResult) {
