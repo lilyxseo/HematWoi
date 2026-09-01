@@ -111,6 +111,13 @@ function applyThemeInstant(mode: ThemeMode) {
 
 function userHasPassword(user: User | null): boolean {
   if (!user) return false;
+  const providers = user.app_metadata?.providers;
+  if (Array.isArray(providers) && providers.includes('email')) {
+    return true;
+  }
+  if (typeof user.app_metadata?.provider === 'string' && user.app_metadata.provider === 'email') {
+    return true;
+  }
   return Boolean(user.identities?.some((identity) => identity.provider === 'email'));
 }
 
