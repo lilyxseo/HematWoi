@@ -1,5 +1,5 @@
 import type { PostgrestSingleResponse } from '@supabase/supabase-js';
-import { supabase } from './supabase';
+import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from './supabase';
 
 export type SidebarAccessLevel = 'public' | 'user' | 'admin';
 
@@ -67,6 +67,137 @@ export type AuditEntry = {
 };
 
 const VALID_ACCESS_LEVELS: SidebarAccessLevel[] = ['public', 'user', 'admin'];
+
+const HAS_SUPABASE_CONFIG = Boolean(
+  typeof SUPABASE_URL === 'string' && SUPABASE_URL.trim() &&
+    typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.trim()
+);
+
+const FALLBACK_USERS: UserProfileRecord[] = [
+  {
+    id: 'demo-admin-rina',
+    email: 'rina.admin@hematwoi.local',
+    username: 'rina_admin',
+    role: 'admin',
+    is_active: true,
+    created_at: '2024-01-10T08:30:00.000Z',
+    updated_at: '2024-03-02T09:10:00.000Z',
+  },
+  {
+    id: 'demo-user-bayu',
+    email: 'bayu.pengguna@hematwoi.local',
+    username: 'bayu_user',
+    role: 'user',
+    is_active: true,
+    created_at: '2024-02-15T07:45:00.000Z',
+    updated_at: '2024-02-20T06:15:00.000Z',
+  },
+  {
+    id: 'demo-user-sinta',
+    email: 'sinta.pengguna@hematwoi.local',
+    username: 'sinta_saver',
+    role: 'user',
+    is_active: false,
+    created_at: '2024-02-28T04:20:00.000Z',
+    updated_at: '2024-04-05T11:05:00.000Z',
+  },
+  {
+    id: 'demo-admin-eko',
+    email: 'eko.admin@hematwoi.local',
+    username: 'eko_manager',
+    role: 'admin',
+    is_active: true,
+    created_at: '2024-03-12T05:00:00.000Z',
+    updated_at: '2024-05-01T03:40:00.000Z',
+  },
+];
+
+let fallbackUsers = FALLBACK_USERS.map((item) => ({ ...item }));
+
+function cloneUser(user: UserProfileRecord): UserProfileRecord {
+  return { ...user };
+}
+
+function filterFallbackUsers(params: ListUsersParams = {}): UserProfileRecord[] {
+  const searchTerm = params.query?.trim().toLowerCase() ?? '';
+  const roleFilter = params.role && params.role !== 'all' ? params.role : null;
+  const statusFilter = params.status && params.status !== 'all' ? params.status : null;
+
+  return fallbackUsers
+    .filter((user) => {
+      if (searchTerm) {
+        const haystacks = [user.username, user.email, user.id].filter(Boolean) as string[];
+        const found = haystacks.some((value) => value.toLowerCase().includes(searchTerm));
+        if (!found) return false;
+      }
+
+      if (roleFilter && user.role !== roleFilter) {
+        return false;
+      }
+
+      if (statusFilter) {
+        const isActive = Boolean(user.is_active);
+        if (statusFilter === 'active' && !isActive) return false;
+        if (statusFilter === 'inactive' && isActive) return false;
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return timeA - timeB;
+    })
+    .map(cloneUser);
+}
+
+function shouldUseFallback(error: unknown): boolean {
+  if (!HAS_SUPABASE_CONFIG) {
+    return true;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String((error as { message?: unknown }).message ?? '').toLowerCase();
+    if (message.includes('edge function') || message.includes('failed to fetch')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function updateFallbackUser(id: string, updates: UpdateUserProfileInput): UserProfileRecord {
+  const index = fallbackUsers.findIndex((item) => item.id === id);
+  if (index === -1) {
+    throw new Error('Pengguna tidak ditemukan');
+  }
+
+  const current = fallbackUsers[index];
+  const nextRole: UserRole = updates.role === 'admin' || updates.role === 'user' ? updates.role : current.role;
+  const nextActive =
+    typeof updates.is_active === 'boolean' ? updates.is_active : Boolean(current.is_active);
+
+  if (current.role === 'admin' && (!nextActive || nextRole !== 'admin')) {
+    const otherActiveAdmins = fallbackUsers.filter(
+      (user, idx) => idx !== index && user.role === 'admin' && Boolean(user.is_active)
+    );
+
+    if (otherActiveAdmins.length === 0) {
+      throw new Error('Tidak dapat menonaktifkan admin terakhir');
+    }
+  }
+
+  const updated: UserProfileRecord = {
+    ...current,
+    role: nextRole,
+    is_active: nextActive,
+    updated_at: new Date().toISOString(),
+  };
+
+  fallbackUsers = fallbackUsers.map((user, idx) => (idx === index ? updated : user));
+
+  return cloneUser(updated);
+}
 
 function ensureResponse<T>(response: PostgrestSingleResponse<T>): T {
   if (response.error) {
@@ -338,6 +469,10 @@ function isUnknownColumnError(error: unknown): boolean {
 }
 
 export async function listUsers(params: ListUsersParams = {}): Promise<UserProfileRecord[]> {
+  if (!HAS_SUPABASE_CONFIG) {
+    return filterFallbackUsers(params);
+  }
+
   try {
     const columns = 'id, email, username, role, is_active, created_at, updated_at';
     const fallbackColumns = 'id, username, role, is_active, created_at, updated_at';
@@ -376,6 +511,10 @@ export async function listUsers(params: ListUsersParams = {}): Promise<UserProfi
 
     return (data ?? []).map((item) => mapUserRow(item));
   } catch (error) {
+    if (shouldUseFallback(error)) {
+      console.warn('[adminApi] listUsers falling back to demo data', error);
+      return filterFallbackUsers(params);
+    }
     console.error('[adminApi] listUsers failed', error);
     throw new Error('Gagal memuat daftar pengguna');
   }
@@ -385,6 +524,10 @@ export async function updateUserProfile(
   id: string,
   updates: UpdateUserProfileInput
 ): Promise<UserProfileRecord> {
+  if (!HAS_SUPABASE_CONFIG) {
+    return updateFallbackUser(id, updates);
+  }
+
   try {
     const currentResponse = await supabase
       .from('user_profiles')
@@ -442,6 +585,10 @@ export async function updateUserProfile(
     const data = ensureResponse(response);
     return mapUserRow(data);
   } catch (error) {
+    if (shouldUseFallback(error)) {
+      console.warn('[adminApi] updateUserProfile falling back to demo data', error);
+      return updateFallbackUser(id, updates);
+    }
     console.error('[adminApi] updateUserProfile failed', error);
     const message = error instanceof Error ? error.message : 'Gagal memperbarui pengguna';
     throw new Error(message || 'Gagal memperbarui pengguna');
