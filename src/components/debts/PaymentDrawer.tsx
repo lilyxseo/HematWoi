@@ -238,14 +238,23 @@ export default function PaymentDrawer({
   }, [debt]);
 
   const isSubmitDisabled = useMemo(() => {
+    const effectiveCategoryId = includeTransaction ? categoryId || defaultCategoryId : '';
     if (submitting) return true;
     if (includeTransaction) {
       if (accountsLoading) return true;
       if (!accountId) return true;
-      if (filteredCategories.length > 0 && !categoryId) return true;
+      if (filteredCategories.length > 0 && !effectiveCategoryId) return true;
     }
     return false;
-  }, [submitting, includeTransaction, accountsLoading, accountId, filteredCategories, categoryId]);
+  }, [
+    submitting,
+    includeTransaction,
+    accountsLoading,
+    accountId,
+    filteredCategories,
+    categoryId,
+    defaultCategoryId,
+  ]);
 
   const transactionTypeLabel = transactionType === 'income' ? 'Pemasukan' : 'Pengeluaran';
   const TransactionIcon = transactionType === 'income' ? ArrowUpRight : ArrowDownLeft;
@@ -254,6 +263,8 @@ export default function PaymentDrawer({
     const parsed = parseDecimal(amount);
     const trimmedDate = date?.trim() ?? '';
     const nextErrors: { amount?: string; date?: string; account?: string; category?: string } = {};
+
+    const effectiveCategoryId = includeTransaction ? categoryId || defaultCategoryId : '';
 
     if (Number.isNaN(parsed) || parsed <= 0) {
       nextErrors.amount = 'Masukkan nominal lebih dari 0.';
@@ -271,7 +282,7 @@ export default function PaymentDrawer({
       if (!accountId) {
         nextErrors.account = accountsLoading ? 'Sedang memuat daftar akun…' : 'Pilih akun untuk mencatat transaksi.';
       }
-      if (filteredCategories.length > 0 && !categoryId) {
+      if (filteredCategories.length > 0 && !effectiveCategoryId) {
         nextErrors.category = 'Pilih kategori transaksi.';
       }
     }
@@ -290,7 +301,7 @@ export default function PaymentDrawer({
         notes: notes.trim() ? notes.trim() : null,
         includeTransaction,
         accountId: accountId || null,
-        categoryId: includeTransaction ? categoryId || null : null,
+        categoryId: includeTransaction ? effectiveCategoryId || null : null,
         markAsPaid,
         allowOverpay,
       });
