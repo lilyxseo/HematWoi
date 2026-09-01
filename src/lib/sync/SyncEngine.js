@@ -16,6 +16,8 @@ export const SyncStatus = {
 
 let status = navigator.onLine ? SyncStatus.IDLE : SyncStatus.OFFLINE;
 const listeners = new Set();
+let realtimeChannels = [];
+let realtimeWired = false;
 
 function emit() {
   listeners.forEach((fn) => fn(status));
@@ -583,6 +585,13 @@ export async function flushQueue({ batchSize = SYNC_BATCH_SIZE } = {}) {
             continue;
           }
           const delay = calcBackoff(attempt);
+          console.warn("[SyncEngine] Deferring op retry", {
+            opId: o.opId,
+            entity: g.entity,
+            type: g.type,
+            attempts: attempt,
+            delay,
+          });
           await oplogStore.markDeferred(
             o.opId,
             attempt,
@@ -622,7 +631,9 @@ function isRealtimeEnabled() {
 
 export function wireRealtime() {
   if (!isRealtimeEnabled()) return;
-  ["transactions", "categories"].forEach((table) => {
+  if (realtimeWired) return;
+  realtimeWired = true;
+  realtimeChannels = ["transactions", "categories"].map((table) =>
     supabase
       .channel(`rt:${table}`)
       .on("postgres_changes", { event: "*", schema: "public", table }, async (payload) => {
@@ -631,8 +642,16 @@ export function wireRealtime() {
         await dbCache.set(table, rec);
         emit();
       })
-      .subscribe();
+      .subscribe()
+  );
+}
+
+export function unwireRealtime() {
+  realtimeChannels.forEach((channel) => {
+    supabase.removeChannel(channel);
   });
+  realtimeChannels = [];
+  realtimeWired = false;
 }
 
 export function initSyncEngine() {
