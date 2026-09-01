@@ -8,9 +8,9 @@ supabase.auth.onAuthStateChange((_event, session) => {
 
 export async function getCurrentUserId() {
   if (cachedUserId) return cachedUserId;
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
-  cachedUserId = data.user?.id ?? null;
+  cachedUserId = data.session?.user?.id ?? null;
   return cachedUserId;
 }
 
