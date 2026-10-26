@@ -77,7 +77,7 @@ Deno.test('pending category can be selected by number then saved once', async ()
   setup(); await send('misteri 25rb cash');
   assert(active().length === 0); assert(latestReply().includes('1. Makan'));
   await send('1'); assert(active().length === 1); assert(active()[0].category_id === 'food-id');
-  assert(latestReply().includes('tercatat'));
+  assert(latestReply().includes('Tercatat'));
 });
 Deno.test('numbered selection retains entity ID if its display name changes', async () => {
   setup(); await send('misteri 25rb cash');
@@ -169,7 +169,26 @@ Deno.test('batch limit rejects the whole message before inserting', async () => 
 });
 Deno.test('detailed receipt includes balance, budget remaining, warnings and correction help', () => {
   const receipt = detailedReceipt({ type:'expense', title:'Lunch', amount:25000, categoryName:'Makan', accountName:'Cash', date:'2026-10-26', balanceSection:'💰 Saldo Saat Ini\nCash: Rp100.000', budgetSection:'📆 Budget Bulanan\nTerpakai: Rp25.000 / Rp200.000\nSisa: Rp175.000\n🗓️ Budget Mingguan\nSisa: Rp50.000', warnings:['⚠️ Saldo mulai menipis.'] });
-  for (const expected of ['25.000', 'Cash', 'Makan', '2026-10-26', 'Saldo Saat Ini', '175.000', 'Budget Mingguan', '50.000', 'menipis', 'undo']) assert(receipt.includes(expected), expected);
+  for (const expected of ['25.000', 'Cash', 'Makan', '2026-10-26', 'Saldo Saat Ini', '175.000', 'Budget Mingguan', '50.000', 'menipis', '• edit 30000']) assert(receipt.includes(expected), expected);
+});
+Deno.test('expense receipt preserves the original requested WhatsApp layout exactly', () => {
+  const money = (value: number) => new Intl.NumberFormat('id-ID', {style:'currency',currency:'IDR',maximumFractionDigits:0}).format(value);
+  const balance = `💰 Saldo Saat Ini\nCash: ${money(45000)}\nNon Cash: ${money(-87506)}\nTotal: ${money(-42506)}`;
+  const budget = `📆 Budget Bulanan\n• Terpakai: ${money(258000)} / ${money(250000)}\n• Sisa: ${money(-8000)}\n⚠️ Budget bulanan hampir habis (103.2%)\n\n🗓️ Budget Mingguan\n• Terpakai: ${money(3500)} / ${money(50000)}\n• Sisa: ${money(46500)}`;
+  const warnings = ['🚨 Budget Makan sudah melewati limit.', '⚠️ Saldo mulai menipis.'];
+  const receipt = detailedReceipt({type:'expense', date:'2026-10-26', categoryName:'Makan',title:'fm',amount:3500,accountName:'Seabank',balanceSection:balance,budgetSection:budget,warnings});
+  assert(receipt === [`✅ Pengeluaran Tercatat`, '', 'Tanggal: 2026-10-26', 'Kategori: Makan', 'Judul: fm', `Nominal: ${money(3500)}`, 'Akun: Seabank', '', balance, '', budget, '', ...warnings, '', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', '• akun cash', '• tanggal 01/06', '• judul pertamax turbo'].join('\n'), receipt);
+});
+Deno.test('ordinary recording includes an over-budget warning based on database usage', async () => {
+  setup();
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  db.budgets = [{id:'over-budget',user_id:'user-1',category_id:'food-id',planned_amount:250000,period_month:today.slice(0,7)+'-01'}];
+  db.transactions = [{id:'previous-expense',user_id:'user-1',category_id:'food-id',account_id:'bank-id',type:'expense',amount:254500,date:today}];
+  const response = await send('makan fm 3500 seabank');
+  assert(response.status === 200);
+  assert(latestReply().includes('103.2%'), latestReply());
+  assert(latestReply().includes('🚨 Budget Makan sudah melewati limit.'), latestReply());
+  assert(latestReply().includes('• akun cash'));
 });
 Deno.test('successful recording computes remaining monthly budget after the insert', async () => {
   setup();

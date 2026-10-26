@@ -68,3 +68,5 @@ Tes integrasi menjalankan handler asli dengan SDK database dan pengiriman WhatsA
 ## Balasan berhasil
 
 Balasan pencatatan tunggal menampilkan tanggal, judul, nominal, kategori/akun, saldo cash/non-cash/total, serta penggunaan dan sisa budget bulanan/mingguan yang tersedia. Budget mengikuti tanggal transaksi. Jika pengambilan saldo atau budget gagal, bot tetap mengonfirmasi transaksi tersimpan dan menandai informasi laporan yang belum tersedia; angka tidak diisi nol untuk menutupi kegagalan. Batch tetap menampilkan hasil per baris.
+
+Format balasan mengikuti contoh asli: judul “✅ Pengeluaran Tercatat”, urutan tanggal/kategori/judul/nominal/akun, saldo, budget, peringatan cerdas, garis pemisah, lalu daftar Koreksi Cepat. Peringatan mengikuti kondisi aktual serta pembatasan frekuensi yang sudah ada. Teks “Sent via fonnte.com” tetap dikelola Fonnte agar tidak ditambahkan dua kali.

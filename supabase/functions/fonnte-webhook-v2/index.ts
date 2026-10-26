@@ -2517,7 +2517,12 @@ async function buildTransactionSuccessMessage(input: {
       budget = "📊 Budget\n⚠️ Informasi budget belum dapat diambil. Transaksi tetap tersimpan.";
     }
   }
-  return detailedReceipt({ ...input, balanceSection: balance, budgetSection: budget });
+  const warnings = input.warnings ?? (input.type === "expense" && input.categoryName
+    ? await buildSmartWarnings({ userId: input.userId, date: input.date || getTodayJakarta(), amount: input.amount, categoryName: input.categoryName }).catch((error) => {
+      console.error("[RECEIPT WARNINGS ERROR]", error);
+      return [];
+    }) : []);
+  return detailedReceipt({ ...input, balanceSection: balance, budgetSection: budget, warnings });
 }
 
 

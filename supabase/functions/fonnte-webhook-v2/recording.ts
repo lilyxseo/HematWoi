@@ -16,18 +16,20 @@ export function detailedReceipt(input: {
 }): string {
   const amount = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(input.amount);
   const lines = [
-    `✅ ${input.type === 'income' ? 'Pemasukan' : input.type === 'transfer' ? 'Transfer' : 'Pengeluaran'} tercatat`,
+    `✅ ${input.type === 'income' ? 'Pemasukan' : input.type === 'transfer' ? 'Transfer' : 'Pengeluaran'} Tercatat`,
     '',
     `Tanggal: ${input.date ?? '-'}`,
+    ...(input.type === 'transfer' ? [] : [`Kategori: ${input.categoryName ?? '-'}`]),
     `Judul: ${input.title || input.categoryName || 'Transaksi'}`,
-    `Nominal: *${amount}*`,
+    `Nominal: ${amount}`,
   ];
   if (input.type === 'transfer') lines.push(`Dari: ${input.accountName ?? '-'}`, `Ke: ${input.toAccountName ?? '-'}`);
-  else lines.push(`Kategori: ${input.categoryName ?? '-'}`, `Akun: ${input.accountName ?? '-'}`);
+  else lines.push(`Akun: ${input.accountName ?? '-'}`);
   lines.push('', input.balanceSection || '💰 Saldo Saat Ini\nInformasi saldo belum tersedia.');
   if (input.type === 'expense') lines.push('', input.budgetSection || '📊 Belum ada budget untuk kategori ini pada periode transaksi.');
   if (input.warnings?.length) lines.push('', ...input.warnings);
-  lines.push('', '⚡ Koreksi cepat', 'nominal 25rb / ganti akun NAMA_AKUN / kategori NAMA_KATEGORI / undo');
+  const suggestedAccount = input.accountName?.toLowerCase().includes('seabank') ? 'cash' : 'seabank';
+  lines.push('', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', `• akun ${suggestedAccount}`, '• tanggal 01/06', '• judul pertamax turbo');
   return lines.join('\n');
 }
 
