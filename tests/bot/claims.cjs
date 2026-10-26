@@ -21,7 +21,11 @@ const { PGlite } = require('@electric-sql/pglite');
     const replay = await claim('private','msg1'); assert.equal(replay.state, 'ready'); assert.equal(replay.reply, 'saved receipt');
     assert.equal((await claim('private','msg2')).kind, 'claimed');
     await assert.rejects(db.query('insert into public.whatsapp_inbound_requests(user_id,context_key,message_id) values ($1,$2,$3)',[user,'another','msg3']), /duplicate key/);
-    await db.exec('reset role; set role authenticated');
+    await db.exec('reset role');
+    // A deployment rerun must preserve existing claims and preferences.
+    await db.exec(fs.readFileSync(path.join(__dirname, '../../supabase/migrations/20261026000000_bot_recording_workflow.sql'), 'utf8'));
+    assert.equal((await claim('private','msg1')).reply, 'saved receipt');
+    await db.exec('set role authenticated');
     await assert.rejects(claim('private','unauthorized'), /permission denied/);
     await assert.rejects(db.query('select * from public.whatsapp_inbound_requests'), /permission denied/);
     await assert.rejects(db.query('select * from public.whatsapp_recording_preferences'), /permission denied/);

@@ -1,5 +1,5 @@
 -- Durable inbound claims and reply outbox. Only the service role may access these tables.
-create table public.whatsapp_inbound_requests (
+create table if not exists public.whatsapp_inbound_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
   context_key text not null,
@@ -11,7 +11,7 @@ create table public.whatsapp_inbound_requests (
   updated_at timestamptz not null default now(),
   unique(user_id, context_key, message_id)
 );
-create unique index whatsapp_one_processing_user
+create unique index if not exists whatsapp_one_processing_user
   on public.whatsapp_inbound_requests(user_id) where state = 'processing';
 alter table public.whatsapp_inbound_requests enable row level security;
 revoke all on public.whatsapp_inbound_requests from anon, authenticated;
@@ -38,7 +38,7 @@ end $$;
 revoke all on function public.claim_whatsapp_request(uuid,text,text) from public, anon, authenticated;
 grant execute on function public.claim_whatsapp_request(uuid,text,text) to service_role;
 
-create table public.whatsapp_recording_preferences (
+create table if not exists public.whatsapp_recording_preferences (
   user_id uuid primary key references auth.users(id) on delete cascade,
   default_account_id uuid references public.accounts(id) on delete set null,
   learning_enabled boolean not null default true,
@@ -48,3 +48,6 @@ create table public.whatsapp_recording_preferences (
 alter table public.whatsapp_recording_preferences enable row level security;
 revoke all on public.whatsapp_recording_preferences from anon, authenticated;
 grant all on public.whatsapp_recording_preferences to service_role;
+
+-- PostgREST must discover the newly created RPC before webhook traffic uses it.
+notify pgrst, 'reload schema';
