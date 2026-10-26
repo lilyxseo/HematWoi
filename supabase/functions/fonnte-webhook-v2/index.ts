@@ -1,4 +1,4 @@
-import { compactReceipt, quickEditAlias, selectPendingChoice, splitRecordingLines, correctCommandTypo, matchUniqueName } from "./recording.ts";
+import { detailedReceipt, quickEditAlias, selectPendingChoice, splitRecordingLines, correctCommandTypo, matchUniqueName } from "./recording.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 
 type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
@@ -2490,7 +2490,8 @@ async function buildBalanceSection(userId: string): Promise<string> {
   return balanceSection;
 }
 
-function buildTransactionSuccessMessage(input: {
+async function buildTransactionSuccessMessage(input: {
+  userId: string;
   type: "expense" | "income" | "transfer";
   categoryName?: string | null;
   title?: string | null;
@@ -2502,8 +2503,21 @@ function buildTransactionSuccessMessage(input: {
   budgetSection?: string | null;
   warnings?: string[];
   quickCorrectionSection?: string | string[] | null;
-}): string {
-  return compactReceipt(input);
+}): Promise<string> {
+  // Reporting is best effort after the write: a reporting failure must never
+  // turn a successfully saved transaction into a retryable financial mutation.
+  const balance = input.balanceSection || await buildBalanceSection(input.userId).catch(() => "💰 Saldo Saat Ini\n⚠️ Saldo belum dapat diambil.");
+  let budget = input.budgetSection;
+  if (input.type === "expense" && !budget && input.categoryName) {
+    try {
+      const category = await findCategory(input.userId, input.categoryName, false);
+      if (category) budget = await buildTransactionBudgetSection({ userId: input.userId, categoryId: category.id, amount: input.amount, transactionDate: input.date || getTodayJakarta() });
+    } catch (error) {
+      console.error("[RECEIPT BUDGET ERROR]", error);
+      budget = "📊 Budget\n⚠️ Informasi budget belum dapat diambil. Transaksi tetap tersimpan.";
+    }
+  }
+  return detailedReceipt({ ...input, balanceSection: balance, budgetSection: budget });
 }
 
 
@@ -4690,7 +4704,7 @@ async function completePendingTransaction(userId: string, session: PendingTransa
   const parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: session.title, amount: session.amount, date: session.date });
   const balanceSection = "";
   const budgetSection = null;
-  const reply = buildTransactionSuccessMessage({
+  const reply = await buildTransactionSuccessMessage({ userId,
     type,
     categoryName: category.name,
     title: session.title,
@@ -6128,7 +6142,7 @@ async function processDebtPayment(input: {
   if (!paymentCategory?.name) warnings.push("⚠️ Kategori Hutang/Piutang atau Lainnya belum ditemukan, transaksi dicatat tanpa kategori.");
 
   return {
-    reply: buildTransactionSuccessMessage({
+    reply: await buildTransactionSuccessMessage({ userId,
       type: txType,
       categoryName: paymentCategory?.name ?? null,
       title: `${debtType === "debt" ? "Bayar hutang" : "Bayar piutang"} ${debtName}`,
@@ -9543,7 +9557,7 @@ Deno.serve(async (req: Request) => {
 
           parsedLog = buildLastTransactionLog({ transactionId: String(transferTx.id), categoryId: null, categoryName: null, accountId: fromAccount.id, accountName: fromAccount.name, title: `Transfer ${fromAccount.name} ke ${toAccount.name}`, amount: transfer.amount, date: getTodayJakarta() });
           const balanceSection = "";
-          reply = buildTransactionSuccessMessage({
+          reply = await buildTransactionSuccessMessage({ userId,
             type: "transfer",
             amount: transfer.amount,
             accountName: fromAccount.name,
@@ -9632,7 +9646,7 @@ Deno.serve(async (req: Request) => {
   const budgetSection = null;
                   const warnings = smartType === "expense" ? await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: smartCategory.name }).catch(() => []) : [];
                   if (smartType === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: smartCategory.name });
-                  reply = buildTransactionSuccessMessage({
+                  reply = await buildTransactionSuccessMessage({ userId,
                     type: smartType,
                     categoryName: smartCategory.name,
                     title: finalSmartTitle,
@@ -9677,7 +9691,7 @@ Deno.serve(async (req: Request) => {
   const budgetSection = null;
               const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name }).catch(() => []) : [];
               if (type === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: tx.amount, categoryName: category.name });
-              reply = buildTransactionSuccessMessage({ type, categoryName: category.name, title: tx.title, amount: tx.amount, accountName: selectedAccount.name, date: tx.date, balanceSection, budgetSection: type === "expense" ? budgetSection : null, warnings, quickCorrectionSection: buildQuickFixLines(selectedAccount.name) });
+              reply = await buildTransactionSuccessMessage({ userId, type, categoryName: category.name, title: tx.title, amount: tx.amount, accountName: selectedAccount.name, date: tx.date, balanceSection, budgetSection: type === "expense" ? budgetSection : null, warnings, quickCorrectionSection: buildQuickFixLines(selectedAccount.name) });
             }
           } else {
             const type = category.type === "income" ? "income" : "expense";
@@ -9699,7 +9713,7 @@ Deno.serve(async (req: Request) => {
   const budgetSection = null;
             const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name }).catch(() => []) : [];
             if (type === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: tx.amount, categoryName: category.name });
-            reply = buildTransactionSuccessMessage({
+            reply = await buildTransactionSuccessMessage({ userId,
               type,
               categoryName: category.name,
               title: tx.title,
@@ -9813,7 +9827,7 @@ Deno.serve(async (req: Request) => {
   const budgetSection = null;
                   const warnings = finalType === "expense" ? await buildSmartWarnings({ userId, date: naturalTx.date, amount: naturalTx.amount, categoryName: category.name }).catch(() => []) : [];
                   if (finalType === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: naturalTx.amount, categoryName: category.name });
-                  reply = buildTransactionSuccessMessage({
+                  reply = await buildTransactionSuccessMessage({ userId,
                     type: finalType,
                     categoryName: category.name,
                     title: finalNaturalTitle,
@@ -9891,7 +9905,7 @@ Deno.serve(async (req: Request) => {
   const budgetSection = null;
                 const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: category.name }).catch(() => []) : [];
                 if (type === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: category.name });
-                reply = buildTransactionSuccessMessage({
+                reply = await buildTransactionSuccessMessage({ userId,
                   type,
                   categoryName: category.name,
                   title: finalSmartTitle,

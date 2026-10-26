@@ -64,3 +64,7 @@ npm run lint
 ```
 
 Tes integrasi menjalankan handler asli dengan SDK database dan pengiriman WhatsApp tiruan; `--no-check` digunakan hanya untuk penggantian SDK tersebut. Pemeriksaan tipe handler produksi dilakukan terpisah dengan SDK asli. Tes SQL mengeksekusi migrasi di PostgreSQL PGlite dan memeriksa claim, outbox, constraint, isolasi pengguna, serta izin. PGlite bukan uji konkurensi multi-koneksi jaringan dan tidak menggantikan pengujian staging.
+
+## Balasan berhasil
+
+Balasan pencatatan tunggal menampilkan tanggal, judul, nominal, kategori/akun, saldo cash/non-cash/total, serta penggunaan dan sisa budget bulanan/mingguan yang tersedia. Budget mengikuti tanggal transaksi. Jika pengambilan saldo atau budget gagal, bot tetap mengonfirmasi transaksi tersimpan dan menandai informasi laporan yang belum tersedia; angka tidak diisi nol untuk menutupi kegagalan. Batch tetap menampilkan hasil per baris.

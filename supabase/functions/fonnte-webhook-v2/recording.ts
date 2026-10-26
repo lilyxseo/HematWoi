@@ -9,21 +9,26 @@ export function splitRecordingLines(message: string): string[] | null {
   return lines.length > 1 ? lines : null;
 }
 
-export function compactReceipt(input: {
+export function detailedReceipt(input: {
   type: string; title?: string | null; amount: number; categoryName?: string | null;
   accountName?: string | null; toAccountName?: string | null; date?: string | null;
-  warnings?: string[];
+  balanceSection?: string; budgetSection?: string | null; warnings?: string[];
 }): string {
   const amount = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(input.amount);
-  return [
+  const lines = [
     `✅ ${input.type === 'income' ? 'Pemasukan' : input.type === 'transfer' ? 'Transfer' : 'Pengeluaran'} tercatat`,
-    `${input.title || input.categoryName || 'Transaksi'} · *${amount}*`,
-    input.type === 'transfer' ? `${input.accountName ?? '-'} → ${input.toAccountName ?? '-'}` : `${input.categoryName ?? '-'} · ${input.accountName ?? '-'}`,
-    input.date ?? '',
-    ...(input.warnings ?? []).slice(0, 1),
-    'Koreksi: nominal 25rb / ganti akun BCA / kategori Makan / undo',
-    'Detail saldo: saldo · Anggaran: budget',
-  ].filter(Boolean).join('\n');
+    '',
+    `Tanggal: ${input.date ?? '-'}`,
+    `Judul: ${input.title || input.categoryName || 'Transaksi'}`,
+    `Nominal: *${amount}*`,
+  ];
+  if (input.type === 'transfer') lines.push(`Dari: ${input.accountName ?? '-'}`, `Ke: ${input.toAccountName ?? '-'}`);
+  else lines.push(`Kategori: ${input.categoryName ?? '-'}`, `Akun: ${input.accountName ?? '-'}`);
+  lines.push('', input.balanceSection || '💰 Saldo Saat Ini\nInformasi saldo belum tersedia.');
+  if (input.type === 'expense') lines.push('', input.budgetSection || '📊 Belum ada budget untuk kategori ini pada periode transaksi.');
+  if (input.warnings?.length) lines.push('', ...input.warnings);
+  lines.push('', '⚡ Koreksi cepat', 'nominal 25rb / ganti akun NAMA_AKUN / kategori NAMA_KATEGORI / undo');
+  return lines.join('\n');
 }
 
 export function selectPendingChoice(value: string, choices: Array<{ id: string; name: string }>): { id: string; name: string } | null {

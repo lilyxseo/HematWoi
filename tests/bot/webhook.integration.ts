@@ -1,5 +1,5 @@
 import { db, reset, failOnce } from './fake-supabase.ts';
-import { compactReceipt, correctCommandTypo, matchUniqueName } from '../../supabase/functions/fonnte-webhook-v2/recording.ts';
+import { detailedReceipt, correctCommandTypo, matchUniqueName } from '../../supabase/functions/fonnte-webhook-v2/recording.ts';
 let handler: (request: Request) => Promise<Response>;
 const originalServe = Deno.serve;
 Deno.serve = ((fn: typeof handler) => { handler = fn; return {}; }) as typeof Deno.serve;
@@ -167,10 +167,26 @@ Deno.test('batch limit rejects the whole message before inserting', async () => 
   setup(); await send(Array(21).fill('makan 25rb cash').join('\n'));
   assert(active().length === 0); assert(latestReply().includes('Maksimal 20'));
 });
-Deno.test('receipt stays short while preserving amount, account, category and date', () => {
-  const receipt = compactReceipt({ type:'expense', title:'Lunch', amount:25000, categoryName:'Makan', accountName:'Cash', date:'2026-10-26' });
-  assert(receipt.includes('25.000') && receipt.includes('Cash') && receipt.includes('Makan') && receipt.includes('2026-10-26'));
-  assert(receipt.split('\n').length <= 7);
+Deno.test('detailed receipt includes balance, budget remaining, warnings and correction help', () => {
+  const receipt = detailedReceipt({ type:'expense', title:'Lunch', amount:25000, categoryName:'Makan', accountName:'Cash', date:'2026-10-26', balanceSection:'💰 Saldo Saat Ini\nCash: Rp100.000', budgetSection:'📆 Budget Bulanan\nTerpakai: Rp25.000 / Rp200.000\nSisa: Rp175.000\n🗓️ Budget Mingguan\nSisa: Rp50.000', warnings:['⚠️ Saldo mulai menipis.'] });
+  for (const expected of ['25.000', 'Cash', 'Makan', '2026-10-26', 'Saldo Saat Ini', '175.000', 'Budget Mingguan', '50.000', 'menipis', 'undo']) assert(receipt.includes(expected), expected);
+});
+Deno.test('successful recording computes remaining monthly budget after the insert', async () => {
+  setup();
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  db.budgets = [{ id:'budget-food', user_id:'user-1', category_id:'food-id', planned_amount:200000, period_month:today.slice(0,7)+'-01' }];
+  const response = await send('makan 25rb cash');
+  assert(response.status === 200); assert(active().length === 1);
+  assert(latestReply().includes('Budget Bulanan'), latestReply());
+  assert(latestReply().includes('175.000'), latestReply());
+});
+Deno.test('saved recording returns detailed balance even when budget lookup fails', async () => {
+  setup(); failOnce('budgets', 'select');
+  const response = await send('makan 25rb cash');
+  assert(response.status === 200); assert(active().length === 1);
+  assert(latestReply().includes('Saldo Saat Ini'));
+  assert(latestReply().includes('Informasi budget belum dapat diambil'));
+  assert(latestReply().includes('Transaksi tetap tersimpan'));
 });
 Deno.test('an uncertain request is never automatically rerun', async () => {
   setup();
