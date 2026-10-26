@@ -11,7 +11,11 @@ const PrivacyContext = createContext({
 
 function getInitialPrivacyMode() {
   if (typeof window === 'undefined') return false;
-  return window.localStorage.getItem(STORAGE_KEY) === 'true';
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 export function PrivacyProvider({ children }) {
@@ -26,7 +30,11 @@ export function PrivacyProvider({ children }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(STORAGE_KEY, String(isPrivacyMode));
+    try {
+      window.localStorage.setItem(STORAGE_KEY, String(isPrivacyMode));
+    } catch {
+      // Privacy controls remain usable when storage is blocked or full.
+    }
   }, [isPrivacyMode]);
 
   const togglePrivacyMode = useCallback(() => {
@@ -45,6 +53,7 @@ export function PrivacyProvider({ children }) {
   return <PrivacyContext.Provider value={value}>{children}</PrivacyContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function usePrivacyMode() {
   return useContext(PrivacyContext);
 }

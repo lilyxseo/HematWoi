@@ -1,3 +1,4 @@
+import { compactReceipt, quickEditAlias, selectPendingChoice, splitRecordingLines, correctCommandTypo, matchUniqueName } from "./recording.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 
 type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
@@ -59,9 +60,9 @@ type WebhookBody = {
     from_me?: boolean;
     fromMe?: boolean;
     isMe?: boolean;
-    [key: string]: JsonValue;
+    [key: string]: unknown;
   };
-  [key: string]: JsonValue;
+  [key: string]: unknown;
 };
 
 type ParsedTransaction = {
@@ -244,6 +245,7 @@ const MAX_SMART_WARNINGS = 3;
 const warningCache = new Map<string, number>();
 
 const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
+  "preferensi", "belajar", "reset", "batal", "koreksi", "nominal", "ganti", "ubah",
   "menu",
   "help",
   "bantuan",
@@ -302,14 +304,14 @@ async function getAverageExpense30Days(userId: string, date: string): Promise<nu
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - 29);
   let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").gte("date", start.toISOString().slice(0, 10)).lte("date", date);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data } = await q;
   const vals = (data ?? []).map((r: Record<string, JsonValue>) => Number(r.amount ?? 0)).filter((v) => v > 0);
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
 }
 async function getTodayExpense(userId: string, date: string): Promise<number> {
   let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").eq("date", date);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data } = await q;
   return (data ?? []).reduce((s: number, r: Record<string, JsonValue>) => s + Number(r.amount ?? 0), 0);
 }
@@ -317,7 +319,7 @@ async function getTodayCategoryExpense(userId: string, categoryName: string, dat
   const category = await findCategory(userId, categoryName);
   if (!category) return 0;
   let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").eq("date", date).eq("category_id", category.id);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data } = await q;
   return (data ?? []).reduce((s: number, r: Record<string, JsonValue>) => s + Number(r.amount ?? 0), 0);
 }
@@ -326,7 +328,7 @@ async function getWeeklyAverageExpense(userId: string, date: string): Promise<nu
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - 6);
   let q = supabase.from("transactions").select("amount,date").eq("user_id", userId).eq("type", "expense").gte("date", start.toISOString().slice(0, 10)).lte("date", date);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data } = await q;
   const dayMap = new Map<string, number>();
   for (const r of (data ?? []) as Array<Record<string, JsonValue>>) {
@@ -361,7 +363,7 @@ async function buildSmartWarnings(input: SmartWarningContext): Promise<string[]>
     getCurrentBalance(input.userId),
   ]);
   let txCountQuery = supabase.from("transactions").select("id", { count: "exact", head: true }).eq("user_id", input.userId).eq("type", "expense").eq("date", input.date);
-  txCountQuery = await applyTransactionNotDeleted(txCountQuery);
+  txCountQuery = (await applyTransactionNotDeleted(txCountQuery)).query;
   const { count: txCount } = await txCountQuery;
 
   const prioritized: Array<{ key: string; priority: number; message: string }> = [];
@@ -380,9 +382,9 @@ async function buildSmartWarnings(input: SmartWarningContext): Promise<string[]>
     .map((w) => w.message);
 }
 
-function json(data: unknown): Response {
+function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
-    status: 200,
+    status,
     headers: { "Content-Type": "application/json" },
   });
 }
@@ -603,8 +605,8 @@ function extractWaMessageId(body: WebhookBody, sender: string, message: string):
     body.msg_id ??
     body.data?.id ??
     body.data?.message_id ??
-    `${sender}-${message}-${Date.now()}`;
-  return String(raw);
+    "";
+  return String(raw).trim();
 }
 
 function formatIDR(amount: number): string {
@@ -835,7 +837,7 @@ async function getDailyExpenseReport(userId: string): Promise<DailyExpenseReport
     .eq("type", "expense")
     .gte("date", startDate)
     .lte("date", endDate);
-  query = await applyTransactionNotDeleted(query);
+  query = (await applyTransactionNotDeleted(query)).query;
   const { data, error } = await query;
   if (error) throw error;
 
@@ -926,7 +928,7 @@ async function getCategoryDailyReport(userId: string, query: CategoryDailyReport
     .eq("category_id", query.categoryId)
     .gte("date", query.startDate)
     .lte("date", query.endDate);
-  txQuery = await applyTransactionNotDeleted(txQuery);
+  txQuery = (await applyTransactionNotDeleted(txQuery)).query;
   const { data, error } = await txQuery;
   if (error) throw error;
 
@@ -1984,7 +1986,7 @@ function extractSearchKeyword(question: string): string {
 
 async function findLastTransactionByKeyword(userId: string, keyword: string): Promise<Record<string, JsonValue> | null> {
   let q = supabase.from("transactions").select("id,date,title,amount,category_id,account_id").eq("user_id", userId).eq("type", "expense").order("date", { ascending: false }).order("inserted_at", { ascending: false }).limit(5);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data, error } = await q;
   if (error) throw error;
   const row = (data ?? []).find((x) => normalizeText(String((x as Record<string, JsonValue>).title ?? "")).includes(keyword));
@@ -1992,7 +1994,7 @@ async function findLastTransactionByKeyword(userId: string, keyword: string): Pr
 }
 async function getTotalByKeyword(userId: string, keyword: string, period: { startDate: string; endDate: string }): Promise<{ total: number; count: number }> {
   let q = supabase.from("transactions").select("title,amount").eq("user_id", userId).eq("type", "expense").gte("date", period.startDate).lte("date", period.endDate);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data, error } = await q;
   if (error) throw error;
   const matched = (data ?? []).filter((x) => normalizeText(String((x as Record<string, JsonValue>).title ?? "")).includes(keyword));
@@ -2000,7 +2002,7 @@ async function getTotalByKeyword(userId: string, keyword: string, period: { star
 }
 async function getAccountUsageByPeriod(userId: string, accountId: string, period: { startDate: string; endDate: string }): Promise<Array<{ name: string; total: number }>> {
   let q = supabase.from("transactions").select("amount,category_id").eq("user_id", userId).eq("type", "expense").eq("account_id", accountId).gte("date", period.startDate).lte("date", period.endDate);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data, error } = await q;
   if (error) throw error;
   const totals = new Map<string, number>();
@@ -2012,7 +2014,7 @@ async function getAccountUsageByPeriod(userId: string, accountId: string, period
 }
 async function getCategoryExpenseByPeriod(userId: string, categoryId: string, period: { startDate: string; endDate: string }): Promise<{ total: number; count: number }> {
   let q = supabase.from("transactions").select("amount").eq("user_id", userId).eq("type", "expense").eq("category_id", categoryId).gte("date", period.startDate).lte("date", period.endDate);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data, error } = await q;
   if (error) throw error;
   return { total: (data ?? []).reduce((s, r) => s + Number((r as Record<string, JsonValue>).amount ?? 0), 0), count: (data ?? []).length };
@@ -2023,7 +2025,7 @@ async function getFrequencyByKeyword(userId: string, keyword: string, period: { 
 }
 async function getLargestTransactionByPeriod(userId: string, period: { startDate: string; endDate: string }): Promise<Record<string, JsonValue> | null> {
   let q = supabase.from("transactions").select("id,date,title,amount,category_id").eq("user_id", userId).eq("type", "expense").gte("date", period.startDate).lte("date", period.endDate).order("amount", { ascending: false }).limit(1);
-  q = await applyTransactionNotDeleted(q);
+  q = (await applyTransactionNotDeleted(q)).query;
   const { data, error } = await q;
   if (error) throw error;
   return ((data ?? [])[0] as Record<string, JsonValue>) ?? null;
@@ -2138,7 +2140,7 @@ async function logMessage(input: {
   error_message: string | null;
 }): Promise<void> {
   const { error } = await supabase.from("whatsapp_message_logs").insert(input);
-  if (error) console.error("[LOG_MESSAGE_ERROR]", error);
+  if (error) throw error;
 }
 
 async function getRegisteredWaUser(phone: string): Promise<{ user_id: string; phone: string } | null> {
@@ -2163,7 +2165,7 @@ async function getWaUser(phone: string): Promise<{ user_id: string } | null> {
   return await getRegisteredWaUser(phone);
 }
 
-async function findCategory(userId: string, name: string): Promise<{ id: string; name: string; type: string } | null> {
+async function findCategory(userId: string, name: string, allowTypo = true): Promise<{ id: string; name: string; type: string } | null> {
   const { data, error } = await supabase
     .from("categories")
     .select("id,name,type")
@@ -2171,7 +2173,10 @@ async function findCategory(userId: string, name: string): Promise<{ id: string;
     .ilike("name", name.trim())
     .maybeSingle();
   if (error) throw error;
-  return data;
+  if (data || !allowTypo) return data;
+  const { data: candidates, error: candidatesError } = await supabase.from("categories").select("id,name,type").eq("user_id", userId);
+  if (candidatesError) throw candidatesError;
+  return matchUniqueName(name, candidates ?? []);
 }
 
 async function findPaymentCategory(userId: string, debtType: DebtType): Promise<{ id: string; name: string; type: string } | null> {
@@ -2209,15 +2214,15 @@ async function findPaymentCategory(userId: string, debtType: DebtType): Promise<
 async function hasDeletedAtColumn(table: "categories" | "transactions" | "budgets" | "debts" | "receivables"): Promise<boolean> {
   const { error } = await supabase.from(table).select("deleted_at").limit(1);
   if (!error) return true;
-  const message = String((error as Record<string, JsonValue>)?.message ?? "");
+  const message = String(error?.message ?? "");
   if (message.toLowerCase().includes("deleted_at")) return false;
   throw error;
 }
 
-async function applyTransactionNotDeleted<T>(query: T): Promise<T> {
+async function applyTransactionNotDeleted<T>(query: T): Promise<{ query: T }> {
   const txHasDeletedAt = await hasDeletedAtColumn("transactions");
-  if (!txHasDeletedAt) return query;
-  return (query as { is: (col: string, val: null) => T }).is("deleted_at", null);
+  if (!txHasDeletedAt) return { query };
+  return { query: (query as unknown as { is: (col: string, val: null) => T }).is("deleted_at", null) };
 }
 
 async function getCategoryList(userId: string): Promise<string> {
@@ -2268,7 +2273,7 @@ async function createCategory(userId: string, name: string, type: string): Promi
   if (!cleanName) return "⚠️ Format tidak valid.\n\nGunakan:\ntambah kategori nama tipe";
   if (cleanType !== "income" && cleanType !== "expense") return invalidCategoryTypeReply();
 
-  const existed = await findCategory(userId, cleanName);
+  const existed = await findCategory(userId, cleanName, false);
   if (existed) return "❌ *Kategori Sudah Ada*";
 
   const payload: Record<string, JsonValue> = { user_id: userId, name: cleanName, type: cleanType };
@@ -2287,9 +2292,9 @@ async function updateCategory(userId: string, oldName: string, newName: string):
   const oldTrim = oldName.trim();
   const newTrim = newName.trim();
   if (!oldTrim || !newTrim) return "⚠️ Format tidak valid.\n\nGunakan:\nedit kategori nama_lama nama_baru";
-  const current = await findCategory(userId, oldTrim);
+  const current = await findCategory(userId, oldTrim, false);
   if (!current) return "❌ *Kategori Tidak Ditemukan*";
-  const duplicate = await findCategory(userId, newTrim);
+  const duplicate = await findCategory(userId, newTrim, false);
   if (duplicate && String(duplicate.id) !== String(current.id)) return "❌ *Kategori Sudah Ada*";
 
   const { error } = await supabase.from("categories").update({ name: newTrim }).eq("id", current.id).eq("user_id", userId);
@@ -2304,7 +2309,7 @@ async function updateCategory(userId: string, oldName: string, newName: string):
 }
 
 async function deleteCategory(userId: string, name: string): Promise<string> {
-  const target = await findCategory(userId, name.trim());
+  const target = await findCategory(userId, name.trim(), false);
   if (!target) return "❌ *Kategori Tidak Ditemukan*";
 
   const tables: Array<"transactions" | "budgets" | "debts" | "receivables"> = ["transactions", "budgets", "debts", "receivables"];
@@ -2382,10 +2387,13 @@ async function findAccount(userId: string, name: string): Promise<{ id: string; 
     .ilike("name", name.trim())
     .maybeSingle();
   if (error) throw error;
-  return data;
+  if (data) return data;
+  const { data: candidates, error: candidatesError } = await getAccountsBaseQuery(userId, "id,name,type");
+  if (candidatesError) throw candidatesError;
+  return matchUniqueName(name, candidates ?? []);
 }
 
-function getAccountsBaseQuery(userId: string, columns = "*") {
+function getAccountsBaseQuery<Columns extends string = "*">(userId: string, columns: Columns = "*" as Columns) {
   console.log("[ACCOUNT QUERY]", {
     userId,
   });
@@ -2488,40 +2496,7 @@ function buildTransactionSuccessMessage(input: {
   warnings?: string[];
   quickCorrectionSection?: string | string[] | null;
 }): string {
-  const titleByType = input.type === "income"
-    ? "✅ Pemasukan Tercatat"
-    : input.type === "transfer"
-      ? "✅ Transfer Tercatat"
-      : "✅ Pengeluaran Tercatat";
-  const lines = [titleByType, ""];
-
-  if (input.date) lines.push(`Tanggal: ${input.date}`);
-  if (input.type === "transfer") {
-    lines.push(`Nominal: ${formatIDR(input.amount)}`);
-    lines.push(`Dari: ${input.accountName ?? "-"}`);
-    lines.push(`Ke: ${input.toAccountName ?? "-"}`);
-  } else {
-    lines.push(`Kategori: ${input.categoryName ?? "-"}`);
-    lines.push(`Judul: ${input.title ?? "-"}`);
-    lines.push(`Nominal: ${formatIDR(input.amount)}`);
-    lines.push(`Akun: ${input.accountName ?? "-"}`);
-  }
-
-  lines.push("", input.balanceSection || ["💰 Saldo Saat Ini", "Gagal mengambil saldo."].join("\n"));
-
-  if (input.budgetSection) lines.push("", input.budgetSection);
-  if (input.warnings && input.warnings.length > 0) lines.push("", ...input.warnings);
-  if (input.quickCorrectionSection) {
-    if (Array.isArray(input.quickCorrectionSection)) lines.push(...input.quickCorrectionSection);
-    else lines.push("", input.quickCorrectionSection);
-  }
-
-  const message = lines.join("\n");
-  console.log("[TRANSACTION SUCCESS MESSAGE]", {
-    hasBalance: message.includes("Saldo Saat Ini"),
-    hasBudget: Boolean(input.budgetSection),
-  });
-  return message;
+  return compactReceipt(input);
 }
 
 
@@ -3344,11 +3319,6 @@ async function handleAiFinanceChat(userId: string, question: string): Promise<{ 
     return { intent, keyword: String(matchedAccount.name ?? "-"), period: period.label, reply: `🤖 *AI Finance Chat*\n\nPengeluaran dari ${String(matchedAccount.name ?? "-")} ${period.label}:\n${formatIDR(total)}` };
   }
 
-  if (intent === "SPENDING_TOP") {
-    const tops = await getTopExpenseCategories(userId);
-    const lines = tops.length > 0 ? tops.map((t, i) => `${i + 1}. ${t.name} — ${formatIDR(t.total)}`).join("\n") : "Belum ada pengeluaran bulan ini.";
-    return { intent, reply: `🤖 *AI Finance Chat*\n\nBulan ini pengeluaran terbesar kamu ada di:\n\n${lines}` };
-  }
   if (intent === "CASHFLOW") {
     const current = await getTransactionSummaryByRange(userId, getMonthRangeJakarta().start, getMonthRangeJakarta().end);
     const previous = await getTransactionSummaryByRange(userId, getPreviousMonthRangeJakarta().start, getPreviousMonthRangeJakarta().end);
@@ -3814,6 +3784,10 @@ async function findCategoryByKeyword(userId: string, keyword: string): Promise<{
     matchedCategory: match ? { id: match.id, name: match.name, type: match.type } : null,
   });
 
+  if (!match) {
+    const candidate = matchUniqueName(keyword, categories.map(row => ({ id: String(row.id), name: String(row.name), type: String(row.type ?? "expense") })));
+    if (candidate) return candidate;
+  }
   return match;
 }
 
@@ -3942,6 +3916,14 @@ async function predictAccountForTransaction(
   categoryId: string | null,
   txType: NaturalTransactionType | null,
 ): Promise<AutoAccountPrediction | null> {
+  const preferences = await getRecordingPreferences(userId);
+  const correctedId = preferences.learning_enabled ? preferences.learned_accounts[normalizeText(title)] : null;
+  const preferredId = correctedId ?? preferences.default_account_id;
+  if (preferredId) {
+    const preferred = await getAccountById(userId, preferredId);
+    if (preferred) return { account: preferred, reason: "fallback", score: 100 };
+  }
+  if (!preferences.learning_enabled) return null;
   const [titleRows, recentRows] = await Promise.all([
     getUserTitleMatchedTransactionsForLearning(userId, title),
     getUserRecentTransactionsForLearning(userId),
@@ -4410,22 +4392,8 @@ type LastTransactionQuickEditCommand = {
   value: string | number;
 };
 
-function getQuickFixAccountSuggestion(accountName: string | null): string {
-  const normalizedAccount = normalizeText(accountName ?? "");
-  return normalizedAccount.includes("seabank") ? "cash" : "seabank";
-}
-
-function buildQuickFixLines(accountName: string | null): string[] {
-  return [
-    "",
-    line(),
-    "⚡ Koreksi Cepat",
-    "• edit 30000",
-    "• kategori makan",
-    `• akun ${getQuickFixAccountSuggestion(accountName)}`,
-    "• tanggal 01/06",
-    "• judul pertamax turbo",
-  ];
+function buildQuickFixLines(_accountName: string | null): string[] {
+  return ["Koreksi: nominal 25rb / ganti akun NAMA_AKUN / kategori NAMA_KATEGORI / undo"];
 }
 
 function buildLastTransactionLog(input: LastTransactionSession): Record<string, JsonValue> {
@@ -4452,6 +4420,8 @@ function buildLastTransactionLog(input: LastTransactionSession): Record<string, 
 
 type PendingTransactionReason = "missing_category" | "missing_account" | "missing_category_account";
 type PendingTransactionSession = {
+  choices?: Array<{ id: string; name: string }>;
+  expiresAt?: number;
   reason: PendingTransactionReason;
   title: string;
   amount: number;
@@ -4463,7 +4433,7 @@ type PendingTransactionSession = {
   accountName: string | null;
 };
 type PendingTransactionLookup = { id: string; session: PendingTransactionSession; expired: boolean } | null;
-type PendingTransactionUpdateCommand = { field: "category" | "account"; value: string };
+type PendingTransactionUpdateCommand = { field: "category" | "account"; value: string; entityId?: string };
 type PendingDebtPaymentSession = {
   debtType: DebtType;
   debtId: string;
@@ -4485,6 +4455,8 @@ function getPendingTransactionReason(input: { categoryId: string | null; account
 function pendingTransactionParsed(session: PendingTransactionSession): Record<string, JsonValue> {
   return {
     command: "pending_transaction",
+    choices: session.choices ?? [],
+    expiresAt: session.expiresAt ?? Date.now() + PENDING_TRANSACTION_TTL_MS,
     reason: session.reason,
     title: session.title,
     amount: session.amount,
@@ -4519,6 +4491,7 @@ function buildPendingTransactionUpdateLog(session: PendingTransactionSession): R
 }
 
 function parsePendingTransactionUpdateCommand(normalized: string): PendingTransactionUpdateCommand | null {
+  normalized = quickEditAlias(normalized);
   const match = normalized.match(/^(kategori|akun)\s+(.+)$/);
   if (!match) return null;
   const value = String(match[2] ?? "").trim();
@@ -4577,7 +4550,7 @@ async function getLatestPendingDebtPaymentSession(userId: string, contextKey: st
     const debtWord = String(parsed.debtType ?? "hutang").toLowerCase();
     const createdAt = new Date(String(log.created_at ?? "")).getTime();
     return {
-      expired: !Number.isFinite(createdAt) || Date.now() - createdAt > PENDING_TRANSACTION_TTL_MS,
+      expired: !Number.isFinite(createdAt) || Date.now() > Number(parsed.expiresAt ?? createdAt + PENDING_TRANSACTION_TTL_MS),
       session: {
         debtType: debtWord === "piutang" || debtWord === "receivable" ? "receivable" : "debt",
         debtId: String(parsed.debtId ?? ""),
@@ -4655,13 +4628,15 @@ async function getLatestPendingTransactionSession(userId: string, phone: string)
   for (const log of (logs ?? []) as Array<Record<string, JsonValue>>) {
     const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
     if (parsed?.command === "last_transaction" && Boolean(parsed?.transactionId)) return null;
-    if (parsed?.command === "pending_transaction_expired") return null;
+    if (["pending_transaction_expired", "pending_transaction_cancelled", "batch_rejected", "last_transaction_undone"].includes(String(parsed?.command))) return null;
     if (parsed?.command !== "pending_transaction") continue;
     const createdAt = new Date(String(log.created_at ?? "")).getTime();
     return {
       id: String(log.id ?? ""),
-      expired: !Number.isFinite(createdAt) || Date.now() - createdAt > PENDING_TRANSACTION_TTL_MS,
+      expired: !Number.isFinite(createdAt) || Date.now() > Number(parsed.expiresAt ?? createdAt + PENDING_TRANSACTION_TTL_MS),
       session: {
+        expiresAt: Number(parsed.expiresAt ?? createdAt + PENDING_TRANSACTION_TTL_MS),
+        choices: Array.isArray(parsed.choices) ? parsed.choices as Array<{ id: string; name: string }> : [],
         reason: String(parsed.reason ?? "missing_category_account") as PendingTransactionReason,
         title: String(parsed.title ?? "-"),
         amount: Number(parsed.amount ?? 0),
@@ -4696,7 +4671,7 @@ async function completePendingTransaction(userId: string, session: PendingTransa
   if (!account) return { reply: ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${session.accountName ?? "-"}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n"), parsedLog: { command: "pending_transaction_failed", reason: "account_not_found", accountName: session.accountName } };
 
   const type = category.type === "income" ? "income" : "expense";
-  const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: session.date, type, category_id: category.id, account_id: account.id, amount: session.amount, title: session.title, notes: `WhatsApp pending: ${sourceMessage || session.rawText}` }).select("id").single();
+  const { data: insertedTx, error } = await supabase.from("transactions").insert({ user_id: userId, date: session.date, type, category_id: category.id, account_id: account.id, amount: session.amount, title: session.title, notes: `WhatsApp: ${session.rawText}${sourceMessage && sourceMessage !== session.rawText ? ` | Pilihan: ${sourceMessage}` : ""}` }).select("id").single();
   if (error) throw error;
 
   console.log("[PENDING TRANSACTION COMPLETED]", {
@@ -4706,10 +4681,8 @@ async function completePendingTransaction(userId: string, session: PendingTransa
   });
 
   const parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: session.title, amount: session.amount, date: session.date });
-  const [balanceSection, budgetSection] = await Promise.all([
-    buildBalanceSection(userId),
-    buildTransactionBudgetSection({ userId, categoryId: category.id, amount: session.amount, transactionDate: session.date }),
-  ]);
+  const balanceSection = "";
+  const budgetSection = null;
   const reply = buildTransactionSuccessMessage({
     type,
     categoryName: category.name,
@@ -4730,12 +4703,12 @@ async function handlePendingTransactionUpdate(userId: string, phone: string, com
 
   const session = { ...pendingLookup.session };
   if (command.field === "category") {
-    const category = await findCategory(userId, command.value);
+    const category = command.entityId ? await getCategoryById(userId, command.entityId) : await findCategory(userId, command.value);
     if (!category) return { reply: ["❌ *Kategori Tidak Ditemukan*", "", "Kategori:", `*${command.value}*`, "", "Ketik *kategori* untuk melihat daftar."].join("\n"), parsedLog: { command: "pending_transaction_failed", reason: "category_not_found", categoryName: command.value } };
     session.categoryId = category.id;
     session.categoryName = category.name;
   } else {
-    const account = await findAccount(userId, command.value);
+    const account = command.entityId ? await getAccountById(userId, command.entityId) : await findAccount(userId, command.value);
     if (!account) return { reply: ["❌ *Akun Tidak Ditemukan*", "", "Akun:", `*${command.value}*`, "", "Ketik *akun* untuk melihat daftar."].join("\n"), parsedLog: { command: "pending_transaction_failed", reason: "account_not_found", accountName: command.value } };
     session.accountId = account.id;
     session.accountName = account.name;
@@ -4743,13 +4716,7 @@ async function handlePendingTransactionUpdate(userId: string, phone: string, com
 
   if (session.categoryId && session.accountId) return await completePendingTransaction(userId, session, sourceMessage);
 
-  const parsedLog = buildPendingTransactionUpdateLog(session);
-  if (command.field === "category") {
-    const accountSuggestions = await getAccountSuggestions(userId, 3);
-    return { reply: [`✅ Kategori dipilih: *${session.categoryName}*`, "", "Sekarang sebutkan akun:", ...buildSuggestionLines("akun", accountSuggestions)].join("\n"), parsedLog };
-  }
-  const categorySuggestions = await getCategorySuggestions(userId, 3);
-  return { reply: [`✅ Akun dipilih: *${session.accountName}*`, "", "Sekarang sebutkan kategori:", ...buildSuggestionLines("kategori", categorySuggestions)].join("\n"), parsedLog };
+  return await pendingPrompt(userId, session);
 }
 
 async function createPendingTransactionResponse(userId: string, pending: Omit<PendingTransactionSession, "reason">): Promise<{ reply: string; parsedLog: Record<string, JsonValue> }> {
@@ -4757,9 +4724,7 @@ async function createPendingTransactionResponse(userId: string, pending: Omit<Pe
     ...pending,
     reason: getPendingTransactionReason({ categoryId: pending.categoryId, accountId: pending.accountId }),
   };
-  const parsedLog = buildPendingTransactionLog(session);
-  if (!session.categoryId) return { reply: await buildMissingCategoryReply(userId, session), parsedLog };
-  return { reply: await buildMissingAccountReply(userId, session), parsedLog };
+  return await pendingPrompt(userId, session);
 }
 
 async function getLastTransactionSession(userId: string, phone: string): Promise<LastTransactionSession | null> {
@@ -4775,37 +4740,10 @@ async function getLastTransactionSession(userId: string, phone: string): Promise
 
   const sessionLog = (logs ?? []).find((log) => {
     const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
-    return parsed?.command === "last_transaction" && Boolean(parsed?.transactionId);
+    return parsed?.command === "last_transaction" || parsed?.command === "last_transaction_undone";
   }) as Record<string, JsonValue> | undefined;
   const parsed = (sessionLog?.parsed ?? null) as Record<string, JsonValue> | null;
-  if (!parsed?.transactionId) {
-    const { data: latestTx, error: latestTxError } = await supabase
-      .from("transactions")
-      .select("id,title,amount,date,category_id,account_id")
-      .eq("user_id", userId)
-      .is("deleted_at", null)
-      .order("inserted_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (latestTxError) throw latestTxError;
-    if (!latestTx) return null;
-
-    const [category, account] = await Promise.all([
-      latestTx.category_id ? getCategoryById(userId, String(latestTx.category_id)) : Promise.resolve(null),
-      latestTx.account_id ? getAccountById(userId, String(latestTx.account_id)) : Promise.resolve(null),
-    ]);
-
-    return {
-      transactionId: String(latestTx.id),
-      categoryId: latestTx.category_id == null ? null : String(latestTx.category_id),
-      categoryName: category?.name ?? null,
-      accountId: latestTx.account_id == null ? null : String(latestTx.account_id),
-      accountName: account?.name ?? null,
-      title: String(latestTx.title ?? "-"),
-      amount: Number(latestTx.amount ?? 0),
-      date: String(latestTx.date ?? getTodayJakarta()),
-    };
-  }
+  if (!parsed?.transactionId || parsed.command === "last_transaction_undone") return null;
 
   return {
     transactionId: String(parsed.transactionId),
@@ -4820,6 +4758,7 @@ async function getLastTransactionSession(userId: string, phone: string): Promise
 }
 
 function parseLastTransactionQuickEditCommand(normalized: string): LastTransactionQuickEditCommand | null {
+  normalized = quickEditAlias(normalized);
   const categoryMatch = normalized.match(/^kategori\s+(.+)$/);
   if (categoryMatch) {
     const value = String(categoryMatch[1] ?? "").trim();
@@ -4885,9 +4824,10 @@ async function handleQuickFixCommand(
 
   const { data: txRow, error: txError } = await supabase
     .from("transactions")
-    .select("id,title,amount,date,category_id,account_id,type")
+    .select("id,title,amount,date,category_id,account_id,to_account_id,type")
     .eq("id", session.transactionId)
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .maybeSingle();
   if (txError) throw txError;
   if (!txRow) {
@@ -5009,6 +4949,7 @@ async function handleQuickFixCommand(
     };
   }
 
+  if (command.field === "category" && txRow.type === "transfer") return { reply: "⚠️ Transfer tidak memakai kategori. Gunakan undo lalu catat ulang jika tujuan transfer salah.", parsedLog: { command: "quick_fix_failed" } };
   if (command.field === "category") {
     const newCategory = await findCategory(userId, String(command.value));
     if (!newCategory) {
@@ -5070,6 +5011,7 @@ async function handleQuickFixCommand(
     };
   }
 
+  if (txRow.type === "transfer" && newAccount.id === txRow.to_account_id) return { reply: "⚠️ Akun asal dan tujuan transfer tidak boleh sama.", parsedLog: { command: "quick_fix_failed" } };
   const oldAccountId = String(txRow.account_id ?? session.accountId ?? "");
   const { data: oldAccountRow } = oldAccountId
     ? await supabase.from("accounts").select("name").eq("id", oldAccountId).eq("user_id", userId).maybeSingle()
@@ -5084,6 +5026,7 @@ async function handleQuickFixCommand(
     newAccount: newAccount.name,
   });
 
+  await learnCorrectedAccount(userId, title, newAccount.id);
   return {
     reply: [
       "✏️ *Akun Berhasil Diubah*",
@@ -5622,6 +5565,7 @@ async function handleHistoryCategoryEditCommand(
     };
   }
 
+  if (!selectedCategory) throw new Error("CATEGORY_SELECTION_MISSING");
   await updateTransactionRequiredFields(transactionId, userId, { category_id: selectedCategory.id });
 
   console.log("[HISTORY CATEGORY EDIT SUCCESS]", {
@@ -7538,7 +7482,7 @@ async function getMonthlyBudgetsByPeriod(userId: string, range: BudgetPeriodRang
   }
 
   return rows
-    .map((row) => {
+    .map((row): BudgetPeriodItem | null => {
       const planned = getBudgetAmount(row);
       if (planned <= 0) return null;
       const bid = String(row.id ?? "");
@@ -8280,6 +8224,13 @@ async function handleDashboardNoteCommand(userId: string, command: DashboardNote
 
 function buildMenuMessage(): string {
   return [
+    "📝 Pencatatan cepat: makan siang 25rb cash",
+    "• Banyak transaksi: satu transaksi per baris (maks. 20)",
+    "• Pilihan tertunda: balas nomor/nama, atau batal (10 menit)",
+    "• Koreksi: nominal 25rb / ganti akun seabank / kategori makan / undo",
+    "• Preferensi: preferensi / akun default seabank / belajar akun mati / reset pembelajaran",
+    "",
+
     "📋 *Menu HematWoi*",
     "_Asisten keuangan pribadi via WhatsApp_",
     "",
@@ -8570,8 +8521,9 @@ async function handleSmartSearch(userId: string, question: string): Promise<{ re
 
 
 function isPotentialBotCommand(message: string): boolean {
-  const normalized = normalizeText(message);
+  const normalized = correctCommandTypo(normalizeText(message));
   if (!normalized) return false;
+  if (splitRecordingLines(message)) return true;
 
   if (/^(10|[1-9])$/.test(message.trim())) return true;
   if (isCalculatorExpression(message)) return true;
@@ -8579,7 +8531,7 @@ function isPotentialBotCommand(message: string): boolean {
   if (DAILY_EXPENSE_COMMANDS.has(normalized)) return true;
 
   const validCommands = [
-    "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
+    "batal", "koreksi", "ganti", "ubah", "nominal", "preferensi", "belajar akun", "reset pembelajaran", "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
     "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "beli", "arsip", "wishlist", "note", "nb", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
@@ -8587,7 +8539,7 @@ function isPotentialBotCommand(message: string): boolean {
   if (/^(31\/05|\d{1,2}\/\d{1,2}|\d{1,2}\s+[a-z]+|minggu lalu|bulan ini)$/i.test(normalized)) return true;
   if (/^(halo|wkwk|oke|gas|siap|mantap)$/.test(normalized)) return false;
 
-  const isTxPattern = /^(?:[a-zA-Z][\w-]*)(?:\s+[a-zA-Z][\w-]*)*\s+\d[\d.,]*\s+[a-zA-Z][\w-]*$/.test(normalized);
+  const isTxPattern = /^(?:[a-zA-Z][\w-]*)(?:\s+[a-zA-Z][\w-]*)*\s+\d[\d.,]*(?:rb|ribu|k|jt|juta)?(?:\s+[a-zA-Z][\w-]*(?:\s+[a-zA-Z][\w-]*)*)?$/.test(normalized);
   if (isTxPattern) return true;
 
   return false;
@@ -8616,6 +8568,138 @@ function isBotReply(body: WebhookBody, sender: string, participant: string, devi
   );
 }
 
+type RecordingResult = { reply: string; parsedLog: Record<string, JsonValue> };
+type RecordingPreferences = { default_account_id: string | null; learning_enabled: boolean; learned_accounts: Record<string, string> };
+async function getRecordingPreferences(userId: string): Promise<RecordingPreferences> {
+  const { data, error } = await supabase.from("whatsapp_recording_preferences").select("default_account_id,learning_enabled,learned_accounts").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data ?? { default_account_id: null, learning_enabled: true, learned_accounts: {} };
+}
+async function learnCorrectedAccount(userId: string, title: string, accountId: string): Promise<void> {
+  const preferences = await getRecordingPreferences(userId);
+  if (!preferences.learning_enabled) return;
+  // A transaction title is matched exactly after normalization, never by a partial merchant name.
+  const learned = { ...preferences.learned_accounts, [normalizeText(title)]: accountId };
+  const { error } = await supabase.from("whatsapp_recording_preferences").upsert({ user_id: userId, ...preferences, learned_accounts: learned, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+async function handleRecordingPreferences(userId: string, normalized: string): Promise<RecordingResult | null> {
+  if (!/^(preferensi|akun default|belajar akun|reset pembelajaran)(\s|$)/.test(normalized)) return null;
+  const preferences = await getRecordingPreferences(userId);
+  let reply: string;
+  if (normalized.startsWith("akun default ")) {
+    const name = normalized.slice("akun default ".length).trim();
+    const account = name === "hapus" ? null : await findAccount(userId, name);
+    if (name !== "hapus" && !account) return { reply: "❌ Akun tidak ditemukan. Ketik akun untuk melihat daftar.", parsedLog: { command: "recording_preferences_failed" } };
+    preferences.default_account_id = account?.id ?? null;
+    reply = account ? `✅ Akun default: ${account.name}` : "✅ Akun default dihapus.";
+  } else if (/^belajar akun (aktif|mati)$/.test(normalized)) {
+    preferences.learning_enabled = normalized.endsWith("aktif");
+    reply = `✅ Pembelajaran akun ${preferences.learning_enabled ? "aktif" : "dimatikan"}.`;
+  } else if (normalized === "reset pembelajaran") {
+    preferences.learned_accounts = {};
+    // Disable history prediction too, so reset does not immediately relearn old corrections.
+    preferences.learning_enabled = false;
+    reply = "✅ Pembelajaran direset dan dinonaktifkan. Aktifkan kembali: belajar akun aktif";
+  } else {
+    const account = preferences.default_account_id ? await getAccountById(userId, preferences.default_account_id) : null;
+    const learnedLines: string[] = [];
+    for (const [title, accountId] of Object.entries(preferences.learned_accounts).slice(0, 20)) {
+      const learnedAccount = await getAccountById(userId, accountId);
+      learnedLines.push(`• ${title} → ${learnedAccount?.name ?? '(akun tidak tersedia)'}`);
+    }
+    return { reply: [`⚙️ Preferensi pencatatan`, `Akun default: ${account?.name ?? 'belum diatur'}`, `Belajar akun: ${preferences.learning_enabled ? 'aktif' : 'mati'}`, ...learnedLines, 'Atur: akun default BCA', 'Hapus default: akun default hapus', 'Belajar: belajar akun aktif / belajar akun mati', 'Reset: reset pembelajaran'].join("\n"), parsedLog: { command: "recording_preferences" } };
+  }
+  const { error } = await supabase.from("whatsapp_recording_preferences").upsert({ user_id: userId, ...preferences, updated_at: new Date().toISOString() });
+  if (error) throw error;
+  return { reply, parsedLog: { command: "recording_preferences" } };
+}
+
+async function pendingPrompt(userId: string, session: PendingTransactionSession): Promise<RecordingResult> {
+  const field = !session.categoryId ? "category" : "account";
+  const choices = field === "category" ? await getUserCategories(userId) : (await getAccountsBaseQuery(userId, "id,name,type").order("name").then(({ data, error }) => { if (error) throw error; return data ?? []; }));
+  session.choices = choices.map((row: { id: string; name: string }) => ({ id: row.id, name: row.name }));
+  session.expiresAt ??= Date.now() + PENDING_TRANSACTION_TTL_MS;
+  return {
+    reply: [`📝 ${session.title} · ${formatIDR(session.amount)} · ${session.date}`, `Pilih ${field === 'category' ? 'kategori' : 'akun'}:`, ...session.choices.map((choice, i) => `${i + 1}. ${choice.name}`), 'Balas nomor atau nama. Ketik batal untuk membatalkan.', 'Belum disimpan. Sesi berlaku 10 menit sejak dimulai.'].join("\n"),
+    parsedLog: buildPendingTransactionUpdateLog(session),
+  };
+}
+
+async function handlePendingAnswer(userId: string, contextKey: string, normalized: string): Promise<RecordingResult | null> {
+  if (/^akun default(?:\s|$)/.test(normalized)) return null;
+  const pending = await getLatestPendingTransactionSession(userId, contextKey);
+  if (!pending) return null;
+  const command = parsePendingTransactionUpdateCommand(normalized);
+  const selection = selectPendingChoice(normalized, pending.session.choices ?? []) ?? matchUniqueName(normalized, pending.session.choices ?? []);
+  if (normalized === "batal") return { reply: "✅ Transaksi tertunda dibatalkan. Tidak ada transaksi yang disimpan.", parsedLog: { command: "pending_transaction_cancelled" } };
+  if (!command && !selection && !/^\d+$/.test(normalized)) return null;
+  if (pending.expired) return { reply: "⚠️ Sesi transaksi habis. Kirim ulang transaksi kamu.", parsedLog: { command: "pending_transaction_expired" } };
+  if (command) return await handlePendingTransactionUpdate(userId, contextKey, command, normalized);
+  if (!selection) return { reply: "⚠️ Nomor pilihan tidak tersedia. Balas nomor pada daftar atau batal.", parsedLog: { command: "pending_choice_invalid" } };
+  return await handlePendingTransactionUpdate(userId, contextKey, { field: !pending.session.categoryId ? "category" : "account", value: selection.name, entityId: selection.id }, normalized);
+}
+
+async function handleSingleRecording(userId: string, message: string): Promise<RecordingResult | null> {
+  const parsed = parseSmartTransactionMessage(message);
+  if (!parsed) return null;
+  if ("error" in parsed) return { reply: "⚠️ Tanggal tidak valid. Belum ada transaksi disimpan.", parsedLog: { command: "transaction_invalid" } };
+  if (!Number.isFinite(parsed.amount) || parsed.amount <= 0) return { reply: "⚠️ Nominal harus angka positif.", parsedLog: { command: "transaction_invalid" } };
+  const explicit = findExplicitCategoryPrefix({ text: parsed.originalTitle, categories: await getUserCategories(userId) });
+  const category = explicit?.category ?? await findCategoryByKeyword(userId, parsed.title) ?? await findCategoryByTransactionHistory(userId, parsed.title);
+  const title = (explicit?.remainingText || parsed.title).trim();
+  const account = parsed.accountName ? await findAccount(userId, parsed.accountName) : (await predictAccountForTransaction(userId, title, category?.id ?? null, category?.type === "income" ? "income" : "expense"))?.account;
+  const session = { title, amount: parsed.amount, date: parsed.date, rawText: message, categoryId: category?.id ?? null, categoryName: category?.name ?? null, accountId: account?.id ?? null, accountName: account?.name ?? null };
+  if (!category || !account) return await createPendingTransactionResponse(userId, session);
+  return await completePendingTransaction(userId, { ...session, reason: "missing_account" }, message);
+}
+
+async function handleRecordingBatch(userId: string, message: string): Promise<RecordingResult | null> {
+  const lines = splitRecordingLines(message);
+  if (!lines || isReservedCommand(lines[0])) return null;
+  if (lines.length > 20) return { reply: "⚠️ Maksimal 20 transaksi per pesan. Belum ada yang disimpan.", parsedLog: { command: "batch_rejected" } };
+  const categories = await getUserCategories(userId);
+  const outcomes: string[] = [];
+  const prepared: Array<{ line: number; row: Record<string, JsonValue>; categoryName: string; accountName: string }> = [];
+  for (const [index, text] of lines.entries()) {
+    const parsed = parseSmartTransactionMessage(normalizeText(text));
+    if (!parsed || "error" in parsed || !Number.isFinite(parsed.amount) || parsed.amount <= 0) {
+      outcomes.push(`${index + 1}. ❌ Belum disimpan: format tidak valid. Contoh: makan 25rb BCA`);
+      continue;
+    }
+    const explicit = findExplicitCategoryPrefix({ text: parsed.originalTitle, categories });
+    const category = explicit?.category ?? await findCategoryByKeyword(userId, parsed.title) ?? await findCategoryByTransactionHistory(userId, parsed.title);
+    const title = (explicit?.remainingText || parsed.title).trim();
+    const account = parsed.accountName ? await findAccount(userId, parsed.accountName) : (await predictAccountForTransaction(userId, title, category?.id ?? null, category?.type === "income" ? "income" : "expense"))?.account;
+    if (!category || !account) {
+      outcomes.push(`${index + 1}. ❌ Belum disimpan: ${!category ? 'kategori belum diketahui' : 'akun belum diketahui'}. Kirim ulang baris ini dengan kategori dan akun.`);
+      continue;
+    }
+    prepared.push({ line: index + 1, categoryName: category.name, accountName: account.name, row: { id: crypto.randomUUID(), user_id: userId, date: parsed.date, type: category.type === "income" ? "income" : "expense", category_id: category.id, account_id: account.id, amount: parsed.amount, title, notes: `WhatsApp batch: ${text}` } });
+  }
+  let last: Record<string, JsonValue> | null = null;
+  if (prepared.length) {
+    // One database INSERT: validated lines are committed together, or none are.
+    const { error } = await supabase.from("transactions").insert(prepared.map(item => item.row));
+    if (error) throw error;
+    for (const item of prepared) {
+      const row = item.row;
+      last = buildLastTransactionLog({ transactionId: String(row.id), categoryId: String(row.category_id), categoryName: item.categoryName, accountId: String(row.account_id), accountName: item.accountName, title: String(row.title), amount: Number(row.amount), date: String(row.date) });
+      outcomes.push(`${item.line}. ✅ ${String(row.title)} · ${formatIDR(Number(row.amount))} · ${item.categoryName} · ${item.accountName}`);
+    }
+  }
+  outcomes.sort((a,b) => Number(a.split('.')[0]) - Number(b.split('.')[0]));
+  return { reply: [`🧾 ${prepared.length}/${lines.length} transaksi tersimpan`, ...outcomes, 'Kirim ulang hanya baris ❌. Baris ✅ sudah tersimpan.', 'Koreksi cepat / undo berlaku untuk baris terakhir yang berhasil. Untuk baris lain gunakan history.'].join("\n"), parsedLog: last ? { ...last, batchCount: prepared.length } : { command: "batch_rejected" } };
+}
+
+async function undoContextTransaction(userId: string, contextKey: string): Promise<RecordingResult> {
+  const session = await getLastTransactionSession(userId, contextKey);
+  if (!session) return { reply: "ℹ️ Tidak ada transaksi dari percakapan ini yang bisa dibatalkan.", parsedLog: { command: "last_transaction_undone" } };
+  const { data, error } = await supabase.from("transactions").update({ deleted_at: new Date().toISOString() }).eq("user_id", userId).eq("id", session.transactionId).is("deleted_at", null).select("id");
+  if (error) throw error;
+  return { reply: data?.length ? `✅ Dibatalkan: ${session.title} · ${formatIDR(session.amount)}` : "ℹ️ Transaksi tersebut sudah dibatalkan.", parsedLog: { command: "last_transaction_undone", transactionId: session.transactionId } };
+}
+
 Deno.serve(async (req: Request) => {
   let sender = "";
   let participant = "";
@@ -8624,6 +8708,8 @@ Deno.serve(async (req: Request) => {
   let waMessageId = "";
   let userId: string | null = null;
   let canReplyOnError = false;
+  let requestId: string | null = null;
+  let responseSaved = false;
 
   try {
     if (req.method !== "POST") return json({ ok: true, ignored: true, reason: "method not allowed" });
@@ -8707,19 +8793,39 @@ Deno.serve(async (req: Request) => {
     }
 
     if (isGroup && !validCommand && !body.quoted && !body.context) {
-      console.log("[GROUP SAFE MODE]", { message, validCommand, reason: "non-command-group-message" });
-      return json({ ok: true, ignored: true, reason: "group-safe-mode" });
+      const pending = await getLatestPendingTransactionSession(userId, contextKey);
+      const answer = normalizeText(message);
+      const isPendingAnswer = pending && (/^\d+$/.test(answer) || selectPendingChoice(answer, pending.session.choices ?? []) || matchUniqueName(answer, pending.session.choices ?? []));
+      if (!isPendingAnswer) return json({ ok: true, ignored: true, reason: "group-safe-mode" });
     }
 
-    const { data: duplicate, error: duplicateError } = await supabase
-      .from("whatsapp_message_logs")
-      .select("id")
-      .eq("wa_message_id", waMessageId)
-      .maybeSingle();
-    if (duplicateError) throw duplicateError;
-    if (duplicate) return json({ ok: true, duplicate: true });
-
-    const normalized = normalizeText(message);
+    if (!waMessageId) return json({ ok: false, error: "Stable message id required (id/message_id/msg_id). No changes made." }, 422);
+    const { data: claim, error: claimError } = await supabase.rpc("claim_whatsapp_request", { p_user_id: userId, p_context_key: contextKey, p_message_id: `${device}:${waMessageId}` });
+    if (claimError) throw claimError;
+    if (claim.kind === "busy") return json({ ok: false, retry: true, reason: "conversation_busy" }, 503);
+    if (claim.kind === "duplicate") {
+      if (claim.state === "delivered") return json({ ok: true, duplicate: true });
+      if (claim.state === "ready" && claim.reply) {
+        const sent = await replyWhatsApp({ target: chatTarget || sender, message: claim.reply, memberlid: body.memberlid ?? body.data?.memberlid ?? extractLid(body), senderlid: body.senderlid ?? body.data?.senderlid ?? extractLid(body) });
+        if (sent) {
+          const { error } = await supabase.from("whatsapp_inbound_requests").update({ state: "delivered", updated_at: new Date().toISOString() }).eq("id", claim.id).eq("state", "ready");
+          if (error) throw error;
+        }
+        return json({ ok: sent, duplicate: true, deliveryPending: !sent }, sent ? 200 : 503);
+      }
+      return json({ ok: false, duplicate: true, reason: claim.state === "review" ? "manual_review_required" : "processing" }, 503);
+    }
+    requestId = claim.id;
+    // Respect receipts written by the pre-claim version during a rollout.
+    const { data: legacyReceipt, error: legacyError } = await supabase.from("whatsapp_message_logs").select("status").eq("user_id", userId).eq("phone", contextKey).eq("wa_message_id", waMessageId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (legacyError) throw legacyError;
+    if (legacyReceipt) {
+      const state = legacyReceipt.status === "success" ? "delivered" : "review";
+      const { error } = await supabase.from("whatsapp_inbound_requests").update({ state, updated_at: new Date().toISOString() }).eq("id", requestId);
+      if (error) throw error;
+      return json({ ok: state === "delivered", duplicate: true, reason: "legacy_receipt" });
+    }
+    const normalized = correctCommandTypo(normalizeText(message));
 
     let reply = "";
     let parsedLog: Record<string, JsonValue> = { command: normalized.split(" ")[0] ?? "" };
@@ -8747,7 +8853,15 @@ Deno.serve(async (req: Request) => {
     const historySpecificEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+(?:akun|judul|title|tanggal|nominal)\s+\d+\s+.+$/i);
     const historyGenericEditMatch = normalized.match(/^(?:edit|ganti|ubah)\s+\d+\s+.+$/i);
 
-    if (pendingUpdateCommand?.field === "category" && activePendingTransaction) {
+    const recordingResult = await handlePendingAnswer(userId, contextKey, normalized)
+      ?? await handleRecordingPreferences(userId, normalized)
+      ?? (normalized === "undo" || normalized === "hapus" ? await undoContextTransaction(userId, contextKey) : null)
+      ?? (normalized === "koreksi" ? { reply: "Koreksi transaksi terakhir: nominal 25rb / ganti akun BCA / kategori Makan / tanggal 01/06 / judul Makan siang / undo", parsedLog: { command: "quick_edit_help" } } : null)
+      ?? await handleRecordingBatch(userId, message);
+    if (recordingResult) {
+      reply = recordingResult.reply;
+      parsedLog = recordingResult.parsedLog;
+    } else if (pendingUpdateCommand?.field === "category" && activePendingTransaction) {
       console.log("[ROUTE MATCH]", { route: "pending_transaction_update", normalized, isGroup, contextKey });
       const pendingResult = await handlePendingTransactionUpdate(userId, contextKey, pendingUpdateCommand, message);
       if (pendingResult) {
@@ -8932,7 +9046,7 @@ Deno.serve(async (req: Request) => {
         .select("amount,type,category_id,title")
         .eq("user_id", userId)
         .eq("date", today);
-      summaryQuery = await applyTransactionNotDeleted(summaryQuery);
+      summaryQuery = (await applyTransactionNotDeleted(summaryQuery)).query;
       const { data: txs, error } = await summaryQuery;
       if (error) throw error;
 
@@ -8943,7 +9057,7 @@ Deno.serve(async (req: Request) => {
         .eq("date", today)
         .order("inserted_at", { ascending: false })
         .limit(10);
-      historyQuery = await applyTransactionNotDeleted(historyQuery);
+      historyQuery = (await applyTransactionNotDeleted(historyQuery)).query;
       const { data: historyRowsRaw, error: historyError, count: totalTodayTransactions } = await historyQuery;
       if (historyError) throw historyError;
       const historyRows = (historyRowsRaw ?? []) as Array<Record<string, JsonValue>>;
@@ -9106,7 +9220,7 @@ Deno.serve(async (req: Request) => {
       console.log("[ROUTE MATCH]", { route: "info", normalized, isGroup, contextKey });
       const today = getTodayJakarta();
       let txCountQuery = supabase.from("transactions").select("user_id", { count: "exact", head: true }).eq("user_id", userId).eq("date", today);
-      txCountQuery = await applyTransactionNotDeleted(txCountQuery);
+      txCountQuery = (await applyTransactionNotDeleted(txCountQuery)).query;
       const [{ count: accountCount }, { count: categoryCount }, { count: txCount }] = await Promise.all([
         supabase.from("accounts").select("id", { count: "exact", head: true }).eq("user_id", userId),
         supabase.from("categories").select("id", { count: "exact", head: true }).eq("user_id", userId),
@@ -9397,31 +9511,9 @@ Deno.serve(async (req: Request) => {
       if (error) throw error;
       const lines = (data ?? []).map((a: Record<string, JsonValue>, i: number) => `${i + 1}. ${String(a.name)} — ${String(a.type)}`);
       reply = `🏦 *Daftar Akun*\n\n${line()}\n${lines.length > 0 ? lines.join("\n") : `${infoTitle("Data Kosong")}\n\nBelum ada akun.`}`;
-    } else if (normalized === "hapus" || normalized === "undo") {
-      let lastTxQuery = supabase
-        .from("transactions")
-        .select("id,title,amount,type,date")
-        .eq("user_id", userId)
-        .order("inserted_at", { ascending: false })
-        .limit(1);
-      lastTxQuery = await applyTransactionNotDeleted(lastTxQuery);
-      const { data: lastTx, error } = await lastTxQuery.maybeSingle();
-      if (error) throw error;
-
-      if (!lastTx) {
-        reply = "ℹ️ Tidak ada transaksi yang bisa dihapus.";
-      } else {
-        const { error: updateError } = await supabase
-          .from("transactions")
-          .update({ deleted_at: new Date().toISOString() })
-          .eq("id", String((lastTx as Record<string, JsonValue>).id ?? ""))
-          .eq("user_id", userId)
-          .is("deleted_at", null);
-        if (updateError) throw updateError;
-        reply = `🗑️ Transaksi terakhir berhasil dihapus.\nNominal: ${formatIDR(Number((lastTx as Record<string, JsonValue>).amount ?? 0))}`;
-      }
     } else {
       const transfer = parseTransferMessage(normalized);
+      const singleRecording = transfer ? null : await handleSingleRecording(userId, normalized);
       if (transfer) {
         parsedLog = { command: "tf", amount: transfer.amount, from: transfer.fromAccountName, to: transfer.toAccountName };
 
@@ -9430,7 +9522,7 @@ Deno.serve(async (req: Request) => {
         if (!fromAccount || !toAccount) {
           reply = "❌ Akun transfer tidak ditemukan.";
         } else {
-          const { error } = await supabase.from("transactions").insert({
+          const { data: transferTx, error } = await supabase.from("transactions").insert({
             user_id: userId,
             date: getTodayJakarta(),
             type: "transfer",
@@ -9439,10 +9531,11 @@ Deno.serve(async (req: Request) => {
             amount: transfer.amount,
             title: `Transfer ${fromAccount.name} ke ${toAccount.name}`,
             notes: `WhatsApp: ${message}`,
-          });
+          }).select("id").single();
           if (error) throw error;
 
-          const balanceSection = await buildBalanceSection(userId);
+          parsedLog = buildLastTransactionLog({ transactionId: String(transferTx.id), categoryId: null, categoryName: null, accountId: fromAccount.id, accountName: fromAccount.name, title: `Transfer ${fromAccount.name} ke ${toAccount.name}`, amount: transfer.amount, date: getTodayJakarta() });
+          const balanceSection = "";
           reply = buildTransactionSuccessMessage({
             type: "transfer",
             amount: transfer.amount,
@@ -9452,12 +9545,15 @@ Deno.serve(async (req: Request) => {
             balanceSection,
           });
         }
+      } else if (singleRecording) {
+        reply = singleRecording.reply;
+        parsedLog = singleRecording.parsedLog;
       } else {
         const { data: parserAccountRows, error: parserAccountError } = await getAccountsBaseQuery(userId, "id,name,type");
         if (parserAccountError) throw parserAccountError;
         const parserAccounts = (parserAccountRows ?? []) as Array<{ id: string; name: string; type: string }>;
         const tx = parseTransactionMessage(normalized, parserAccounts);
-        if (tx && "error" in tx && tx.error === "INVALID_DATE") {
+        if (tx && "error" in tx) {
           reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
         } else if (tx && !("error" in tx)) {
           parsedLog = { command: "transaction", category: tx.categoryName, account: tx.accountName, amount: tx.amount, title: tx.title };
@@ -9525,11 +9621,9 @@ Deno.serve(async (req: Request) => {
                   if (error) throw error;
                   parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: smartCategory.id, categoryName: smartCategory.name, accountId: smartAccount.id, accountName: smartAccount.name, title: finalSmartTitle, amount: smartTx.amount, date: smartTx.date });
                   if (smartAccountPrediction) parsedLog.autoAccountReason = smartAccountPrediction.reason;
-                  const [balanceSection, budgetSection] = await Promise.all([
-                    buildBalanceSection(userId),
-                    buildTransactionBudgetSection({ userId, categoryId: smartCategory.id, amount: smartTx.amount, transactionDate: smartTx.date }),
-                  ]);
-                  const warnings = smartType === "expense" ? await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: smartCategory.name }) : [];
+                  const balanceSection = "";
+  const budgetSection = null;
+                  const warnings = smartType === "expense" ? await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: smartCategory.name }).catch(() => []) : [];
                   if (smartType === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: smartCategory.name });
                   reply = buildTransactionSuccessMessage({
                     type: smartType,
@@ -9572,8 +9666,9 @@ Deno.serve(async (req: Request) => {
               if (error) throw error;
               parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: selectedAccount.id, accountName: selectedAccount.name, title: tx.title, amount: tx.amount, date: tx.date });
               parsedLog.autoAccountReason = predictedAccount.reason;
-              const [balanceSection, budgetSection] = await Promise.all([buildBalanceSection(userId), buildTransactionBudgetSection({ userId, categoryId: category.id, amount: tx.amount, transactionDate: tx.date })]);
-              const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name }) : [];
+              const balanceSection = "";
+  const budgetSection = null;
+              const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name }).catch(() => []) : [];
               if (type === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: tx.amount, categoryName: category.name });
               reply = buildTransactionSuccessMessage({ type, categoryName: category.name, title: tx.title, amount: tx.amount, accountName: selectedAccount.name, date: tx.date, balanceSection, budgetSection: type === "expense" ? budgetSection : null, warnings, quickCorrectionSection: buildQuickFixLines(selectedAccount.name) });
             }
@@ -9593,11 +9688,9 @@ Deno.serve(async (req: Request) => {
             if (error) throw error;
             parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: tx.title, amount: tx.amount, date: tx.date });
 
-            const [balanceSection, budgetSection] = await Promise.all([
-              buildBalanceSection(userId),
-              buildTransactionBudgetSection({ userId, categoryId: category.id, amount: tx.amount, transactionDate: tx.date }),
-            ]);
-            const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name }) : [];
+            const balanceSection = "";
+  const budgetSection = null;
+            const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: tx.date, amount: tx.amount, categoryName: category.name }).catch(() => []) : [];
             if (type === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: tx.amount, categoryName: category.name });
             reply = buildTransactionSuccessMessage({
               type,
@@ -9621,7 +9714,7 @@ Deno.serve(async (req: Request) => {
             const naturalTx = parseNaturalTransactionMessage(normalized, accounts);
             if (!naturalTx) {
               reply = "❌ Format tidak dikenali. Ketik menu untuk bantuan.";
-            } else if ("error" in naturalTx && naturalTx.error === "INVALID_DATE") {
+            } else if ("error" in naturalTx) {
               reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
             } else {
               const explicitCategoryPrefix = findExplicitCategoryPrefix({ text: normalized, categories: await getUserCategories(userId) });
@@ -9709,11 +9802,9 @@ Deno.serve(async (req: Request) => {
                   if (error) throw error;
                   parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalNaturalTitle, amount: naturalTx.amount, date: naturalTx.date });
                   if (naturalAccountPrediction) parsedLog.autoAccountReason = naturalAccountPrediction.reason;
-                  const [balanceSection, budgetSection] = await Promise.all([
-                    buildBalanceSection(userId),
-                    buildTransactionBudgetSection({ userId, categoryId: category.id, amount: naturalTx.amount, transactionDate: naturalTx.date }),
-                  ]);
-                  const warnings = finalType === "expense" ? await buildSmartWarnings({ userId, date: naturalTx.date, amount: naturalTx.amount, categoryName: category.name }) : [];
+                  const balanceSection = "";
+  const budgetSection = null;
+                  const warnings = finalType === "expense" ? await buildSmartWarnings({ userId, date: naturalTx.date, amount: naturalTx.amount, categoryName: category.name }).catch(() => []) : [];
                   if (finalType === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: naturalTx.amount, categoryName: category.name });
                   reply = buildTransactionSuccessMessage({
                     type: finalType,
@@ -9730,7 +9821,7 @@ Deno.serve(async (req: Request) => {
                 }
               }
             }
-          } else if ("error" in smartTx && smartTx.error === "INVALID_DATE") {
+          } else if ("error" in smartTx) {
             reply = ["⚠️ Format tanggal tidak valid.", "", "Gunakan format:", "31/05"].join("\n");
           } else {
             const explicitCategoryPrefix = findExplicitCategoryPrefix({ text: normalized, categories: await getUserCategories(userId) });
@@ -9789,11 +9880,9 @@ Deno.serve(async (req: Request) => {
                 if (error) throw error;
                 parsedLog = buildLastTransactionLog({ transactionId: String(insertedTx.id), categoryId: category.id, categoryName: category.name, accountId: account.id, accountName: account.name, title: finalSmartTitle, amount: smartTx.amount, date: smartTx.date });
                 if (smartAccountPrediction) parsedLog.autoAccountReason = smartAccountPrediction.reason;
-                const [balanceSection, budgetSection] = await Promise.all([
-                  buildBalanceSection(userId),
-                  buildTransactionBudgetSection({ userId, categoryId: category.id, amount: smartTx.amount, transactionDate: smartTx.date }),
-                ]);
-                const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: category.name }) : [];
+                const balanceSection = "";
+  const budgetSection = null;
+                const warnings = type === "expense" ? await buildSmartWarnings({ userId, date: smartTx.date, amount: smartTx.amount, categoryName: category.name }).catch(() => []) : [];
                 if (type === "expense") console.log("[SMART WARNING]", { warnings, transactionAmount: smartTx.amount, categoryName: category.name });
                 reply = buildTransactionSuccessMessage({
                   type,
@@ -9814,6 +9903,10 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    await logMessage({ wa_message_id: waMessageId, phone: contextKey, user_id: userId, raw_text: message, parsed: parsedLog, status: "success", error_message: null });
+    const { error: saveError } = await supabase.from("whatsapp_inbound_requests").update({ state: "ready", reply, parsed: parsedLog, updated_at: new Date().toISOString() }).eq("id", requestId).eq("state", "processing");
+    if (saveError) throw saveError;
+    responseSaved = true;
     const replyTarget = chatTarget || sender;
     if (isGroup) {
       console.log("[GROUP REPLY FLOW]", {
@@ -9829,41 +9922,23 @@ Deno.serve(async (req: Request) => {
       memberlid: body.memberlid ?? body.data?.memberlid ?? parsedLid,
       senderlid: body.senderlid ?? body.data?.senderlid ?? parsedLid,
     });
-    if (!sent && isGroup) {
-      console.error("[GROUP REPLY FAILED]", {
-        chatTarget,
-        participant,
-        message,
-      });
-
-      if (isGroupPrivateDebugEnabled() && participant) {
-        await replyWhatsApp({
-          target: participant,
-          message: "⚠️ Debug: bot belum bisa membalas grup ini karena target grup Fonnte tidak valid.",
-        });
-      }
-
-      return json({ ok: true, groupReplyFailed: true });
+    if (sent) {
+      const { error } = await supabase.from("whatsapp_inbound_requests").update({ state: "delivered", updated_at: new Date().toISOString() }).eq("id", requestId).eq("state", "ready");
+      if (error) throw error;
     }
-    await logMessage({
-      wa_message_id: waMessageId,
-      phone: contextKey,
-      user_id: userId,
-      raw_text: message,
-      parsed: parsedLog,
-      status: "success",
-      error_message: null,
-    });
+    return json({ ok: sent, handled: true, deliveryPending: !sent }, sent ? 200 : 503);
 
-    return json({ ok: true, handled: true });
   } catch (error) {
     console.error("[FONNTE FATAL ERROR]", error);
+    if (requestId && !responseSaved) {
+      await supabase.from("whatsapp_inbound_requests").update({ state: "review", updated_at: new Date().toISOString() }).eq("id", requestId).eq("state", "processing");
+    }
 
-    if (sender && canReplyOnError) {
+    if (sender && canReplyOnError && !responseSaved) {
       try {
         const errorMessage = error instanceof Error ? error.message : String(error ?? "");
         if (errorMessage.includes("RPC_BALANCE_FAILED")) await replyWhatsApp({ target: chatTarget || sender, message: "⚠️ Gagal mengambil saldo realtime." });
-        else await replyWhatsApp({ target: chatTarget || sender, message: "❌ Terjadi error pada sistem. Coba lagi beberapa saat." });
+        else await replyWhatsApp({ target: chatTarget || sender, message: requestId ? "⚠️ Status pemrosesan perlu diperiksa. Jangan kirim ulang transaksi; cek history atau hubungi admin." : "❌ Sistem belum dapat memproses pesan. Tidak ada perubahan yang dilakukan." });
       } catch (_e) {
       }
     }
@@ -9883,6 +9958,6 @@ Deno.serve(async (req: Request) => {
     } catch (_logError) {
     }
 
-    return json({ ok: false, handled: true, error: String(error) });
+    return json({ ok: false, handled: true, reason: requestId ? "manual_review_required" : "processing_failed" }, 503);
   }
 });

@@ -1,3 +1,4 @@
+import process from 'node:process'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 describe('supabase client env handling', () => {
@@ -43,4 +44,16 @@ describe('supabase client env handling', () => {
     })
     expect(console.warn).not.toHaveBeenCalled()
   })
+  it.each([undefined, 'https://<project>.supabase.co', 'not-a-url', 'javascript:alert(1)'])(
+    'keeps local startup available with invalid URL %s', async (url) => {
+      if (url) process.env.VITE_SUPABASE_URL = url
+      process.env.VITE_SUPABASE_ANON_KEY = 'test-key'
+      const client = await import('./supabase.js')
+      expect(client.isSupabaseConfigured).toBe(false)
+      expect(client.supabase).toBeDefined()
+      expect(client.SUPABASE_URL).toBeUndefined()
+      expect(console.warn).toHaveBeenCalled()
+    },
+  )
+
 })
