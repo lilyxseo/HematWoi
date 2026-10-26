@@ -48,6 +48,31 @@ Deno.test('missing stable message ID cannot mutate finances', async () => {
   setup(); const result = await send('makan 25rb cash', '');
   assert(result.status === 422); assert(active().length === 0);
 });
+Deno.test('Fonnte LID menu payload without message ID responds and deduplicates retries', async () => {
+  setup();
+  const payload = { choices: [], device: '628000000000', inboxid: 0, isgroup: false, mode: 'lid', senderlid: '123456789@lid', timestamp: 1793012337, type: 'text', text: 'non-button message' };
+  const first = await send('menu', '', payload);
+  assert(first.status === 200); assert(latestReply().includes('Pencatatan cepat'));
+  assert((await (await send('menu', '', payload)).json()).duplicate === true);
+});
+Deno.test('Fonnte timestamp recording payload recognizes account typo without 422', async () => {
+  setup(); const payload = { device: '628000000000', inboxid: 0, mode: 'lid', timestamp: 1793007377, type: 'text', text: 'non-button message' };
+  const first = await send('fm 200 seabanj', '', payload);
+  assert(first.status === 200); assert(latestReply().includes('Pilih kategori'));
+  assert((await (await send('fm 200 seabanj', '', payload)).json()).duplicate === true);
+  await send('1'); assert(active().length === 1); assert(active()[0].account_id === 'bank-id'); assert(active()[0].amount === 200);
+});
+Deno.test('same text with different original timestamps remains a new transaction', async () => {
+  setup();
+  await send('makan 25rb cash', '', { timestamp: 1793007377 });
+  await send('makan 25rb cash', '', { timestamp: '1793007378' });
+  assert(active().length === 2);
+});
+Deno.test('invalid timestamps fail closed when no ID exists', async () => {
+  for (const timestamp of [0, -1, 'invalid', true, 1.5]) {
+    setup(); assert((await send('makan 25rb cash', '', {timestamp})).status === 422); assert(active().length === 0);
+  }
+});
 Deno.test('pending category can be selected by number then saved once', async () => {
   setup(); await send('misteri 25rb cash');
   assert(active().length === 0); assert(latestReply().includes('1. Makan'));

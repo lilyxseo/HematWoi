@@ -598,15 +598,22 @@ function extractDevice(body: WebhookBody): string {
   return normalizePhone(raw);
 }
 
-function extractWaMessageId(body: WebhookBody, sender: string, message: string): string {
-  const raw =
-    body.id ??
-    body.message_id ??
-    body.msg_id ??
-    body.data?.id ??
-    body.data?.message_id ??
-    "";
-  return String(raw).trim();
+async function extractWaMessageId(body: WebhookBody, sender: string, message: string): Promise<string> {
+  const explicitId = [body.id, body.message_id, body.msg_id, body.data?.id, body.data?.message_id]
+    .find(value => (typeof value === "string" || typeof value === "number") && String(value).trim() !== "");
+  if (explicitId !== undefined) return String(explicitId).trim();
+
+  // Fonnte's LID payloads have no message ID. Use the provider's original event
+  // timestamp, never the time this worker receives a retry, to derive a stable key.
+  const rawTimestamp = body.timestamp ?? body.data?.timestamp;
+  const timestamp = typeof rawTimestamp === "string" || typeof rawTimestamp === "number" ? Number(rawTimestamp) : NaN;
+  if (!Number.isSafeInteger(timestamp) || timestamp <= 0) return "";
+  const event = JSON.stringify([
+    "fonnte-v1", sender, extractChatTarget(body), extractDevice(body), timestamp,
+    message, body.type ?? body.data?.type ?? "", body.url ?? body.data?.url ?? "",
+  ]);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(event));
+  return `fonnte:${Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 function formatIDR(amount: number): string {
@@ -8720,7 +8727,7 @@ Deno.serve(async (req: Request) => {
     chatTarget = extractChatTarget(body);
     message = extractMessage(body);
     const device = extractDevice(body);
-    waMessageId = extractWaMessageId(body, sender, message);
+    waMessageId = await extractWaMessageId(body, sender, message);
 
     if (isBotReply(body, sender, participant, device, message)) {
       return json({ ok: true, ignored: true, reason: "bot/self reply" });
@@ -8799,7 +8806,7 @@ Deno.serve(async (req: Request) => {
       if (!isPendingAnswer) return json({ ok: true, ignored: true, reason: "group-safe-mode" });
     }
 
-    if (!waMessageId) return json({ ok: false, error: "Stable message id required (id/message_id/msg_id). No changes made." }, 422);
+    if (!waMessageId) return json({ ok: false, error: "Message id or valid original Fonnte timestamp required. No changes made." }, 422);
     const { data: claim, error: claimError } = await supabase.rpc("claim_whatsapp_request", { p_user_id: userId, p_context_key: contextKey, p_message_id: `${device}:${waMessageId}` });
     if (claimError) throw claimError;
     if (claim.kind === "busy") return json({ ok: false, retry: true, reason: "conversation_busy" }, 503);

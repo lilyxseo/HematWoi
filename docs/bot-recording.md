@@ -34,7 +34,7 @@ Perintah tertentu juga menerima typo, misalnya `sldo`, `katgori makan`, `nomnal 
 
 1. Terapkan `supabase/migrations/20261026000000_bot_recording_workflow.sql` pada proyek Supabase yang dituju **sebelum** deploy webhook baru. Pastikan deployment lama sudah dihentikan/dikuras saat beralih; worker versi lama tidak memakai claim baru.
 2. Deploy `fonnte-webhook-v2`, termasuk `recording.ts`. Konfigurasi Fonnte dan Supabase service-role tetap memakai secret server yang sudah ada. Jangan meletakkan service-role di frontend.
-3. Pastikan webhook Fonnte memberikan ID pesan stabil di `id`, `message_id`, `msg_id`, `data.id`, atau `data.message_id`. Pesan tanpa ID ditolak HTTP 422 sebelum pencatatan. Jangan membuat ID dari waktu penerimaan atau hanya isi pesan: keduanya tidak aman untuk deduplikasi.
+3. Bot menerima ID pesan stabil di `id`, `message_id`, `msg_id`, `data.id`, atau `data.message_id`. Untuk payload Fonnte mode LID tanpa ID, bot membuat SHA-256 dari timestamp asli provider, pengirim, tujuan chat, perangkat, isi pesan, jenis, dan URL media. `inboxid: 0` bukan ID unik. Payload tanpa ID maupun timestamp asli yang valid ditolak HTTP 422. Dua pesan identik dari konteks yang sama pada detik timestamp yang sama tidak dapat dibedakan tanpa ID provider dan dianggap duplikat. Waktu penerimaan worker tidak digunakan untuk membuat ID.
 4. Uji di proyek staging dan nomor uji: pesan baru, redelivery ID sama, dua pesan bersamaan, pilihan tertunda, koreksi, undo, batch, serta grup. Pastikan integrasi pengirim webhook melakukan retry untuk respons 503. Belum ada pengujian Fonnte/Supabase produksi pada perubahan ini.
 
 ## Konsistensi dan pemulihan
