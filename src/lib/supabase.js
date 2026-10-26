@@ -13,13 +13,28 @@ const supabaseKey =
   nodeEnv.VITE_SUPABASE_PUBLISHABLE_KEY ??
   nodeEnv.VITE_SUPABASE_ANON_KEY
 
-if (!supabaseUrl || !supabaseKey) {
+function hasValidConfiguration() {
+  if (!supabaseUrl || !supabaseKey || /[<>]|\.\.\./.test(supabaseUrl + supabaseKey)) return false
+  try {
+    const url = new URL(supabaseUrl)
+    return ['http:', 'https:'].includes(url.protocol) && Boolean(url.hostname)
+  } catch {
+    return false
+  }
+}
+
+export const isSupabaseConfigured = hasValidConfiguration()
+
+if (!isSupabaseConfigured) {
   console.warn(
-    'Supabase environment variables are missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_KEY) for online mode to work.'
+    'Supabase configuration is missing or invalid. Local Mode is available. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_KEY) for online mode to work.'
   )
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient(
+  isSupabaseConfigured ? supabaseUrl : 'http://127.0.0.1:54321',
+  isSupabaseConfigured ? supabaseKey : 'local-development-only',
+  {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
@@ -27,5 +42,5 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     flowType: 'pkce',
   },
 })
-export const SUPABASE_URL = supabaseUrl
-export const SUPABASE_ANON_KEY = supabaseKey
+export const SUPABASE_URL = isSupabaseConfigured ? supabaseUrl : undefined
+export const SUPABASE_ANON_KEY = isSupabaseConfigured ? supabaseKey : undefined

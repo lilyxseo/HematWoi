@@ -150,7 +150,7 @@ export default function TransactionAdd({ onAdd }) {
   const categoryTypes = useMemo(() => ['expense', 'income'], []);
 
   const categoriesQuery = useCategoriesQuery(categoryTypes);
-  const categories = categoriesQuery.data ?? [];
+  const categories = useMemo(() => categoriesQuery.data ?? [], [categoriesQuery.data]);
   const categoriesLoading = categoriesQuery.isLoading;
   const categoriesError = categoriesQuery.error;
 
@@ -299,7 +299,6 @@ export default function TransactionAdd({ onAdd }) {
   }, [balancesLoading, cashBalance, nonCashBalance, selectedAccount?.type]);
   const selectedToAccount = accounts.find((item) => item.id === toAccountId);
   const selectedCategory = categories.find((item) => item.id === categoryId);
-  const selectedCategoryName = selectedCategory?.name || '';
   const typeMeta = useMemo(
     () => TYPE_OPTIONS.find((option) => option.value === type),
     [type],

@@ -266,7 +266,7 @@ function ProtectedAppContainer({
       const scroller = document.getElementById("main");
 
       if (location.hash) {
-        const target = document.querySelector(location.hash);
+        const target = document.getElementById(location.hash.slice(1));
         if (target) {
           target.scrollIntoView({ behavior, block: "start" });
           return;
@@ -284,6 +284,7 @@ function ProtectedAppContainer({
     return () => cancelAnimationFrame(frame);
   }, [
     location.pathname,
+    location.hash,
     prefersReducedMotion,
   ]);
 
@@ -1154,10 +1155,8 @@ function AppShell({ prefs, setPrefs }) {
       return normalized;
     };
 
-    let finalRecord = null;
-
     if (alreadyPersisted) {
-      finalRecord = pushRecord({
+      pushRecord({
         ...payloadTx,
         category: baseCategoryName,
         category_id: payloadTx.category_id ?? categoryId,
@@ -1189,7 +1188,7 @@ function AppShell({ prefs, setPrefs }) {
         if (resolvedCategory && saved.category_id && !catMap[resolvedCategory]) {
           setCatMap((prev) => ({ ...prev, [resolvedCategory]: saved.category_id }));
         }
-        finalRecord = pushRecord({
+        pushRecord({
           ...saved,
           category: resolvedCategory,
           note: saved.note ?? resolvedNote,
@@ -1202,7 +1201,7 @@ function AppShell({ prefs, setPrefs }) {
         return;
       }
     } else {
-      finalRecord = pushRecord({
+      pushRecord({
         ...payloadTx,
         id: uid(),
         category: baseCategoryName,
