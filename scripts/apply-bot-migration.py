@@ -23,7 +23,9 @@ def apply_migration():
     )
     try:
         with urllib.request.urlopen(request, timeout=90) as response:
-            if response.status != 200:
+            # The Management API query endpoint returns 201 Created on success.
+            # Retain compatibility with gateways returning 200 OK as well.
+            if response.status not in (200, 201):
                 raise RuntimeError(f"Database migration returned HTTP {response.status}")
             response.read()
     except urllib.error.HTTPError as error:

@@ -19,15 +19,19 @@ class MigrationRunnerTests(unittest.TestCase):
             def __enter__(self): return self
             def __exit__(self, *args): pass
             def read(self): return b"[]"
-        with patch.object(migration.urllib.request, "urlopen", return_value=Response()) as send:
-            migration.apply_migration()
-        request = send.call_args.args[0]
-        self.assertEqual(request.full_url, "https://api.supabase.com/v1/projects/testproject/database/query")
-        sql = json.loads(request.data)["query"]
-        self.assertTrue(sql.startswith("BEGIN;"))
-        self.assertTrue(sql.endswith("COMMIT;"))
-        self.assertIn("claim_whatsapp_request", sql)
-        self.assertIn("notify pgrst, 'reload schema'", sql)
+        for status in (200, 201):
+            with self.subTest(status=status):
+                response = Response()
+                response.status = status
+                with patch.object(migration.urllib.request, "urlopen", return_value=response) as send:
+                    migration.apply_migration()
+                request = send.call_args.args[0]
+                self.assertEqual(request.full_url, "https://api.supabase.com/v1/projects/testproject/database/query")
+                sql = json.loads(request.data)["query"]
+                self.assertTrue(sql.startswith("BEGIN;"))
+                self.assertTrue(sql.endswith("COMMIT;"))
+                self.assertIn("claim_whatsapp_request", sql)
+                self.assertIn("notify pgrst, 'reload schema'", sql)
 
     @patch.dict("os.environ", {"SUPABASE_ACCESS_TOKEN": "test-only-token", "PROJECT_ID": "testproject"}, clear=True)
     def test_failed_migration_blocks_the_next_step_without_exposing_token(self):
