@@ -94,3 +94,22 @@ Tes SQL penyesuaian:
 ```bash
 NODE_PATH=/tmp/hematwoi-bot-tests/node_modules node tests/bot/adjustments.cjs
 ```
+
+## Hapus beberapa transaksi dari history
+
+```text
+history
+hapus 1,2,3
+```
+
+Nomor mengacu tepat ke daftar history terakhir pada percakapan yang sama. `hapus 1` tetap didukung; spasi diperbolehkan (`hapus 1, 2, 3`) dan nomor berulang dihitung sekali. Maksimal 50 nomor unik per perintah. Rentang seperti `hapus 1-3` belum didukung.
+
+Semua nomor diperiksa terlebih dahulu. RPC `delete_whatsapp_history_transactions` mengunci baris terpilih dan memvalidasi kepemilikan serta status aktif sebelum mengubahnya dalam satu transaksi. Jika satu nomor tidak ada, telah dihapus, atau bukan milik pengguna, tidak ada transaksi tambahan dihapus. Penghapusan memakai `deleted_at` sehingga data audit tetap tersimpan. Setelah berhasil, bot menampilkan transaksi yang dihapus dan meminta `history` baru untuk memperbarui daftar. Redelivery dengan ID pesan sama tidak mengulang operasi.
+
+Perintah ini langsung menghapus pilihan yang valid. `undo`/`cancel` tidak memulihkan penghapusan massal; setelah penghapusan history, perintah tersebut juga tidak akan menghapus transaksi lama lain secara tidak sengaja. Tidak ada fitur pemulihan massal melalui bot pada perubahan ini.
+
+Workflow deployment menerapkan `20261030010000_bot_bulk_history_delete.sql` sebelum webhook. Tes SQL:
+
+```bash
+NODE_PATH=/tmp/hematwoi-bot-tests/node_modules node tests/bot/history-delete.cjs
+```

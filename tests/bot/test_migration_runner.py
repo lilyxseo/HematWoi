@@ -32,6 +32,7 @@ class MigrationRunnerTests(unittest.TestCase):
                 self.assertTrue(sql.endswith("COMMIT;"))
                 self.assertIn("claim_whatsapp_request", sql)
                 self.assertIn("adjust_whatsapp_account_balance", sql)
+                self.assertIn("delete_whatsapp_history_transactions", sql)
                 self.assertIn("notify pgrst, 'reload schema'", sql)
 
     @patch.dict("os.environ", {"SUPABASE_ACCESS_TOKEN": "test-only-token", "PROJECT_ID": "testproject"}, clear=True)

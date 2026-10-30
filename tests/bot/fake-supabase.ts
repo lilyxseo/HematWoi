@@ -58,6 +58,13 @@ class Query {
 }
 export function createClient(..._args: any[]) {
   return { from: (table: string) => new Query(table), rpc: async (name: string, args: Row) => {
+    if (name === 'delete_whatsapp_history_transactions') {
+      const ids = args.p_transaction_ids;
+      const rows = (db.transactions ?? []).filter(row => ids.includes(row.id) && row.user_id === args.p_user_id && !row.deleted_at);
+      if (rows.length !== ids.length) return {data:{ok:false,reason:'stale_selection'},error:null};
+      rows.forEach(row => {row.deleted_at = new Date().toISOString();});
+      return {data:{ok:true,deleted_ids:rows.map(row => row.id),count:rows.length},error:null};
+    }
     if (name === 'adjust_whatsapp_account_balance') {
       const account = db.accounts.find(row => row.id === args.p_account_id && row.user_id === args.p_user_id);
       if (!account) return {data:null,error:{message:'ADJUST_ACCOUNT_NOT_FOUND'}};

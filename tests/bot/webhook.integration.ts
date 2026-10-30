@@ -1,5 +1,5 @@
 import { db, reset, failOnce } from './fake-supabase.ts';
-import { detailedReceipt, parseAdjustCommand, correctCommandTypo, matchUniqueName } from '../../supabase/functions/fonnte-webhook-v2/recording.ts';
+import { detailedReceipt, parseHistoryDeleteCommand, parseAdjustCommand, correctCommandTypo, matchUniqueName } from '../../supabase/functions/fonnte-webhook-v2/recording.ts';
 let handler: (request: Request) => Promise<Response>;
 const originalServe = Deno.serve;
 Deno.serve = ((fn: typeof handler) => { handler = fn; return {}; }) as typeof Deno.serve;
@@ -179,6 +179,52 @@ Deno.test('adjust command works in a group and menu documents the target meaning
   setup(); await send('adjust seabank 100rb','group-adjust',{group:'120000000000@g.us',participant:'628123456789'});
   assert(active().length === 1 && active()[0].title === 'Adjuster Seabank');
   await send('menu'); assert(latestReply().includes('adjust seabank 100rb'));
+});
+Deno.test('history supports comma-separated numbers, deduplication and replay protection', async () => {
+  setup();
+  for (const amount of [10,20,30,40]) await send(`makan ${amount}rb cash`);
+  await send('history'); assert(latestReply().includes('hapus 1,2,3'));
+  const snapshot = db.whatsapp_message_logs.at(-1).parsed.displayedTransactions;
+  const selectedIds = snapshot.filter(row => [1,2,3].includes(row.no)).map(row => row.id);
+  assert(selectedIds.length === 3);
+  await send('hapus 1, 2,3,2','bulk-delete');
+  assert(active().length === 1 && !selectedIds.includes(active()[0].id));
+  assert(latestReply().includes('3 transaksi berhasil dihapus'));
+  await send('hapus 1, 2,3,2','bulk-delete'); assert(active().length === 1);
+});
+Deno.test('undo after history deletion cannot accidentally remove another older receipt', async () => {
+  setup(); await send('makan 10rb cash'); await send('makan 20rb cash');
+  const lastSaved = db.whatsapp_message_logs.at(-1).parsed.transactionId;
+  await send('history');
+  const snapshot = db.whatsapp_message_logs.at(-1).parsed.displayedTransactions;
+  const selected = snapshot.find(row => row.id !== lastSaved);
+  await send(`hapus ${selected.no}`); assert(active().length === 1);
+  await send('undo'); assert(active().length === 1 && active()[0].id === lastSaved);
+});
+Deno.test('invalid or unknown history numbers never delete a subset', async () => {
+  setup(); await send('makan 10rb cash'); await send('makan 20rb cash'); await send('history');
+  for (const command of ['hapus 1,99','hapus 0,1','hapus 1,','hapus 1,a','hapus -1','hapus 1-2']) {
+    await send(command); assert(active().length === 2,command);
+  }
+  await send('hapus 1'); assert(active().length === 1);
+});
+Deno.test('stale history selection refuses the whole deletion and retains the other entry', async () => {
+  setup(); await send('makan 10rb cash'); await send('makan 20rb cash'); await send('history');
+  const snapshot = db.whatsapp_message_logs.at(-1).parsed.displayedTransactions;
+  db.transactions.find(row => row.id === snapshot[0].id).deleted_at = new Date().toISOString();
+  await send('hapus 1,2'); assert(active().length === 1);
+  assert(latestReply().includes('Tidak ada transaksi tambahan dihapus'));
+});
+Deno.test('bulk deletion requires history from the same conversation and user', async () => {
+  setup(); await send('makan 10rb cash'); await send('hapus 1,2'); assert(active().length === 1);
+  await send('history');
+  await send('hapus 1','delete-other-chat',{group:'120000000000@g.us',participant:'628123456789'});
+  assert(active().length === 1 && latestReply().includes('Belum ada history'));
+});
+Deno.test('history delete parser does not intercept entity deletion or bare undo alias', () => {
+  for (const command of ['hapus','hapus budget 1','hapus kategori makan','hapus hutang 1','hapus wishlist 1']) assert(parseHistoryDeleteCommand(command) === null);
+  const parsed = parseHistoryDeleteCommand('hapus 1,2,2');
+  assert(parsed && !('error' in parsed) && parsed.numbers.join(',') === '1,2');
 });
 Deno.test('batch returns each line outcome and duplicate delivery does not repeat valid lines', async () => {
   setup(); const text = 'makan 25rb cash\nmakan 30rb seabank\ntidak valid';

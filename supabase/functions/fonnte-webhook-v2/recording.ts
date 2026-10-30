@@ -100,3 +100,12 @@ export function parseAdjustCommand(message: string): { accountName: string; targ
   const target = (parts[1] === '-' ? -1 : 1) * Math.round(numeric);
   return Number.isSafeInteger(target) ? { accountName: match[1].trim(), target } : { error: true };
 }
+
+export function parseHistoryDeleteCommand(message: string): { numbers: number[] } | { error: true } | null {
+  if (!/^hapus\s+[\d,+-]/i.test(message.trim())) return null;
+  const match = message.trim().match(/^hapus\s+(\d+(?:\s*,\s*\d+)*)$/i);
+  if (!match) return { error: true };
+  const numbers = [...new Set(match[1].split(',').map(value => Number(value.trim())))];
+  if (numbers.length > 50 || numbers.some(value => !Number.isSafeInteger(value) || value < 1)) return { error: true };
+  return { numbers };
+}

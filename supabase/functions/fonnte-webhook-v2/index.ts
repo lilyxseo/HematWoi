@@ -1,4 +1,4 @@
-import { detailedReceipt, parseAdjustCommand, quickEditAlias, selectPendingChoice, splitRecordingLines, correctCommandTypo, matchUniqueName } from "./recording.ts";
+import { detailedReceipt, parseHistoryDeleteCommand, parseAdjustCommand, quickEditAlias, selectPendingChoice, splitRecordingLines, correctCommandTypo, matchUniqueName } from "./recording.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 
 type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
@@ -1209,6 +1209,7 @@ function buildHistoryMessage(
       "",
       "Ketik:",
       "• *hapus 1*",
+      "• *hapus 1,2,3* — hapus beberapa nomor dari daftar ini",
       "• *edit 1 01/06*",
       "• *edit kategori 1 makan*",
     ].join("\n"),
@@ -4766,7 +4767,7 @@ async function getLastTransactionSession(userId: string, phone: string): Promise
 
   const sessionLog = (logs ?? []).find((log) => {
     const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
-    return parsed?.command === "last_transaction" || parsed?.command === "last_transaction_undone" || parsed?.command === "pending_transaction_cancelled";
+    return parsed?.command === "last_transaction" || parsed?.command === "last_transaction_undone" || parsed?.command === "pending_transaction_cancelled" || parsed?.command === "hapus_history";
   }) as Record<string, JsonValue> | undefined;
   const parsed = (sessionLog?.parsed ?? null) as Record<string, JsonValue> | null;
   if (!parsed?.transactionId || parsed.command === "last_transaction_undone") return null;
@@ -8252,6 +8253,7 @@ function buildMenuMessage(): string {
   return [
     "📝 Pencatatan cepat: makan siang 25rb cash",
     "• Banyak transaksi: satu transaksi per baris (maks. 20)",
+    "• Hapus dari history terakhir: hapus 1,2,3 (atau hapus 1)",
     "• adjust seabank 100rb — atur saldo menjadi Rp100.000, selisih dicatat sebagai Adjuster",
     "• Pilihan tertunda: balas nomor/nama, atau batal / undo / cancel (10 menit)",
     "• Koreksi: nominal 25rb / ganti akun seabank / kategori makan",
@@ -8720,6 +8722,29 @@ async function handleRecordingBatch(userId: string, message: string): Promise<Re
   return { reply: [`🧾 ${prepared.length}/${lines.length} transaksi tersimpan`, ...outcomes, 'Kirim ulang hanya baris ❌. Baris ✅ sudah tersimpan.', 'Koreksi cepat / undo / cancel berlaku untuk baris terakhir yang berhasil. Untuk baris lain gunakan history.'].join("\n"), parsedLog: last ? { ...last, batchCount: prepared.length } : { command: "batch_rejected" } };
 }
 
+async function handleHistoryDelete(userId: string, contextKey: string, message: string): Promise<RecordingResult | null> {
+  const command = parseHistoryDeleteCommand(message);
+  if (!command) return null;
+  if ("error" in command) return { reply: "⚠️ Pilih nomor history yang valid, maksimal 50 transaksi. Contoh: hapus 1,2,3. Belum ada transaksi dihapus.", parsedLog: { command: "hapus_history_failed", reason: "invalid_numbers" } };
+  const displayed = await getLastHistoryTransactions(userId, contextKey);
+  if (!displayed.length) return { reply: "⚠️ Belum ada history terakhir dalam percakapan ini. Kirim history dulu, lalu hapus 1,2,3.", parsedLog: { command: "hapus_history_failed", reason: "missing_history" } };
+  const selected = command.numbers.map(number => ({ number, transaction: findDisplayedTransactionByNumber(displayed, number) }));
+  const missing = selected.filter(item => !item.transaction).map(item => item.number);
+  if (missing.length) return { reply: `⚠️ Nomor ${missing.join(", ")} tidak ada di history terakhir. Tidak ada transaksi dihapus. Ketik history untuk memperbarui daftar.`, parsedLog: { command: "hapus_history_failed", reason: "unknown_numbers", numbers: command.numbers } };
+  const transactions = selected.map(item => item.transaction!);
+  const ids = transactions.map(item => String(item.id ?? ""));
+  if (ids.some(id => !id) || new Set(ids).size !== ids.length) return { reply: "⚠️ Daftar history tidak valid. Tidak ada transaksi dihapus. Kirim history lagi.", parsedLog: { command: "hapus_history_failed", reason: "invalid_history" } };
+  const { data, error } = await supabase.rpc("delete_whatsapp_history_transactions", { p_user_id: userId, p_transaction_ids: ids });
+  if (error) throw error;
+  if (!data.ok) return { reply: "⚠️ Ada transaksi yang sudah dihapus atau tidak lagi tersedia. Tidak ada transaksi tambahan dihapus. Kirim history lagi.", parsedLog: { command: "hapus_history_failed", reason: "stale_selection", numbers: command.numbers } };
+  const lines = selected.map(({ number, transaction }) => {
+    const tx = transaction!;
+    const description = tx.type === "transfer" ? `Transfer ${tx.accountName ?? "-"} → ${tx.toAccountName ?? "-"}` : String(tx.title ?? tx.categoryName ?? "Transaksi");
+    return `${number}. ${description} · ${formatIDR(Number(tx.amount ?? 0))} · ${String(tx.date ?? "-")}`;
+  });
+  return { reply: [`🗑️ ${ids.length} transaksi berhasil dihapus`, "", ...lines, "", "Ketik history untuk memperbarui daftar."].join("\n"), parsedLog: { command: "hapus_history", numbers: command.numbers, transactionIds: ids, deletedTransactions: transactions } };
+}
+
 async function handleAdjustBalance(userId: string, normalized: string): Promise<RecordingResult | null> {
   const parsed = parseAdjustCommand(normalized);
   if (!parsed) return null;
@@ -8903,6 +8928,7 @@ Deno.serve(async (req: Request) => {
     const recordingResult = await handlePendingAnswer(userId, contextKey, normalized)
       ?? await handleRecordingPreferences(userId, normalized)
       ?? await handleAdjustBalance(userId, normalized)
+      ?? await handleHistoryDelete(userId, contextKey, normalized)
       ?? (["undo", "cancel", "hapus"].includes(normalized) ? await undoContextTransaction(userId, contextKey) : null)
       ?? (normalized === "koreksi" ? { reply: "Koreksi transaksi terakhir: nominal 25rb / ganti akun BCA / kategori Makan / tanggal 01/06 / judul Makan siang / undo / cancel", parsedLog: { command: "quick_edit_help" } } : null)
       ?? await handleRecordingBatch(userId, message);
@@ -9474,73 +9500,6 @@ Deno.serve(async (req: Request) => {
       const historyResult = await buildHistoryPageReply(userId, historyQuery, page, pageSize);
       reply = historyResult.reply;
       parsedLog = historyResult.parsedLog;
-    } else if (/^hapus\s+(\d+)$/.test(normalized)) {
-      const deleteMatch = normalized.match(/^hapus\s+(\d+)$/);
-      const number = Number(deleteMatch?.[1] ?? 0);
-      console.log("[DELETE FROM HISTORY]", {
-        userId,
-        phone: contextKey,
-        number,
-      });
-      parsedLog = { command: "hapus_history", number };
-
-      if (!Number.isInteger(number) || number < 1) {
-        reply = "⚠️ Nomor history tidak valid.\n\nPilih nomor dari hasil history terakhir.";
-      } else {
-        const displayedTransactions = await getLastHistoryTransactions(userId, contextKey);
-        if (displayedTransactions.length === 0) {
-          reply = "⚠️ Belum ada history terakhir.\n\nKirim history dulu, lalu gunakan:\nhapus 3";
-        } else {
-          const selectedTransaction = findDisplayedTransactionByNumber(displayedTransactions, number);
-          if (!selectedTransaction) {
-            reply = "⚠️ Nomor history tidak ditemukan.";
-          } else {
-            const transactionId = String(selectedTransaction.id ?? "");
-            const { data: deletedTx, error: deleteError } = await supabase
-              .from("transactions")
-              .update({ deleted_at: new Date().toISOString() })
-              .eq("id", transactionId)
-              .eq("user_id", userId)
-              .is("deleted_at", null)
-              .select("id")
-              .maybeSingle();
-            if (deleteError) throw deleteError;
-
-            if (!deletedTx) {
-              reply = "⚠️ Transaksi ini sudah tidak aktif atau sudah dihapus.";
-            } else {
-              parsedLog = { command: "hapus_history", number, transactionId, deletedTransaction: selectedTransaction };
-              const type = String(selectedTransaction.type ?? "expense");
-              const date = String(selectedTransaction.date ?? "-");
-              const amount = Number(selectedTransaction.amount ?? 0);
-
-              if (type === "transfer") {
-                const fromName = String(selectedTransaction.accountName ?? "-");
-                const toName = String(selectedTransaction.toAccountName ?? "-");
-                reply = [
-                  "🗑️ Transfer berhasil dihapus",
-                  "",
-                  `No: ${number}`,
-                  `Tanggal: ${date}`,
-                  `Transfer: ${fromName} → ${toName}`,
-                  `Nominal: ${formatIDR(amount)}`,
-                ].join("\n");
-              } else {
-                reply = [
-                  "🗑️ Transaksi berhasil dihapus",
-                  "",
-                  `No: ${number}`,
-                  `Tanggal: ${date}`,
-                  `Kategori: ${String(selectedTransaction.categoryName ?? "-")}`,
-                  `Judul: ${String(selectedTransaction.title ?? "-")}`,
-                  `Nominal: ${formatIDR(amount)}`,
-                  `Akun: ${String(selectedTransaction.accountName ?? "-")}`,
-                ].join("\n");
-              }
-            }
-          }
-        }
-      }
     } else if (
       normalized === "kategori" ||
       normalized === "list kategori" ||
