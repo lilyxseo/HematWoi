@@ -124,6 +124,33 @@ Deno.test('undo uses this conversation receipt and never deletes older app trans
   await send('makan 25rb cash'); await send('undo'); await send('undo');
   assert(active().length === 1); assert(active()[0].id === 'from-app');
 });
+Deno.test('cancel undoes the latest bot transaction once and does not delete older records', async () => {
+  setup();
+  await send('makan 10rb cash'); const previous = active()[0].id;
+  await send('makan 25rb cash');
+  assert(latestReply().includes('• undo / cancel — batalkan transaksi terakhir'));
+  await send('CANCEL', 'cancel-id');
+  assert(active().length === 1 && active()[0].id === previous);
+  await send('cancel', 'cancel-id');
+  await send('cancel');
+  assert(active().length === 1 && active()[0].id === previous);
+});
+Deno.test('undo and cancel discard a pending draft without touching the previous saved transaction', async () => {
+  for (const command of ['undo', 'cancel']) {
+    setup(); await send('makan 10rb cash'); const previous = active()[0].id;
+    await send('misteri 25rb cash');
+    assert(latestReply().includes('undo / cancel'));
+    await send(command);
+    assert(latestReply().includes('Transaksi tertunda dibatalkan'));
+    await send(command);
+    assert(active().length === 1 && active()[0].id === previous);
+  }
+});
+Deno.test('cancel cannot undo a transaction from a different conversation', async () => {
+  setup(); await send('makan 25rb cash');
+  await send('cancel', 'group-cancel', {group:'120000000000@g.us',participant:'628123456789'});
+  assert(active().length === 1);
+});
 Deno.test('batch returns each line outcome and duplicate delivery does not repeat valid lines', async () => {
   setup(); const text = 'makan 25rb cash\nmakan 30rb seabank\ntidak valid';
   await send(text, 'batch'); assert(active().length === 2);
@@ -177,7 +204,7 @@ Deno.test('expense receipt preserves the original requested WhatsApp layout exac
   const budget = `📆 Budget Bulanan\n• Terpakai: ${money(258000)} / ${money(250000)}\n• Sisa: ${money(-8000)}\n⚠️ Budget bulanan hampir habis (103.2%)\n\n🗓️ Budget Mingguan\n• Terpakai: ${money(3500)} / ${money(50000)}\n• Sisa: ${money(46500)}`;
   const warnings = ['🚨 Budget Makan sudah melewati limit.', '⚠️ Saldo mulai menipis.'];
   const receipt = detailedReceipt({type:'expense', date:'2026-10-26', categoryName:'Makan',title:'fm',amount:3500,accountName:'Seabank',balanceSection:balance,budgetSection:budget,warnings});
-  assert(receipt === [`✅ Pengeluaran Tercatat`, '', 'Tanggal: 2026-10-26', 'Kategori: Makan', 'Judul: fm', `Nominal: ${money(3500)}`, 'Akun: Seabank', '', balance, '', budget, '', ...warnings, '', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', '• akun cash', '• tanggal 01/06', '• judul pertamax turbo'].join('\n'), receipt);
+  assert(receipt === [`✅ Pengeluaran Tercatat`, '', 'Tanggal: 2026-10-26', 'Kategori: Makan', 'Judul: fm', `Nominal: ${money(3500)}`, 'Akun: Seabank', '', balance, '', budget, '', ...warnings, '', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', '• akun cash', '• tanggal 01/06', '• judul pertamax turbo', '• undo / cancel — batalkan transaksi terakhir'].join('\n'), receipt);
 });
 Deno.test('ordinary recording includes an over-budget warning based on database usage', async () => {
   setup();

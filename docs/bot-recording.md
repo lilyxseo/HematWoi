@@ -5,7 +5,7 @@
 - `makan siang 25rb cash`: catat transaksi dengan akun eksplisit.
 - Jika kategori/akun belum diketahui, bot menampilkan pilihan bernomor. Balas nomor, nama, `kategori makan`, atau `akun cash`. `batal` membuang draft tanpa menyimpan transaksi. Masa berlaku 10 menit sejak draft dibuat, tidak diperpanjang oleh jawaban berikutnya.
 - `nominal 30rb`, `ganti akun seabank`, `kategori makan`, `tanggal 01/06`, `judul makan siang`: koreksi transaksi terakhir yang dicatat dalam percakapan ini. `koreksi` menampilkan bantuan.
-- `undo`: soft-delete transaksi dari bukti pencatatan terakhir dalam percakapan ini. Pengulangan `undo` tidak menghapus transaksi sebelumnya. Tidak mengambil transaksi terbaru yang dibuat dari aplikasi atau chat lain.
+- `undo` / `cancel`: soft-delete transaksi dari bukti pencatatan terakhir dalam percakapan ini. Pengulangan `undo` tidak menghapus transaksi sebelumnya. Tidak mengambil transaksi terbaru yang dibuat dari aplikasi atau chat lain.
 - `akun default seabank` / `akun default hapus`: atur/hapus akun default.
 - `preferensi`: tampilkan akun default, status pembelajaran, dan maksimal 20 aturan hasil koreksi.
 - `belajar akun aktif` / `belajar akun mati`: aktifkan/nonaktifkan prediksi berdasarkan riwayat dan pembelajaran dari koreksi.
@@ -70,3 +70,5 @@ Tes integrasi menjalankan handler asli dengan SDK database dan pengiriman WhatsA
 Balasan pencatatan tunggal menampilkan tanggal, judul, nominal, kategori/akun, saldo cash/non-cash/total, serta penggunaan dan sisa budget bulanan/mingguan yang tersedia. Budget mengikuti tanggal transaksi. Jika pengambilan saldo atau budget gagal, bot tetap mengonfirmasi transaksi tersimpan dan menandai informasi laporan yang belum tersedia; angka tidak diisi nol untuk menutupi kegagalan. Batch tetap menampilkan hasil per baris.
 
 Format balasan mengikuti contoh asli: judul “✅ Pengeluaran Tercatat”, urutan tanggal/kategori/judul/nominal/akun, saldo, budget, peringatan cerdas, garis pemisah, lalu daftar Koreksi Cepat. Peringatan mengikuti kondisi aktual serta pembatasan frekuensi yang sudah ada. Teks “Sent via fonnte.com” tetap dikelola Fonnte agar tidak ditambahkan dua kali.
+
+Petunjuk `undo / cancel — batalkan transaksi terakhir` ditampilkan pada bukti pencatatan dan menu. Jika masih ada draft tertunda, kedua perintah membatalkan draft terlebih dahulu, tanpa menghapus transaksi sebelumnya. Mengulang perintah setelah pembatalan tidak menghapus transaksi yang lebih lama.

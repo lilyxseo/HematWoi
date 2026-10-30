@@ -245,7 +245,7 @@ const MAX_SMART_WARNINGS = 3;
 const warningCache = new Map<string, number>();
 
 const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
-  "preferensi", "belajar", "reset", "batal", "koreksi", "nominal", "ganti", "ubah",
+  "preferensi", "belajar", "reset", "batal", "cancel", "undo", "koreksi", "nominal", "ganti", "ubah",
   "menu",
   "help",
   "bantuan",
@@ -283,7 +283,7 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
 const NATURAL_RESERVED_COMMANDS = new Set([
   "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "pengeluaran harian", "pengeluaran per hari", "harian", "daily expense", "expense harian", "history", "riwayat", "budget", "tambah budget", "edit budget", "hapus budget", "hutang",
   "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
-  "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "hapus", "undo",
+  "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "hapus", "undo", "cancel",
   "wishlist", "tambah wishlist", "edit wishlist", "hapus wishlist", "beli wishlist", "arsip wishlist", "note", "nb",
 ]);
 
@@ -4766,7 +4766,7 @@ async function getLastTransactionSession(userId: string, phone: string): Promise
 
   const sessionLog = (logs ?? []).find((log) => {
     const parsed = (log.parsed ?? null) as Record<string, JsonValue> | null;
-    return parsed?.command === "last_transaction" || parsed?.command === "last_transaction_undone";
+    return parsed?.command === "last_transaction" || parsed?.command === "last_transaction_undone" || parsed?.command === "pending_transaction_cancelled";
   }) as Record<string, JsonValue> | undefined;
   const parsed = (sessionLog?.parsed ?? null) as Record<string, JsonValue> | null;
   if (!parsed?.transactionId || parsed.command === "last_transaction_undone") return null;
@@ -8252,8 +8252,9 @@ function buildMenuMessage(): string {
   return [
     "📝 Pencatatan cepat: makan siang 25rb cash",
     "• Banyak transaksi: satu transaksi per baris (maks. 20)",
-    "• Pilihan tertunda: balas nomor/nama, atau batal (10 menit)",
-    "• Koreksi: nominal 25rb / ganti akun seabank / kategori makan / undo",
+    "• Pilihan tertunda: balas nomor/nama, atau batal / undo / cancel (10 menit)",
+    "• Koreksi: nominal 25rb / ganti akun seabank / kategori makan",
+    "• undo / cancel — batalkan transaksi terakhir dari percakapan ini",
     "• Preferensi: preferensi / akun default seabank / belajar akun mati / reset pembelajaran",
     "",
 
@@ -8557,7 +8558,7 @@ function isPotentialBotCommand(message: string): boolean {
   if (DAILY_EXPENSE_COMMANDS.has(normalized)) return true;
 
   const validCommands = [
-    "batal", "koreksi", "ganti", "ubah", "nominal", "preferensi", "belajar akun", "reset pembelajaran", "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
+    "batal", "cancel", "koreksi", "ganti", "ubah", "nominal", "preferensi", "belajar akun", "reset pembelajaran", "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
     "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "beli", "arsip", "wishlist", "note", "nb", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
@@ -8647,7 +8648,7 @@ async function pendingPrompt(userId: string, session: PendingTransactionSession)
   session.choices = choices.map((row: { id: string; name: string }) => ({ id: row.id, name: row.name }));
   session.expiresAt ??= Date.now() + PENDING_TRANSACTION_TTL_MS;
   return {
-    reply: [`📝 ${session.title} · ${formatIDR(session.amount)} · ${session.date}`, `Pilih ${field === 'category' ? 'kategori' : 'akun'}:`, ...session.choices.map((choice, i) => `${i + 1}. ${choice.name}`), 'Balas nomor atau nama. Ketik batal untuk membatalkan.', 'Belum disimpan. Sesi berlaku 10 menit sejak dimulai.'].join("\n"),
+    reply: [`📝 ${session.title} · ${formatIDR(session.amount)} · ${session.date}`, `Pilih ${field === 'category' ? 'kategori' : 'akun'}:`, ...session.choices.map((choice, i) => `${i + 1}. ${choice.name}`), 'Balas nomor atau nama. Ketik batal / undo / cancel untuk membatalkan draft.', 'Belum disimpan. Sesi berlaku 10 menit sejak dimulai.'].join("\n"),
     parsedLog: buildPendingTransactionUpdateLog(session),
   };
 }
@@ -8658,7 +8659,7 @@ async function handlePendingAnswer(userId: string, contextKey: string, normalize
   if (!pending) return null;
   const command = parsePendingTransactionUpdateCommand(normalized);
   const selection = selectPendingChoice(normalized, pending.session.choices ?? []) ?? matchUniqueName(normalized, pending.session.choices ?? []);
-  if (normalized === "batal") return { reply: "✅ Transaksi tertunda dibatalkan. Tidak ada transaksi yang disimpan.", parsedLog: { command: "pending_transaction_cancelled" } };
+  if (["batal", "undo", "cancel"].includes(normalized)) return { reply: "✅ Transaksi tertunda dibatalkan. Tidak ada transaksi yang disimpan.", parsedLog: { command: "pending_transaction_cancelled" } };
   if (!command && !selection && !/^\d+$/.test(normalized)) return null;
   if (pending.expired) return { reply: "⚠️ Sesi transaksi habis. Kirim ulang transaksi kamu.", parsedLog: { command: "pending_transaction_expired" } };
   if (command) return await handlePendingTransactionUpdate(userId, contextKey, command, normalized);
@@ -8715,7 +8716,7 @@ async function handleRecordingBatch(userId: string, message: string): Promise<Re
     }
   }
   outcomes.sort((a,b) => Number(a.split('.')[0]) - Number(b.split('.')[0]));
-  return { reply: [`🧾 ${prepared.length}/${lines.length} transaksi tersimpan`, ...outcomes, 'Kirim ulang hanya baris ❌. Baris ✅ sudah tersimpan.', 'Koreksi cepat / undo berlaku untuk baris terakhir yang berhasil. Untuk baris lain gunakan history.'].join("\n"), parsedLog: last ? { ...last, batchCount: prepared.length } : { command: "batch_rejected" } };
+  return { reply: [`🧾 ${prepared.length}/${lines.length} transaksi tersimpan`, ...outcomes, 'Kirim ulang hanya baris ❌. Baris ✅ sudah tersimpan.', 'Koreksi cepat / undo / cancel berlaku untuk baris terakhir yang berhasil. Untuk baris lain gunakan history.'].join("\n"), parsedLog: last ? { ...last, batchCount: prepared.length } : { command: "batch_rejected" } };
 }
 
 async function undoContextTransaction(userId: string, contextKey: string): Promise<RecordingResult> {
@@ -8881,8 +8882,8 @@ Deno.serve(async (req: Request) => {
 
     const recordingResult = await handlePendingAnswer(userId, contextKey, normalized)
       ?? await handleRecordingPreferences(userId, normalized)
-      ?? (normalized === "undo" || normalized === "hapus" ? await undoContextTransaction(userId, contextKey) : null)
-      ?? (normalized === "koreksi" ? { reply: "Koreksi transaksi terakhir: nominal 25rb / ganti akun BCA / kategori Makan / tanggal 01/06 / judul Makan siang / undo", parsedLog: { command: "quick_edit_help" } } : null)
+      ?? (["undo", "cancel", "hapus"].includes(normalized) ? await undoContextTransaction(userId, contextKey) : null)
+      ?? (normalized === "koreksi" ? { reply: "Koreksi transaksi terakhir: nominal 25rb / ganti akun BCA / kategori Makan / tanggal 01/06 / judul Makan siang / undo / cancel", parsedLog: { command: "quick_edit_help" } } : null)
       ?? await handleRecordingBatch(userId, message);
     if (recordingResult) {
       reply = recordingResult.reply;

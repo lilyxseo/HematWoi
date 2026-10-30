@@ -29,7 +29,7 @@ export function detailedReceipt(input: {
   if (input.type === 'expense') lines.push('', input.budgetSection || '📊 Belum ada budget untuk kategori ini pada periode transaksi.');
   if (input.warnings?.length) lines.push('', ...input.warnings);
   const suggestedAccount = input.accountName?.toLowerCase().includes('seabank') ? 'cash' : 'seabank';
-  lines.push('', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', `• akun ${suggestedAccount}`, '• tanggal 01/06', '• judul pertamax turbo');
+  lines.push('', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', `• akun ${suggestedAccount}`, '• tanggal 01/06', '• judul pertamax turbo', '• undo / cancel — batalkan transaksi terakhir');
   return lines.join('\n');
 }
 
