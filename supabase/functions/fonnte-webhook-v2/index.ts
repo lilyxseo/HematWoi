@@ -1,4 +1,4 @@
-import { detailedReceipt, quickEditAlias, selectPendingChoice, splitRecordingLines, correctCommandTypo, matchUniqueName } from "./recording.ts";
+import { detailedReceipt, parseAdjustCommand, quickEditAlias, selectPendingChoice, splitRecordingLines, correctCommandTypo, matchUniqueName } from "./recording.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.8";
 
 type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
@@ -245,7 +245,7 @@ const MAX_SMART_WARNINGS = 3;
 const warningCache = new Map<string, number>();
 
 const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
-  "preferensi", "belajar", "reset", "batal", "cancel", "undo", "koreksi", "nominal", "ganti", "ubah",
+  "preferensi", "belajar", "reset", "adjust", "batal", "cancel", "undo", "koreksi", "nominal", "ganti", "ubah",
   "menu",
   "help",
   "bantuan",
@@ -283,7 +283,7 @@ const SMART_TRANSACTION_BLOCKED_COMMANDS = new Set([
 const NATURAL_RESERVED_COMMANDS = new Set([
   "menu", "help", "bantuan", ".menu", "contoh", "saldo", "summary", "pengeluaran harian", "pengeluaran per hari", "harian", "daily expense", "expense harian", "history", "riwayat", "budget", "tambah budget", "edit budget", "hapus budget", "hutang",
   "tambah hutang", "tambah piutang", "bayar hutang", "bayar piutang", "tf", "ai", "minggu ini", "bulan ini",
-  "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "hapus", "undo", "cancel",
+  "top kategori", "cashflow", "kategori", "tambah kategori", "edit kategori", "hapus kategori", "akun", "info", "ping", "adjust", "hapus", "undo", "cancel",
   "wishlist", "tambah wishlist", "edit wishlist", "hapus wishlist", "beli wishlist", "arsip wishlist", "note", "nb",
 ]);
 
@@ -8252,6 +8252,7 @@ function buildMenuMessage(): string {
   return [
     "📝 Pencatatan cepat: makan siang 25rb cash",
     "• Banyak transaksi: satu transaksi per baris (maks. 20)",
+    "• adjust seabank 100rb — atur saldo menjadi Rp100.000, selisih dicatat sebagai Adjuster",
     "• Pilihan tertunda: balas nomor/nama, atau batal / undo / cancel (10 menit)",
     "• Koreksi: nominal 25rb / ganti akun seabank / kategori makan",
     "• undo / cancel — batalkan transaksi terakhir dari percakapan ini",
@@ -8558,7 +8559,7 @@ function isPotentialBotCommand(message: string): boolean {
   if (DAILY_EXPENSE_COMMANDS.has(normalized)) return true;
 
   const validCommands = [
-    "batal", "cancel", "koreksi", "ganti", "ubah", "nominal", "preferensi", "belajar akun", "reset pembelajaran", "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
+    "adjust", "batal", "cancel", "koreksi", "ganti", "ubah", "nominal", "preferensi", "belajar akun", "reset pembelajaran", "saldo", "summary", "pengeluaran", "harian", "daily", "expense", "history", "next", "lanjut", "prev", "sebelumnya", "back", "page", "halaman", "kategori", "akun", "tanggal", "judul", "budget", "ai", "ping", "info",
     "hutang", "piutang", "transfer", "tf", "tambah", "edit", "hapus", "beli", "arsip", "wishlist", "note", "nb", "undo", "menu", "help", "bantuan", "contoh",
   ];
 
@@ -8717,6 +8718,25 @@ async function handleRecordingBatch(userId: string, message: string): Promise<Re
   }
   outcomes.sort((a,b) => Number(a.split('.')[0]) - Number(b.split('.')[0]));
   return { reply: [`🧾 ${prepared.length}/${lines.length} transaksi tersimpan`, ...outcomes, 'Kirim ulang hanya baris ❌. Baris ✅ sudah tersimpan.', 'Koreksi cepat / undo / cancel berlaku untuk baris terakhir yang berhasil. Untuk baris lain gunakan history.'].join("\n"), parsedLog: last ? { ...last, batchCount: prepared.length } : { command: "batch_rejected" } };
+}
+
+async function handleAdjustBalance(userId: string, normalized: string): Promise<RecordingResult | null> {
+  const parsed = parseAdjustCommand(normalized);
+  if (!parsed) return null;
+  if ("error" in parsed) return { reply: "⚠️ Format: adjust NAMA_AKUN SALDO_TARGET\nContoh: adjust seabank 100rb\nSaldo nol: adjust seabank 0", parsedLog: { command: "adjust_invalid" } };
+  const account = await findAccount(userId, parsed.accountName);
+  if (!account) return { reply: "❌ Akun tidak ditemukan atau namanya ambigu. Ketik akun untuk melihat daftar.", parsedLog: { command: "adjust_invalid", reason: "account_not_found" } };
+  const date = getTodayJakarta();
+  const { data, error } = await supabase.rpc("adjust_whatsapp_account_balance", { p_user_id: userId, p_account_id: account.id, p_target: parsed.target, p_date: date });
+  if (error) throw error;
+  const before = Number(data.before);
+  const delta = Number(data.delta);
+  if (!data.transaction_id) return { reply: `ℹ️ Saldo ${account.name} sudah ${formatIDR(parsed.target)}. Tidak ada transaksi Adjuster baru.`, parsedLog: { command: "last_transaction_undone", reason: "adjust_no_change" } };
+  const title = `Adjuster ${account.name}`;
+  return {
+    reply: ["✅ Saldo Disesuaikan", "", `Tanggal: ${date}`, `Akun: ${account.name}`, `Saldo sebelumnya: ${formatIDR(before)}`, `Saldo sekarang: ${formatIDR(parsed.target)}`, "", "🧾 History Transaksi", `Judul: ${title}`, `Tipe: ${delta > 0 ? "Pemasukan" : "Pengeluaran"}`, `Nominal penyesuaian: ${formatIDR(Math.abs(delta))}`, "", "Ketik undo / cancel untuk membatalkan penyesuaian terakhir."].join("\n"),
+    parsedLog: { ...buildLastTransactionLog({ transactionId: String(data.transaction_id), categoryId: null, categoryName: null, accountId: account.id, accountName: account.name, title, amount: Math.abs(delta), date }), adjustment: true, before, target: parsed.target },
+  };
 }
 
 async function undoContextTransaction(userId: string, contextKey: string): Promise<RecordingResult> {
@@ -8882,6 +8902,7 @@ Deno.serve(async (req: Request) => {
 
     const recordingResult = await handlePendingAnswer(userId, contextKey, normalized)
       ?? await handleRecordingPreferences(userId, normalized)
+      ?? await handleAdjustBalance(userId, normalized)
       ?? (["undo", "cancel", "hapus"].includes(normalized) ? await undoContextTransaction(userId, contextKey) : null)
       ?? (normalized === "koreksi" ? { reply: "Koreksi transaksi terakhir: nominal 25rb / ganti akun BCA / kategori Makan / tanggal 01/06 / judul Makan siang / undo / cancel", parsedLog: { command: "quick_edit_help" } } : null)
       ?? await handleRecordingBatch(userId, message);

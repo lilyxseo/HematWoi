@@ -58,6 +58,23 @@ class Query {
 }
 export function createClient(..._args: any[]) {
   return { from: (table: string) => new Query(table), rpc: async (name: string, args: Row) => {
+    if (name === 'adjust_whatsapp_account_balance') {
+      const account = db.accounts.find(row => row.id === args.p_account_id && row.user_id === args.p_user_id);
+      if (!account) return {data:null,error:{message:'ADJUST_ACCOUNT_NOT_FOUND'}};
+      const rows = (db.transactions ??= []);
+      let before = 0;
+      for (const row of rows.filter(row => row.user_id === args.p_user_id && !row.deleted_at)) {
+        const amount = Number(row.amount);
+        if (row.type === 'transfer') {
+          if (row.account_id === account.id) before -= amount;
+          if (row.to_account_id === account.id) before += amount;
+        } else if (row.account_id === account.id) before += row.type === 'income' ? amount : -amount;
+      }
+      const delta = args.p_target - before;
+      const id = delta ? crypto.randomUUID() : null;
+      if (id) rows.push({id,user_id:args.p_user_id,account_id:account.id,amount:Math.abs(delta),type:delta>0?'income':'expense',date:args.p_date,title:`Adjuster ${account.name}`});
+      return {data:{transaction_id:id,before,target:args.p_target,delta,type:delta>0?'income':'expense',account_name:account.name},error:null};
+    }
     if (name !== 'claim_whatsapp_request') return { data: [{ cash_balance: 0, non_cash_balance: 0, total_balance: 0 }], error: null };
     const rows = db.whatsapp_inbound_requests ??= [];
     const existing = rows.find(row => row.user_id === args.p_user_id && row.context_key === args.p_context_key && row.message_id === args.p_message_id);

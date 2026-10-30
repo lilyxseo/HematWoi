@@ -29,7 +29,7 @@ export function detailedReceipt(input: {
   if (input.type === 'expense') lines.push('', input.budgetSection || '📊 Belum ada budget untuk kategori ini pada periode transaksi.');
   if (input.warnings?.length) lines.push('', ...input.warnings);
   const suggestedAccount = input.accountName?.toLowerCase().includes('seabank') ? 'cash' : 'seabank';
-  lines.push('', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', `• akun ${suggestedAccount}`, '• tanggal 01/06', '• judul pertamax turbo', '• undo / cancel — batalkan transaksi terakhir');
+  lines.push('', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', `• akun ${suggestedAccount}`, '• tanggal 01/06', '• judul pertamax turbo', '• undo / cancel — batalkan transaksi terakhir', `• adjust ${input.accountName?.toLowerCase() || 'nama_akun'} 100rb — atur saldo akun`);
   return lines.join('\n');
 }
 
@@ -80,4 +80,23 @@ export function correctCommandTypo(text: string): string {
   const eligible = rest.length ? ['kategori', 'nominal', 'tanggal', 'judul'] : commands;
   const candidate = matchUniqueName(first, eligible.map(name => ({ name })));
   return candidate ? [candidate.name, ...rest].join(' ') : text;
+}
+
+export function parseAdjustCommand(message: string): { accountName: string; target: number } | { error: true } | null {
+  if (!/^adjust(?:\s|$)/i.test(message.trim())) return null;
+  const match = message.trim().match(/^adjust\s+(.+?)\s+([+-]?(?:rp\s*)?\d[\d.,]*\s*(?:rb|rbu|ribu|k|jt|juta)?)$/i);
+  if (!match) return { error: true };
+  const token = match[2].toLowerCase().replace(/\s|rp/g, '');
+  const parts = token.match(/^([+-]?)([\d.,]+)(rb|rbu|ribu|k|jt|juta)?$/);
+  if (!parts) return { error: true };
+  let numeric: number;
+  if (parts[3]) {
+    if (!/^\d+(?:[.,]\d{1,3})?$/.test(parts[2])) return { error: true };
+    numeric = Number(parts[2].replace(',', '.')) * (['jt', 'juta'].includes(parts[3]) ? 1000000 : 1000);
+  } else {
+    if (!/^\d+$/.test(parts[2]) && !/^\d{1,3}(?:\.\d{3})+$/.test(parts[2]) && !/^\d{1,3}(?:,\d{3})+$/.test(parts[2])) return { error: true };
+    numeric = Number(parts[2].replace(/[.,]/g, ''));
+  }
+  const target = (parts[1] === '-' ? -1 : 1) * Math.round(numeric);
+  return Number.isSafeInteger(target) ? { accountName: match[1].trim(), target } : { error: true };
 }

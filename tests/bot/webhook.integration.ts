@@ -1,5 +1,5 @@
 import { db, reset, failOnce } from './fake-supabase.ts';
-import { detailedReceipt, correctCommandTypo, matchUniqueName } from '../../supabase/functions/fonnte-webhook-v2/recording.ts';
+import { detailedReceipt, parseAdjustCommand, correctCommandTypo, matchUniqueName } from '../../supabase/functions/fonnte-webhook-v2/recording.ts';
 let handler: (request: Request) => Promise<Response>;
 const originalServe = Deno.serve;
 Deno.serve = ((fn: typeof handler) => { handler = fn; return {}; }) as typeof Deno.serve;
@@ -151,6 +151,35 @@ Deno.test('cancel cannot undo a transaction from a different conversation', asyn
   await send('cancel', 'group-cancel', {group:'120000000000@g.us',participant:'628123456789'});
   assert(active().length === 1);
 });
+Deno.test('adjust records only the difference to the target and supports cancel', async () => {
+  setup(); await send('makan 25rb seabank');
+  await send('adjust seabank 100rb','adjust-once');
+  let adjustment = active().find(row => row.title === 'Adjuster Seabank');
+  assert(adjustment?.amount === 125000 && adjustment.type === 'income');
+  assert(latestReply().includes('Saldo sebelumnya:') && latestReply().includes('100.000'));
+  await send('adjust seabank 100rb','adjust-once'); assert(active().length === 2);
+  await send('cancel'); assert(active().length === 1);
+});
+Deno.test('adjust handles decreases, zero balance, and unchanged target without empty history', async () => {
+  setup(); await send('adjust seabank 100rb'); await send('adjust seabank 40rb');
+  assert(active().at(-1).type === 'expense' && active().at(-1).amount === 60000);
+  await send('adjust seabank 0'); assert(active().at(-1).amount === 40000);
+  const count = active().length;
+  await send('adjust seabank 0'); assert(active().length === count); assert(latestReply().includes('Tidak ada transaksi Adjuster baru'));
+});
+Deno.test('adjust validates input without guessing amounts or writing to unknown accounts', async () => {
+  setup();
+  for (const text of ['adjust', 'adjust seabank seratus', 'adjust seabank 1OOrb', 'adjust rekeningasing 100rb']) await send(text);
+  assert(active().length === 0);
+  assert(parseAdjustCommand('adjust bank utama 100.000')?.target === 100000);
+  assert(parseAdjustCommand('adjust seabank -1,5jt')?.target === -1500000);
+  assert(parseAdjustCommand('adjust seabank 0')?.target === 0);
+});
+Deno.test('adjust command works in a group and menu documents the target meaning', async () => {
+  setup(); await send('adjust seabank 100rb','group-adjust',{group:'120000000000@g.us',participant:'628123456789'});
+  assert(active().length === 1 && active()[0].title === 'Adjuster Seabank');
+  await send('menu'); assert(latestReply().includes('adjust seabank 100rb'));
+});
 Deno.test('batch returns each line outcome and duplicate delivery does not repeat valid lines', async () => {
   setup(); const text = 'makan 25rb cash\nmakan 30rb seabank\ntidak valid';
   await send(text, 'batch'); assert(active().length === 2);
@@ -204,7 +233,7 @@ Deno.test('expense receipt preserves the original requested WhatsApp layout exac
   const budget = `📆 Budget Bulanan\n• Terpakai: ${money(258000)} / ${money(250000)}\n• Sisa: ${money(-8000)}\n⚠️ Budget bulanan hampir habis (103.2%)\n\n🗓️ Budget Mingguan\n• Terpakai: ${money(3500)} / ${money(50000)}\n• Sisa: ${money(46500)}`;
   const warnings = ['🚨 Budget Makan sudah melewati limit.', '⚠️ Saldo mulai menipis.'];
   const receipt = detailedReceipt({type:'expense', date:'2026-10-26', categoryName:'Makan',title:'fm',amount:3500,accountName:'Seabank',balanceSection:balance,budgetSection:budget,warnings});
-  assert(receipt === [`✅ Pengeluaran Tercatat`, '', 'Tanggal: 2026-10-26', 'Kategori: Makan', 'Judul: fm', `Nominal: ${money(3500)}`, 'Akun: Seabank', '', balance, '', budget, '', ...warnings, '', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', '• akun cash', '• tanggal 01/06', '• judul pertamax turbo', '• undo / cancel — batalkan transaksi terakhir'].join('\n'), receipt);
+  assert(receipt === [`✅ Pengeluaran Tercatat`, '', 'Tanggal: 2026-10-26', 'Kategori: Makan', 'Judul: fm', `Nominal: ${money(3500)}`, 'Akun: Seabank', '', balance, '', budget, '', ...warnings, '', '━━━━━━━━━━━━━━', '⚡ Koreksi Cepat', '• edit 30000', '• kategori makan', '• akun cash', '• tanggal 01/06', '• judul pertamax turbo', '• undo / cancel — batalkan transaksi terakhir', '• adjust seabank 100rb — atur saldo akun'].join('\n'), receipt);
 });
 Deno.test('ordinary recording includes an over-budget warning based on database usage', async () => {
   setup();

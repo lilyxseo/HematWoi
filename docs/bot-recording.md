@@ -72,3 +72,25 @@ Balasan pencatatan tunggal menampilkan tanggal, judul, nominal, kategori/akun, s
 Format balasan mengikuti contoh asli: judul “✅ Pengeluaran Tercatat”, urutan tanggal/kategori/judul/nominal/akun, saldo, budget, peringatan cerdas, garis pemisah, lalu daftar Koreksi Cepat. Peringatan mengikuti kondisi aktual serta pembatasan frekuensi yang sudah ada. Teks “Sent via fonnte.com” tetap dikelola Fonnte agar tidak ditambahkan dua kali.
 
 Petunjuk `undo / cancel — batalkan transaksi terakhir` ditampilkan pada bukti pencatatan dan menu. Jika masih ada draft tertunda, kedua perintah membatalkan draft terlebih dahulu, tanpa menghapus transaksi sebelumnya. Mengulang perintah setelah pembatalan tidak menghapus transaksi yang lebih lama.
+
+## Adjust saldo akun
+
+`adjust seabank 100rb` mengatur **saldo target**, bukan menambah Rp100.000.
+
+- Saldo awal Rp40.000 → target Rp100.000: history `Adjuster Seabank`, pemasukan Rp60.000.
+- Saldo awal Rp150.000 → target Rp100.000: history `Adjuster Seabank`, pengeluaran Rp50.000.
+- Saldo sudah Rp100.000: tidak menambah transaksi kosong.
+- `adjust seabank 0` mengatur saldo nol. Saldo negatif juga didukung, misalnya `adjust seabank -50rb`.
+- `undo` / `cancel` membatalkan catatan penyesuaian terakhir dari percakapan yang sama. Jika tidak ada perubahan saldo, bot tidak membuat target undo baru ke transaksi sebelumnya.
+
+Perintah menerima nominal rupiah bulat, pemisah ribuan (`100.000`), serta akhiran `rb`/`k`/`jt` (`1,5jt`). Nama akun mengikuti pencarian akun pengguna dan toleransi typo yang tidak ambigu. Petunjuk tersedia di menu serta balasan pencatatan.
+
+RPC `adjust_whatsapp_account_balance` menghitung saldo dari ledger transaksi pengguna seperti dashboard, termasuk transfer masuk/keluar dan transaksi bertanggal mendatang, serta mengecualikan transaksi yang dihapus. Selisih dimasukkan sebagai satu transaksi pemasukan/pengeluaran, tanpa kategori budget, berjudul Adjuster dan dengan catatan saldo sebelum/target/selisih. Karena bertipe pemasukan/pengeluaran, penyesuaian juga masuk total laporan. Nilai snapshot pada tabel accounts tidak ditimpa langsung.
+
+Perhitungan dan INSERT berada dalam satu transaksi database, dengan lock singkat pada penulisan tabel transactions untuk mencegah penulis lain menyisipkan transaksi di antara keduanya. Pembacaan tidak diblokir. Claim webhook yang sudah ada mencegah redelivery mencatat ulang adjustment. Fungsi baru hanya dapat dipanggil service role. Workflow deployment menerapkan `20261030000000_bot_balance_adjuster.sql` sebelum men-deploy webhook.
+
+Tes SQL penyesuaian:
+
+```bash
+NODE_PATH=/tmp/hematwoi-bot-tests/node_modules node tests/bot/adjustments.cjs
+```

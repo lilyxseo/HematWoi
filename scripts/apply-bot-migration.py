@@ -12,9 +12,11 @@ def apply_migration():
     project = os.environ.get("PROJECT_ID", "")
     if not token or not re.fullmatch(r"[a-z0-9]+", project):
         raise RuntimeError("SUPABASE_ACCESS_TOKEN and a valid PROJECT_ID are required")
-    migration = Path(__file__).resolve().parents[1] / "supabase/migrations/20261026000000_bot_recording_workflow.sql"
+    root = Path(__file__).resolve().parents[1] / "supabase/migrations"
+    migrations = [root / "20261026000000_bot_recording_workflow.sql", root / "20261030000000_bot_balance_adjuster.sql"]
+    migration_sql = "\n".join(migration.read_text() for migration in migrations)
     # Atomic and serialized across concurrent deployment attempts; reruns preserve data.
-    query = "BEGIN;\nSELECT pg_advisory_xact_lock(hashtextextended('hematwoi:bot-recording-schema', 0));\n" + migration.read_text() + "\nCOMMIT;"
+    query = "BEGIN;\nSELECT pg_advisory_xact_lock(hashtextextended('hematwoi:bot-recording-schema', 0));\n" + migration_sql + "\nCOMMIT;"
     request = urllib.request.Request(
         f"https://api.supabase.com/v1/projects/{project}/database/query",
         data=json.dumps({"query": query}).encode(),
