@@ -4,11 +4,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./index.css";
 import { initSyncEngine } from "./lib/sync/SyncEngine";
-import { hydrateNativeAppState } from "./lib/native";
+import { registerPwaWorker } from "./lib/pwa";
+import { isNativePlatform, hydrateNativeAppState } from "./lib/native";
 
 async function bootstrap() {
   await hydrateNativeAppState();
   initSyncEngine();
+  if (!isNativePlatform()) void registerPwaWorker();
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
