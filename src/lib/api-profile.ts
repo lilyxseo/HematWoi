@@ -170,30 +170,12 @@ export async function getProfile(): Promise<UserProfile> {
       throw error;
     }
     if (!data) {
-      const defaults = {
-        id: user.id,
-        full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
-        username: null,
-        avatar_url: null,
-        currency: 'IDR',
-        locale: 'id-ID',
-        date_format: 'DD/MM/YYYY',
-        timezone: 'Asia/Jakarta',
-        theme: 'system',
-        notifications: {
-          weekly_summary: true,
-          monthly_summary: false,
-          bill_due: true,
-          goal_reminder: true,
-        },
-      };
-      const { data: inserted, error: insertError } = await supabase
-        .from('user_profiles')
-        .insert(defaults)
-        .select('*')
-        .single();
-      if (insertError) throw insertError;
-      return mapProfileRow(inserted);
+      const { data: ensured, error: ensureError } = await supabase.rpc('ensure_user_profile');
+      if (ensureError) throw ensureError;
+      if (!ensured) {
+        throw new Error('Profil tidak ditemukan.');
+      }
+      return mapProfileRow(ensured as any);
     }
     return mapProfileRow(data);
   } catch (error) {
@@ -208,17 +190,14 @@ export async function checkUsernameAvailability(username: string): Promise<boole
       throw new Error('Username tidak valid.');
     }
     validateUsername(normalized);
-    const user = await requireUser();
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('username', normalized)
-      .neq('id', user.id)
-      .maybeSingle();
-    if (error && error.code !== 'PGRST116') {
+    await requireUser();
+    const { data, error } = await supabase.rpc('is_username_available', {
+      target_username: normalized,
+    });
+    if (error) {
       throw error;
     }
-    return !data;
+    return Boolean(data);
   } catch (error) {
     wrapError('checkUsernameAvailability', error, 'Tidak bisa mengecek username.');
   }
