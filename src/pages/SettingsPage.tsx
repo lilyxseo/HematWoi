@@ -7,11 +7,47 @@ import NumberField from '../components/settings/NumberField';
 import DangerZone from '../components/settings/DangerZone';
 import { getPrefs, setPrefs, resetPrefs } from '../lib/preferences';
 import { useDataMode, useRepo } from '../context/DataContext';
+import { supabase } from '../lib/supabase';
 
 export default function SettingsPage() {
   const { mode, setMode } = useDataMode();
   const repo = useRepo();
   const [prefs, setLocalPrefs] = useState(getPrefs());
+  const [chatgptTesting, setChatgptTesting] = useState(false);
+  const [chatgptResult, setChatgptResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const testChatgptConnection = async () => {
+    setChatgptTesting(true);
+    setChatgptResult(null);
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) {
+        setChatgptResult({ ok: false, message: 'Sesi login tidak ditemukan. Silakan login ulang.' });
+        return;
+      }
+      const { data, error } = await supabase.functions.invoke('chatgpt-read', {
+        body: { action: 'accounts' },
+      });
+      if (error) {
+        const response = 'context' in error ? (error as { context?: Response }).context : undefined;
+        let detail = '';
+        if (response && typeof response.json === 'function') {
+          try {
+            const payload = await response.json();
+            if (typeof payload?.error === 'string') detail = payload.error;
+          } catch { /* No readable response body */ }
+        }
+        const status = response?.status ? `HTTP ${response.status}: ` : '';
+        throw new Error(`${status}${detail || error.message || 'Permintaan gagal'}`);
+      }
+      if (!data || !Array.isArray(data.accounts)) throw new Error('Format respons tidak sesuai');
+      setChatgptResult({ ok: true, message: `Koneksi berhasil. ${data.accounts.length} akun terbaca.` });
+    } catch (error) {
+      setChatgptResult({ ok: false, message: error instanceof Error ? error.message : 'Koneksi gagal' });
+    } finally {
+      setChatgptTesting(false);
+    }
+  };
 
   useEffect(() => {
     setPrefs(prefs);
@@ -153,6 +189,19 @@ export default function SettingsPage() {
             </button>
           </DangerZone>
         )}
+      </SettingsGroup>
+      <SettingsGroup title="Integrasi ChatGPT">
+        <div className="space-y-2">
+          <p className="text-sm text-muted">Uji akses baca akun melalui Edge Function tanpa menyalin token login.</p>
+          <button type="button" className="btn" onClick={testChatgptConnection} disabled={chatgptTesting}>
+            {chatgptTesting ? "Menguji koneksi..." : "Test Koneksi ChatGPT"}
+          </button>
+          {chatgptResult && (
+            <p role="status" className={`text-sm ${chatgptResult.ok ? "text-green-600" : "text-red-600"}`}>
+              {chatgptResult.message}
+            </p>
+          )}
+        </div>
       </SettingsGroup>
       <SettingsGroup title="Backup">
         <div className="flex flex-col sm:flex-row gap-2">
