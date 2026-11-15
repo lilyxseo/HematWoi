@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
     }
 
     const { data, error } = await client.from("budgets")
-      .select("id,name,category_id,period_month,amount_planned,current_spent")
+      .select("id,name,category_id,period_month,planned,rollover_in,rollover_out,carry_rule")
       .eq("user_id", userId).eq("period_month", start).limit(100);
     if (error) throw error;
     return json({ action, month, budgets: data });
