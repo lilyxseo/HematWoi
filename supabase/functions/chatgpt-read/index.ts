@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
 
   const action = body.action;
   const month = body.month;
-  if (!["accounts", "transactions", "budgets"].includes(String(action))) {
+  if (!["accounts", "transactions", "budgets", "categories"].includes(String(action))) {
     return json({ error: "Unsupported read-only action" }, 400);
   }
   if ((action === "transactions" || action === "budgets") && !validMonth(month)) {
@@ -55,9 +55,16 @@ Deno.serve(async (req) => {
     const userId = auth.user.id;
     if (action === "accounts") {
       const { data, error } = await client.from("accounts")
-        .select("id,name,type").eq("user_id", userId).limit(100);
+        .select("id,name,type,currency,balance,sort_order").eq("user_id", userId).limit(100);
       if (error) throw error;
       return json({ action, accounts: data });
+    }
+
+    if (action === "categories") {
+      const { data, error } = await client.from("categories")
+        .select("id,name,type,group_name,sort_order").eq("user_id", userId).limit(200);
+      if (error) throw error;
+      return json({ action, categories: data });
     }
 
     const start = `${month}-01`;
@@ -78,8 +85,8 @@ Deno.serve(async (req) => {
     }
 
     const { data, error } = await client.from("budgets")
-      .select("id,name,category_id,period_month,planned,rollover_in,rollover_out,carry_rule")
-      .eq("user_id", userId).eq("period_month", start).limit(100);
+      .select("id,name,label,category_id,month,period_month,planned,amount_planned,current_spent,rollover_in,carryover_enabled,budget_type")
+      .eq("user_id", userId).or(`period_month.eq.${start},and(period_month.is.null,month.eq.${start})`).limit(100);
     if (error) throw error;
     return json({ action, month, budgets: data });
   } catch (error) {
