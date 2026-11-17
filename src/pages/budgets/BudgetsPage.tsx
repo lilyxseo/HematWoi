@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import {
   CalendarDays,
@@ -142,7 +142,14 @@ export default function BudgetsPage() {
   const highlightQuery = useHighlightBudgets();
   const highlightSelections = highlightQuery.data ?? [];
 
+  const hasFetchedCategoriesRef = useRef(false);
+
   useEffect(() => {
+    if (hasFetchedCategoriesRef.current) {
+      return;
+    }
+
+    hasFetchedCategoriesRef.current = true;
     let active = true;
     setCategoriesLoading(true);
     listCategoriesExpense()
